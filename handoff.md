@@ -96,6 +96,23 @@ Conventions:
 - See also: the retiming supersedes the timings stated in the "Per-difficulty
   countdown timer" entry above.
 
+## [2026-08-23 16:10] Fix: Bottom nav respects system insets + round press ripple
+
+- Symptom: the bottom nav bar clipped through the phone's system navigation
+  (gesture handle / 3-button bar) and stuck to the very bottom; and long-pressing
+  a tab showed a SQUARE ripple instead of a round pill.
+- Root cause: the `Row` had no bottom inset padding, and the `clickable` ripple on
+  each item was rectangular (unclipped).
+- Fix (`ui/components/NazoBottomNav.kt`):
+  - Added `navigationBarsPadding()` *before* the `background` so the bar (and its
+    background) sit above the system navigation area on both gesture and button
+    devices.
+  - Clipped each `NazoNavItem` to `RoundedCornerShape(percent = 50)` so the
+    long-press ripple is rounded, not square.
+- Files: `ui/components/NazoBottomNav.kt`.
+- Verified against: Compose `navigationBarsPadding` / `WindowInsets` docs; a ripple
+  is clipped by an ancestor `clip` modifier, so rounding the item rounds the ripple.
+
 ---
 
 ## Prior session (consolidated — implemented before this log existed)

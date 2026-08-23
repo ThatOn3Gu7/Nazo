@@ -2,12 +2,15 @@ package quiz.thaton3app.nazo.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
@@ -39,6 +42,10 @@ fun NazoBottomNav(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // Respect the system navigation bar (gesture handle / 3-button) so the
+            // bar sits above it instead of clipping through. Applied before the
+            // background so the background itself stops above the system UI.
+            .navigationBarsPadding()
             .background(NazoNavBar)
             .padding(vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -68,9 +75,11 @@ private fun NazoNavItem(
     val tint = if (selected) NazoPrimary else NazoTextSecondary
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
+        // Clip to a rounded pill so the long-press ripple is round, not square.
         modifier = Modifier
+            .clip(RoundedCornerShape(percent = 50))
             .clickable(onClick = onClick)
-            .padding(horizontal = 24.dp, vertical = 2.dp),
+            .padding(horizontal = 24.dp, vertical = 8.dp),
     ) {
         Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.height(22.dp))
         Text(
