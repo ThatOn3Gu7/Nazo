@@ -1,0 +1,127 @@
+# Nazo — Handoff Log
+
+This file is the single source of truth for every change made to the Nazo app.
+Every change (small or big) is appended here with date, time, title, and a short
+description of what changed, why, and which files were touched. If a later change
+affects an earlier entry, the earlier entry is updated in place with a note.
+
+Conventions:
+- Difficulty labels come from `ui/screens/HomeScreen.kt`'s `Difficulty` enum
+  ("Easy" / "Medium" / "Hard" / "Otaku Master") and are passed straight through
+  to `data/QuizEngine.kt`, which owns difficulty→behavior rules.
+- Theme palette lives in `ui/theme/Color.kt` as a module-level `MutableState`
+  (`_nazoColors`) updated by `NazoTheme` via `setNazoColors(brand)`. Screens read
+  it through the `NazoXxx` accessors (e.g. `NazoBackground`).
+
+---
+
+## [2026-08-23 15:04] Fix: Dark-mode white flash on screen transitions
+
+- Symptom: In dark mode, switching between screens (tabs/sub-screens) caused a
+  brief white flash during the `AnimatedContent` fade. No flash in light mode.
+- Root cause: during an `AnimatedContent` crossfade both scenes are
+  semi-transparent, so the Activity's `windowBackground` (white) bled through.
+  The content container had no background, and the window background was not
+  synced to the in-app (forced) dark theme.
+- Fix:
+  - `ui/NazoApp.kt`: gave `AnimatedContent` a theme-aware
+    `modifier = Modifier.fillMaxSize().background(NazoBackground)` so nothing
+    white shows behind the crossfade.
+  - `ui/theme/Theme.kt`: in the existing `SideEffect`, also set
+    `window.navigationBarColor` and `window.setBackgroundDrawable(ColorDrawable(...))`
+    to the active background color, covering first paint and the forced-dark case.
+- Files: `ui/NazoApp.kt`, `ui/theme/Theme.kt`.
+- Verified against: Android dev / GitHub issues confirming the crossfade reveals
+  the window decor, fixed by theming the wrapping container + window background.
+
+---
+
+## [2026-08-23 15:04] Feature: Per-difficulty countdown timer (custom quiz engine)
+
+- Requirement: a per-question countdown driven by difficulty. On timeout the user
+  is "eliminated": the answer + explanation are revealed and they get the option
+  to move to the next question (counts as incorrect).
+  - Easy = 40s, Medium = 30s, Hard = 20s, Otaku Master = 10s (per product owner).
+- Implementation:
+  - NEW `data/QuizEngine.kt`: `QuizEngine.specFor(label).secondsPerQuestion` is
+    the single source of truth for difficulty timings (easy to rebalance).
+  - `ui/screens/ActiveQuizScreen.kt`: added `difficulty: String` param and a
+    lifecycle-safe `LaunchedEffect(currentQuestionIndex)` countdown
+    (`while (remainingSeconds > 0 && selectedAnswer == null) { delay(1000); ... }`).
+    The coroutine auto-cancels when the screen leaves composition and stops early
+    when the user answers. On hitting 0 with no answer it sets `isTimeUp`, which
+    (via `reveal = isAnswered || isTimeUp`) reveals the correct answer +
+    explanation and the Next button. The timer number turns red at <=5s / on timeout.
+  - `ui/NazoApp.kt`: passes `difficulty = quizDifficulty` into `ActiveQuizScreen`.
+- Files: `data/QuizEngine.kt` (new), `ui/screens/ActiveQuizScreen.kt`,
+  `ui/NazoApp.kt`.
+- Verified against: official Compose side-effect docs — `LaunchedEffect(key)` is
+  the recommended, lifecycle-safe way to run a `delay`-based countdown; it cancels
+  on leave and relaunches on key change (one timer per question).
+- NOTE: Timings were corrected the same session to Easy 40 / Medium 30 / Hard 20 /
+  Otaku 10 (see 2026-08-23 15:21 retiming entry). Only the map in `QuizEngine.kt`
+  changed.
+
+---
+
+## [2026-08-23 15:21] Fix: Keep Home-screen difficulty / question-count selection
+
+- Symptom: after finishing a quiz and returning to Home, the difficulty and
+  question count (and topic) reset to defaults no matter what was chosen.
+- Root cause: `HomeScreen` held `topic`, `difficulty`, and `questionCount` in
+  plain `remember`, cleared when the composable leaves composition (navigating
+  into the quiz). First attempt used `rememberSaveable` *inside* `HomeScreen`,
+  but that did not restore either — `rememberSaveable` inside content swapped by
+  `AnimatedContent` keys into its internal `SaveableStateHolder`, which does not
+  reliably restore here (confirmed by on-device test: preset still reset).
+- Fix: hoisted the three values up to `NazoApp` (the always-composed root, which
+  never leaves composition) as `homeTopic` / `homeDifficultyName` /
+  `homeQuestionCount`, persisted with `rememberSaveable`, and passed them into
+  `HomeScreen` as params + change callbacks. The preset now survives navigation
+  and process death, and stays locked in until the user changes it. `difficulty`
+  is passed as its enum `name` (Bundle-safe) and re-derived via
+  `Difficulty.valueOf(...)`.
+- Files: `ui/NazoApp.kt`, `ui/screens/HomeScreen.kt`.
+- Verified against: official Compose "State lifespans" docs; hoisting to a
+  stable root is the canonical fix when state must outlive a swapped child.
+
+## [2026-08-23 15:21] Fix: Difficulty timer timings corrected
+
+- Requirement change (product owner): Easy = 40s, Medium = 30s, Hard = 20s,
+  Otaku Master = 10s (monotonic decreasing). Previous values (30/50/10/5) were
+  inconsistent.
+- Fix: updated the map in `data/QuizEngine.kt` only — `ActiveQuizScreen` and
+  `NazoApp` are unaffected (they read `QuizEngine.specFor(label)`).
+- Files: `data/QuizEngine.kt`.
+- See also: the retiming supersedes the timings stated in the "Per-difficulty
+  countdown timer" entry above.
+
+---
+
+## Prior session (consolidated — implemented before this log existed)
+
+Captured here so a future session has full context. Original action items are in
+`BUG_AUDIT.md`; the original `feedback.md` has been removed (its content is
+covered by `BUG_AUDIT.md` + this log).
+
+- **Navigation fix (critical):** replaced broken multi-Activity / manual
+  `setContent` navigation with a single `NazoApp` composable driven by a `sealed
+  interface Screen` and a uniform `AnimatedContent` fade. Removed the dead
+  `NazoScreen` enum from `MainActivity`.
+  Files: `ui/NazoApp.kt`, `MainActivity.kt`.
+- **Dynamic LLM API integration:** `data/remote/ApiClient.kt` (HttpURLConnection
+  + org.json, no new deps) + `data/remote/ProviderConfig.kt` (provider endpoints).
+  `NazoApp` orchestrates generation and falls back to
+  `DummyData.buildFallbackQuestions(count)` when no key is set or the call fails.
+- **Secure API-key storage:** `data/settings/SecureStorage.kt` (Android Keystore
+  AES/GCM — chosen because `security-crypto:1.1.0` deprecated
+  `EncryptedSharedPreferences`/`MasterKey`) + `data/settings/ApiKeyStore.kt`.
+  Wired into `AiProviderScreen`.
+- **Real theming (see 2026-08-23 flash-fix entry for the window-background sync
+  added to `NazoTheme`):** `ui/theme/Color.kt` (light + dark palettes via
+  module-level `MutableState`) + `ui/theme/Theme.kt` (darkTheme + accent).
+  `AppearanceScreen` controls mode (system/light/dark) and accent; persisted in
+  `ThemePreferences`.
+- **New screens / flows:** `LoadingScreen`, `ReviewAnswersScreen`; bottom nav
+  extracted to `ui/components/NazoBottomNav.kt` (with `NazoTab`).
+- **Bug audit:** `BUG_AUDIT.md` documents the findings driving the above.
