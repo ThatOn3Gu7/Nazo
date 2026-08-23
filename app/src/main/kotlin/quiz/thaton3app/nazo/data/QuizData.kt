@@ -12,4 +12,11 @@ data class Question(
     val options: List<String> = emptyList(),
     val correctAnswer: String = "",
     val explanation: String = "",
-)
+) {
+    /**
+     * Returns a copy with the option ORDER shuffled. The [correctAnswer] string is
+     * untouched, so the right answer simply lands in a different position — keeping
+     * repeated questions from feeling repetitive across runs.
+     */
+    fun withShuffledOptions(): Question = copy(options = options.shuffled())
+}

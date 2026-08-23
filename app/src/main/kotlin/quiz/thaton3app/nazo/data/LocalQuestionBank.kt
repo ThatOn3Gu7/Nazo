@@ -575,7 +575,7 @@ object LocalQuestionBank {
         }
         val exact = base.filter { it.difficulty.equals(difficulty, ignoreCase = true) }.shuffled()
         val rest = base.filter { !it.difficulty.equals(difficulty, ignoreCase = true) }.shuffled()
-        return (exact + rest).distinctBy { it.text }.take(count)
+        return (exact + rest).distinctBy { it.text }.map { it.withShuffledOptions() }.take(count)
     }
 
     /**

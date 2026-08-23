@@ -90,7 +90,8 @@ fun NazoApp() {
             scope.launch {
                 ApiClient.generateQuiz(provider, key, model, topic, difficulty, count)
                     .onSuccess { qs ->
-                        questions = if (qs.isNotEmpty()) qs else LocalQuestionBank.getQuestions(count, topic, difficulty)
+                        questions = if (qs.isNotEmpty()) qs.map { it.withShuffledOptions() }
+                        else LocalQuestionBank.getQuestions(count, topic, difficulty)
                         userAnswers = emptyList()
                         currentQuestionIndex = 0
                         score = 0

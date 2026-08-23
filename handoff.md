@@ -160,6 +160,17 @@ Conventions:
 - Files: `data/QuizData.kt`, `data/LocalQuestionBank.kt`, `ui/NazoApp.kt`,
   `ui/screens/HomeScreen.kt`.
 
+## [2026-08-23 17:25] feat: shuffle question option order each run
+
+- Added `Question.withShuffledOptions()` — returns a copy with the choice ORDER
+  randomized while `correctAnswer` (a string) stays intact, so the right answer
+  lands in a different position every time a question is reused. The UI compares
+  option text to `correctAnswer` and explanations name answers (not "Option A"),
+  so this is safe across ActiveQuiz + Review screens.
+- Applied in `LocalQuestionBank.getQuestions` (local bank) and the API success path
+  in `ui/NazoApp.kt` (so AI-returned questions are also de-repetitivized).
+- Files: `data/QuizData.kt`, `data/LocalQuestionBank.kt`, `ui/NazoApp.kt`.
+
 ---
 
 ## Prior session (consolidated — implemented before this log existed)
