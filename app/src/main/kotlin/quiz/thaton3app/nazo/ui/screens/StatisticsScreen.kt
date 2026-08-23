@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoTab
+import quiz.thaton3app.nazo.data.QuizStats
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoDarkCard
 import quiz.thaton3app.nazo.ui.theme.NazoDarkCardAccent
@@ -73,34 +74,70 @@ private data class StatsData(
     val topAnime: List<MasteredAnimeStat>,
 )
 
-private fun emptyStats() = StatsData(
-    level = 1,
-    currentXp = 0,
-    xpForNextLevel = 100, 
-    totalQuizzes = 0,
-    overallAccuracyPercent = 0,
-    currentStreakDays = 0,
-    bestTopic = null,
-    difficulty = listOf(
-        DifficultyStat("Easy", played = 0, accuracyPercent = 0),
-        DifficultyStat("Medium", played = 0, accuracyPercent = 0),
-        DifficultyStat("Hard", played = 0, accuracyPercent = 0),
-        DifficultyStat("Otaku Master", played = 0, accuracyPercent = 0),
-    ),
-    // Placeholder rows so you can see the UI layout
-    topAnime = listOf(
-        MasteredAnimeStat(1, "—", 0, 0),
-        MasteredAnimeStat(2, "—", 0, 0),
-        MasteredAnimeStat(3, "—", 0, 0)
+private fun QuizStats.toStatsData(): StatsData {
+    val overallAccuracyPercent = if (totalQuestionsAnswered > 0) {
+        totalCorrect * 100 / totalQuestionsAnswered
+    } else {
+        0
+    }
+
+    val difficultyOrder = listOf("Easy", "Medium", "Hard", "Otaku Master")
+    val difficulty = difficultyOrder.map { label ->
+        val played = difficultyPlays[label] ?: 0
+        val answered = difficultyAnswered[label] ?: 0
+        val correct = difficultyCorrect[label] ?: 0
+        val accuracyPercent = if (answered > 0) correct * 100 / answered else 0
+        DifficultyStat(label, played, accuracyPercent)
+    }
+
+    val ranked = animeAnswered.mapNotNull { (anime, answered) ->
+        val correct = animeCorrect[anime] ?: 0
+        if (answered <= 0) null else AnimeAcc(anime, answered, correct * 100 / answered)
+    }.sortedWith(
+        compareByDescending<AnimeAcc> { it.avgScore }.thenByDescending { it.answered }
+    ).take(3)
+
+    val topAnime = ranked.mapIndexed { index, e ->
+        MasteredAnimeStat(index + 1, e.anime, e.answered, e.avgScore)
+    }
+    val bestTopic = topAnime.firstOrNull()?.title
+
+    // Lightweight progression: XP from correct answers + completed quizzes.
+    val xp = totalCorrect * 10 + totalQuizzes * 5
+    val xpForNextLevel = 200
+    val level = (xp / xpForNextLevel) + 1
+    val currentXp = xp % xpForNextLevel
+
+    return StatsData(
+        level = level,
+        currentXp = currentXp,
+        xpForNextLevel = xpForNextLevel,
+        totalQuizzes = totalQuizzes,
+        overallAccuracyPercent = overallAccuracyPercent,
+        currentStreakDays = currentStreakDays,
+        bestTopic = bestTopic,
+        difficulty = difficulty,
+        topAnime = if (topAnime.isEmpty()) {
+            listOf(
+                MasteredAnimeStat(1, "—", 0, 0),
+                MasteredAnimeStat(2, "—", 0, 0),
+                MasteredAnimeStat(3, "—", 0, 0),
+            )
+        } else {
+            topAnime
+        },
     )
-)
+}
+
+private data class AnimeAcc(val anime: String, val answered: Int, val avgScore: Int)
 
 @Composable
 fun StatisticsScreen(
+    stats: QuizStats = QuizStats(),
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
 ) {
-    val stats = emptyStats()
+    val data = stats.toStatsData()
 
     Column(
         modifier = Modifier
@@ -117,20 +154,20 @@ fun StatisticsScreen(
             Spacer(Modifier.height(28.dp))
             ScreenHeader(title = "Statistics & Insights", onBackClick = onBackClick)
             Spacer(Modifier.height(20.dp))
-            RankCard(stats)
+            RankCard(data)
             Spacer(Modifier.height(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 StatTile(
                     icon = Icons.Filled.DoneAll,
                     label = "Total Quizzes",
-                    value = stats.totalQuizzes.toString(),
+                    value = data.totalQuizzes.toString(),
                     subtitle = "Completed",
                     modifier = Modifier.weight(1f),
                 )
                 StatTile(
                     icon = Icons.Filled.Speed,
                     label = "Overall Accuracy",
-                    value = "${stats.overallAccuracyPercent}%",
+                    value = "${data.overallAccuracyPercent}%",
                     subtitle = "Correct answers",
                     modifier = Modifier.weight(1f),
                 )
@@ -140,24 +177,24 @@ fun StatisticsScreen(
                 StatTile(
                     icon = Icons.Filled.LocalFireDepartment,
                     label = "Current Streak",
-                    value = "${stats.currentStreakDays} Days",
+                    value = "${data.currentStreakDays} Days",
                     subtitle = "Keep it burning",
                     modifier = Modifier.weight(1f),
                 )
                 StatTile(
                     icon = Icons.Filled.TrackChanges,
                     label = "Best Topic",
-                    value = stats.bestTopic ?: "—",
-                    subtitle = if (stats.bestTopic == null) "No quizzes yet" else "",
+                    value = data.bestTopic ?: "—",
+                    subtitle = if (data.bestTopic == null) "No quizzes yet" else "",
                     modifier = Modifier.weight(1f),
                 )
             }
             Spacer(Modifier.height(16.dp))
-            DifficultyCard(stats.difficulty)
+            DifficultyCard(data.difficulty)
             
             // --- NEW COMPONENTS START HERE ---
             Spacer(Modifier.height(16.dp))
-            TopAnimeCard(stats.topAnime)
+            TopAnimeCard(data.topAnime)
             Spacer(Modifier.height(24.dp))
             ShareButton()
             Spacer(Modifier.height(24.dp))

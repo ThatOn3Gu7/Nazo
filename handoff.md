@@ -113,6 +113,31 @@ Conventions:
 - Verified against: Compose `navigationBarsPadding` / `WindowInsets` docs; a ripple
   is clipped by an ancestor `clip` modifier, so rounding the item rounds the ripple.
 
+## [2026-08-23 16:40] feat: Local question bank (~100 Qs) + quiz stats engine
+
+- Added a real local data layer so the Statistics screen is driven by actual play:
+  - `data/LocalQuestionBank.kt`: ~100 curated questions across ~25 series, each tagged
+    with `anime` + `theme`. `getQuestions(count, topic)` filters by topic and shuffles,
+    replacing the old 2-item `DummyData` set. `DummyData` / `buildFallbackQuestions`
+    were deleted entirely.
+  - `data/QuizStats.kt` + `data/settings/QuizStatsStore.kt`: fold each completed quiz
+    into aggregates — total quizzes, overall accuracy, current/best daily streak,
+    per-difficulty play + accuracy, and per-anime answered/correct (drives "top
+    mastered anime"). Persisted as one JSON blob in SharedPreferences via built-in
+    `org.json` (no new dependencies, consistent with the project's other local stores).
+  - `ui/NazoApp.kt`: records the result into `QuizStatsStore` the instant a quiz
+    finishes (capturing that run's `questions` / `userAnswers` / `difficulty`).
+  - `ui/screens/StatisticsScreen.kt`: now takes `QuizStats` and derives its `StatsData`
+    (level/XP, accuracy, best topic, difficulty breakdown, top anime) from real data.
+  - `data/Question`: added an `anime: String` field; API parsing now also sets `anime`
+    (falling back to the requested topic, then `theme`).
+- Notes: the local bank intentionally stands in for a Room table / the future AI API
+  (per owner: questions move to API/JSON later). Stats use SharedPreferences, matching
+  `ThemePreferences` / `SecureStorage` patterns.
+- Files: `data/QuizData.kt`, `data/LocalQuestionBank.kt`, `data/QuizStats.kt`,
+  `data/settings/QuizStatsStore.kt`, `ui/NazoApp.kt`, `ui/screens/StatisticsScreen.kt`,
+  `data/remote/ApiClient.kt`.
+
 ---
 
 ## Prior session (consolidated — implemented before this log existed)

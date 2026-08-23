@@ -61,7 +61,7 @@ object ApiClient {
                 }
 
                 val content = extractContent(endpoint.kind, raw)
-                val questions = parseQuestions(content)
+                val questions = parseQuestions(content, topic)
                 if (questions.isEmpty()) {
                     throw IllegalStateException("Provider returned no questions")
                 }
@@ -93,7 +93,7 @@ object ApiClient {
             .getString("text")
     }
 
-    private fun parseQuestions(raw: String): List<Question> {
+    private fun parseQuestions(raw: String, topic: String): List<Question> {
         val cleaned = raw.trim()
             .removePrefix("```json")
             .removePrefix("```")
@@ -109,6 +109,7 @@ object ApiClient {
             }
             list += Question(
                 id = i + 1,
+                anime = o.optString("anime", if (topic.isNotBlank()) topic else o.optString("theme", "Anime")),
                 theme = o.optString("theme", "ANIME QUIZ").uppercase(),
                 text = o.optString("question", o.optString("text", "")),
                 options = options,

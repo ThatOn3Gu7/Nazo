@@ -15,9 +15,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
-import quiz.thaton3app.nazo.data.DummyData
+import quiz.thaton3app.nazo.data.LocalQuestionBank
+import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
+import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.ui.screens.*
 import quiz.thaton3app.nazo.ui.theme.NazoTheme
@@ -43,6 +45,8 @@ fun NazoApp() {
     val context = LocalContext.current
     val apiKeyStore = remember { ApiKeyStore(context) }
     val themePrefs = remember { ThemePreferences(context) }
+    val statsStore = remember { QuizStatsStore(context.applicationContext) }
+    var quizStats by remember { mutableStateOf(statsStore.get()) }
 
     var themeMode by remember { mutableStateOf(themePrefs.mode) }
     var accentName by remember { mutableStateOf(themePrefs.accent) }
@@ -65,7 +69,7 @@ fun NazoApp() {
 
     // Navigation + quiz session state (single source of truth for the whole app).
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Home) }
-    var questions by remember { mutableStateOf(DummyData.sampleQuestions) }
+    var questions by remember { mutableStateOf(emptyList<Question>()) }
     var userAnswers by remember { mutableStateOf<List<String?>>(emptyList()) }
     var currentQuestionIndex by remember { mutableIntStateOf(0) }
     var score by remember { mutableIntStateOf(0) }
@@ -86,14 +90,14 @@ fun NazoApp() {
             scope.launch {
                 ApiClient.generateQuiz(provider, key, model, topic, difficulty, count)
                     .onSuccess { qs ->
-                        questions = if (qs.isNotEmpty()) qs else DummyData.buildFallbackQuestions(count)
+                        questions = if (qs.isNotEmpty()) qs else LocalQuestionBank.getQuestions(count, topic)
                         userAnswers = emptyList()
                         currentQuestionIndex = 0
                         score = 0
                         currentScreen = Screen.Quiz
                     }
                     .onFailure {
-                        questions = DummyData.buildFallbackQuestions(count)
+                        questions = LocalQuestionBank.getQuestions(count, topic)
                         userAnswers = emptyList()
                         currentQuestionIndex = 0
                         score = 0
@@ -101,7 +105,7 @@ fun NazoApp() {
                     }
             }
         } else {
-            questions = DummyData.buildFallbackQuestions(count)
+            questions = LocalQuestionBank.getQuestions(count, topic)
             userAnswers = emptyList()
             currentQuestionIndex = 0
             score = 0
@@ -115,6 +119,14 @@ fun NazoApp() {
         if (currentQuestionIndex < questions.lastIndex) {
             currentQuestionIndex++
         } else {
+            // Quiz finished — fold the result into the persisted stats.
+            val finishedQuestions = questions
+            val finishedAnswers = userAnswers
+            val finishedDifficulty = quizDifficulty
+            scope.launch {
+                statsStore.record(finishedDifficulty, finishedQuestions, finishedAnswers)
+                quizStats = statsStore.get()
+            }
             currentScreen = Screen.Results
         }
     }
@@ -159,6 +171,7 @@ fun NazoApp() {
                 )
 
                 Screen.Statistics -> StatisticsScreen(
+                    stats = quizStats,
                     onBackClick = { currentScreen = Screen.Settings },
                     onHomeClick = { currentScreen = Screen.Home },
                 )
