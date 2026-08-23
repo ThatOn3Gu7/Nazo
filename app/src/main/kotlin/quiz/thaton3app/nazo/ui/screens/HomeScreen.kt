@@ -17,6 +17,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -50,6 +56,7 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoErrorBg
+import quiz.thaton3app.nazo.data.LocalQuestionBank
 
 enum class Difficulty(val label: String) {
     EASY("Easy"),
@@ -212,6 +219,12 @@ private fun SectionLabel(text: String) {
 
 @Composable
 private fun TopicInputCard(topic: String, onTopicChange: (String) -> Unit) {
+    val focusManager = LocalFocusManager.current
+    val suggestions = remember(topic) {
+        if (topic.isBlank()) emptyList()
+        else LocalQuestionBank.suggestions().filter { it.contains(topic, ignoreCase = true) }.take(8)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -238,9 +251,49 @@ private fun TopicInputCard(topic: String, onTopicChange: (String) -> Unit) {
             BasicTextField(
                 value = topic,
                 onValueChange = onTopicChange,
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = { focusManager.clearFocus() },
+                ),
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = NazoTextPrimary),
                 modifier = Modifier.fillMaxWidth(),
             )
+        }
+
+        if (suggestions.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            HorizontalDivider(color = NazoSurfaceVariant, thickness = 1.dp)
+            Spacer(Modifier.height(6.dp))
+            suggestions.forEach { suggestion ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable {
+                            onTopicChange(suggestion)
+                            focusManager.clearFocus()
+                        }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.AutoAwesome,
+                        contentDescription = null,
+                        tint = NazoPrimary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = suggestion,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = NazoTextPrimary,
+                    )
+                }
+            }
         }
     }
 }

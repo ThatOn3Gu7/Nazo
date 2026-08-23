@@ -7,6 +7,7 @@ data class Question(
     val id: Int = 0,
     val anime: String = "",
     val theme: String = "",
+    val difficulty: String = "Medium",
     val text: String = "",
     val options: List<String> = emptyList(),
     val correctAnswer: String = "",

@@ -90,14 +90,14 @@ fun NazoApp() {
             scope.launch {
                 ApiClient.generateQuiz(provider, key, model, topic, difficulty, count)
                     .onSuccess { qs ->
-                        questions = if (qs.isNotEmpty()) qs else LocalQuestionBank.getQuestions(count, topic)
+                        questions = if (qs.isNotEmpty()) qs else LocalQuestionBank.getQuestions(count, topic, difficulty)
                         userAnswers = emptyList()
                         currentQuestionIndex = 0
                         score = 0
                         currentScreen = Screen.Quiz
                     }
                     .onFailure {
-                        questions = LocalQuestionBank.getQuestions(count, topic)
+                        questions = LocalQuestionBank.getQuestions(count, topic, difficulty)
                         userAnswers = emptyList()
                         currentQuestionIndex = 0
                         score = 0
@@ -105,7 +105,7 @@ fun NazoApp() {
                     }
             }
         } else {
-            questions = LocalQuestionBank.getQuestions(count, topic)
+            questions = LocalQuestionBank.getQuestions(count, topic, difficulty)
             userAnswers = emptyList()
             currentQuestionIndex = 0
             score = 0

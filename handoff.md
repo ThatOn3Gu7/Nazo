@@ -138,6 +138,28 @@ Conventions:
   `data/settings/QuizStatsStore.kt`, `ui/NazoApp.kt`, `ui/screens/StatisticsScreen.kt`,
   `data/remote/ApiClient.kt`.
 
+## [2026-08-23 17:10] feat: topic autocomplete suggestions + difficulty-tiered questions
+
+- Topic input now has real function (owner picked: suggestions = anime + categories,
+  panel = dropdown with a divider line):
+  - `LocalQuestionBank.suggestions()` exposes distinct, alphabetically sorted
+    keywords (series names + theme tags) mined from the bank.
+  - `ui/screens/HomeScreen.kt` `TopicInputCard`: as the user types, a dropdown of
+    matching keywords appears below the field, separated from the typed input by a
+    `HorizontalDivider`. Tapping a suggestion fills the field and clears focus.
+  - The field is now single-line with `ImeAction.Done`, so Enter / done clears focus
+    instead of inserting a newline.
+- Difficulty now changes the QUESTIONS, not just the timer:
+  - `data/Question` gained a `difficulty` tier (Easy / Medium / Hard / Otaku Master);
+    all ~100 bank questions were tagged by hand.
+  - `LocalQuestionBank.getQuestions(count, topic, difficulty)` serves the selected
+    tier first (shuffled) then fills the remainder from other tiers, so higher
+    difficulties actually surface harder questions.
+  - `ui/NazoApp.kt` `startQuiz` passes the chosen difficulty through to the bank
+    (API path unchanged — difficulty there remains timer-only).
+- Files: `data/QuizData.kt`, `data/LocalQuestionBank.kt`, `ui/NazoApp.kt`,
+  `ui/screens/HomeScreen.kt`.
+
 ---
 
 ## Prior session (consolidated — implemented before this log existed)
