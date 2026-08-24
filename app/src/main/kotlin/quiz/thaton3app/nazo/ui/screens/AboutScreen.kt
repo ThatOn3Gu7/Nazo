@@ -69,8 +69,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.menuAnchor
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberExposedDropdownMenuState
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -602,17 +602,18 @@ private fun UpdateMenuContent(
         Spacer(Modifier.height(8.dp))
 
         // Auto-check frequency dropdown
-        ExposedDropdownMenuBox(
+        val dropdownState = rememberExposedDropdownMenuState(
             expanded = showFrequencyDropdown,
-            onExpandedChange = { showFrequencyDropdown = !showFrequencyDropdown },
-        ) {
+            onExpandedChange = { showFrequencyDropdown = it },
+        )
+        ExposedDropdownMenuBox(state = dropdownState) {
             OutlinedTextField(
                 value = frequencyLabels[frequency] ?: "Weekly",
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Auto-check frequency") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showFrequencyDropdown) },
-                modifier = Modifier.menuAnchor(expanded = showFrequencyDropdown).fillMaxWidth(),
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dropdownState.expanded) },
+                modifier = Modifier.menuAnchor(dropdownState).fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = NazoTextPrimary,
                     unfocusedTextColor = NazoTextPrimary,
@@ -624,7 +625,7 @@ private fun UpdateMenuContent(
                 ),
             )
             ExposedDropdownMenu(
-                expanded = showFrequencyDropdown,
+                expanded = dropdownState.expanded,
                 onDismissRequest = { showFrequencyDropdown = false },
             ) {
                 UpdateFrequency.entries.forEach { option ->
