@@ -303,6 +303,9 @@ Conventions:
   session-only by virtue of `NazoApp` no longer persisting it.)
 - Note: agent cannot compile; verified by inspection. Owner to test the popup blocking +
   blur + the fact that a fresh app launch re-runs the scan and re-shows the prompt.
+- CORRECTION (2026-08-24 17:30): the ONLINE popup's scrim now also blocks (no-op + ripple)
+  like offline — only the "Continue" button advances. Previously the online scrim dismissed
+  on tap.
 
 ---
 

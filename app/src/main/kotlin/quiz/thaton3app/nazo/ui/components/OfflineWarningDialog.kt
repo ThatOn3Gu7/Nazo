@@ -73,9 +73,9 @@ fun OfflineWarningDialog(
         buttonText = "Continue"
     }
 
-    // OFFLINE scrim consumes clicks and does nothing (blocks the app behind);
-    // ONLINE scrim dismisses the informational popup.
-    val scrimClick: () -> Unit = if (isOffline) ({}) else onContinue
+    // Both modes: the scrim consumes clicks and does nothing (shows the press
+    // ripple, blocks the app behind). The only way forward is the button.
+    val scrimClick: () -> Unit = {}
 
     Box(
         modifier = Modifier
