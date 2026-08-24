@@ -576,6 +576,22 @@ covered by `BUG_AUDIT.md` + this log).
     shortcut (standard dynamic-icon behavior). Icon follows *system* night mode,
     not the in-app Appearance setting.
 
+- **Launcher icon follows OS theme (2026-08-24):** Reworked the day/night switch to
+  track the **device's OS** dark/light mode (`Configuration.UI_MODE_NIGHT_MASK`),
+  not the in-app `ThemePreferences.mode`. Replaced the fragile "disable MainActivity"
+  swap with an alias-only scheme: `MainActivity` now has no LAUNCHER filter;
+  `LauncherLight` (enabled) and `LauncherDark` (disabled) aliases each carry the
+  light/dark-green adaptive icon and target `MainActivity`, so the real activity is
+  never disabled (fixes the launch-failure when the home shortcut pointed at a
+  disabled component). Added `LauncherIconSwitcher` (idempotent, guarded) and
+  `ThemeChangeReceiver`; the switcher runs on launch (`MainActivity.onCreate`) and
+  live via a dynamically registered receiver for `UI_MODE_CHANGED`/
+  `CONFIGURATION_CHANGED` (plus a manifest receiver as best-effort).
+  - Limitation: a fully-closed app cannot swap its own icon purely from an OS theme
+    broadcast on Android 8+ (implicit-broadcast restrictions); the icon updates on
+    next launch or while the app is running. True automatic OS theming only exists
+    via the monochrome "themed icons" feature (which drops our greens).
+
 - **Icon fixes (2026-08-24):** (1) Shrank the 謎 glyph from ~59% to ~39% of the
   icon canvas (`drawable-nodpi/ic_launcher_foreground.png`) so it no longer
   dominates the icon. (2) Fixed the light/dark background never switching:
