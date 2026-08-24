@@ -220,6 +220,25 @@ Conventions:
   (Naruto 70, One Piece 63, Dragon Ball 55 … down to 1–10 for many).
 - File: `data/LocalQuestionBank.kt`.
 
+## [2026-08-23 19:30] feat: add Otaku Master batch + finalize offline question database
+
+- Added ~120 Otaku Master questions (DeepSeek, instructed to be extremely difficult).
+  Otaku Master tier: 7 → 127.
+- Analysis of the new batch: 0 duplicates within the batch, 0 exact option-set+answer
+  copies of any existing question (so they are NOT relabeled easy questions). They are
+  genuinely obscure/analytical — Neon Genesis Evangelion, Serial Experiments Lain, Ergo
+  Proxy, Perfect Blue, Paranoia Agent, Boogiepop Phantom… — not reworded main-character
+  trivia. DeepSeek nailed the "tough" brief.
+- Regrouped the whole bank by anime (74 chunks now, up from 57 — the batch added niche
+  series) each headed by `// ----- <Anime> (n) -----`. Dedup removed 0 (batch already
+  unique); the 4 cross-anime text repeats (e.g. "what is the name of the first arc?")
+  remain as anime-specific.
+- Final offline DB: **985 questions, 74 anime**, Easy 548 / Medium 213 / Hard 97 /
+  Otaku Master 127. Validated: 0 bracket/quote errors (whole-file balanced), 0 missing
+  fields, 0 correct-answer-not-in-options.
+- Local question database considered complete for the offline mode.
+- File: `data/LocalQuestionBank.kt`.
+
 ---
 
 ## Prior session (consolidated — implemented before this log existed)
