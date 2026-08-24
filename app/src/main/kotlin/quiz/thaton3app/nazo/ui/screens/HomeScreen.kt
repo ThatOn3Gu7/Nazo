@@ -163,18 +163,18 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
             modifier = Modifier
                 .clip(RoundedCornerShape(50))
                 .background(NazoPillUnselected)
-                .padding(horizontal = 14.dp, vertical = 8.dp),
+                .padding(6.dp),
         ) {
             Text(
                 text = "謎",
-                style = MaterialTheme.typography.titleLarge.copy(fontSize = 35.sp),
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 28.sp),
                 color = NazoPrimary,
                 fontWeight = FontWeight.Bold,
             )
             Spacer(Modifier.width(8.dp))
             Text(
                 text = "Nazo",
-                style = MaterialTheme.typography.titleLarge.copy(fontSize = 33.sp),
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 26.sp),
                 color = NazoTextPrimary,
             )
         }

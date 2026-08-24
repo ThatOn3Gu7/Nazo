@@ -390,6 +390,8 @@ Conventions:
   offline badges. Removed the -10.dp upward `offset` so the two sit on the SAME horizontal line
   (inner Row is center-aligned). A `weight(1f)` spacer pushes the settings button right. Removed
   the now-unused `androidx.compose.foundation.layout.offset` import.
+- TWEAK (2026-08-24 19:40): slimmed the pill — reduced font sizes (~7-8px): kanji 35→28.sp,
+  title 33→26.sp, and tightened pill padding 14.h/8.v → uniform 6.dp so it hugs the logo+title.
 
 ---
 
