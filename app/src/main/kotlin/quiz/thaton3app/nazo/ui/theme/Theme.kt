@@ -68,12 +68,17 @@ fun NazoTheme(
                     android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
             window.statusBarColor = Color.Transparent.toArgb()
-            window.navigationBarColor = brand.background.toArgb()
+            // Transparent nav bar too, so the app's full-bleed background (blurred while a
+            // popup is shown) bleeds behind the bottom swipe-gesture hint instead of a solid
+            // bar. The system still draws its own hint line on top.
+            window.navigationBarColor = Color.Transparent.toArgb()
             // Keep the Activity's own window background in sync with the in-app theme.
             // This prevents the white system window from bleeding through during the
             // AnimatedContent crossfade (especially in forced-dark mode) — see handoff log.
             window.setBackgroundDrawable(ColorDrawable(brand.background.toArgb()))
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            val insets = WindowCompat.getInsetsController(window, view)
+            insets.isAppearanceLightStatusBars = !darkTheme
+            insets.isAppearanceLightNavigationBars = !darkTheme
         }
     }
 

@@ -330,6 +330,23 @@ Conventions:
 
 ---
 
+## [2026-08-24 18:05] fix: bottom gesture bar also shows blurred app background
+
+- Owner: the edge-to-edge blur looked great at the top; same was wanted at the bottom — the
+  white swipe-gesture hint should stay, but the app's blurred background should bleed behind
+  it instead of a solid nav bar.
+- Fix (`ui/theme/Theme.kt`): `window.navigationBarColor = Color.Transparent` (was
+  `brand.background`), so the full-bleed background — blurred while a startup popup is up —
+  shows through behind the gesture hint. Also set `isAppearanceLightNavigationBars = !darkTheme`
+  on the same `InsetsController` so the hint stays visible (light hint in dark theme, dark in
+  light). The `NazoBottomNav` already uses `navigationBarsPadding()`, so its content stays
+  above the gesture area.
+- Files: `ui/theme/Theme.kt`.
+- Note: agent cannot compile; verified by inspection. Owner to confirm the bottom swipe hint
+  now sits over the blurred/dimmed app background during a popup.
+
+---
+
 ## Prior session (consolidated — implemented before this log existed)
 
 Captured here so a future session has full context. Original action items are in
