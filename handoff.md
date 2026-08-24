@@ -357,6 +357,9 @@ Conventions:
 - Files: `ui/screens/HomeScreen.kt`.
 - Note: agent cannot compile; verified by inspection. Owner to confirm the label switches
   with the mode.
+- CORRECTION (2026-08-24 18:25): first attempt referenced `offline` inside the private
+  `GenerateButton` composable, which didn't receive it (unresolved reference). Fixed by
+  adding `offline: Boolean` to `GenerateButton` and passing it from the `HomeScreen` call site.
 
 ---
 

@@ -141,7 +141,10 @@ fun HomeScreen(
                 }
             }
             Spacer(Modifier.height(24.dp))
-            GenerateButton(onClick = { onStartQuiz(topic, difficulty.label, questionCount) })
+            GenerateButton(
+                offline = offline,
+                onClick = { onStartQuiz(topic, difficulty.label, questionCount) },
+            )
             Spacer(Modifier.height(16.dp))
         }
         NazoBottomNav(selected = NazoTab.Home, onSettingsClick = onSettingsClick)
@@ -337,7 +340,7 @@ private fun PillButton(
 }
 
 @Composable
-private fun GenerateButton(onClick: () -> Unit) {
+private fun GenerateButton(offline: Boolean, onClick: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
