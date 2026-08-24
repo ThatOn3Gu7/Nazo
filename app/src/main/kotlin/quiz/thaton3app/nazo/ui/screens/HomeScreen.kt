@@ -40,7 +40,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -156,23 +155,30 @@ fun HomeScreen(
 @Composable
 private fun HomeHeader(onSettingsClick: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        // The "Nazo" (謎) kanji stands in for the app logo — shown bare (no background),
-        // a touch larger than the title, and tinted with the theme accent so it reads in
-        // both light and dark themes. Same glyph as the About screen hero.
-        Text(
-            text = "謎",
-            style = MaterialTheme.typography.titleLarge.copy(fontSize = 35.sp),
-            color = NazoPrimary,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.offset(y = (-10).dp),
-        )
-        Spacer(Modifier.width(12.dp))
-        Text(
-            text = "Nazo",
-            style = MaterialTheme.typography.titleLarge.copy(fontSize = 33.sp),
-            color = NazoTextPrimary,
-            modifier = Modifier.weight(1f),
-        )
+        // Logo + title wrapped in a pill (same visual language as the API-key / offline
+        // badges). Both sit on the same horizontal line (the inner Row is center-aligned)
+        // so the kanji and the "Nazo" text read as one unit instead of being misaligned.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(NazoPillUnselected)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+        ) {
+            Text(
+                text = "謎",
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 35.sp),
+                color = NazoPrimary,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "Nazo",
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 33.sp),
+                color = NazoTextPrimary,
+            )
+        }
+        Spacer(Modifier.weight(1f))
         IconButton(
             onClick = onSettingsClick,
             modifier = Modifier

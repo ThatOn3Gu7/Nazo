@@ -385,6 +385,11 @@ Conventions:
   kanji) and kept the existing Plus Jakarta Sans Bold (the app already ships all 4 weights in
   `res/font` and `titleLarge` already uses `NazoFontFamily` Bold — confirmed in `ui/theme/Type.kt`).
   Change is local to `HomeHeader`'s Text (global `titleLarge` style untouched).
+- TWEAK (2026-08-24 19:25): wrapped the 謎 logo + "Nazo" title in a pill (RoundedCornerShape(50),
+  `NazoPillUnselected` background, padding 14.h / 8.v) — same visual language as the API-key /
+  offline badges. Removed the -10.dp upward `offset` so the two sit on the SAME horizontal line
+  (inner Row is center-aligned). A `weight(1f)` spacer pushes the settings button right. Removed
+  the now-unused `androidx.compose.foundation.layout.offset` import.
 
 ---
 
