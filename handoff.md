@@ -404,6 +404,39 @@ Conventions:
 
 ---
 
+## [2026-08-24 20:30] feat: make About screen functional (feedback, dev, licenses, version, updates)
+
+- Owner: port functional logic (NOT the other app's UI/layout) from Shouze's About screen
+  (`/data/data/com.termux/files/home/Shouze/...`) into Nazo's About screen, keeping Nazo's own
+  styling (Nazo* colors, ActionRow/SettingsCard helpers).
+- What was ported / implemented in `ui/screens/AboutScreen.kt`:
+  - **Send Feedback** now opens a `mailto:` Intent (`ACTION_SENDTO`) pre-filled with device info
+    (manufacturer/model, Android release + API, supported ABIs, app version+code) and subject
+    "Nazo Feedback" → `socialzoneop@gmail.com`. Falls back to a Toast if no mail app. Same logic
+    as Shouze, just app name/email swapped.
+  - **GitHub Repository** → opens `https://github.com/$GITHUB_REPO`.
+  - **About the Developer** → AlertDialog (story adapted to Nazo; same dev identity/links:
+    ThatOn3Gu7, socialzoneop@gmail.com, Instagram/TikTok @thaton3gu7; projects ProjectR/UtilityKit).
+  - **Licenses** → AlertDialog listing the libs we actually ship (Compose, Material 3, Core KTX,
+    Activity Compose, Lifecycle, Material Icons Extended, Kotlin, SharedPreferences).
+  - **Installed Date** row is now dynamic (real `firstInstallTime`) instead of a hard-coded string.
+  - Added a **Version code** row (real `longVersionCode`).
+  - HeroCard version label is now dynamic (`Version <name> (code <code>)`).
+  - **Updates & Settings** → runs a GitHub update check and shows an AlertDialog with the result
+    (checking / up to date / new version → "View on GitHub").
+- NEW `data/UpdateChecker.kt`: self-contained port of Shouze's update logic — `GITHUB_REPO`,
+  `fetchLatestRelease` (GitHub REST API via HttpURLConnection + org.json), `isNewerVersion`,
+  `currentVersionName`. Only uses APIs already in the app, so no new dependencies. NOTE: did NOT
+  port Shouze's `UpdateDownloader`/`UpdateScheduler`/`UpdateCheckWorker` (auto APK download +
+  WorkManager + notification perm) — out of scope and our app has no release pipeline yet; the
+  About screen offers "View on GitHub" instead of auto-download.
+- IMPORTANT: `GITHUB_REPO` is set to `"ThatOn3Gu7/Nazo"` by assumption (Shouze's was
+  "ThatOn3Gu7/Shouze"). Confirm/replace with the real Nazo repo slug if different.
+- Files: `ui/screens/AboutScreen.kt` (rewritten), `data/UpdateChecker.kt` (new).
+- Note: agent cannot compile; verified by inspection (imports/brackets). Owner to build & test.
+
+---
+
 ## Prior session (consolidated — implemented before this log existed)
 
 Captured here so a future session has full context. Original action items are in
