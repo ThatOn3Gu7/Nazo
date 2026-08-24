@@ -41,7 +41,7 @@ object Haptics {
         (percent.coerceIn(0, 100) * 255 / 100).toInt().coerceIn(1, 255)
 
     /** Baseline selection tap — clearly felt (was far too weak before). */
-    fun light(context: Context) = oneShot(context, 30, 220)
+    fun light(context: Context) = oneShot(context, 50, 255)
 
     /** Two quick taps — signals a wrong answer ("Bzzz Bzzz"). */
     fun doubleLight(context: Context) {
@@ -49,14 +49,14 @@ object Haptics {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             v.vibrate(
                 VibrationEffect.createWaveform(
-                    longArrayOf(0, 30, 55, 30),
-                    intArrayOf(0, 220, 0, 220),
+                    longArrayOf(0, 50, 55, 50),
+                    intArrayOf(0, 255, 0, 255),
                     -1,
                 )
             )
         } else {
             @Suppress("DEPRECATION")
-            v.vibrate(longArrayOf(0, 30, 55, 30), -1)
+            v.vibrate(longArrayOf(0, 50, 55, 50), -1)
         }
     }
 
