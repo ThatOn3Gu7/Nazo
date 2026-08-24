@@ -171,6 +171,20 @@ Conventions:
   in `ui/NazoApp.kt` (so AI-returned questions are also de-repetitivized).
 - Files: `data/QuizData.kt`, `data/LocalQuestionBank.kt`, `ui/NazoApp.kt`.
 
+## [2026-08-23 18:25] feat: integrate ~150 added questions + normalize bank format
+
+- You added ~150 questions (Qulwen-generated) into `LocalQuestionBank.kt`. Integrated
+  them with the existing ~100, bringing the offline bank to **250 questions across 23 series**.
+- Normalized every entry to our canonical single-line `Question(...)` format (field order
+  anime/theme/difficulty/text/options/correctAnswer/explanation, `key = value` spacing) and
+  removed the `// ---------- SECTION ----------` comment dividers the additions used, for a
+  uniform list. Question values were preserved verbatim (only formatting/ordering changed).
+- De-dupe + validation pass (quote/paren-aware script): checked exact text AND identical
+  option-set + same correct answer — found 0 duplicates. Confirmed all 250 entries carry the
+  7 required fields and balanced syntax.
+- Distribution after normalization: Easy 130 / Medium 85 / Hard 28 / Otaku Master 7.
+- File: `data/LocalQuestionBank.kt`.
+
 ---
 
 ## Prior session (consolidated — implemented before this log existed)
