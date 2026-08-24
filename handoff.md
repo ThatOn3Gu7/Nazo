@@ -618,3 +618,11 @@ covered by `BUG_AUDIT.md` + this log).
   and never swaps. When the user enables it from settings, the icon is synced to the
   current OS theme immediately (user-initiated, expected). The launch-time detection
   in `NazoApp` is gated on this flag.
+
+- **Icon dialog styling + real relaunch (2026-08-24):** Restyled `IconThemeDialog` to
+  the Nazo palette (green header, filled-green "Relaunch", outlined "Not now") matching
+  `OfflineWarningDialog`. Fixed "Relaunch" actually exiting the app: `Activity.recreate()`
+  failed because we'd just disabled the alias that launched the activity, so it now
+  restarts via an explicit `Intent` targeting the newly-enabled `LauncherDark`/
+  `LauncherLight` alias with `FLAG_ACTIVITY_NEW_TASK|CLEAR_TASK`, then finishes the
+  current activity — a clean self-relaunch.

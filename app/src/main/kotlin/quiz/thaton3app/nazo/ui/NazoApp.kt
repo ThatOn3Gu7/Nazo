@@ -32,6 +32,8 @@ import quiz.thaton3app.nazo.ui.screens.*
 import quiz.thaton3app.nazo.ui.theme.NazoTheme
 import quiz.thaton3app.nazo.LauncherIconSwitcher
 import androidx.activity.ComponentActivity
+import android.content.ComponentName
+import android.content.Intent
 
 // Every destination in the app. Wrapping this in AnimatedContent gives us a single,
 // uniform fade-in / fade-out transition between ALL screens (Roadmap #2).
@@ -335,7 +337,16 @@ fun NazoApp() {
                         LauncherIconSwitcher.apply(context, night)
                         themePrefs.appliedLauncherNight = if (night) "dark" else "light"
                         iconRelaunchPrompt = false
-                        (context as? ComponentActivity)?.recreate()
+                        // Restart through the now-enabled launcher alias (recreate() would
+                        // exit because we just disabled the alias that launched us).
+                        val pkg = context.packageName
+                        val alias = if (night) "$pkg.LauncherDark" else "$pkg.LauncherLight"
+                        val intent = Intent().apply {
+                            component = ComponentName(pkg, alias)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                        }
+                        context.startActivity(intent)
+                        (context as? ComponentActivity)?.finish()
                     },
                     onContinue = {
                         iconRelaunchPrompt = false
