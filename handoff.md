@@ -241,6 +241,40 @@ Conventions:
 
 ---
 
+## [2026-08-24 16:30] feat: offline/online mode + startup connectivity check
+
+- Owner: device is usually online so the offline popup should "skip itself" when online,
+  but warn (with a single "Go Offline" button) when genuinely offline. Since the AI API
+  isn't wired up for real use yet, a manual "force offline" toggle in Settings was also
+  requested so the offline path can be tested.
+- Behaviour:
+  - Startup probe (`data/remote/Connectivity.kt`): `Connectivity.isOnline` combines
+    `ConnectivityManager` active-network + internet/validated capabilities with a real
+    short (~1.5s) HTTP probe to `connectivitycheck.gstatic.com/generate_204` on IO, so a
+    captive portal / Wi-Fi with no upstream doesn't read as "online".
+  - `ui/NazoApp.kt`: new state `forceOffline` (persisted via `data/settings/AppPrefs.kt`),
+    `detectedOffline` (from the probe), and `showOfflineWarning`. `isOfflineMode =
+    forceOffline || detectedOffline` drives quiz sourcing + the home badge. A `LaunchedEffect`
+    runs the probe once; the warning overlay shows only when `detectedOffline && !forceOffline`.
+  - `startQuiz` early-returns straight to the local bank (`LocalQuestionBank.getQuestions`)
+    when `isOfflineMode`, skipping any API attempt (stats still record normally).
+  - Warning UI (`ui/components/OfflineWarningDialog.kt`): full-screen dim scrim wrapping a
+    large rounded "pill" card (faint outline, red circle with white "!", dim body text,
+    one primary pill "Go Offline"). Tapping anywhere acknowledges → sets `forceOffline`
+    (persisted) and dismisses.
+  - Home badge (`ui/screens/HomeScreen.kt` `ApiKeyBadge`): when offline, shows a grayish
+    "Offline mode" pill (NazoPillUnselected + NazoTextSecondary) instead of API active/inactive.
+  - Settings (`ui/screens/SettingsScreen.kt`): new "MODE" section with an "Offline mode"
+    Switch (VpnKey icon) bound to `forceOffline` — lets an always-online user force the
+    local-only path for testing.
+  - `AndroidManifest.xml`: added `ACCESS_NETWORK_STATE` (needed for the CM probe).
+- Files: `AndroidManifest.xml`, `data/remote/Connectivity.kt` (new),
+  `data/settings/AppPrefs.kt` (new), `ui/components/OfflineWarningDialog.kt` (new),
+  `ui/NazoApp.kt`, `ui/screens/HomeScreen.kt`, `ui/screens/SettingsScreen.kt`.
+- Note: agent cannot compile; changes verified by inspection (imports/brackets). Owner to test.
+
+---
+
 ## Prior session (consolidated — implemented before this log existed)
 
 Captured here so a future session has full context. Original action items are in

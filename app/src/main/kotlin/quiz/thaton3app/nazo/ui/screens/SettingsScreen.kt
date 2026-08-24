@@ -29,6 +29,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -58,6 +59,8 @@ fun SettingsScreen(
     onOpenAppearance: () -> Unit = {},
     onOpenBackupRestore: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
+    forceOffline: Boolean = false,
+    onForceOfflineChange: (Boolean) -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -82,6 +85,18 @@ fun SettingsScreen(
                     title = "AI Provider & API Keys",
                     subtitle = "Configure Gemini, OpenRouter, and model settings",
                     onClick = onOpenAiProvider,
+                )
+            }
+            Spacer(Modifier.height(20.dp))
+            SectionLabel("MODE")
+            Spacer(Modifier.height(10.dp))
+            SettingsCard {
+                SettingsSwitchRow(
+                    icon = Icons.Filled.VpnKey,
+                    title = "Offline mode",
+                    subtitle = "Use the local question library only — no API calls",
+                    checked = forceOffline,
+                    onCheckedChange = onForceOfflineChange,
                 )
             }
             Spacer(Modifier.height(20.dp))
@@ -213,6 +228,45 @@ private fun SettingsRow(
             tint = NazoTextSecondary,
             modifier = Modifier.size(20.dp),
         )
+    }
+}
+
+@Composable
+private fun SettingsSwitchRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(NazoPillUnselected),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(imageVector = icon, contentDescription = null, tint = NazoPrimary, modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = NazoTextPrimary,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(text = subtitle, style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
+        }
+        Spacer(Modifier.width(8.dp))
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

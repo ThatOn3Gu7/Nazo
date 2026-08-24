@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -18,9 +19,12 @@ import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.remote.ApiClient
+import quiz.thaton3app.nazo.data.remote.Connectivity
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
+import quiz.thaton3app.nazo.data.settings.AppPrefs
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
+import quiz.thaton3app.nazo.ui.components.OfflineWarningDialog
 import quiz.thaton3app.nazo.ui.screens.*
 import quiz.thaton3app.nazo.ui.theme.NazoTheme
 
@@ -46,7 +50,21 @@ fun NazoApp() {
     val apiKeyStore = remember { ApiKeyStore(context) }
     val themePrefs = remember { ThemePreferences(context) }
     val statsStore = remember { QuizStatsStore(context.applicationContext) }
+    val appPrefs = remember { AppPrefs(context) }
     var quizStats by remember { mutableStateOf(statsStore.get()) }
+
+    // Offline / online mode. `forceOffline` is the manual Settings switch (persisted);
+    // `detectedOffline` comes from the startup connectivity probe. `isOfflineMode` is
+    // the effective mode that drives quiz sourcing and the home badge.
+    var forceOffline by remember { mutableStateOf(appPrefs.forceOffline) }
+    var detectedOffline by remember { mutableStateOf(false) }
+    var showOfflineWarning by remember { mutableStateOf(false) }
+    val isOfflineMode = forceOffline || detectedOffline
+
+    LaunchedEffect(Unit) {
+        detectedOffline = !Connectivity.isOnline(context)
+        showOfflineWarning = detectedOffline && !forceOffline
+    }
 
     var themeMode by remember { mutableStateOf(themePrefs.mode) }
     var accentName by remember { mutableStateOf(themePrefs.accent) }
@@ -79,6 +97,16 @@ fun NazoApp() {
     val scope = rememberCoroutineScope()
 
     fun startQuiz(topic: String, difficulty: String, count: Int) {
+        // Offline mode: skip any API attempt and go straight to the local bank
+        // (stats still record normally in `answer`).
+        if (isOfflineMode) {
+            questions = LocalQuestionBank.getQuestions(count, topic, difficulty)
+            userAnswers = emptyList()
+            currentQuestionIndex = 0
+            score = 0
+            currentScreen = Screen.Quiz
+            return
+        }
         quizDifficulty = difficulty
         quizStartedAt = System.currentTimeMillis()
         val provider = apiKeyStore.getActiveProvider()
@@ -133,99 +161,114 @@ fun NazoApp() {
     }
 
     NazoTheme(darkTheme = isDark, accentColor = accentColor) {
-        AnimatedContent(
-            targetState = currentScreen,
-            modifier = Modifier.fillMaxSize().background(NazoBackground),
-            transitionSpec = {
-                fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
-            },
-            label = "nazoScreenTransition",
-        ) { screen ->
-            when (screen) {
-                Screen.Home -> HomeScreen(
-                    apiKeyActive = apiKeyStore.hasAnyActiveKey(),
-                    onSettingsClick = { currentScreen = Screen.Settings },
-                    onStartQuiz = { topic, difficulty, count -> startQuiz(topic, difficulty, count) },
-                    topic = homeTopic,
-                    difficultyName = homeDifficultyName,
-                    questionCount = homeQuestionCount,
-                    onTopicChange = { homeTopic = it },
-                    onDifficultyChange = { homeDifficultyName = it },
-                    onQuestionCountChange = { homeQuestionCount = it },
-                )
+        Box(modifier = Modifier.fillMaxSize()) {
+            AnimatedContent(
+                targetState = currentScreen,
+                modifier = Modifier.fillMaxSize().background(NazoBackground),
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
+                },
+                label = "nazoScreenTransition",
+            ) { screen ->
+                when (screen) {
+                    Screen.Home -> HomeScreen(
+                        apiKeyActive = apiKeyStore.hasAnyActiveKey(),
+                        offline = isOfflineMode,
+                        onSettingsClick = { currentScreen = Screen.Settings },
+                        onStartQuiz = { topic, difficulty, count -> startQuiz(topic, difficulty, count) },
+                        topic = homeTopic,
+                        difficultyName = homeDifficultyName,
+                        questionCount = homeQuestionCount,
+                        onTopicChange = { homeTopic = it },
+                        onDifficultyChange = { homeDifficultyName = it },
+                        onQuestionCountChange = { homeQuestionCount = it },
+                    )
 
-                Screen.Settings -> SettingsScreen(
-                    onBackClick = { currentScreen = Screen.Home },
-                    onHomeClick = { currentScreen = Screen.Home },
-                    onOpenAiProvider = { currentScreen = Screen.AiProvider },
-                    onOpenStatistics = { currentScreen = Screen.Statistics },
-                    onOpenAppearance = { currentScreen = Screen.Appearance },
-                    onOpenBackupRestore = { currentScreen = Screen.BackupRestore },
-                    onOpenAbout = { currentScreen = Screen.About },
-                )
+                    Screen.Settings -> SettingsScreen(
+                        onBackClick = { currentScreen = Screen.Home },
+                        onHomeClick = { currentScreen = Screen.Home },
+                        onOpenAiProvider = { currentScreen = Screen.AiProvider },
+                        onOpenStatistics = { currentScreen = Screen.Statistics },
+                        onOpenAppearance = { currentScreen = Screen.Appearance },
+                        onOpenBackupRestore = { currentScreen = Screen.BackupRestore },
+                        onOpenAbout = { currentScreen = Screen.About },
+                        forceOffline = forceOffline,
+                        onForceOfflineChange = { v -> forceOffline = v; appPrefs.forceOffline = v },
+                    )
 
-                Screen.AiProvider -> AiProviderScreen(
-                    apiKeyStore = apiKeyStore,
-                    onBackClick = { currentScreen = Screen.Settings },
-                    onHomeClick = { currentScreen = Screen.Home },
-                    onSaved = { currentScreen = Screen.Settings },
-                )
+                    Screen.AiProvider -> AiProviderScreen(
+                        apiKeyStore = apiKeyStore,
+                        onBackClick = { currentScreen = Screen.Settings },
+                        onHomeClick = { currentScreen = Screen.Home },
+                        onSaved = { currentScreen = Screen.Settings },
+                    )
 
-                Screen.Statistics -> StatisticsScreen(
-                    stats = quizStats,
-                    onBackClick = { currentScreen = Screen.Settings },
-                    onHomeClick = { currentScreen = Screen.Home },
-                )
+                    Screen.Statistics -> StatisticsScreen(
+                        stats = quizStats,
+                        onBackClick = { currentScreen = Screen.Settings },
+                        onHomeClick = { currentScreen = Screen.Home },
+                    )
 
-                Screen.Appearance -> AppearanceScreen(
-                    currentMode = themeMode,
-                    currentAccent = accentName,
-                    onModeChange = { themeMode = it; themePrefs.mode = it },
-                    onAccentChange = { accentName = it; themePrefs.accent = it },
-                    onBackClick = { currentScreen = Screen.Settings },
-                    onHomeClick = { currentScreen = Screen.Home },
-                )
+                    Screen.Appearance -> AppearanceScreen(
+                        currentMode = themeMode,
+                        currentAccent = accentName,
+                        onModeChange = { themeMode = it; themePrefs.mode = it },
+                        onAccentChange = { accentName = it; themePrefs.accent = it },
+                        onBackClick = { currentScreen = Screen.Settings },
+                        onHomeClick = { currentScreen = Screen.Home },
+                    )
 
-                Screen.BackupRestore -> BackupRestoreScreen(
-                    onBackClick = { currentScreen = Screen.Settings },
-                    onHomeClick = { currentScreen = Screen.Home },
-                )
+                    Screen.BackupRestore -> BackupRestoreScreen(
+                        onBackClick = { currentScreen = Screen.Settings },
+                        onHomeClick = { currentScreen = Screen.Home },
+                    )
 
-                Screen.About -> AboutScreen(
-                    onBackClick = { currentScreen = Screen.Settings },
-                    onHomeClick = { currentScreen = Screen.Home },
-                )
+                    Screen.About -> AboutScreen(
+                        onBackClick = { currentScreen = Screen.Settings },
+                        onHomeClick = { currentScreen = Screen.Home },
+                    )
 
-                Screen.Quiz -> ActiveQuizScreen(
-                    question = questions[currentQuestionIndex],
-                    currentQuestionIndex = currentQuestionIndex,
-                    totalQuestions = questions.size,
-                    difficulty = quizDifficulty,
-                    onNextQuestion = { isCorrect, selected -> answer(isCorrect, selected) },
-                    onCloseClick = { currentScreen = Screen.Home },
-                    onSettingsClick = { currentScreen = Screen.Settings },
-                )
+                    Screen.Quiz -> ActiveQuizScreen(
+                        question = questions[currentQuestionIndex],
+                        currentQuestionIndex = currentQuestionIndex,
+                        totalQuestions = questions.size,
+                        difficulty = quizDifficulty,
+                        onNextQuestion = { isCorrect, selected -> answer(isCorrect, selected) },
+                        onCloseClick = { currentScreen = Screen.Home },
+                        onSettingsClick = { currentScreen = Screen.Settings },
+                    )
 
-                Screen.Results -> QuizCompleteScreen(
-                    score = score,
-                    totalQuestions = questions.size,
-                    timeSpent = formatElapsed(quizStartedAt),
-                    difficulty = quizDifficulty,
-                    onPlayAnother = { currentScreen = Screen.Home },
-                    onReviewAnswers = { currentScreen = Screen.Review },
-                    onSettingsClick = { currentScreen = Screen.Settings },
-                )
+                    Screen.Results -> QuizCompleteScreen(
+                        score = score,
+                        totalQuestions = questions.size,
+                        timeSpent = formatElapsed(quizStartedAt),
+                        difficulty = quizDifficulty,
+                        onPlayAnother = { currentScreen = Screen.Home },
+                        onReviewAnswers = { currentScreen = Screen.Review },
+                        onSettingsClick = { currentScreen = Screen.Settings },
+                    )
 
-                Screen.Loading -> LoadingScreen(
-                    onHomeClick = { currentScreen = Screen.Home },
-                    onSettingsClick = { currentScreen = Screen.Settings },
-                )
+                    Screen.Loading -> LoadingScreen(
+                        onHomeClick = { currentScreen = Screen.Home },
+                        onSettingsClick = { currentScreen = Screen.Settings },
+                    )
 
-                Screen.Review -> ReviewAnswersScreen(
-                    questions = questions,
-                    userAnswers = userAnswers,
-                    onBackClick = { currentScreen = Screen.Results },
-                    onHomeClick = { currentScreen = Screen.Home },
+                    Screen.Review -> ReviewAnswersScreen(
+                        questions = questions,
+                        userAnswers = userAnswers,
+                        onBackClick = { currentScreen = Screen.Results },
+                        onHomeClick = { currentScreen = Screen.Home },
+                    )
+                }
+            }
+
+            if (showOfflineWarning) {
+                OfflineWarningDialog(
+                    onGoOffline = {
+                        forceOffline = true
+                        appPrefs.forceOffline = true
+                        showOfflineWarning = false
+                    },
                 )
             }
         }

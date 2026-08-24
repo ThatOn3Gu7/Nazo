@@ -68,7 +68,8 @@ enum class Difficulty(val label: String) {
 // UI-only for now — no API/backend wiring yet, per the incremental build plan.
 @Composable
 fun HomeScreen(
-    apiKeyActive: Boolean = false,
+    apiKeyActive: Boolean,
+    offline: Boolean = false,
     onSettingsClick: () -> Unit = {},
     onStartQuiz: (topic: String, difficulty: String, count: Int) -> Unit,
     topic: String = "",
@@ -98,7 +99,7 @@ fun HomeScreen(
             Spacer(Modifier.height(28.dp))
             HomeHeader(onSettingsClick = onSettingsClick)
             Spacer(Modifier.height(16.dp))
-            ApiKeyBadge(active = apiKeyActive)
+            ApiKeyBadge(active = apiKeyActive, offline = offline)
             Spacer(Modifier.height(20.dp))
             Text(
                 text = "Ready to test your\nanime knowledge?",
@@ -189,25 +190,38 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
 }
 
 @Composable
-private fun ApiKeyBadge(active: Boolean) {
+private fun ApiKeyBadge(active: Boolean, offline: Boolean = false) {
+    val (bg, dot, text) = if (offline) {
+        Triple(NazoPillUnselected, NazoTextSecondary, NazoTextSecondary)
+    } else {
+        Triple(
+            if (active) NazoBadge else NazoErrorBg,
+            if (active) NazoPrimary else NazoError,
+            if (active) NazoPrimary else NazoError,
+        )
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .clip(RoundedCornerShape(50))
-            .background(if (active) NazoBadge else NazoErrorBg)
+            .background(bg)
             .padding(horizontal = 12.dp, vertical = 6.dp),
     ) {
         Box(
             modifier = Modifier
                 .size(6.dp)
                 .clip(CircleShape)
-                .background(if (active) NazoPrimary else NazoError)
+                .background(dot)
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            text = if (active) "API Key active" else "API Key inactive",
+            text = when {
+                offline -> "Offline mode"
+                active -> "API Key active"
+                else -> "API Key inactive"
+            },
             style = MaterialTheme.typography.bodyMedium,
-            color = if (active) NazoPrimary else NazoError,
+            color = text,
         )
     }
 }
