@@ -8,8 +8,20 @@ import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -32,22 +44,39 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Balance
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.menuAnchor
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,6 +90,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -77,12 +107,14 @@ import quiz.thaton3app.nazo.data.isNewerVersion
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
+import quiz.thaton3app.nazo.ui.theme.NazoError
+import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPillUnselected
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoSurface
+import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
 import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
-import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -103,6 +135,7 @@ private sealed interface UpdateState {
     ) : UpdateState
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AboutScreen(
     onBackClick: () -> Unit = {},
@@ -141,7 +174,6 @@ fun AboutScreen(
     var updateState by remember { mutableStateOf<UpdateState>(UpdateState.Idle) }
     var checkLabel by remember { mutableStateOf("Check Now") }
     var frequency by remember { mutableStateOf(UpdatePrefs(context).updateFrequency) }
-    var freqExpanded by remember { mutableStateOf(false) }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -283,122 +315,25 @@ fun AboutScreen(
     }
 
     if (showUpdate) {
-        AlertDialog(
+        ModalBottomSheet(
             onDismissRequest = { showUpdate = false },
-            title = { Text("App Updates", color = NazoTextPrimary) },
-            text = {
-                Column {
-                    when (val state = updateState) {
-                        is UpdateState.Checking -> Text("Checking GitHub...", color = NazoTextSecondary)
-                        is UpdateState.Available -> {
-                            Text(
-                                "Version ${state.tag} is available!",
-                                color = NazoTextPrimary,
-                                fontWeight = FontWeight.SemiBold,
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                "Release Notes:",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = NazoTextSecondary,
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 150.dp)
-                                    .padding(top = 8.dp)
-                                    .verticalScroll(rememberScrollState())
-                            ) {
-                                Text(
-                                    text = state.releaseNotes.ifBlank { "No release notes provided." },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = NazoTextSecondary,
-                                )
-                            }
-                            Spacer(Modifier.height(16.dp))
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                TextButton(onClick = { onOpenBrowser(state.htmlUrl) }) {
-                                    Text("View on GitHub", color = NazoPrimary)
-                                }
-                                Spacer(Modifier.weight(1f))
-                                if (state.directApkUrl != null) {
-                                    TextButton(onClick = { onDownload(state.directApkUrl) }) {
-                                        Text("Update Now", color = NazoPrimary)
-                                    }
-                                } else {
-                                    TextButton(onClick = { onOpenBrowser(state.htmlUrl) }) {
-                                        Text("Download Manually", color = NazoPrimary)
-                                    }
-                                }
-                            }
-                        }
-                        is UpdateState.UpToDate -> Text("You're on the latest version.", color = NazoTextSecondary)
-                        is UpdateState.Error -> Text("Couldn't check for updates.", color = NazoTextSecondary)
-                        is UpdateState.Idle -> Text("Ready to check for updates.", color = NazoTextSecondary)
-                    }
-
-                    if (updateState !is UpdateState.Checking && updateState !is UpdateState.Available) {
-                        Spacer(Modifier.height(16.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            TextButton(onClick = {
-                                val found = UpdateDownloader.findApkFiles(context)
-                                val deleted = UpdateDownloader.deleteApkFiles(found)
-                                Toast.makeText(
-                                    context,
-                                    if (found.isEmpty()) "No APK files to clean up"
-                                    else "Deleted $deleted APK file(s)",
-                                    Toast.LENGTH_SHORT,
-                                ).show()
-                            }) {
-                                Text("Clean up APKs", color = NazoTextSecondary)
-                            }
-                            Spacer(Modifier.weight(1f))
-                            TextButton(onClick = { checkForUpdates() }) {
-                                Text(checkLabel, color = NazoPrimary)
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(24.dp))
-                    HorizontalDivider(color = NazoBackground)
-                    Spacer(Modifier.height(16.dp))
-
-                    Text(
-                        "Auto-check frequency",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = NazoTextPrimary,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Box {
-                        TextButton(onClick = { freqExpanded = true }) {
-                            Text(freqLabel(frequency), color = NazoPrimary)
-                        }
-                        DropdownMenu(expanded = freqExpanded, onDismissRequest = { freqExpanded = false }) {
-                            UpdateFrequency.entries.forEach { option ->
-                                DropdownMenuItem(
-                                    text = { Text(freqLabel(option)) },
-                                    onClick = {
-                                        freqExpanded = false
-                                        frequency = option
-                                        UpdatePrefs(context).updateFrequency = option
-                                        UpdateScheduler.apply(context, option)
-                                    },
-                                )
-                            }
-                        }
-                    }
+            containerColor = NazoSurface,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            UpdateMenuContent(
+                state = updateState,
+                checkLabel = checkLabel,
+                onCheckForUpdates = { checkForUpdates() },
+                onDownloadUpdate = { apkUrl -> onDownload(apkUrl) },
+                onOpenBrowser = { url -> onOpenBrowser(url) },
+                frequency = frequency,
+                onFrequencyChange = { freq ->
+                    frequency = freq
+                    UpdatePrefs(context).updateFrequency = freq
+                    UpdateScheduler.apply(context, freq)
                 }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { showUpdate = false }) { Text("Close", color = NazoTextSecondary) }
-            },
-        )
+            )
+        }
     }
 
     if (showLicenses) {
@@ -438,6 +373,315 @@ fun AboutScreen(
     if (showDev) {
         AboutDevDialog(onDismiss = { showDev = false })
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun UpdateMenuContent(
+    state: UpdateState,
+    checkLabel: String,
+    onCheckForUpdates: () -> Unit,
+    onDownloadUpdate: (String) -> Unit,
+    onOpenBrowser: (String) -> Unit,
+    frequency: UpdateFrequency,
+    onFrequencyChange: (UpdateFrequency) -> Unit,
+) {
+    val frequencyLabels = mapOf(
+        UpdateFrequency.EVERY_LAUNCH to "Every Launch",
+        UpdateFrequency.WEEKLY to "Weekly",
+        UpdateFrequency.BI_WEEKLY to "Bi-weekly",
+        UpdateFrequency.NEVER to "Never",
+    )
+    var showFrequencyDropdown by remember { mutableStateOf(false) }
+
+    val appContext = LocalContext.current.applicationContext
+    var apkFilesToClean by remember { mutableStateOf<List<File>>(emptyList()) }
+    var showCleanupConfirm by remember { mutableStateOf(false) }
+
+    fun promptApkCleanup() {
+        val found = UpdateDownloader.findApkFiles(appContext)
+        if (found.isEmpty()) {
+            Toast.makeText(appContext, "No APK files to clean up", Toast.LENGTH_SHORT).show()
+        } else {
+            apkFilesToClean = found
+            showCleanupConfirm = true
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 16.dp)
+            .padding(bottom = 32.dp)
+    ) {
+        Text(
+            text = "App Updates",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            color = NazoTextPrimary,
+        )
+
+        Spacer(Modifier.height(16.dp))
+
+        // Status Card with smooth height expansion
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .animateContentSize(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioLowBouncy,
+                        stiffness = Spring.StiffnessLow,
+                    )
+                ),
+            colors = CardDefaults.cardColors(
+                containerColor = NazoSurfaceVariant.copy(alpha = 0.6f),
+            ),
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                // Crossfade status header content smoothly
+                AnimatedContent(
+                    targetState = state,
+                    transitionSpec = {
+                        (fadeIn(animationSpec = tween(300)) + expandVertically()) togetherWith
+                            (fadeOut(animationSpec = tween(200)) + shrinkVertically())
+                    },
+                    label = "status_transition",
+                ) { targetState ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = when (targetState) {
+                                is UpdateState.Checking -> Icons.Filled.Sync
+                                is UpdateState.Available -> Icons.Filled.NewReleases
+                                is UpdateState.UpToDate -> Icons.Filled.CheckCircle
+                                is UpdateState.Error -> Icons.Filled.Error
+                                is UpdateState.Idle -> Icons.Filled.Info
+                            },
+                            contentDescription = null,
+                            tint = if (targetState is UpdateState.Error) {
+                                NazoError
+                            } else {
+                                NazoPrimary
+                            },
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            text = when (targetState) {
+                                is UpdateState.Checking -> "Checking GitHub..."
+                                is UpdateState.Available -> "Version ${targetState.tag} is available!"
+                                is UpdateState.UpToDate -> "Nazo is up to date."
+                                is UpdateState.Error -> "Failed to check for updates."
+                                is UpdateState.Idle -> "Ready to check."
+                            },
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (targetState is UpdateState.Error) {
+                                NazoError
+                            } else {
+                                NazoTextPrimary
+                            },
+                        )
+                    }
+                }
+                // Animated expand/collapse for release notes section
+                AnimatedVisibility(
+                    visible = state is UpdateState.Available,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically(),
+                ) {
+                    val availableState = state as? UpdateState.Available
+                    if (availableState != null) {
+                        Column {
+                            Spacer(Modifier.height(16.dp))
+
+                            Text(
+                                "Release Notes:",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = NazoTextSecondary,
+                            )
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 150.dp)
+                                    .padding(top = 8.dp),
+                                shape = MaterialTheme.shapes.small,
+                                color = NazoSurfaceVariant.copy(alpha = 0.5f),
+                            ) {
+                                Text(
+                                    text = availableState.releaseNotes.ifBlank { "No release notes provided." },
+                                    modifier = Modifier
+                                        .padding(12.dp)
+                                        .verticalScroll(rememberScrollState()),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = NazoTextSecondary,
+                                )
+                            }
+
+                            Spacer(Modifier.height(16.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                            ) {
+                                TextButton(onClick = { onOpenBrowser(availableState.htmlUrl) }) {
+                                    Text("View on GitHub", color = NazoPrimary)
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                if (availableState.directApkUrl != null) {
+                                    Button(
+                                        onClick = { onDownloadUpdate(availableState.directApkUrl) },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = NazoPrimary,
+                                            contentColor = NazoOnPrimary,
+                                        ),
+                                    ) {
+                                        Text("Update Now")
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = { onOpenBrowser(availableState.htmlUrl) },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = NazoPrimary,
+                                            contentColor = NazoOnPrimary,
+                                        ),
+                                    ) {
+                                        Text("Download Manually")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Animated visibility for Check Now / Retry / Check Again button
+                AnimatedVisibility(
+                    visible = state !is UpdateState.Checking && state !is UpdateState.Available,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Spacer(Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            TextButton(onClick = { promptApkCleanup() }) {
+                                Text(
+                                    "Clean up APKs",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = NazoTextSecondary,
+                                )
+                            }
+                            Button(
+                                onClick = onCheckForUpdates,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = NazoPrimary,
+                                    contentColor = NazoOnPrimary,
+                                ),
+                            ) {
+                                Text(checkLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+        HorizontalDivider(color = NazoBackground)
+        Spacer(Modifier.height(16.dp))
+
+        // Preferences Section
+        Text(
+            text = "Preferences",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = NazoTextPrimary,
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        // Auto-check frequency dropdown
+        ExposedDropdownMenuBox(
+            expanded = showFrequencyDropdown,
+            onExpandedChange = { showFrequencyDropdown = !showFrequencyDropdown },
+        ) {
+            OutlinedTextField(
+                value = frequencyLabels[frequency] ?: "Weekly",
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Auto-check frequency") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showFrequencyDropdown) },
+                modifier = Modifier.menuAnchor(expanded = showFrequencyDropdown).fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = NazoTextPrimary,
+                    unfocusedTextColor = NazoTextPrimary,
+                    focusedBorderColor = NazoPrimary,
+                    unfocusedBorderColor = NazoTextSecondary,
+                    focusedLabelColor = NazoTextSecondary,
+                    unfocusedLabelColor = NazoTextSecondary,
+                    cursorColor = NazoPrimary,
+                ),
+            )
+            ExposedDropdownMenu(
+                expanded = showFrequencyDropdown,
+                onDismissRequest = { showFrequencyDropdown = false },
+            ) {
+                UpdateFrequency.entries.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(freqLabel(option), color = NazoTextPrimary) },
+                        onClick = {
+                            showFrequencyDropdown = false
+                            onFrequencyChange(option)
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    if (showCleanupConfirm) {
+        AlertDialog(
+            onDismissRequest = { showCleanupConfirm = false },
+            title = { Text("Clean up APK files?", color = NazoTextPrimary) },
+            text = {
+                val totalBytes = apkFilesToClean.sumOf { it.length() }
+                Column {
+                    Text(
+                        "Found ${apkFilesToClean.size} APK file(s) totaling ${formatBytes(totalBytes)}:",
+                        color = NazoTextSecondary,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    apkFilesToClean.forEach { file ->
+                        Text("• ${file.name}", style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val deleted = UpdateDownloader.deleteApkFiles(apkFilesToClean)
+                    showCleanupConfirm = false
+                    Toast.makeText(
+                        appContext,
+                        if (deleted == apkFilesToClean.size) "Deleted $deleted APK file(s)"
+                        else "Deleted $deleted of ${apkFilesToClean.size} APK file(s)",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }) {
+                    Text("Delete", color = NazoPrimary)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCleanupConfirm = false }) { Text("Cancel", color = NazoTextSecondary) }
+            },
+        )
+    }
+}
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1024L * 1024L -> String.format("%.1f MB", bytes / (1024f * 1024f))
+    bytes >= 1024L -> String.format("%.1f KB", bytes / 1024f)
+    else -> "$bytes B"
 }
 
 private fun freqLabel(frequency: UpdateFrequency): String = when (frequency) {
@@ -530,7 +774,7 @@ private fun HeroCard(versionName: String, versionCode: String) {
                 text = "謎", // Nazo (Mystery/Puzzle)
                 style = MaterialTheme.typography.headlineMedium.copy(fontSize = 36.sp),
                 color = NazoPrimary,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
             )
         }
 
@@ -539,7 +783,7 @@ private fun HeroCard(versionName: String, versionCode: String) {
         Text(
             text = "Nazo",
             style = MaterialTheme.typography.headlineMedium,
-            color = NazoTextPrimary
+            color = NazoTextPrimary,
         )
 
         Spacer(Modifier.height(8.dp))
@@ -553,7 +797,7 @@ private fun HeroCard(versionName: String, versionCode: String) {
             Text(
                 text = "Version $versionName (code $versionCode)",
                 style = MaterialTheme.typography.labelSmall,
-                color = NazoTextPrimary
+                color = NazoTextPrimary,
             )
         }
 
@@ -564,7 +808,7 @@ private fun HeroCard(versionName: String, versionCode: String) {
             style = MaterialTheme.typography.bodyMedium,
             color = NazoTextSecondary,
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 8.dp)
+            modifier = Modifier.padding(horizontal = 8.dp),
         )
     }
 }
@@ -575,7 +819,7 @@ private fun SectionLabel(text: String) {
         text = text,
         style = MaterialTheme.typography.labelSmall,
         color = NazoTextSecondary,
-        modifier = Modifier.padding(start = 8.dp)
+        modifier = Modifier.padding(start = 8.dp),
     )
 }
 
@@ -595,7 +839,7 @@ private fun RowDivider() {
     HorizontalDivider(
         color = NazoBackground,
         thickness = 2.dp,
-        modifier = Modifier.padding(horizontal = 16.dp)
+        modifier = Modifier.padding(horizontal = 16.dp),
     )
 }
 
@@ -619,13 +863,13 @@ private fun ActionRow(
                 .size(40.dp)
                 .clip(CircleShape)
                 .background(NazoBackground),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = NazoTextPrimary,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(20.dp),
             )
         }
 
@@ -642,7 +886,7 @@ private fun ActionRow(
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodyMedium,
-                color = NazoTextSecondary
+                color = NazoTextSecondary,
             )
         }
         Spacer(Modifier.width(8.dp))
@@ -652,7 +896,7 @@ private fun ActionRow(
                 text = trailingText,
                 style = MaterialTheme.typography.bodyMedium,
                 color = NazoTextPrimary,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
             )
         } else {
             Icon(

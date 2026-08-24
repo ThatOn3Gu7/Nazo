@@ -478,6 +478,32 @@ Conventions:
 
 ---
 
+## [2026-08-24 22:15] refactor: rebuild Updates panel to mirror Shouze's UpdateMenuContent exactly
+
+- Owner asked to replace the Nazo updates UI with the EXACT layout/structure/animations from the other
+  app's About-screen update sheet (which they perfected), keeping only our color palette.
+- Rebuilt `ui/screens/AboutScreen.kt` update UI to faithfully mirror Shouze's `UpdateMenuContent`:
+  - `ModalBottomSheet` (container = NazoSurface) instead of the old AlertDialog.
+  - Status `Card` with `animateContentSize` (spring LowBouncy/Low) + `AnimatedContent` crossfade
+    (fadeIn+expandVertical / fadeOut+shrinkVertical via `togetherWith`) for the status row.
+  - `AnimatedVisibility` release-notes block (Surface scroll box + "View on GitHub" + "Update Now"
+    / "Download Manually" Button) and a second `AnimatedVisibility` for the Check/Clean-up row.
+  - `ExposedDropdownMenuBox` + `OutlinedTextField` (readOnly, themed via OutlinedTextFieldDefaults)
+    for the auto-check frequency, plus the APK cleanup confirm `AlertDialog` with `formatBytes`.
+  - Same icon mapping (Sync / NewReleases / CheckCircle / Error / Info) but tinted NazoPrimary /
+    NazoError; buttons use NazoPrimary container + NazoOnPrimary content (verified contrast from Color.kt).
+- Adapted to our Compose BOM 2025.10.01: used the newer `Modifier.menuAnchor(expanded = ...)` overload
+  and added imports `androidx.compose.material3.menuAnchor` + `androidx.compose.animation.togetherWith`.
+- Data-layer update flow (already ported in the prior commit) is unchanged and matches Shouze's
+  UpdateDownloader/UpdateCheckWorker/UpdateScheduler: background WorkManager check -> notification;
+  in-app "Update Now" downloads the GitHub release APK via DownloadManager and auto-installs on
+  ACTION_DOWNLOAD_COMPLETE; "Clean up APKs" deletes leftover .apk files in external-files-dir.
+- Files: AboutScreen.kt (rewritten update UI), handoff.md.
+- NOTE: GITHUB_REPO still assumed "ThatOn3Gu7/Nazo"; auto-install needs a release .apk asset present.
+- Agent cannot compile; verified by inspection. Owner to build & test.
+
+---
+
 ## Prior session (consolidated — implemented before this log existed)
 
 Captured here so a future session has full context. Original action items are in
