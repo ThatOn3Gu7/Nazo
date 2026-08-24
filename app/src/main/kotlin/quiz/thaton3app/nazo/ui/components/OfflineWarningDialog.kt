@@ -3,7 +3,6 @@ package quiz.thaton3app.nazo.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -33,19 +32,56 @@ import quiz.thaton3app.nazo.ui.theme.NazoSurface
 import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 
+enum class StartupMode { OFFLINE, ONLINE }
+
 /**
- * Startup warning shown only when the device is detected offline. A large rounded
- * "pill" card with a faint outline, a red circle holding a white "!", dim body
- * text, and a single primary pill button. Tapping anywhere (scrim or button)
- * acknowledges and enters offline mode.
+ * Startup popup shown once per app launch (driven by the connectivity probe).
+ *
+ * - OFFLINE: a blocking warning — the dimmed/blurred app behind is NOT tappable
+ *   (the scrim consumes clicks and does nothing) and the only way forward is the
+ *   "Go Offline" button. This forces an explicit acknowledgement.
+ * - ONLINE: informational — tells the user there's no online content yet and they'll
+ *   play the local library. The scrim (and the "Continue" button) dismiss it.
  */
 @Composable
-fun OfflineWarningDialog(onGoOffline: () -> Unit) {
+fun OfflineWarningDialog(
+    mode: StartupMode,
+    onGoOffline: () -> Unit,
+    onContinue: () -> Unit,
+) {
+    val isOffline = mode == StartupMode.OFFLINE
+    val iconBg: Color
+    val iconText: String
+    val title: String
+    val body: String
+    val buttonText: String
+    if (isOffline) {
+        iconBg = NazoError
+        iconText = "!"
+        title = "You're offline"
+        body = "You have limited questions and limited data to play quizzes on. " +
+            "Connect to the internet if you want fresh, varied questions every time — " +
+            "though our local library is huge, so you won't run out anytime soon."
+        buttonText = "Go Offline"
+    } else {
+        iconBg = NazoPrimary
+        iconText = "✓"
+        title = "You're online"
+        body = "There's no online content yet — the AI-generated question feature isn't " +
+            "ready, so you'll be playing our built-in local library for now. We'll add " +
+            "fresh, AI-generated quizzes in a future update."
+        buttonText = "Continue"
+    }
+
+    // OFFLINE scrim consumes clicks and does nothing (blocks the app behind);
+    // ONLINE scrim dismisses the informational popup.
+    val scrimClick: () -> Unit = if (isOffline) ({}) else onContinue
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.45f))
-            .clickable(onClick = onGoOffline),
+            .background(Color.Black.copy(alpha = 0.5f))
+            .clickable(onClick = scrimClick),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -61,11 +97,11 @@ fun OfflineWarningDialog(onGoOffline: () -> Unit) {
                 modifier = Modifier
                     .size(64.dp)
                     .clip(CircleShape)
-                    .background(NazoError),
+                    .background(iconBg),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "!",
+                    text = iconText,
                     color = NazoOnPrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 34.sp,
@@ -73,16 +109,14 @@ fun OfflineWarningDialog(onGoOffline: () -> Unit) {
             }
             Spacer(Modifier.height(18.dp))
             Text(
-                text = "You're offline",
+                text = title,
                 style = MaterialTheme.typography.headlineSmall,
                 color = NazoTextPrimary,
                 fontWeight = FontWeight.Bold,
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                text = "You have limited questions and limited data to play quizzes on. " +
-                    "Connect to the internet if you want fresh, varied questions every time — " +
-                    "though our local library is huge, so you won't run out anytime soon.",
+                text = body,
                 style = MaterialTheme.typography.bodyMedium,
                 color = NazoTextSecondary,
                 textAlign = TextAlign.Center,
@@ -94,11 +128,11 @@ fun OfflineWarningDialog(onGoOffline: () -> Unit) {
                     .height(54.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(NazoPrimary)
-                    .clickable(onClick = onGoOffline),
+                    .clickable(onClick = if (isOffline) onGoOffline else onContinue),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "Go Offline",
+                    text = buttonText,
                     color = NazoOnPrimary,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Bold,

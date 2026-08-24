@@ -272,6 +272,37 @@ Conventions:
   `data/settings/AppPrefs.kt` (new), `ui/components/OfflineWarningDialog.kt` (new),
   `ui/NazoApp.kt`, `ui/screens/HomeScreen.kt`, `ui/screens/SettingsScreen.kt`.
 - Note: agent cannot compile; changes verified by inspection (imports/brackets). Owner to test.
+- CORRECTION (see 2026-08-24 17:10 entry): `AppPrefs` persistence was REMOVED — offline
+  mode is now session-only, `AppPrefs.kt` was deleted, and the startup popup also fires
+  when ONLINE (informational). Update above to: `ui/components/OfflineWarningDialog.kt`
+  (new), `ui/NazoApp.kt`, `ui/screens/SettingsScreen.kt`.
+
+---
+
+## [2026-08-24 17:10] fix: offline popup behaviour + session-only mode + online popup
+
+- Three follow-ups to the offline/online feature:
+  1. **Popup must block the app.** Tapping anywhere on the offline popup (scrim) should
+     do NOTHING — the only way forward is the "Go Offline" button. Fixed by making the
+     offline scrim `clickable` with a no-op (it still consumes the gesture, so taps don't
+     fall through to the app behind). The "Go Offline" button is the sole action.
+  2. **Blur the app behind.** While the popup is up, the underlying screen is blurred
+     (`Modifier.blur(16.dp)` applied to the `AnimatedContent` container) and dimmed under
+     a 50%-black scrim, so only the popup reads clearly.
+  3. **Offline mode is session-only.** Removed the persisted `AppPrefs.forceOffline`
+     (deleted `data/settings/AppPrefs.kt`). `forceOffline` is now plain in-memory state
+     and resets to false on every app launch, so the network scan re-fires and the prompt
+     reappears; the Settings "Offline mode" switch no longer sticks after exit.
+  4. **Online popup too.** The startup probe now always shows a popup: OFFLINE (blocking,
+     "Go Offline") or ONLINE (informational "You're online — no online content yet, you'll
+     play the local library", dismissed via "Continue" or tapping the scrim). Driven by a
+     `startupDialogMode: StartupMode?` state in `NazoApp` (`enum StartupMode { OFFLINE, ONLINE }`
+     in `OfflineWarningDialog.kt`); the dialog takes `mode`, `onGoOffline`, `onContinue`.
+- Files: `data/settings/AppPrefs.kt` (deleted), `ui/components/OfflineWarningDialog.kt`,
+  `ui/NazoApp.kt`. (`ui/screens/SettingsScreen.kt` unchanged but the switch is now
+  session-only by virtue of `NazoApp` no longer persisting it.)
+- Note: agent cannot compile; verified by inspection. Owner to test the popup blocking +
+  blur + the fact that a fresh app launch re-runs the scan and re-shows the prompt.
 
 ---
 

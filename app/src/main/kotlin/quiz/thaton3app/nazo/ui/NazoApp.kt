@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.launch
@@ -21,10 +22,10 @@ import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.data.remote.Connectivity
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
-import quiz.thaton3app.nazo.data.settings.AppPrefs
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.ui.components.OfflineWarningDialog
+import quiz.thaton3app.nazo.ui.components.StartupMode
 import quiz.thaton3app.nazo.ui.screens.*
 import quiz.thaton3app.nazo.ui.theme.NazoTheme
 
@@ -50,20 +51,21 @@ fun NazoApp() {
     val apiKeyStore = remember { ApiKeyStore(context) }
     val themePrefs = remember { ThemePreferences(context) }
     val statsStore = remember { QuizStatsStore(context.applicationContext) }
-    val appPrefs = remember { AppPrefs(context) }
     var quizStats by remember { mutableStateOf(statsStore.get()) }
 
-    // Offline / online mode. `forceOffline` is the manual Settings switch (persisted);
-    // `detectedOffline` comes from the startup connectivity probe. `isOfflineMode` is
-    // the effective mode that drives quiz sourcing and the home badge.
-    var forceOffline by remember { mutableStateOf(appPrefs.forceOffline) }
+    // Offline / online mode. `forceOffline` is the manual Settings switch and is
+    // SESSION-ONLY (never persisted) — when the app is killed and reopened the network
+    // scan fires again and the user gets the prompt fresh. `detectedOffline` comes from
+    // the startup connectivity probe. `startupDialogMode` drives the one-time startup
+    // popup (OFFLINE requires acknowledgement; ONLINE is informational).
+    var forceOffline by remember { mutableStateOf(false) }
     var detectedOffline by remember { mutableStateOf(false) }
-    var showOfflineWarning by remember { mutableStateOf(false) }
+    var startupDialogMode by remember { mutableStateOf<StartupMode?>(null) }
     val isOfflineMode = forceOffline || detectedOffline
 
     LaunchedEffect(Unit) {
         detectedOffline = !Connectivity.isOnline(context)
-        showOfflineWarning = detectedOffline && !forceOffline
+        startupDialogMode = if (detectedOffline) StartupMode.OFFLINE else StartupMode.ONLINE
     }
 
     var themeMode by remember { mutableStateOf(themePrefs.mode) }
@@ -164,7 +166,10 @@ fun NazoApp() {
         Box(modifier = Modifier.fillMaxSize()) {
             AnimatedContent(
                 targetState = currentScreen,
-                modifier = Modifier.fillMaxSize().background(NazoBackground),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(NazoBackground)
+                    .then(if (startupDialogMode != null) Modifier.blur(16.dp) else Modifier),
                 transitionSpec = {
                     fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
                 },
@@ -192,9 +197,9 @@ fun NazoApp() {
                         onOpenAppearance = { currentScreen = Screen.Appearance },
                         onOpenBackupRestore = { currentScreen = Screen.BackupRestore },
                         onOpenAbout = { currentScreen = Screen.About },
-                        forceOffline = forceOffline,
-                        onForceOfflineChange = { v -> forceOffline = v; appPrefs.forceOffline = v },
-                    )
+                    forceOffline = forceOffline,
+                    onForceOfflineChange = { v -> forceOffline = v },
+                )
 
                     Screen.AiProvider -> AiProviderScreen(
                         apiKeyStore = apiKeyStore,
@@ -262,13 +267,14 @@ fun NazoApp() {
                 }
             }
 
-            if (showOfflineWarning) {
+            if (startupDialogMode != null) {
                 OfflineWarningDialog(
+                    mode = startupDialogMode!!,
                     onGoOffline = {
                         forceOffline = true
-                        appPrefs.forceOffline = true
-                        showOfflineWarning = false
+                        startupDialogMode = null
                     },
+                    onContinue = { startupDialogMode = null },
                 )
             }
         }
