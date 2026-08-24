@@ -25,10 +25,13 @@ import quiz.thaton3app.nazo.data.remote.Connectivity
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
+import quiz.thaton3app.nazo.ui.components.IconThemeDialog
 import quiz.thaton3app.nazo.ui.components.OfflineWarningDialog
 import quiz.thaton3app.nazo.ui.components.StartupMode
 import quiz.thaton3app.nazo.ui.screens.*
 import quiz.thaton3app.nazo.ui.theme.NazoTheme
+import quiz.thaton3app.nazo.LauncherIconSwitcher
+import androidx.activity.ComponentActivity
 
 // Every destination in the app. Wrapping this in AnimatedContent gives us a single,
 // uniform fade-in / fade-out transition between ALL screens (Roadmap #2).
@@ -71,6 +74,40 @@ fun NazoApp() {
 
     var themeMode by remember { mutableStateOf(themePrefs.mode) }
     var accentName by remember { mutableStateOf(themePrefs.accent) }
+
+    // Launcher-icon theme sync: detect an OS-theme/icon mismatch and PROMPT the user
+    // (rather than silently swapping the launcher component, which can break the home
+    // shortcut mid-session). On "Relaunch" we swap + recreate; on "Not now" we defer
+    // the swap until the app exits.
+    var iconRelaunchPrompt by remember { mutableStateOf(false) }
+    var pendingIconNight by remember { mutableStateOf<Boolean?>(null) }
+
+    val desiredNight = isSystemInDarkTheme()
+    LaunchedEffect(Unit) {
+        val applied = LauncherIconSwitcher.appliedNight(context)
+        if (applied == null || applied != desiredNight) {
+            if (applied == null) {
+                // Ambiguous state (e.g. after a failed swap) — correct silently.
+                LauncherIconSwitcher.apply(context, desiredNight)
+                themePrefs.appliedLauncherNight = if (desiredNight) "dark" else "light"
+            } else {
+                pendingIconNight = desiredNight
+                iconRelaunchPrompt = true
+            }
+        }
+    }
+
+    // Apply a deferred icon change when the app exits (user chose "Not now").
+    DisposableEffect(Unit) {
+        onDispose {
+            pendingIconNight?.let { night ->
+                try {
+                    LauncherIconSwitcher.apply(context, night)
+                    ThemePreferences(context).appliedLauncherNight = if (night) "dark" else "light"
+                } catch (_: Exception) { }
+            }
+        }
+    }
 
     // Home-screen quiz preset (topic / difficulty / count) is hoisted to this
     // always-composed root so the user's last selection survives navigating into a
@@ -268,7 +305,7 @@ fun NazoApp() {
                 }
             }
 
-            if (startupDialogMode != null) {
+            if (startupDialogMode != null && !iconRelaunchPrompt) {
                 OfflineWarningDialog(
                     mode = startupDialogMode!!,
                     onGoOffline = {
@@ -276,6 +313,22 @@ fun NazoApp() {
                         startupDialogMode = null
                     },
                     onContinue = { startupDialogMode = null },
+                )
+            }
+
+            if (iconRelaunchPrompt && pendingIconNight != null) {
+                IconThemeDialog(
+                    darkTarget = pendingIconNight!!,
+                    onRelaunch = {
+                        val night = pendingIconNight!!
+                        LauncherIconSwitcher.apply(context, night)
+                        themePrefs.appliedLauncherNight = if (night) "dark" else "light"
+                        iconRelaunchPrompt = false
+                        (context as? ComponentActivity)?.recreate()
+                    },
+                    onContinue = {
+                        iconRelaunchPrompt = false
+                    },
                 )
             }
         }

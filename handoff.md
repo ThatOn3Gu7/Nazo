@@ -592,6 +592,17 @@ covered by `BUG_AUDIT.md` + this log).
     next launch or while the app is running. True automatic OS theming only exists
     via the monochrome "themed icons" feature (which drops our greens).
 
+- **Launcher icon: prompt instead of silent swap (2026-08-24):** Replaced the
+  disruptive auto-swap (which could break the home shortcut mid-session / force a
+  relaunch) with a prompt-on-launch model. `NazoApp` detects an OS-theme vs applied
+  icon mismatch via `LauncherIconSwitcher.appliedNight` and shows `IconThemeDialog`
+  (same style as the offline popup; gated so it appears *before* the offline dialog).
+  "Relaunch" swaps the icon + `Activity.recreate()`; "Not now" defers the swap to
+  app exit via a `DisposableEffect` `onDispose`. Removed the `ThemeChangeReceiver`
+  and the launch-time `LauncherIconSwitcher.apply` call in `MainActivity` (no more
+  background/auto swaps). Added `ThemePreferences.appliedLauncherNight` to remember
+  the applied variant. The running session is never disrupted.
+
 - **Icon fixes (2026-08-24):** (1) Shrank the 謎 glyph from ~59% to ~39% of the
   icon canvas (`drawable-nodpi/ic_launcher_foreground.png`) so it no longer
   dominates the icon. (2) Fixed the light/dark background never switching:

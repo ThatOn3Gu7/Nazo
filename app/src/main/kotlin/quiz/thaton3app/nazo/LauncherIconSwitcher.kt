@@ -50,6 +50,19 @@ object LauncherIconSwitcher {
         }
     }
 
+    /** Which launcher variant is currently enabled, or null if the state is ambiguous. */
+    fun appliedNight(context: Context): Boolean? {
+        val pm = context.packageManager
+        val pkg = context.packageName
+        val lightOn = effectiveEnabled(pm, ComponentName(pkg, "$pkg.LauncherLight"), true)
+        val darkOn = effectiveEnabled(pm, ComponentName(pkg, "$pkg.LauncherDark"), false)
+        return when {
+            darkOn && !lightOn -> true
+            lightOn && !darkOn -> false
+            else -> null
+        }
+    }
+
     private fun effectiveEnabled(
         pm: PackageManager,
         component: ComponentName,

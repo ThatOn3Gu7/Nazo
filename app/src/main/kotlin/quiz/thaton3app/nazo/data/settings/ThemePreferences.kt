@@ -20,8 +20,14 @@ class ThemePreferences(context: Context) {
         get() = prefs.getString(KEY_ACCENT, "mint") ?: "mint"
         set(value) = prefs.edit().putString(KEY_ACCENT, value).apply()
 
+    /** Which OS-theme variant of the launcher icon is currently applied: "light" | "dark" | "". */
+    var appliedLauncherNight: String
+        get() = prefs.getString(KEY_LAUNCHER_NIGHT, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_LAUNCHER_NIGHT, value).apply()
+
     private companion object {
         const val KEY_MODE = "theme_mode"
         const val KEY_ACCENT = "theme_accent"
+        const val KEY_LAUNCHER_NIGHT = "launcher_night"
     }
 }
