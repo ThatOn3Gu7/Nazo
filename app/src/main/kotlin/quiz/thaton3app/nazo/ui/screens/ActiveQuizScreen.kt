@@ -62,14 +62,15 @@ fun ActiveQuizScreen(
         while (remainingSeconds > 0 && selectedAnswer == null) {
             delay(1000)
             remainingSeconds--
-            // Escalating buzz in the final 5 seconds: faint at 5, then each step a
-            // bit stronger, and a clear strong buzz on the very last second.
+            // Escalating buzz in the final 5 seconds: starts at 30% strength, ramps
+            // up each second, peaks with a 100% buzz the moment time hits zero.
             when (remainingSeconds) {
                 5 -> Haptics.tick(context, 30)
                 4 -> Haptics.tick(context, 36)   // ~20% stronger than the previous
                 3 -> Haptics.tick(context, 47)   // ~30% stronger than the previous
                 2 -> Haptics.tick(context, 66)   // ~40% stronger than the previous
-                1 -> Haptics.strong(context)     // last second — strong buzz
+                1 -> Haptics.tick(context, 85)   // last second before zero
+                0 -> Haptics.timeUp(context)     // time's up — full-strength buzz
             }
         }
         if (remainingSeconds == 0 && selectedAnswer == null) {

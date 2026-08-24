@@ -518,6 +518,11 @@ Conventions:
   - `ActiveQuizScreen.kt` — countdown escalation: 5s faint(30) → 4s(~+20%,36) → 3s(~+30% vs prev,47) → 2s(~+40% vs prev,66) → 1s strong(200); correct-answer tap = single faint, wrong-answer tap = double faint; Next/Finish button = faint.
   - `NazoBottomNav.kt` — faint buzz on tab tap (Home/Settings).
 - NOTE: amplitude numbers (30/36/47/66/200) are first-pass guesses; tune on a real device. Haptics can't be verified in this env.
+- TUNING (2026-08-24, after live test): first pass was far too weak (imperceptible). Reworked `Haptics.kt`:
+  - `light`/`doubleLight` now use amplitude 220/255 (was 45) and 30ms (was 18ms) — clearly felt.
+  - `tick(percent)` now takes a *percentage* of max amplitude (1..255) instead of a raw value.
+  - Timer ramp: 5s=30% -> 4s=36% -> 3s=47% -> 2s=66% -> 1s=85% -> 0s=100% (new `timeUp()` = 130ms @ 255).
+  - Context receives `Haptics.timeUp` at the 0-second mark (replaced the old `strong`).
 - Files: Haptics.kt (new), HomeScreen.kt, ActiveQuizScreen.kt, NazoBottomNav.kt, AndroidManifest.xml, handoff.md.
 - Agent cannot compile; verified by inspection. Owner to build & test on a device.
 
