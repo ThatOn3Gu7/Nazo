@@ -309,6 +309,27 @@ Conventions:
 
 ---
 
+## [2026-08-24 17:45] fix: blur/scrim now reaches top (status bar + camera cutout)
+
+- Owner: when a startup popup is up, the blur stopped at a white seam below the status
+  bar. Root cause: the status bar was painted a solid `brand.background`, so the app's
+  blurred background never showed behind it (and the notch/cutout area was excluded).
+- Fix (`ui/theme/Theme.kt` `NazoTheme` SideEffect):
+  - `WindowCompat.setDecorFitsSystemWindows(window, false)` → app draws full-bleed.
+  - `window.attributes.layoutInDisplayCutoutMode = LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES`
+    (API 28+) → content extends into the camera cutout.
+  - `window.statusBarColor = Color.Transparent` → the blurred/scrimmed app background
+    shows through behind the status bar and notch (icons stay crisp on top). Nav bar stays
+    `brand.background` (unchanged). Status-bar icon appearance still tracks the theme.
+  - Screens already use `statusBarsPadding()`/`navigationBarsPadding()`, so their CONTENT
+    stays clear of the bars — only the background (blurred while a popup is shown) bleeds
+    behind them. No layout change to normal screens.
+- Files: `ui/theme/Theme.kt`.
+- Note: agent cannot compile; verified by inspection. Owner to confirm the popup's blur +
+  dim now covers the entire top including the notch, with no white seam.
+
+---
+
 ## Prior session (consolidated — implemented before this log existed)
 
 Captured here so a future session has full context. Original action items are in

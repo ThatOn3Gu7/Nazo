@@ -57,7 +57,17 @@ fun NazoTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as android.app.Activity).window
-            window.statusBarColor = brand.background.toArgb()
+            // Edge-to-edge: let the app draw full-bleed (behind the status bar and into the
+            // display cutout) so the startup popup's blur/scrim can reach the entire top,
+            // including the camera cutout and status bar. Screens already apply
+            // statusBarsPadding()/navigationBarsPadding(), so their content stays clear of
+            // the system bars — only the background (blurred when the popup is up) shows through.
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                window.attributes.layoutInDisplayCutoutMode =
+                    android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+            window.statusBarColor = Color.Transparent.toArgb()
             window.navigationBarColor = brand.background.toArgb()
             // Keep the Activity's own window background in sync with the in-app theme.
             // This prevents the white system window from bleeding through during the
