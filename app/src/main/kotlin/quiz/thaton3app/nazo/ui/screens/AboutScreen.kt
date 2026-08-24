@@ -70,7 +70,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberExposedDropdownMenuState
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -602,18 +601,17 @@ private fun UpdateMenuContent(
         Spacer(Modifier.height(8.dp))
 
         // Auto-check frequency dropdown
-        val dropdownState = rememberExposedDropdownMenuState(
+        ExposedDropdownMenuBox(
             expanded = showFrequencyDropdown,
-            onExpandedChange = { showFrequencyDropdown = it },
-        )
-        ExposedDropdownMenuBox(state = dropdownState) {
+            onExpandedChange = { showFrequencyDropdown = !showFrequencyDropdown },
+        ) {
             OutlinedTextField(
                 value = frequencyLabels[frequency] ?: "Weekly",
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Auto-check frequency") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dropdownState.expanded) },
-                modifier = Modifier.menuAnchor(dropdownState).fillMaxWidth(),
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showFrequencyDropdown) },
+                modifier = Modifier.menuAnchor().fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = NazoTextPrimary,
                     unfocusedTextColor = NazoTextPrimary,
@@ -625,7 +623,7 @@ private fun UpdateMenuContent(
                 ),
             )
             ExposedDropdownMenu(
-                expanded = dropdownState.expanded,
+                expanded = showFrequencyDropdown,
                 onDismissRequest = { showFrequencyDropdown = false },
             ) {
                 UpdateFrequency.entries.forEach { option ->
