@@ -575,3 +575,12 @@ covered by `BUG_AUDIT.md` + this log).
   - Caveat: component swap may make some launchers briefly drop/re-add the home
     shortcut (standard dynamic-icon behavior). Icon follows *system* night mode,
     not the in-app Appearance setting.
+
+- **Icon fixes (2026-08-24):** (1) Shrank the 謎 glyph from ~59% to ~39% of the
+  icon canvas (`drawable-nodpi/ic_launcher_foreground.png`) so it no longer
+  dominates the icon. (2) Fixed the light/dark background never switching:
+  `MainActivity.applyLauncherIconForNightMode()` now derives night mode from
+  `ThemePreferences.mode` ("system"|"light"|"dark"), matching `NazoApp`'s `isDark`
+  logic, instead of raw system `uiMode` (which ignored the in-app Appearance
+  setting). Also hardened the `LauncherDark` `ComponentName` derivation from the
+  main activity's package.
