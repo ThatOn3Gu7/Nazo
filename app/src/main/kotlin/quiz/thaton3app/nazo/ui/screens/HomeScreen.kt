@@ -169,7 +169,7 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
         Spacer(Modifier.width(12.dp))
         Text(
             text = "Nazo",
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleLarge.copy(fontSize = 33.sp),
             color = NazoTextPrimary,
             modifier = Modifier.weight(1f),
         )

@@ -379,7 +379,12 @@ Conventions:
   larger than the title, and reads in both themes. (Same glyph as `AboutScreen.kt` hero.)
 - TWEAK (2026-08-24 18:55): nudged the kanji up 10.dp (`Modifier.offset(y = (-10).dp)`) and
   bumped its size 30.sp → 35.sp because the logo+title combo looked off. Added
-  `androidx.compose.ui.draw.offset` import.
+  `androidx.compose.foundation.layout.offset` import (the `ui.layout` one is the IntOffset
+  lambda overload; `geometry.Offset` is a data class — neither is the Dp modifier).
+- TWEAK (2026-08-24 19:10): enlarged the "Nazo" header title to 33.sp (2px under the 35.sp
+  kanji) and kept the existing Plus Jakarta Sans Bold (the app already ships all 4 weights in
+  `res/font` and `titleLarge` already uses `NazoFontFamily` Bold — confirmed in `ui/theme/Type.kt`).
+  Change is local to `HomeHeader`'s Text (global `titleLarge` style untouched).
 
 ---
 
