@@ -377,6 +377,9 @@ Conventions:
 - Files: `ui/screens/HomeScreen.kt`.
 - Note: agent cannot compile; verified by inspection. Owner to confirm the kanji shows bare,
   larger than the title, and reads in both themes. (Same glyph as `AboutScreen.kt` hero.)
+- TWEAK (2026-08-24 18:55): nudged the kanji up 10.dp (`Modifier.offset(y = (-10).dp)`) and
+  bumped its size 30.sp → 35.sp because the logo+title combo looked off. Added
+  `androidx.compose.ui.draw.offset` import.
 
 ---
 

@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.offset
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -160,9 +161,10 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
         // both light and dark themes. Same glyph as the About screen hero.
         Text(
             text = "謎",
-            style = MaterialTheme.typography.titleLarge.copy(fontSize = 30.sp),
+            style = MaterialTheme.typography.titleLarge.copy(fontSize = 35.sp),
             color = NazoPrimary,
             fontWeight = FontWeight.Bold,
+            modifier = Modifier.offset(y = (-10).dp),
         )
         Spacer(Modifier.width(12.dp))
         Text(
