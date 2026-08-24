@@ -20,7 +20,9 @@ class MainActivity : ComponentActivity() {
         // Match the launcher icon to the device's OS dark/light mode.
         LauncherIconSwitcher.apply(this)
         val filter = IntentFilter().apply {
-            addAction(Intent.ACTION_UI_MODE_CHANGED)
+            // ACTION_UI_MODE_CHANGED has no public Intent constant on some SDK levels;
+            // use the documented action string directly.
+            addAction("android.intent.action.UI_MODE_CHANGED")
             addAction(Intent.ACTION_CONFIGURATION_CHANGED)
         }
         ContextCompat.registerReceiver(
