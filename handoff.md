@@ -554,4 +554,24 @@ covered by `BUG_AUDIT.md` + this log).
   `ThemePreferences`.
 - **New screens / flows:** `LoadingScreen`, `ReviewAnswersScreen`; bottom nav
   extracted to `ui/components/NazoBottomNav.kt` (with `NazoTab`).
-- **Bug audit:** `BUG_AUDIT.md` documents the findings driving the above.
+- **Bug audit:**   `BUG_AUDIT.md` documents the findings driving the above.
+
+- **Branded launcher icon (2026-08-24):** Replaced the default Android Studio
+  launcher icon with a custom adaptive icon using the 謎 brand kanji (rasterized
+  from Noto Sans CJK) on the app's green palette, with light/dark variants that
+  follow system night mode.
+  - Foreground: 512×512 transparent PNG of 謎 (color #F7FEF8) at
+    `res/drawable-nodpi/ic_launcher_foreground.png`; removed the old
+    `drawable-v24/ic_launcher_foreground.xml`.
+  - Backgrounds: `res/drawable/ic_launcher_background.xml` = light green #FF36A06F;
+    `res/drawable/ic_launcher_background_dark.xml` = dark green #FF246D4C.
+  - Adaptive icons: `mipmap-anydpi-v26/{ic_launcher,ic_launcher_round,
+    ic_launcher_dark,ic_launcher_round_dark}.xml` with a `<monochrome>` layer for
+    API 33+ themed icons.
+  - Runtime day/night switch: added `.LauncherDark` activity-alias (icon
+    `@mipmap/ic_launcher_dark`) in `AndroidManifest.xml` and
+    `MainActivity.applyLauncherIconForNightMode()` which toggles the enabled
+    launcher component from `Configuration.UI_MODE_NIGHT_MASK`.
+  - Caveat: component swap may make some launchers briefly drop/re-add the home
+    shortcut (standard dynamic-icon behavior). Icon follows *system* night mode,
+    not the in-app Appearance setting.
