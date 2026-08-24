@@ -52,11 +52,14 @@ fun AppearanceScreen(
     currentAccent: String = "mint",
     onModeChange: (String) -> Unit = {},
     onAccentChange: (String) -> Unit = {},
+    iconFollowsOsTheme: Boolean = true,
+    onIconFollowsOsThemeChange: (Boolean) -> Unit = {},
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
 ) {
     var compactViewChecked by remember { mutableStateOf(true) }
     var cardStyleChecked by remember { mutableStateOf(false) }
+    var iconFollowsOsThemeChecked by remember { mutableStateOf(iconFollowsOsTheme) }
 
     Scaffold(
         containerColor = NazoBackground,
@@ -167,6 +170,28 @@ fun AppearanceScreen(
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = NazoTextSecondary
+                )
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // --- APP ICON SECTION ---
+            SectionHeader("APP ICON")
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(NazoSurface)
+            ) {
+                LayoutToggleRow(
+                    title = "Match icon to system theme",
+                    subtitle = "Switch the launcher icon between light and dark with your device theme",
+                    isChecked = iconFollowsOsThemeChecked,
+                    onCheckedChange = {
+                        iconFollowsOsThemeChecked = it
+                        onIconFollowsOsThemeChange(it)
+                    }
                 )
             }
 

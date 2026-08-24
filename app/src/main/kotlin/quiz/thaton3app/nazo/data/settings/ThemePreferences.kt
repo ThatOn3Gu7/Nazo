@@ -25,9 +25,15 @@ class ThemePreferences(context: Context) {
         get() = prefs.getString(KEY_LAUNCHER_NIGHT, "") ?: ""
         set(value) = prefs.edit().putString(KEY_LAUNCHER_NIGHT, value).apply()
 
+    /** Whether the launcher icon should follow the device OS dark/light theme. */
+    var iconFollowsOsTheme: Boolean
+        get() = prefs.getBoolean(KEY_ICON_FOLLOWS_OS, true)
+        set(value) = prefs.edit().putBoolean(KEY_ICON_FOLLOWS_OS, value).apply()
+
     private companion object {
         const val KEY_MODE = "theme_mode"
         const val KEY_ACCENT = "theme_accent"
         const val KEY_LAUNCHER_NIGHT = "launcher_night"
+        const val KEY_ICON_FOLLOWS_OS = "icon_follows_os"
     }
 }

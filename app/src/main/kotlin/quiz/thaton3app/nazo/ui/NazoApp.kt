@@ -84,6 +84,7 @@ fun NazoApp() {
 
     val desiredNight = isSystemInDarkTheme()
     LaunchedEffect(Unit) {
+        if (!themePrefs.iconFollowsOsTheme) return@LaunchedEffect
         val applied = LauncherIconSwitcher.appliedNight(context)
         if (applied == null || applied != desiredNight) {
             if (applied == null) {
@@ -257,6 +258,16 @@ fun NazoApp() {
                         currentAccent = accentName,
                         onModeChange = { themeMode = it; themePrefs.mode = it },
                         onAccentChange = { accentName = it; themePrefs.accent = it },
+                        iconFollowsOsTheme = themePrefs.iconFollowsOsTheme,
+                        onIconFollowsOsThemeChange = { enabled ->
+                            themePrefs.iconFollowsOsTheme = enabled
+                            if (enabled) {
+                                // User opted in: sync the icon to the current OS theme now.
+                                LauncherIconSwitcher.apply(context)
+                                themePrefs.appliedLauncherNight =
+                                    if (LauncherIconSwitcher.appliedNight(context) == true) "dark" else "light"
+                            }
+                        },
                         onBackClick = { currentScreen = Screen.Settings },
                         onHomeClick = { currentScreen = Screen.Home },
                     )

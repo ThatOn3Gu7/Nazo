@@ -611,3 +611,10 @@ covered by `BUG_AUDIT.md` + this log).
   logic, instead of raw system `uiMode` (which ignored the in-app Appearance
   setting). Also hardened the `LauncherDark` `ComponentName` derivation from the
   main activity's package.
+
+- **Launcher icon: user toggle (2026-08-24):** Added a "Match icon to system theme"
+  switch in `AppearanceScreen`, persisted via `ThemePreferences.iconFollowsOsTheme`
+  (default ON). When OFF, `NazoApp` skips the OS-theme/icon mismatch prompt entirely
+  and never swaps. When the user enables it from settings, the icon is synced to the
+  current OS theme immediately (user-initiated, expected). The launch-time detection
+  in `NazoApp` is gated on this flag.
