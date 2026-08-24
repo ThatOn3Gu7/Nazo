@@ -185,6 +185,22 @@ Conventions:
 - Distribution after normalization: Easy 130 / Medium 85 / Hard 28 / Otaku Master 7.
 - File: `data/LocalQuestionBank.kt`.
 
+## [2026-08-23 18:45] feat: integrate next question batch + full validation pass
+
+- You added another batch (expected ~500, but only ~100 net new actually landed in the
+  repo → **350 questions total across 43 series**). The rest may not have saved/pasted;
+  re-paste any missing ones and I'll integrate them the same way.
+- Ran a full validation script over the bank:
+  - Bracket/quote balance: 0 errors (every `Question(...)` parses with matched parens/quotes).
+  - Required fields: all 350 carry anime/theme/difficulty/text/options/correctAnswer/explanation.
+  - Correct answer ∈ options: 0 violations.
+  - Duplicates: 0 by exact text AND 0 by identical option-set + same answer.
+  - Normalized all entries to the canonical single-line `Question(...)` format (proper commas
+    between list items so it compiles) and dropped the SECTION comment dividers.
+- Distribution: Easy 177 / Medium 127 / Hard 39 / Otaku Master 7; 43 distinct anime
+  (Naruto/One Piece/Dragon Ball 25 each; many series at 5 each).
+- File: `data/LocalQuestionBank.kt`.
+
 ---
 
 ## Prior session (consolidated — implemented before this log existed)
