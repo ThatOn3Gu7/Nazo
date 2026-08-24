@@ -1,10 +1,13 @@
 package quiz.thaton3app.nazo.ui.screens
 
+import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -36,6 +39,8 @@ import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,8 +62,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.data.GITHUB_REPO
+import quiz.thaton3app.nazo.data.UpdateDownloader
+import quiz.thaton3app.nazo.data.UpdateFrequency
+import quiz.thaton3app.nazo.data.UpdatePrefs
+import quiz.thaton3app.nazo.data.UpdateScheduler
 import quiz.thaton3app.nazo.data.currentVersionName
 import quiz.thaton3app.nazo.data.fetchLatestRelease
 import quiz.thaton3app.nazo.data.isNewerVersion
@@ -71,11 +82,25 @@ import quiz.thaton3app.nazo.ui.theme.NazoSurface
 import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 private const val FEEDBACK_EMAIL = "socialzoneop@gmail.com"
+
+private sealed interface UpdateState {
+    object Idle : UpdateState
+    object Checking : UpdateState
+    object UpToDate : UpdateState
+    object Error : UpdateState
+    data class Available(
+        val tag: String,
+        val htmlUrl: String,
+        val releaseNotes: String,
+        val directApkUrl: String?,
+    ) : UpdateState
+}
 
 @Composable
 fun AboutScreen(
@@ -85,7 +110,6 @@ fun AboutScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // App identity, derived from the real PackageManager info.
     val packageInfo = remember {
         runCatching {
             context.packageManager.getPackageInfo(context.packageName, 0)
@@ -109,38 +133,67 @@ fun AboutScreen(
         } ?: "Unknown"
     }
 
-    // Dialog + update-check state.
     var showDev by remember { mutableStateOf(false) }
     var showLicenses by remember { mutableStateOf(false) }
     var showUpdate by remember { mutableStateOf(false) }
-    var updateStatus by remember { mutableStateOf("Ready to check for updates.") }
-    var updateUrl by remember { mutableStateOf<String?>(null) }
-    var checking by remember { mutableStateOf(false) }
+
+    var updateState by remember { mutableStateOf<UpdateState>(UpdateState.Idle) }
+    var checkLabel by remember { mutableStateOf("Check Now") }
+    var frequency by remember { mutableStateOf(UpdatePrefs(context).updateFrequency) }
+    var freqExpanded by remember { mutableStateOf(false) }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* result handled by the OS prompt */ }
+
+    fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    fun onDownload(apkUrl: String) {
+        requestNotificationPermission()
+        if (UpdateDownloader.enqueue(context, apkUrl)) {
+            Toast.makeText(context, "Download started — check your notifications", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "Couldn't start the download", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun onOpenBrowser(url: String) {
+        runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }
+    }
 
     fun checkForUpdates() {
         scope.launch {
-            checking = true
-            updateStatus = "Checking GitHub..."
+            updateState = UpdateState.Checking
+            delay(1200) // brief delay so the "Checking" state is visible
             val latest = fetchLatestRelease(GITHUB_REPO)
             if (latest == null) {
-                updateStatus = "Couldn't reach GitHub. Check your connection."
-                updateUrl = null
-                checking = false
+                updateState = UpdateState.Error
+                checkLabel = "Retry"
                 return@launch
             }
             val current = currentVersionName(context)
             if (current == null) {
-                updateStatus = "Couldn't read the current version."
-                checking = false
+                updateState = UpdateState.UpToDate
+                checkLabel = "Check Again"
                 return@launch
             }
-            updateUrl = if (isNewerVersion(latest.tag, current)) latest.htmlUrl else null
-            updateStatus = if (updateUrl != null) {
-                "Version ${latest.tag} is available!"
+            updateState = if (isNewerVersion(latest.tag, current)) {
+                UpdateState.Available(latest.tag, latest.htmlUrl, latest.body, latest.apkUrl)
             } else {
-                "You're on the latest version."
+                checkLabel = "Check Again"
+                UpdateState.UpToDate
             }
-            checking = false
         }
     }
 
@@ -173,7 +226,8 @@ fun AboutScreen(
                     subtitle = "Check for updates from GitHub",
                     onClick = {
                         showUpdate = true
-                        if (updateUrl == null && !checking) checkForUpdates()
+                        requestNotificationPermission()
+                        if (updateState is UpdateState.Idle) checkForUpdates()
                     }
                 )
                 RowDivider()
@@ -188,7 +242,7 @@ fun AboutScreen(
                     icon = Icons.Filled.Code,
                     title = "GitHub Repository",
                     subtitle = "View source code",
-                    onClick = { openUrl(context, "https://github.com/$GITHUB_REPO") }
+                    onClick = { onOpenBrowser("https://github.com/$GITHUB_REPO") }
                 )
                 RowDivider()
                 ActionRow(
@@ -233,31 +287,115 @@ fun AboutScreen(
             title = { Text("App Updates", color = NazoTextPrimary) },
             text = {
                 Column {
-                    Text(updateStatus, color = NazoTextSecondary)
-                    if (updateUrl != null) {
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            "Tap \"View on GitHub\" to see what's new and grab the latest build.",
-                            color = NazoTextSecondary,
-                        )
+                    when (val state = updateState) {
+                        is UpdateState.Checking -> Text("Checking GitHub...", color = NazoTextSecondary)
+                        is UpdateState.Available -> {
+                            Text(
+                                "Version ${state.tag} is available!",
+                                color = NazoTextPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                "Release Notes:",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = NazoTextSecondary,
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 150.dp)
+                                    .padding(top = 8.dp)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                Text(
+                                    text = state.releaseNotes.ifBlank { "No release notes provided." },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = NazoTextSecondary,
+                                )
+                            }
+                            Spacer(Modifier.height(16.dp))
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                TextButton(onClick = { onOpenBrowser(state.htmlUrl) }) {
+                                    Text("View on GitHub", color = NazoPrimary)
+                                }
+                                Spacer(Modifier.weight(1f))
+                                if (state.directApkUrl != null) {
+                                    TextButton(onClick = { onDownload(state.directApkUrl) }) {
+                                        Text("Update Now", color = NazoPrimary)
+                                    }
+                                } else {
+                                    TextButton(onClick = { onOpenBrowser(state.htmlUrl) }) {
+                                        Text("Download Manually", color = NazoPrimary)
+                                    }
+                                }
+                            }
+                        }
+                        is UpdateState.UpToDate -> Text("You're on the latest version.", color = NazoTextSecondary)
+                        is UpdateState.Error -> Text("Couldn't check for updates.", color = NazoTextSecondary)
+                        is UpdateState.Idle -> Text("Ready to check for updates.", color = NazoTextSecondary)
+                    }
+
+                    if (updateState !is UpdateState.Checking && updateState !is UpdateState.Available) {
+                        Spacer(Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            TextButton(onClick = {
+                                val found = UpdateDownloader.findApkFiles(context)
+                                val deleted = UpdateDownloader.deleteApkFiles(found)
+                                Toast.makeText(
+                                    context,
+                                    if (found.isEmpty()) "No APK files to clean up"
+                                    else "Deleted $deleted APK file(s)",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            }) {
+                                Text("Clean up APKs", color = NazoTextSecondary)
+                            }
+                            Spacer(Modifier.weight(1f))
+                            TextButton(onClick = { checkForUpdates() }) {
+                                Text(checkLabel, color = NazoPrimary)
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(24.dp))
+                    HorizontalDivider(color = NazoBackground)
+                    Spacer(Modifier.height(16.dp))
+
+                    Text(
+                        "Auto-check frequency",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = NazoTextPrimary,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Box {
+                        TextButton(onClick = { freqExpanded = true }) {
+                            Text(freqLabel(frequency), color = NazoPrimary)
+                        }
+                        DropdownMenu(expanded = freqExpanded, onDismissRequest = { freqExpanded = false }) {
+                            UpdateFrequency.entries.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(freqLabel(option)) },
+                                    onClick = {
+                                        freqExpanded = false
+                                        frequency = option
+                                        UpdatePrefs(context).updateFrequency = option
+                                        UpdateScheduler.apply(context, option)
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             },
-            confirmButton = {
-                if (updateUrl != null) {
-                    TextButton(onClick = { openUrl(context, updateUrl!!); showUpdate = false }) {
-                        Text("View on GitHub", color = NazoPrimary)
-                    }
-                } else {
-                    TextButton(onClick = { checkForUpdates() }, enabled = !checking) {
-                        Text("Check again", color = NazoPrimary)
-                    }
-                }
-            },
+            confirmButton = {},
             dismissButton = {
-                TextButton(onClick = { showUpdate = false }) {
-                    Text("Close", color = NazoTextSecondary)
-                }
+                TextButton(onClick = { showUpdate = false }) { Text("Close", color = NazoTextSecondary) }
             },
         )
     }
@@ -274,6 +412,7 @@ fun AboutScreen(
                     "AndroidX Core KTX — Apache-2.0",
                     "AndroidX Activity Compose — Apache-2.0",
                     "AndroidX Lifecycle — Apache-2.0",
+                    "AndroidX WorkManager — Apache-2.0",
                     "Material Icons Extended — Apache-2.0",
                     "Kotlin stdlib — Apache-2.0",
                     "Local data stored via Android SharedPreferences (framework)",
@@ -298,6 +437,13 @@ fun AboutScreen(
     if (showDev) {
         AboutDevDialog(onDismiss = { showDev = false })
     }
+}
+
+private fun freqLabel(frequency: UpdateFrequency): String = when (frequency) {
+    UpdateFrequency.EVERY_LAUNCH -> "Every Launch"
+    UpdateFrequency.WEEKLY -> "Weekly"
+    UpdateFrequency.BI_WEEKLY -> "Bi-weekly"
+    UpdateFrequency.NEVER -> "Never"
 }
 
 // region Helpers

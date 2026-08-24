@@ -437,6 +437,47 @@ Conventions:
 
 ---
 
+## [2026-08-24 21:30] feat: full auto-update flow (WorkManager check, notification, APK download/install)
+
+- Owner asked to port Shouze's FULL update flow (not just the check + "View on GitHub" stub from the
+  prior commit). Ported faithfully, adapting package/names to Nazo and keeping Nazo's UI styling.
+- NEW files (package `quiz.thaton3app.nazo.data` unless noted):
+  - `UpdateFrequency.kt` — enum EVERY_LAUNCH / WEEKLY / BI_WEEKLY / NEVER (default WEEKLY).
+  - `UpdatePrefs.kt` — SharedPreferences wrapper ("nazo_update_prefs"): get/set updateFrequency +
+    lastNotifiedVersion. (Our app had no settings store for this; AppPrefs was deleted earlier.)
+  - `UpdateScheduler.kt` — WorkManager wiring: every-launch = one-time work; WEEKLY = 7-day periodic;
+    BI_WEEKLY = 14-day periodic; NEVER = cancel. Same logic as Shouze.
+  - `UpdateCheckWorker.kt` — CoroutineWorker: fetches latest release, compares versions, de-dupes via
+    lastNotifiedVersion, respects POST_NOTIFICATIONS on API33+, posts a "Nazo X is available" notification
+    (channel "nazo_updates") that opens the GitHub release on tap.
+  - `UpdateDownloader.kt` — DownloadManager enqueue of the release APK asset + FileProvider install
+    intent + findApkFiles/deleteApkFiles cleanup helpers + `DownloadReceiver` (BroadcastReceiver that
+    triggers install on ACTION_DOWNLOAD_COMPLETE). APK file "nazo-update.apk", prefs "nazo_update_download",
+    authority "${packageName}.fileprovider".
+  - `res/drawable/ic_update_notification.xml` — white download-ish vector for the notification small icon.
+  - `res/xml/file_paths.xml` — `<external-files-path name="apk" path="." />` for the FileProvider.
+- EDITED:
+  - `AndroidManifest.xml` — added `REQUEST_INSTALL_PACKAGES` + `POST_NOTIFICATIONS` perms; added
+    `.data.DownloadReceiver` (DOWNLOAD_COMPLETE) and the `androidx.core.content.FileProvider` provider
+    (authorities `${applicationId}.fileprovider`, `@xml/file_paths`).
+  - `build.gradle.kts` — added `androidx.work:work-runtime-ktx:2.9.1`.
+  - `MainActivity.kt` — on create, `UpdateScheduler.apply(this, UpdatePrefs(this).updateFrequency)` so
+    background checks run per the saved preference.
+  - `ui/screens/AboutScreen.kt` — replaced the stub update dialog with a full state machine
+    (`UpdateState` Idle/Checking/UpToDate/Error/Available). Available state shows release notes + "Update
+    Now" (downloads + auto-install) or "Download Manually" + "View on GitHub". Includes a frequency
+    DropdownMenu (writes UpdatePrefs + re-schedules) and a "Clean up APKs" action. Requests
+    POST_NOTIFICATIONS when the update sheet opens. Licenses list updated to include WorkManager.
+- NOTE for the owner: auto-download/install only works if a GitHub **release asset** ending in `.apk`
+  exists for the repo `ThatOn3Gu7/Nazo` (the worker/About screen read `browser_download_url`). If you
+  publish releases without an APK asset, the app falls back to "Download Manually" (opens GitHub).
+- NOTE: `GITHUB_REPO` still assumed "ThatOn3Gu7/Nazo" (unconfirmed).
+- Files changed: AboutScreen.kt, MainActivity.kt, AndroidManifest.xml, build.gradle.kts, handoff.md +
+  the 5 new Kotlin files + 2 new res files.
+- Agent cannot compile; verified by inspection. Owner to build & test on a device/emulator.
+
+---
+
 ## Prior session (consolidated — implemented before this log existed)
 
 Captured here so a future session has full context. Original action items are in

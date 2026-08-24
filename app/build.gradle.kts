@@ -50,6 +50,8 @@ dependencies {
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion") // For Coroutines support
     ksp("androidx.room:room-compiler:$roomVersion")
+    // WorkManager for background update checks + notifications
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }
