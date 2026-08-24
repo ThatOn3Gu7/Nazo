@@ -201,6 +201,25 @@ Conventions:
   (Naruto/One Piece/Dragon Ball 25 each; many series at 5 each).
 - File: `data/LocalQuestionBank.kt`.
 
+## [2026-08-23 19:10] feat: integrate DeepSeek batch + regroup bank by anime
+
+- You added a large DeepSeek-generated batch (estimated ~1,500). The file actually held
+  **888 genuine `Question(...)` constructors** — the other ~700 `Question(` matches were
+  inside comments/examples in the AI output and were correctly excluded as non-data.
+- **Regrouped the whole bank by anime** (your request): every series now lives in its own
+  contiguous chunk headed by `// ----- <Anime> (n) -----`, so each anime is maintainable
+  in one place. 57 anime chunks total.
+- Validation (quote/paren-aware, comment-skipping):
+  - Bracket/quote balance: 0 errors (whole-file paren depth resolves to 0).
+  - Required fields: all 865 carry the 7 fields.
+  - Correct answer ∈ options: 0 violations.
+  - Duplicates: per-anime dedup removed 23; the 4 remaining exact-text repeats are
+    cross-anime (e.g. "what is the name of the first arc?" under 5 different series) and
+    are anime-specific, so kept.
+- Distribution: Easy 548 / Medium 213 / Hard 97 / Otaku Master 7; 57 distinct anime
+  (Naruto 70, One Piece 63, Dragon Ball 55 … down to 1–10 for many).
+- File: `data/LocalQuestionBank.kt`.
+
 ---
 
 ## Prior session (consolidated — implemented before this log existed)
