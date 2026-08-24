@@ -163,7 +163,7 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
             modifier = Modifier
                 .clip(RoundedCornerShape(50))
                 .background(NazoPillUnselected)
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = 12.dp, vertical = 4.dp),
         ) {
             Text(
                 text = "謎",

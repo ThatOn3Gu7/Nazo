@@ -396,6 +396,11 @@ Conventions:
   sides skinny on the wide logo+title pill. Now uses the SAME padding as the API-key / offline
   badges (`horizontal = 12.dp, vertical = 6.dp`, a 2:1 pill ratio) so it reads balanced. Fonts
   stay 28.sp (kanji) / 26.sp (Nazo).
+- TWEAK (2026-08-24 20:00): trimmed the header pill's vertical padding 6.dp → 4.dp (extract ~2px
+  from top/bottom) since it still read fat. Horizontal stays 12.dp (matches the API-key/offline
+  badges). Alignment note: `HomeHeader` and `ApiKeyBadge` are both direct children of the same
+  content `Column` with `padding(horizontal = 20.dp)`, so their left edges already share the same
+  20.dp inset — they line up. Pill left inset is unchanged.
 
 ---
 
