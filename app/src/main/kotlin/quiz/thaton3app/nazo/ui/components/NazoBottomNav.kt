@@ -3,6 +3,7 @@ package quiz.thaton3app.nazo.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import quiz.thaton3app.nazo.ui.theme.NazoNavBar
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
+import quiz.thaton3app.nazo.ui.components.Haptics
 
 // Confirmed against the mockup pixels: the active tab has NO pill/capsule highlight
 // behind it — active vs inactive is shown purely by icon/label color (dark green vs
@@ -73,12 +75,16 @@ private fun NazoNavItem(
     onClick: () -> Unit,
 ) {
     val tint = if (selected) NazoPrimary else NazoTextSecondary
+    val context = LocalContext.current
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         // Clip to a rounded pill so the long-press ripple is round, not square.
         modifier = Modifier
             .clip(RoundedCornerShape(percent = 50))
-            .clickable(onClick = onClick)
+            .clickable {
+                Haptics.light(context)
+                onClick()
+            }
             .padding(horizontal = 24.dp, vertical = 8.dp),
     ) {
         Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.height(22.dp))

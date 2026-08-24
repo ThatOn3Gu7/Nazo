@@ -504,6 +504,25 @@ Conventions:
 
 ---
 
+## [2026-08-24 23:30] feat: haptic feedback across the app
+
+- Owner wanted haptics (mostly faint "Bzzz", with an escalating timer buzz and a double-buzz on wrong answers). Mirrored Shouze's `HapticsHelper` but built our own amplitude-based helper because we need escalating strengths the generic Compose haptic types can't express.
+- NEW `ui/components/Haptics.kt` — `object Haptics` using the platform `Vibrator` (via `VibratorManager` on API 31+), safe no-op when vibration is unavailable:
+  - `light(context)` — single faint 18ms@45 tap (selection / next / tab / correct answer).
+  - `doubleLight(context)` — two 18ms@45 taps w/ 50ms gap (wrong answer = "Bzzz Bzzz").
+  - `tick(context, amplitude)` — one 22ms tap at a custom amplitude 1..255 (timer escalation).
+  - `strong(context)` — 90ms@200 (final countdown second).
+- `AndroidManifest.xml` — added `android.permission.VIBRATE` (required for `Vibrator.vibrate`).
+- Wired into:
+  - `HomeScreen.kt` — faint buzz on Generate button; on difficulty switch (EASY/MEDIUM/HARD + Otaku Master) and question-count switch (5/10/15) but only when the value actually changes.
+  - `ActiveQuizScreen.kt` — countdown escalation: 5s faint(30) → 4s(~+20%,36) → 3s(~+30% vs prev,47) → 2s(~+40% vs prev,66) → 1s strong(200); correct-answer tap = single faint, wrong-answer tap = double faint; Next/Finish button = faint.
+  - `NazoBottomNav.kt` — faint buzz on tab tap (Home/Settings).
+- NOTE: amplitude numbers (30/36/47/66/200) are first-pass guesses; tune on a real device. Haptics can't be verified in this env.
+- Files: Haptics.kt (new), HomeScreen.kt, ActiveQuizScreen.kt, NazoBottomNav.kt, AndroidManifest.xml, handoff.md.
+- Agent cannot compile; verified by inspection. Owner to build & test on a device.
+
+---
+
 ## Prior session (consolidated — implemented before this log existed)
 
 Captured here so a future session has full context. Original action items are in

@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -29,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.QuizEngine
+import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.ui.theme.*
@@ -47,6 +49,7 @@ fun ActiveQuizScreen(
     var isTimeUp by remember { mutableStateOf(false) }
     val secondsPerQuestion = QuizEngine.specFor(difficulty).secondsPerQuestion
     var remainingSeconds by remember { mutableIntStateOf(secondsPerQuestion) }
+    val context = LocalContext.current
 
     // Lifecycle-safe countdown: one timer per question (keyed on the index). The
     // coroutine auto-cancels when this screen leaves composition, and it stops early
@@ -59,6 +62,15 @@ fun ActiveQuizScreen(
         while (remainingSeconds > 0 && selectedAnswer == null) {
             delay(1000)
             remainingSeconds--
+            // Escalating buzz in the final 5 seconds: faint at 5, then each step a
+            // bit stronger, and a clear strong buzz on the very last second.
+            when (remainingSeconds) {
+                5 -> Haptics.tick(context, 30)
+                4 -> Haptics.tick(context, 36)   // ~20% stronger than the previous
+                3 -> Haptics.tick(context, 47)   // ~30% stronger than the previous
+                2 -> Haptics.tick(context, 66)   // ~40% stronger than the previous
+                1 -> Haptics.strong(context)     // last second — strong buzz
+            }
         }
         if (remainingSeconds == 0 && selectedAnswer == null) {
             isTimeUp = true
@@ -189,7 +201,11 @@ fun ActiveQuizScreen(
                         .clip(RoundedCornerShape(50))
                         .background(bgColor)
                         .border(1.dp, borderColor, RoundedCornerShape(50))
-                        .clickable(enabled = !reveal) { selectedAnswer = optionText }
+                        .clickable(enabled = !reveal) {
+                            if (optionText == question.correctAnswer) Haptics.light(context)
+                            else Haptics.doubleLight(context)
+                            selectedAnswer = optionText
+                        }
                         .padding(horizontal = 20.dp, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -256,6 +272,7 @@ fun ActiveQuizScreen(
                             .clip(RoundedCornerShape(50))
                             .background(NazoPrimary)
                             .clickable { 
+                                Haptics.light(context)
                                 onNextQuestion(isCorrect, selectedAnswer)
                                 selectedAnswer = null // Reset for next question
                             }

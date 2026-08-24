@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -58,6 +59,7 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoErrorBg
 import quiz.thaton3app.nazo.data.LocalQuestionBank
+import quiz.thaton3app.nazo.ui.components.Haptics
 
 enum class Difficulty(val label: String) {
     EASY("Easy"),
@@ -84,6 +86,7 @@ fun HomeScreen(
     // survives navigating between screens; NazoApp persists it with
     // rememberSaveable. Difficulty arrives as its enum name and is re-derived here.
     val difficulty = Difficulty.valueOf(difficultyName)
+    val context = LocalContext.current
 
     Column(
         modifier = Modifier
@@ -118,7 +121,10 @@ fun HomeScreen(
                         text = level.label,
                         selected = difficulty == level,
                         modifier = Modifier.weight(1f),
-                        onClick = { onDifficultyChange(level.name) },
+                        onClick = {
+                            if (difficulty != level) Haptics.light(context)
+                            onDifficultyChange(level.name)
+                        },
                     )
                 }
             }
@@ -126,7 +132,10 @@ fun HomeScreen(
             PillButton(
                 text = Difficulty.OTAKU_MASTER.label,
                 selected = difficulty == Difficulty.OTAKU_MASTER,
-                onClick = { onDifficultyChange(Difficulty.OTAKU_MASTER.name) },
+                onClick = {
+                    if (difficulty != Difficulty.OTAKU_MASTER) Haptics.light(context)
+                    onDifficultyChange(Difficulty.OTAKU_MASTER.name)
+                },
             )
             Spacer(Modifier.height(20.dp))
             SectionLabel("QUESTIONS")
@@ -137,7 +146,10 @@ fun HomeScreen(
                         text = count.toString(),
                         selected = questionCount == count,
                         modifier = Modifier.weight(1f),
-                        onClick = { onQuestionCountChange(count) },
+                        onClick = {
+                            if (questionCount != count) Haptics.light(context)
+                            onQuestionCountChange(count)
+                        },
                     )
                 }
             }
@@ -163,7 +175,7 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
             modifier = Modifier
                 .clip(RoundedCornerShape(50))
                 .background(NazoPillUnselected)
-                .padding(horizontal = 12.dp, vertical = 4.dp),
+                .padding(horizontal = 20.dp, vertical = 10.dp),
         ) {
             Text(
                 text = "謎",
@@ -345,6 +357,7 @@ private fun PillButton(
 
 @Composable
 private fun GenerateButton(offline: Boolean, onClick: () -> Unit) {
+    val context = LocalContext.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
@@ -353,7 +366,10 @@ private fun GenerateButton(offline: Boolean, onClick: () -> Unit) {
             .height(56.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(NazoPrimary)
-            .clickable(onClick = onClick),
+            .clickable {
+                Haptics.light(context)
+                onClick()
+            },
     ) {
         Icon(
             imageVector = Icons.Filled.AutoAwesome,
