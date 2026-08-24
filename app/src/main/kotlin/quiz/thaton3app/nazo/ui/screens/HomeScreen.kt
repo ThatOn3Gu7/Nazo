@@ -42,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
@@ -154,20 +155,15 @@ fun HomeScreen(
 @Composable
 private fun HomeHeader(onSettingsClick: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(NazoPrimary),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.AutoAwesome,
-                contentDescription = null,
-                tint = NazoOnPrimary,
-                modifier = Modifier.size(20.dp),
-            )
-        }
+        // The "Nazo" (謎) kanji stands in for the app logo — shown bare (no background),
+        // a touch larger than the title, and tinted with the theme accent so it reads in
+        // both light and dark themes. Same glyph as the About screen hero.
+        Text(
+            text = "謎",
+            style = MaterialTheme.typography.titleLarge.copy(fontSize = 30.sp),
+            color = NazoPrimary,
+            fontWeight = FontWeight.Bold,
+        )
         Spacer(Modifier.width(12.dp))
         Text(
             text = "Nazo",

@@ -363,6 +363,23 @@ Conventions:
 
 ---
 
+## [2026-08-24 18:40] feat: Home header uses bare "謎" kanji instead of sparkle icon
+
+- Owner: replace the green sparkle (`Icons.Filled.AutoAwesome`) icon that sat in a circle
+  next to the "Nazo" title with the actual kanji used on the About screen hero — `謎`
+  ("Nazo" = mystery/puzzle). Requirements: ONLY the character (no background/box), a touch
+  larger than the "Nazo" title, and theme-adaptive (visible in light + dark).
+- Fix (`ui/screens/HomeScreen.kt` `HomeHeader`): dropped the `Box` + `clip(CircleShape)` +
+  `background(NazoPrimary)` + `AutoAwesome` icon. Now a bare `Text("謎")` with
+  `MaterialTheme.typography.titleLarge.copy(fontSize = 30.sp)`, `color = NazoPrimary`
+  (the accent, which is defined for both themes and adapts), `FontWeight.Bold`. Added the
+  `androidx.compose.ui.unit.sp` import. The "Nazo" title + settings button are unchanged.
+- Files: `ui/screens/HomeScreen.kt`.
+- Note: agent cannot compile; verified by inspection. Owner to confirm the kanji shows bare,
+  larger than the title, and reads in both themes. (Same glyph as `AboutScreen.kt` hero.)
+
+---
+
 ## Prior session (consolidated — implemented before this log existed)
 
 Captured here so a future session has full context. Original action items are in
