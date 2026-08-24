@@ -392,6 +392,10 @@ Conventions:
   the now-unused `androidx.compose.foundation.layout.offset` import.
 - TWEAK (2026-08-24 19:40): slimmed the pill — reduced font sizes (~7-8px): kanji 35→28.sp,
   title 33→26.sp, and tightened pill padding 14.h/8.v → uniform 6.dp so it hugs the logo+title.
+- TWEAK (2026-08-24 19:50): fixed unbalanced pill — uniform 6.dp made top/bottom look fat and
+  sides skinny on the wide logo+title pill. Now uses the SAME padding as the API-key / offline
+  badges (`horizontal = 12.dp, vertical = 6.dp`, a 2:1 pill ratio) so it reads balanced. Fonts
+  stay 28.sp (kanji) / 26.sp (Nazo).
 
 ---
 
