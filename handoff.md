@@ -347,6 +347,19 @@ Conventions:
 
 ---
 
+## [2026-08-24 18:20] fix: "Generate AI Quiz" label drops "AI" when offline
+
+- Owner: the home "Generate" button always read "Generate AI Quiz" even though we aren't
+  using AI in offline mode. Request: offline → "Generate Quiz"; online → keep "Generate AI Quiz".
+- Fix (`ui/screens/HomeScreen.kt`): the primary action button text is now
+  `if (offline) "Generate Quiz" else "Generate AI Quiz"`, reusing the existing `offline`
+  param (which flows from `isOfflineMode` in `NazoApp`).
+- Files: `ui/screens/HomeScreen.kt`.
+- Note: agent cannot compile; verified by inspection. Owner to confirm the label switches
+  with the mode.
+
+---
+
 ## Prior session (consolidated — implemented before this log existed)
 
 Captured here so a future session has full context. Original action items are in

@@ -356,7 +356,7 @@ private fun GenerateButton(onClick: () -> Unit) {
         )
         Spacer(Modifier.width(8.dp))
         Text(
-            text = "Generate AI Quiz",
+            text = if (offline) "Generate Quiz" else "Generate AI Quiz",
             style = MaterialTheme.typography.bodyLarge,
             color = NazoOnPrimary,
             fontWeight = FontWeight.Bold,
