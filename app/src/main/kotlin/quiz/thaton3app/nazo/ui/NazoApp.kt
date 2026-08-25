@@ -31,9 +31,6 @@ import quiz.thaton3app.nazo.ui.components.StartupMode
 import quiz.thaton3app.nazo.ui.screens.*
 import quiz.thaton3app.nazo.ui.theme.NazoTheme
 import quiz.thaton3app.nazo.LauncherIconSwitcher
-import androidx.activity.ComponentActivity
-import android.content.ComponentName
-import android.content.Intent
 
 // Every destination in the app. Wrapping this in AnimatedContent gives us a single,
 // uniform fade-in / fade-out transition between ALL screens (Roadmap #2).
@@ -79,8 +76,8 @@ fun NazoApp() {
 
     // Launcher-icon theme sync: detect an OS-theme/icon mismatch and PROMPT the user
     // (rather than silently swapping the launcher component, which can break the home
-    // shortcut mid-session). On "Relaunch" we swap + recreate; on "Not now" we defer
-    // the swap until the app exits.
+    // shortcut mid-session). On "Update icon" we swap immediately and stay in the app;
+    // on "Not now" we defer the swap until the app exits.
     var iconRelaunchPrompt by remember { mutableStateOf(false) }
     var pendingIconNight by remember { mutableStateOf<Boolean?>(null) }
 
@@ -334,19 +331,13 @@ fun NazoApp() {
                     darkTarget = pendingIconNight!!,
                     onRelaunch = {
                         val night = pendingIconNight!!
+                        // Apply immediately and stay in the app. The alias-only design
+                        // means the running activity is never affected; the launcher icon
+                        // updates in place — no restart, no exit loop.
                         LauncherIconSwitcher.apply(context, night)
                         themePrefs.appliedLauncherNight = if (night) "dark" else "light"
+                        pendingIconNight = null
                         iconRelaunchPrompt = false
-                        // Restart through the now-enabled launcher alias (recreate() would
-                        // exit because we just disabled the alias that launched us).
-                        val pkg = context.packageName
-                        val alias = if (night) "$pkg.LauncherDark" else "$pkg.LauncherLight"
-                        val intent = Intent().apply {
-                            component = ComponentName(pkg, alias)
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                        }
-                        context.startActivity(intent)
-                        (context as? ComponentActivity)?.finish()
                     },
                     onContinue = {
                         iconRelaunchPrompt = false

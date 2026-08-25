@@ -45,9 +45,9 @@ fun IconThemeDialog(
 ) {
     val title = "Update app icon?"
     val body = if (darkTarget) {
-        "Your phone is now in dark mode. Relaunch to switch the icon to the dark-green variant?"
+        "Your phone is now in dark mode. Switch the icon to the dark-green variant?"
     } else {
-        "Your phone is now in light mode. Relaunch to switch the icon to the light-green variant?"
+        "Your phone is now in light mode. Switch the icon to the light-green variant?"
     }
 
     Box(
@@ -101,7 +101,7 @@ fun IconThemeDialog(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "Relaunch",
+                    text = "Update icon",
                     color = NazoOnPrimary,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Bold,

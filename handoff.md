@@ -619,10 +619,12 @@ covered by `BUG_AUDIT.md` + this log).
   current OS theme immediately (user-initiated, expected). The launch-time detection
   in `NazoApp` is gated on this flag.
 
-- **Icon dialog styling + real relaunch (2026-08-24):** Restyled `IconThemeDialog` to
-  the Nazo palette (green header, filled-green "Relaunch", outlined "Not now") matching
-  `OfflineWarningDialog`. Fixed "Relaunch" actually exiting the app: `Activity.recreate()`
-  failed because we'd just disabled the alias that launched the activity, so it now
-  restarts via an explicit `Intent` targeting the newly-enabled `LauncherDark`/
-  `LauncherLight` alias with `FLAG_ACTIVITY_NEW_TASK|CLEAR_TASK`, then finishes the
-  current activity — a clean self-relaunch.
+- **Icon dialog styling + immediate update (2026-08-24):** Restyled `IconThemeDialog` to
+  the Nazo palette (green header, filled-green "Update icon", outlined "Not now") matching
+  `OfflineWarningDialog`. The self-relaunch approach caused a double-exit loop (the freshly
+  restarted instance still saw the swap as not-yet-effective and exited again), so we now
+  **apply the alias swap immediately and stay in the app** — the alias-only design means
+  the running `MainActivity` is never affected, and the launcher icon updates in place with
+  no restart. "Not now" still defers the swap until the app exits (via `DisposableEffect`
+  onDispose). The only known caveat is a pinned HOME shortcut pointing at the old alias may
+  need re-pinning (inherent dynamic-icon limitation).
