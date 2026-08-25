@@ -645,7 +645,11 @@ covered by `BUG_AUDIT.md` + this log).
   confirmation dialog ("Quit quiz?" / "Do you really want to quit? Your progress in this quiz
   will be lost.") that matches the app palette, reusing `OfflineWarningDialog`'s scrim+card
   style (NazoSurface card, red "!" circle, NazoTextPrimary title, NazoTextSecondary body,
-  and a green filled **Stay** + red-outlined **Quit** row). Implemented as a custom
-  `androidx.compose.ui.window.Dialog` (not the default Material `AlertDialog`, which ignores
-  our theme). `onSettingsClick` param dropped from `ActiveQuizScreen` and its caller in
-  `NazoApp`.
+  and a green filled **Stay** + red-outlined **Quit** row). Implemented as a plain overlay
+  `Box` (the root is now a `Box` whose first child is the quiz content `Column` and whose
+  second child is the scrim `Box` when `showQuitDialog` is true) — exactly the same approach
+  as `OfflineWarningDialog`, so the scrim blocks touches behind it, buttons get the ripple,
+  and it extends under the status bar. Avoided `androidx.compose.ui.window.Dialog` (its
+  default window background caused a stray outline) and the default Material `AlertDialog`
+  (ignores our theme). `onSettingsClick` param dropped from `ActiveQuizScreen` and its caller
+  in `NazoApp`.

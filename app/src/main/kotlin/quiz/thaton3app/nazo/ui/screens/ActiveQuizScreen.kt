@@ -28,7 +28,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.delay
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.QuizEngine
@@ -82,15 +81,16 @@ fun ActiveQuizScreen(
     val reveal = isAnswered || isTimeUp
     val isCorrect = selectedAnswer == question.correctAnswer
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(NazoBackground)
-            .statusBarsPadding()
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
-                .weight(1f)
+                .fillMaxSize()
+                .background(NazoBackground)
+                .statusBarsPadding()
+        ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
         ) {
@@ -289,10 +289,10 @@ fun ActiveQuizScreen(
             }
             Spacer(Modifier.height(32.dp))
         }
+        }
 
         if (showQuitDialog) {
-            Dialog(onDismissRequest = { showQuitDialog = false }) {
-                Box(
+            Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(Color.Black.copy(alpha = 0.5f))
@@ -379,7 +379,6 @@ fun ActiveQuizScreen(
                         }
                     }
                 }
-            }
         }
     }
 }
