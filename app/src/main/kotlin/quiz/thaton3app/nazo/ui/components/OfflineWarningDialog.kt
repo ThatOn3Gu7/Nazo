@@ -29,7 +29,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.animation.core.tween
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
@@ -86,8 +89,10 @@ fun OfflineWarningDialog(
 
     val context = LocalContext.current
 
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { visible = true }
     AnimatedVisibility(
-        visible = remember { MutableTransitionState(false) }.apply { targetState = true },
+        visible = visible,
         enter = fadeIn(animationSpec = tween(durationMillis = 220)),
         modifier = Modifier.fillMaxSize(),
     ) {
