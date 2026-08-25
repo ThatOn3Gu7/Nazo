@@ -693,6 +693,14 @@ covered by `BUG_AUDIT.md` + this log).
     `NazoBottomNav` structure as `SettingsScreen`, including the 28dp top spacer before the header.
     The header now lines up exactly and the enter transition behaves like the other sub-menus.
 
+  - **AppearanceScreen residual right-shift (fixed):** After the Scaffold removal the header was
+    still ~4dp to the right vs `SettingsScreen` because the content `Column` used
+    `padding(horizontal = 24.dp)` while `SettingsScreen` (the screen Appearance is launched from)
+    uses `20.dp`. That put the back arrow a few px right of where it sat on Settings, so the
+    crossfade didn't line up. Changed AppearanceScreen's content horizontal padding to `20.dp` to
+    match exactly — now the arrow occupies the identical spot, so the transition reads as a
+    seamless replace of the Settings header rather than a shift.
+
   - **OfflineWarningDialog entrance animation (fixed properly):** The first attempt used
     `AnimatedVisibility(visible = true)` — but a constant `true` initializes the transition state
     to `true`, so `currentState == targetState` and NO enter animation ever runs (it just appeared
