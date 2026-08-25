@@ -1,6 +1,5 @@
 package quiz.thaton3app.nazo
 
-import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -27,12 +26,6 @@ class MainActivity : ComponentActivity() {
         super.onStop()
         // Don't swap during a config-change-driven restart (e.g. rotation).
         if (isChangingConfigurations) return
-        syncIconToOsTheme()
-    }
-
-    override fun onTaskRemoved(rootIntent: Intent?) {
-        super.onTaskRemoved(rootIntent)
-        // Backup trigger in case onStop didn't run before the task was killed.
         syncIconToOsTheme()
     }
 
