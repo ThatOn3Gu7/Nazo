@@ -60,6 +60,7 @@ fun AppearanceScreen(
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
 ) {
+    val context = LocalContext.current
     var compactViewChecked by remember { mutableStateOf(true) }
     var cardStyleChecked by remember { mutableStateOf(false) }
     var iconFollowsOsThemeChecked by remember { mutableStateOf(iconFollowsOsTheme) }
@@ -117,7 +118,7 @@ fun AppearanceScreen(
                 title = "System Default",
                 subtitle = "Follow device setting",
                 isSelected = currentMode == ThemeMode.System.mode,
-                onClick = { onModeChange(ThemeMode.System.mode) }
+                onClick = { Haptics.soft(context); onModeChange(ThemeMode.System.mode) }
             )
             Spacer(modifier = Modifier.height(8.dp))
             ThemeModeRow(
@@ -125,7 +126,7 @@ fun AppearanceScreen(
                 title = "Light",
                 subtitle = "Mint daylight surface",
                 isSelected = currentMode == ThemeMode.Light.mode,
-                onClick = { onModeChange(ThemeMode.Light.mode) }
+                onClick = { Haptics.soft(context); onModeChange(ThemeMode.Light.mode) }
             )
             Spacer(modifier = Modifier.height(8.dp))
             ThemeModeRow(
@@ -133,7 +134,7 @@ fun AppearanceScreen(
                 title = "Dark",
                 subtitle = "Deep forest surface",
                 isSelected = currentMode == ThemeMode.Dark.mode,
-                onClick = { onModeChange(ThemeMode.Dark.mode) }
+                onClick = { Haptics.soft(context); onModeChange(ThemeMode.Dark.mode) }
             )
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -156,7 +157,7 @@ fun AppearanceScreen(
                         ColorAccentCircle(
                             color = accent.color,
                             isSelected = currentAccent == accent.accentName,
-                            onClick = { onAccentChange(accent.accentName) }
+                            onClick = { Haptics.soft(context); onAccentChange(accent.accentName) }
                         )
                     }
                 }

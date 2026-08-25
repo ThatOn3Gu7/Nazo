@@ -661,6 +661,12 @@ covered by `BUG_AUDIT.md` + this log).
     `Haptics.light`.
   - `AppearanceScreen.LayoutToggleRow`: every toggle now fires `Haptics.soft` (wrapped the
     `onCheckedChange` in a `trigger` lambda so both the row tap and the `Switch` haptic once).
+  - Bumped `Haptics.soft` from `oneShot(22,130)` to `oneShot(35,200)` — the original was too
+    weak to feel (back arrows + toggles reported no vibration). `light` (50,255) unchanged, so
+    buttons still read stronger than soft.
+  - Added `Haptics.soft` to the in-app **theme** selection in `AppearanceScreen`: the three
+    `ThemeModeRow` options (System/Light/Dark) and the `ColorAccentCircle` accents now fire a
+    soft haptic on change (captured `val context = LocalContext.current` at the screen level).
   - All 7 back-arrow `IconButton`s (Appearance, Settings, ReviewAnswers, Statistics,
     AiProvider, About, BackupRestore) now fire `Haptics.soft` before `onBackClick()`.
     Because `LocalContext.current` is a `@Composable` call and can't run inside the plain
