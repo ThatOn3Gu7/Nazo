@@ -27,7 +27,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.VpnKey
-import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.SignalWifiOff
 import androidx.compose.ui.platform.LocalContext
 import quiz.thaton3app.nazo.ui.components.Haptics
 import androidx.compose.material3.HorizontalDivider
@@ -97,7 +97,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(10.dp))
             SettingsCard {
                 SettingsSwitchRow(
-                    icon = Icons.Filled.Wifi,
+                    icon = Icons.Filled.SignalWifiOff,
                     title = "Offline mode",
                     subtitle = "Use the local question library only — no API calls",
                     checked = forceOffline,

@@ -668,8 +668,9 @@ covered by `BUG_AUDIT.md` + this log).
     `ThemeModeRow` options (System/Light/Dark) and the `ColorAccentCircle` accents now fire a
     soft haptic on change (captured `val context = LocalContext.current` at the screen level).
   - **SettingsScreen offline-mode toggle:**
-    - Icon changed from `Icons.Filled.VpnKey` to `Icons.Filled.Wifi` so it no longer collides
-      with the AI Provider row (which keeps `VpnKey`). Added the `Wifi` icon import.
+    - Icon changed from `Icons.Filled.VpnKey` to `Icons.Filled.SignalWifiOff` (Wi-Fi with a
+      slash through it) so it no longer collides with the AI Provider row (keeps `VpnKey`) and
+      reads clearly as "offline / no network". Added the `SignalWifiOff` icon import.
     - `SettingsSwitchRow` now fires `Haptics.soft` on toggle (wrapped `onCheckedChange` in a
       `trigger` lambda, same pattern as `LayoutToggleRow`). Only the offline-mode row uses this
       composable, so the haptic is scoped to it.
