@@ -251,7 +251,6 @@ fun NazoApp() {
                         difficulty = quizDifficulty,
                         onNextQuestion = { isCorrect, selected -> answer(isCorrect, selected) },
                         onCloseClick = { currentScreen = Screen.Home },
-                        onSettingsClick = { currentScreen = Screen.Settings },
                     )
 
                     Screen.Results -> QuizCompleteScreen(

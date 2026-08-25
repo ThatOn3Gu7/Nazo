@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -31,8 +32,6 @@ import kotlinx.coroutines.delay
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.QuizEngine
 import quiz.thaton3app.nazo.ui.components.Haptics
-import quiz.thaton3app.nazo.ui.components.NazoBottomNav
-import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.ui.theme.*
 
 @Composable
@@ -43,13 +42,13 @@ fun ActiveQuizScreen(
     difficulty: String = "Medium",
     onNextQuestion: (Boolean, String?) -> Unit,
     onCloseClick: () -> Unit,
-    onSettingsClick: () -> Unit = {},
 ) {
     var selectedAnswer by remember { mutableStateOf<String?>(null) }
     var isTimeUp by remember { mutableStateOf(false) }
     val secondsPerQuestion = QuizEngine.specFor(difficulty).secondsPerQuestion
     var remainingSeconds by remember { mutableIntStateOf(secondsPerQuestion) }
     val context = LocalContext.current
+    var showQuitDialog by remember { mutableStateOf(false) }
 
     // Lifecycle-safe countdown: one timer per question (keyed on the index). The
     // coroutine auto-cancels when this screen leaves composition, and it stops early
@@ -99,7 +98,7 @@ fun ActiveQuizScreen(
             // Header with Progress
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
-                    onClick = onCloseClick,
+                    onClick = { showQuitDialog = true },
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
@@ -289,7 +288,57 @@ fun ActiveQuizScreen(
             }
             Spacer(Modifier.height(32.dp))
         }
-        NazoBottomNav(selected = NazoTab.Home, onHomeClick = onCloseClick, onSettingsClick = onSettingsClick)
+
+        if (showQuitDialog) {
+            AlertDialog(
+                onDismissRequest = { showQuitDialog = false },
+                containerColor = NazoSurface,
+                titleContentColor = NazoTextPrimary,
+                textContentColor = NazoTextSecondary,
+                title = {
+                    Text(
+                        text = "Quit quiz?",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                },
+                text = {
+                    Text(
+                        text = "Do you really want to quit? Your progress in this quiz will be lost.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                },
+                dismissButton = {
+                    Box(
+                        modifier = Modifier
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(NazoPrimary)
+                            .clickable { showQuitDialog = false }
+                            .padding(horizontal = 22.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("Stay", color = NazoOnPrimary, fontWeight = FontWeight.Bold)
+                    }
+                },
+                confirmButton = {
+                    Box(
+                        modifier = Modifier
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .border(1.5.dp, NazoError, RoundedCornerShape(14.dp))
+                            .clickable {
+                                showQuitDialog = false
+                                onCloseClick()
+                            }
+                            .padding(horizontal = 22.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("Quit", color = NazoError, fontWeight = FontWeight.Bold)
+                    }
+                },
+            )
+        }
     }
 }
 
