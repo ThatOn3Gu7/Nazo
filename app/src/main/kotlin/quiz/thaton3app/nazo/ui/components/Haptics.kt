@@ -43,6 +43,9 @@ object Haptics {
     /** Baseline selection tap — clearly felt (was far too weak before). */
     fun light(context: Context) = oneShot(context, 50, 255)
 
+    /** Softer, shorter tap — for toggles and navigation (lighter than [light]). */
+    fun soft(context: Context) = oneShot(context, 22, 130)
+
     /** Two quick taps — signals a wrong answer ("Bzzz Bzzz"). */
     fun doubleLight(context: Context) {
         val v = vibrator(context) ?: return

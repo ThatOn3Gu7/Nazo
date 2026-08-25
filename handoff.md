@@ -653,3 +653,15 @@ covered by `BUG_AUDIT.md` + this log).
   default window background caused a stray outline) and the default Material `AlertDialog`
   (ignores our theme). `onSettingsClick` param dropped from `ActiveQuizScreen` and its caller
   in `NazoApp`.
+
+- **Haptic feedback pass (2026-08-25):** Added a `soft` haptic to `Haptics`
+  (`oneShot(22ms, 130)` — gentler than `light`) for toggles and navigation. Applied:
+  - `ActiveQuizScreen`: X button, plus both quit-dialog buttons (Stay/Quit) use `Haptics.light`.
+  - `OfflineWarningDialog`: its single button (both OFFLINE/ONLINE modes) now fires
+    `Haptics.light`.
+  - `AppearanceScreen.LayoutToggleRow`: every toggle now fires `Haptics.soft` (wrapped the
+    `onCheckedChange` in a `trigger` lambda so both the row tap and the `Switch` haptic once).
+  - All 7 back-arrow `IconButton`s (Appearance, Settings, ReviewAnswers, Statistics,
+    AiProvider, About, BackupRestore) now fire `Haptics.soft` before `onBackClick()`.
+  Each touched screen got `import androidx.compose.ui.platform.LocalContext` +
+  `import quiz.thaton3app.nazo.ui.components.Haptics` as needed.

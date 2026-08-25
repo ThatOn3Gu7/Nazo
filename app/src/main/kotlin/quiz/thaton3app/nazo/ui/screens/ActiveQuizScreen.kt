@@ -99,7 +99,7 @@ fun ActiveQuizScreen(
             // Header with Progress
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
-                    onClick = { showQuitDialog = true },
+                    onClick = { Haptics.light(context); showQuitDialog = true },
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
@@ -346,8 +346,8 @@ fun ActiveQuizScreen(
                                     .weight(1f)
                                     .height(54.dp)
                                     .clip(RoundedCornerShape(16.dp))
-                                    .background(NazoPrimary)
-                                    .clickable { showQuitDialog = false },
+                                .background(NazoPrimary)
+                                .clickable { Haptics.light(context); showQuitDialog = false },
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(
@@ -362,11 +362,12 @@ fun ActiveQuizScreen(
                                     .weight(1f)
                                     .height(54.dp)
                                     .clip(RoundedCornerShape(16.dp))
-                                    .border(1.5.dp, NazoError, RoundedCornerShape(16.dp))
-                                    .clickable {
-                                        showQuitDialog = false
-                                        onCloseClick()
-                                    },
+                                .border(1.5.dp, NazoError, RoundedCornerShape(16.dp))
+                                .clickable {
+                                    Haptics.light(context)
+                                    showQuitDialog = false
+                                    onCloseClick()
+                                },
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(

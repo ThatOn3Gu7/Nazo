@@ -23,11 +23,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.ui.theme.*
@@ -71,7 +73,7 @@ fun AppearanceScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
-                    onClick = onBackClick,
+                    onClick = { Haptics.soft(LocalContext.current); onBackClick() },
                     modifier = Modifier
                         .background(NazoSurface, CircleShape)
                         .size(40.dp)
@@ -347,10 +349,15 @@ private fun LayoutToggleRow(
     isChecked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    val context = LocalContext.current
+    val trigger: (Boolean) -> Unit = { value ->
+        Haptics.soft(context)
+        onCheckedChange(value)
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onCheckedChange(!isChecked) }
+            .clickable { trigger(!isChecked) }
             .padding(horizontal = 20.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -366,12 +373,12 @@ private fun LayoutToggleRow(
                 color = NazoTextSecondary
             )
         }
-        
+
         Spacer(modifier = Modifier.width(16.dp))
-        
+
         Switch(
             checked = isChecked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = trigger,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
                 checkedTrackColor = NazoDarkCard,

@@ -1,5 +1,8 @@
 package quiz.thaton3app.nazo.ui.screens
 
+import androidx.compose.ui.platform.LocalContext
+import quiz.thaton3app.nazo.ui.components.Haptics
+
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -739,7 +742,7 @@ private fun sendFeedback(context: android.content.Context) {
 private fun ScreenHeader(title: String, onBackClick: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(
-            onClick = onBackClick,
+            onClick = { Haptics.soft(LocalContext.current); onBackClick() },
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)

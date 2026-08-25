@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -31,6 +32,7 @@ import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoSurface
 import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
+import quiz.thaton3app.nazo.ui.components.Haptics
 
 enum class StartupMode { OFFLINE, ONLINE }
 
@@ -76,6 +78,8 @@ fun OfflineWarningDialog(
     // Both modes: the scrim consumes clicks and does nothing (shows the press
     // ripple, blocks the app behind). The only way forward is the button.
     val scrimClick: () -> Unit = {}
+
+    val context = LocalContext.current
 
     Box(
         modifier = Modifier
@@ -127,8 +131,11 @@ fun OfflineWarningDialog(
                     .fillMaxWidth()
                     .height(54.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(NazoPrimary)
-                    .clickable(onClick = if (isOffline) onGoOffline else onContinue),
+                .background(NazoPrimary)
+                .clickable {
+                    Haptics.light(context)
+                    if (isOffline) onGoOffline() else onContinue()
+                },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
