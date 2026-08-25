@@ -619,6 +619,16 @@ covered by `BUG_AUDIT.md` + this log).
   current OS theme immediately (user-initiated, expected). The launch-time detection
   in `NazoApp` is gated on this flag.
 
+- **Silent icon swap on app background (2026-08-25):** Replaced the in-app prompt/relaunch
+  entirely. The launcher icon now updates **silently when the app is backgrounded** — no
+  dialog, no exit, no crash loop. `MainActivity.onStop()` (guarded by `isChangingConfigurations`
+  so rotation doesn't trigger it) and `onTaskRemoved()` call `syncIconToOsTheme()`, which
+  swaps the alias only if `ThemePreferences.iconFollowsOsTheme` is on AND there's an
+  OS-theme/icon mismatch. Swapping is never done while the app is visible, because disabling
+  the alias that launched the current session kills that task (the ~1s close seen before).
+  The Appearance "Match icon to system theme" toggle just persists the preference (the swap
+  happens on next background). Removed `IconThemeDialog` and all prompt state from `NazoApp`.
+
 - **Icon dialog styling + immediate update (2026-08-24):** Restyled `IconThemeDialog` to
   the Nazo palette (green header, filled-green "Update icon", outlined "Not now") matching
   `OfflineWarningDialog`. The self-relaunch approach caused a double-exit loop (the freshly
