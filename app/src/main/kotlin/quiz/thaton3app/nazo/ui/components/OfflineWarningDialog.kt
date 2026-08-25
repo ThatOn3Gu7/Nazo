@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.scaleIn
+import androidx.compose.animation.MutableTransitionState
 import androidx.compose.animation.core.tween
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
@@ -86,8 +87,8 @@ fun OfflineWarningDialog(
     val context = LocalContext.current
 
     AnimatedVisibility(
-        visible = true,
-        enter = fadeIn(animationSpec = tween(durationMillis = 200)),
+        visible = remember { MutableTransitionState(false) }.apply { targetState = true },
+        enter = fadeIn(animationSpec = tween(durationMillis = 220)),
         modifier = Modifier.fillMaxSize(),
     ) {
         Box(
@@ -97,20 +98,15 @@ fun OfflineWarningDialog(
                 .clickable(onClick = scrimClick),
             contentAlignment = Alignment.Center,
         ) {
-            AnimatedVisibility(
-                visible = true,
-                enter = fadeIn(animationSpec = tween(durationMillis = 200)) +
-                        scaleIn(initialScale = 0.92f, animationSpec = tween(durationMillis = 220)),
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 340.dp)
+                    .clip(RoundedCornerShape(32.dp))
+                    .background(NazoSurface)
+                    .border(1.5.dp, NazoTextSecondary.copy(alpha = 0.3f), RoundedCornerShape(32.dp))
+                    .padding(28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Column(
-                    modifier = Modifier
-                        .widthIn(max = 340.dp)
-                        .clip(RoundedCornerShape(32.dp))
-                        .background(NazoSurface)
-                        .border(1.5.dp, NazoTextSecondary.copy(alpha = 0.3f), RoundedCornerShape(32.dp))
-                        .padding(28.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
             Box(
                 modifier = Modifier
                     .size(64.dp)
@@ -160,7 +156,6 @@ fun OfflineWarningDialog(
                 )
             }
         }
-            }
     }
     }
 }

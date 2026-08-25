@@ -683,11 +683,24 @@ covered by `BUG_AUDIT.md` + this log).
     AppearanceScreen to match exactly (swapped the `rounded` import for `filled`, fixed tint,
     added `size(20.dp)`, reordered the modifier). The arrow now reads identically across all sub-menus.
 
-  - **OfflineWarningDialog entrance animation:** It previously appeared instantly (full-screen
-    scrim + card popped in with no transition). Wrapped it in `AnimatedVisibility`: the outer layer
-    fades the scrim in (`fadeIn` 200ms) and the inner card does a `fadeIn` + `scaleIn` (from 0.92)
-    pop over ~220ms. The dialog composable is only mounted when shown, so the enter transition
-    plays on first composition — no more abrupt/instant flash over the home screen.
+  - **AppearanceScreen header push (fixed):** After the arrow-icon fix, the header was still
+    sitting a few px higher than every other sub-menu. Root cause: AppearanceScreen was the ONLY
+    screen built with a `Scaffold(topBar = { Row(padding(top = 48.dp, ...)) })` — every other
+    sub-menu uses a plain `Column(Modifier.statusBarsPadding())` + inner scroll `Column`, which
+    positions the header consistently. The manual `top = 48.dp` (vs `statusBarsPadding()` + the
+    standard 28dp spacer others use) is what shoved the arrow/title up. Removed the `Scaffold` and
+    rebuilt the screen with the same `statusBarsPadding` + `weight(1f)` content `Column` +
+    `NazoBottomNav` structure as `SettingsScreen`, including the 28dp top spacer before the header.
+    The header now lines up exactly and the enter transition behaves like the other sub-menus.
+
+  - **OfflineWarningDialog entrance animation (fixed properly):** The first attempt used
+    `AnimatedVisibility(visible = true)` — but a constant `true` initializes the transition state
+    to `true`, so `currentState == targetState` and NO enter animation ever runs (it just appeared
+    instantly). Root cause fixed by driving it with `remember { MutableTransitionState(false) }
+    .apply { targetState = true }`, which animates false→true on first composition. Also switched
+    to a pure `fadeIn(tween(220ms))` to match the app's existing fade convention (the earlier
+    scale-pop was dropped). The scrim + card now fade in smoothly over the home screen instead of
+    flashing instantly.
   - All 7 back-arrow `IconButton`s (Appearance, Settings, ReviewAnswers, Statistics,
     AiProvider, About, BackupRestore) now fire `Haptics.soft` before `onBackClick()`.
     Because `LocalContext.current` is a `@Composable` call and can't run inside the plain

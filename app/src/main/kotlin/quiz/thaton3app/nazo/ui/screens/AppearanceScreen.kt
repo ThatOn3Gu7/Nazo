@@ -65,13 +65,21 @@ fun AppearanceScreen(
     var cardStyleChecked by remember { mutableStateOf(false) }
     var iconFollowsOsThemeChecked by remember { mutableStateOf(iconFollowsOsTheme) }
 
-    Scaffold(
-        containerColor = NazoBackground,
-        topBar = {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(NazoBackground)
+            .statusBarsPadding()
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+        ) {
+            Spacer(modifier = Modifier.height(28.dp))
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 48.dp, start = 16.dp, end = 16.dp, bottom = 16.dp),
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
@@ -95,22 +103,7 @@ fun AppearanceScreen(
                     color = NazoTextPrimary
                 )
             }
-        },
-        bottomBar = {
-            NazoBottomNav(
-                selected = NazoTab.Settings,
-                onHomeClick = onHomeClick,
-                onSettingsClick = onBackClick,
-            )
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp)
-        ) {
+            Spacer(modifier = Modifier.height(20.dp))
             
             // --- THEME MODE SECTION ---
             SectionHeader("THEME MODE")
@@ -235,6 +228,11 @@ fun AppearanceScreen(
             
             Spacer(modifier = Modifier.height(40.dp)) // bottom padding before nav
         }
+        NazoBottomNav(
+            selected = NazoTab.Settings,
+            onHomeClick = onHomeClick,
+            onSettingsClick = onBackClick,
+        )
     }
 }
 
