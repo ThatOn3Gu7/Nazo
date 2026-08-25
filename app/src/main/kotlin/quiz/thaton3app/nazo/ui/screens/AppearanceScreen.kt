@@ -9,7 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.DesktopMac
 import androidx.compose.material.icons.outlined.Home
@@ -77,13 +77,15 @@ fun AppearanceScreen(
                 IconButton(
                     onClick = rememberHapticBack(onBackClick),
                     modifier = Modifier
-                        .background(NazoSurface, CircleShape)
                         .size(40.dp)
+                        .clip(CircleShape)
+                        .background(NazoSurface),
                 ) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
-                        tint = NazoTextPrimary
+                        tint = NazoTextSecondary,
+                        modifier = Modifier.size(20.dp),
                     )
                 }
                 Spacer(modifier = Modifier.width(16.dp))

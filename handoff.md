@@ -674,6 +674,20 @@ covered by `BUG_AUDIT.md` + this log).
     - `SettingsSwitchRow` now fires `Haptics.soft` on toggle (wrapped `onCheckedChange` in a
       `trigger` lambda, same pattern as `LayoutToggleRow`). Only the offline-mode row uses this
       composable, so the haptic is scoped to it.
+
+  - **AppearanceScreen back-arrow mismatch (fixed):** It was the only sub-menu screen using
+    `Icons.AutoMirrored.Rounded.ArrowBack` with `tint = NazoTextPrimary` and no icon size (24dp).
+    Every other sub-menu (Settings/Statistics/AiProvider/About/BackupRestore/ReviewAnswers) uses
+    `Filled.ArrowBack`, `tint = NazoTextSecondary`, `size(20.dp)`, and the
+    `.size(40.dp).clip(CircleShape).background(NazoSurface)` IconButton modifier. Changed
+    AppearanceScreen to match exactly (swapped the `rounded` import for `filled`, fixed tint,
+    added `size(20.dp)`, reordered the modifier). The arrow now reads identically across all sub-menus.
+
+  - **OfflineWarningDialog entrance animation:** It previously appeared instantly (full-screen
+    scrim + card popped in with no transition). Wrapped it in `AnimatedVisibility`: the outer layer
+    fades the scrim in (`fadeIn` 200ms) and the inner card does a `fadeIn` + `scaleIn` (from 0.92)
+    pop over ~220ms. The dialog composable is only mounted when shown, so the enter transition
+    plays on first composition — no more abrupt/instant flash over the home screen.
   - All 7 back-arrow `IconButton`s (Appearance, Settings, ReviewAnswers, Statistics,
     AiProvider, About, BackupRestore) now fire `Haptics.soft` before `onBackClick()`.
     Because `LocalContext.current` is a `@Composable` call and can't run inside the plain

@@ -26,6 +26,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.core.tween
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
@@ -81,22 +85,32 @@ fun OfflineWarningDialog(
 
     val context = LocalContext.current
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.5f))
-            .clickable(onClick = scrimClick),
-        contentAlignment = Alignment.Center,
+    AnimatedVisibility(
+        visible = true,
+        enter = fadeIn(animationSpec = tween(durationMillis = 200)),
+        modifier = Modifier.fillMaxSize(),
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .widthIn(max = 340.dp)
-                .clip(RoundedCornerShape(32.dp))
-                .background(NazoSurface)
-                .border(1.5.dp, NazoTextSecondary.copy(alpha = 0.3f), RoundedCornerShape(32.dp))
-                .padding(28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .clickable(onClick = scrimClick),
+            contentAlignment = Alignment.Center,
         ) {
+            AnimatedVisibility(
+                visible = true,
+                enter = fadeIn(animationSpec = tween(durationMillis = 200)) +
+                        scaleIn(initialScale = 0.92f, animationSpec = tween(durationMillis = 220)),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 340.dp)
+                        .clip(RoundedCornerShape(32.dp))
+                        .background(NazoSurface)
+                        .border(1.5.dp, NazoTextSecondary.copy(alpha = 0.3f), RoundedCornerShape(32.dp))
+                        .padding(28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
             Box(
                 modifier = Modifier
                     .size(64.dp)
@@ -146,5 +160,7 @@ fun OfflineWarningDialog(
                 )
             }
         }
+            }
+    }
     }
 }
