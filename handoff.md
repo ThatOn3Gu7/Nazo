@@ -663,5 +663,8 @@ covered by `BUG_AUDIT.md` + this log).
     `onCheckedChange` in a `trigger` lambda so both the row tap and the `Switch` haptic once).
   - All 7 back-arrow `IconButton`s (Appearance, Settings, ReviewAnswers, Statistics,
     AiProvider, About, BackupRestore) now fire `Haptics.soft` before `onBackClick()`.
-  Each touched screen got `import androidx.compose.ui.platform.LocalContext` +
-  `import quiz.thaton3app.nazo.ui.components.Haptics` as needed.
+    Because `LocalContext.current` is a `@Composable` call and can't run inside the plain
+    `onClick` lambda, this is done via a new `rememberHapticBack(onBack)` composable helper
+    in `Haptics.kt` that captures the context in Composable scope. Each touched screen got
+    `import quiz.thaton3app.nazo.ui.components.rememberHapticBack` (and dropped the now-unused
+    `LocalContext`/`Haptics` imports).

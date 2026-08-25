@@ -1,7 +1,6 @@
 package quiz.thaton3app.nazo.ui.screens
 
-import androidx.compose.ui.platform.LocalContext
-import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -68,7 +67,7 @@ fun ReviewAnswersScreen(
             Spacer(Modifier.height(28.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
-                    onClick = { Haptics.soft(LocalContext.current); onBackClick() },
+                    onClick = rememberHapticBack(onBackClick),
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)

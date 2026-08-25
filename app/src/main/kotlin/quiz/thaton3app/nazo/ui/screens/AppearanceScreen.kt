@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.ui.theme.*
@@ -73,7 +74,7 @@ fun AppearanceScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
-                    onClick = { Haptics.soft(LocalContext.current); onBackClick() },
+                    onClick = rememberHapticBack(onBackClick),
                     modifier = Modifier
                         .background(NazoSurface, CircleShape)
                         .size(40.dp)

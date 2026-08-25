@@ -5,6 +5,9 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 
 /**
  * Amplitude-based haptics. We use the platform [Vibrator] (not Compose's
@@ -68,4 +71,12 @@ object Haptics {
 
     /** Strong buzz when time runs out — 100% strength for ~130ms. */
     fun timeUp(context: Context) = oneShot(context, 130, 255)
+}
+
+/** Returns an [onBack] lambda that fires a soft haptic before navigating back.
+ *  Must be called from a Composable scope (it reads [LocalContext]). */
+@Composable
+fun rememberHapticBack(onBack: () -> Unit): () -> Unit {
+    val context = LocalContext.current
+    return remember(onBack) { { Haptics.soft(context); onBack() } }
 }
