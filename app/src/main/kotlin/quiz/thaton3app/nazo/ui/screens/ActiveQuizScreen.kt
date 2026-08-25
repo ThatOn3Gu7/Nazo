@@ -13,7 +13,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.outlined.Lightbulb
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -28,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.delay
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.QuizEngine
@@ -290,54 +290,95 @@ fun ActiveQuizScreen(
         }
 
         if (showQuitDialog) {
-            AlertDialog(
-                onDismissRequest = { showQuitDialog = false },
-                containerColor = NazoSurface,
-                titleContentColor = NazoTextPrimary,
-                textContentColor = NazoTextSecondary,
-                title = {
-                    Text(
-                        text = "Quit quiz?",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                    )
-                },
-                text = {
-                    Text(
-                        text = "Do you really want to quit? Your progress in this quiz will be lost.",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                },
-                dismissButton = {
-                    Box(
+            Dialog(onDismissRequest = { showQuitDialog = false }) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.5f))
+                        .clickable { },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(
                         modifier = Modifier
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(NazoPrimary)
-                            .clickable { showQuitDialog = false }
-                            .padding(horizontal = 22.dp),
-                        contentAlignment = Alignment.Center,
+                            .widthIn(max = 340.dp)
+                            .clip(RoundedCornerShape(32.dp))
+                            .background(NazoSurface)
+                            .border(1.5.dp, NazoTextSecondary.copy(alpha = 0.3f), RoundedCornerShape(32.dp))
+                            .padding(28.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Text("Stay", color = NazoOnPrimary, fontWeight = FontWeight.Bold)
-                    }
-                },
-                confirmButton = {
-                    Box(
-                        modifier = Modifier
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .border(1.5.dp, NazoError, RoundedCornerShape(14.dp))
-                            .clickable {
-                                showQuitDialog = false
-                                onCloseClick()
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(CircleShape)
+                                .background(NazoError),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "!",
+                                color = NazoOnPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 34.sp,
+                            )
+                        }
+                        Spacer(Modifier.height(18.dp))
+                        Text(
+                            text = "Quit quiz?",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = NazoTextPrimary,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = "Do you really want to quit? Your progress in this quiz will be lost.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = NazoTextSecondary,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(Modifier.height(22.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(54.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(NazoPrimary)
+                                    .clickable { showQuitDialog = false },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = "Stay",
+                                    color = NazoOnPrimary,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Bold,
+                                )
                             }
-                            .padding(horizontal = 22.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("Quit", color = NazoError, fontWeight = FontWeight.Bold)
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(54.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .border(1.5.dp, NazoError, RoundedCornerShape(16.dp))
+                                    .clickable {
+                                        showQuitDialog = false
+                                        onCloseClick()
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = "Quit",
+                                    color = NazoError,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
                     }
-                },
-            )
+                }
+            }
         }
     }
 }

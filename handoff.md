@@ -642,7 +642,10 @@ covered by `BUG_AUDIT.md` + this log).
 - **Quiz screen: hide nav + quit confirmation (2026-08-25):** In `ActiveQuizScreen`, removed
   the `NazoBottomNav` so the bottom navigation is hidden during an active quiz (it returns
   on `QuizCompleteScreen`). The X (close) button no longer quits directly — it now opens a
-  palette-styled `AlertDialog` ("Quit quiz?" / "Do you really want to quit? Your progress in
-  this quiz will be lost.") with a green filled **Stay** and a red-outlined **Quit**; tapping
-  outside dismisses (Stay). `onSettingsClick` param dropped from `ActiveQuizScreen` and its
-  caller in `NazoApp`.
+  confirmation dialog ("Quit quiz?" / "Do you really want to quit? Your progress in this quiz
+  will be lost.") that matches the app palette, reusing `OfflineWarningDialog`'s scrim+card
+  style (NazoSurface card, red "!" circle, NazoTextPrimary title, NazoTextSecondary body,
+  and a green filled **Stay** + red-outlined **Quit** row). Implemented as a custom
+  `androidx.compose.ui.window.Dialog` (not the default Material `AlertDialog`, which ignores
+  our theme). `onSettingsClick` param dropped from `ActiveQuizScreen` and its caller in
+  `NazoApp`.
