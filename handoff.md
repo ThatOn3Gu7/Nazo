@@ -667,6 +667,12 @@ covered by `BUG_AUDIT.md` + this log).
   - Added `Haptics.soft` to the in-app **theme** selection in `AppearanceScreen`: the three
     `ThemeModeRow` options (System/Light/Dark) and the `ColorAccentCircle` accents now fire a
     soft haptic on change (captured `val context = LocalContext.current` at the screen level).
+  - **SettingsScreen offline-mode toggle:**
+    - Icon changed from `Icons.Filled.VpnKey` to `Icons.Filled.Wifi` so it no longer collides
+      with the AI Provider row (which keeps `VpnKey`). Added the `Wifi` icon import.
+    - `SettingsSwitchRow` now fires `Haptics.soft` on toggle (wrapped `onCheckedChange` in a
+      `trigger` lambda, same pattern as `LayoutToggleRow`). Only the offline-mode row uses this
+      composable, so the haptic is scoped to it.
   - All 7 back-arrow `IconButton`s (Appearance, Settings, ReviewAnswers, Statistics,
     AiProvider, About, BackupRestore) now fire `Haptics.soft` before `onBackClick()`.
     Because `LocalContext.current` is a `@Composable` call and can't run inside the plain

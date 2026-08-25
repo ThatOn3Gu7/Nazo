@@ -27,6 +27,9 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.ui.platform.LocalContext
+import quiz.thaton3app.nazo.ui.components.Haptics
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -94,7 +97,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(10.dp))
             SettingsCard {
                 SettingsSwitchRow(
-                    icon = Icons.Filled.VpnKey,
+                    icon = Icons.Filled.Wifi,
                     title = "Offline mode",
                     subtitle = "Use the local question library only — no API calls",
                     checked = forceOffline,
@@ -241,6 +244,11 @@ private fun SettingsSwitchRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    val context = LocalContext.current
+    val trigger: (Boolean) -> Unit = { value ->
+        Haptics.soft(context)
+        onCheckedChange(value)
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -268,7 +276,7 @@ private fun SettingsSwitchRow(
             Text(text = subtitle, style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
         }
         Spacer(Modifier.width(8.dp))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, onCheckedChange = trigger)
     }
 }
 
