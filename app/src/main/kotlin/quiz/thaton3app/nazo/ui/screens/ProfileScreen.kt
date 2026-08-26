@@ -23,7 +23,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -167,31 +166,22 @@ fun ProfileScreen(
                 Spacer(modifier = Modifier.height(24.dp))
             }
 
-            Card(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.extraLarge,
-                colors = CardDefaults.cardColors(
-                    containerColor = NazoSurfaceVariant.copy(alpha = 0.5f)
-                )
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Column {
-                    ProfileMenuItem(
-                        icon = Icons.Filled.BarChart,
-                        title = "Statistics",
-                        subtitle = "View your quiz insights",
-                        onClick = onNavigateToStatistics
-                    )
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        color = NazoTextSecondary.copy(alpha = 0.15f)
-                    )
-                    ProfileMenuItem(
-                        icon = Icons.Filled.Settings,
-                        title = "Settings",
-                        subtitle = "Appearance, categories, backup",
-                        onClick = onNavigateToSettings
-                    )
-                }
+                ProfileMenuItem(
+                    icon = Icons.Filled.BarChart,
+                    title = "Statistics",
+                    subtitle = "View your quiz insights",
+                    onClick = onNavigateToStatistics
+                )
+                ProfileMenuItem(
+                    icon = Icons.Filled.Settings,
+                    title = "Settings",
+                    subtitle = "Appearance, categories, backup",
+                    onClick = onNavigateToSettings
+                )
             }
         }
     }
@@ -457,41 +447,49 @@ private fun ProfileMenuItem(
     subtitle: String,
     onClick: () -> Unit
 ) {
-    ListItem(
-        headlineContent = {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Medium,
-                color = NazoTextPrimary
-            )
-        },
-        supportingContent = {
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = NazoTextSecondary
-            )
-        },
-        leadingContent = {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = NazoPrimary,
-                modifier = Modifier.size(24.dp)
-            )
-        },
-        trailingContent = {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-                tint = NazoTextSecondary
-            )
-        },
-        modifier = Modifier.clickable(onClick = onClick),
-        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-    )
+    Card(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, NazoPrimary.copy(alpha = 0.30f), RoundedCornerShape(16.dp)),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = NazoSurfaceVariant.copy(alpha = 0.5f)),
+    ) {
+        ListItem(
+            headlineContent = {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = NazoTextPrimary
+                )
+            },
+            supportingContent = {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NazoTextSecondary
+                )
+            },
+            leadingContent = {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = NazoPrimary,
+                    modifier = Modifier.size(24.dp)
+                )
+            },
+            trailingContent = {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = NazoTextSecondary
+                )
+            },
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+        )
+    }
 }
 
 @Composable
@@ -529,68 +527,44 @@ private fun ProfileStatCell(
 
 @Composable
 private fun ProfileStatsCard(stats: QuizStats) {
-    Box(
-        modifier = Modifier.fillMaxWidth(),
-        contentAlignment = Alignment.Center
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, NazoPrimary.copy(alpha = 0.30f), RoundedCornerShape(24.dp)),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = NazoSurfaceVariant.copy(alpha = 0.45f)
+        )
     ) {
-        // Static decorative shapes floating behind the card (no animation).
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .offset(x = 14.dp, y = (-14).dp)
-                .size(56.dp)
-                .rotate(-12f)
-                .clip(RoundedCornerShape(16.dp))
-                .background(NazoPrimary.copy(alpha = 0.10f))
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .offset(x = (-14).dp, y = 14.dp)
-                .size(46.dp)
-                .rotate(12f)
-                .clip(RoundedCornerShape(14.dp))
-                .background(NazoSurfaceVariant.copy(alpha = 0.6f))
-        )
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, NazoPrimary.copy(alpha = 0.30f), RoundedCornerShape(24.dp)),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = NazoSurfaceVariant.copy(alpha = 0.45f)
-            )
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    ProfileStatCell(
-                        icon = Icons.Filled.Quiz,
-                        value = stats.totalQuizzes.toString(),
-                        label = "Quizzes",
-                        modifier = Modifier.weight(1f)
-                    )
-                    ProfileStatCell(
-                        icon = Icons.Filled.QuestionAnswer,
-                        value = stats.totalQuestionsAnswered.toString(),
-                        label = "Answered",
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    ProfileStatCell(
-                        icon = Icons.Filled.CheckCircle,
-                        value = stats.totalCorrect.toString(),
-                        label = "Correct",
-                        modifier = Modifier.weight(1f)
-                    )
-                    ProfileStatCell(
-                        icon = Icons.Filled.LocalFireDepartment,
-                        value = stats.currentStreakDays.toString(),
-                        label = "Streak",
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(modifier = Modifier.fillMaxWidth()) {
+                ProfileStatCell(
+                    icon = Icons.Filled.Quiz,
+                    value = stats.totalQuizzes.toString(),
+                    label = "Quizzes",
+                    modifier = Modifier.weight(1f)
+                )
+                ProfileStatCell(
+                    icon = Icons.Filled.QuestionAnswer,
+                    value = stats.totalQuestionsAnswered.toString(),
+                    label = "Answered",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(modifier = Modifier.fillMaxWidth()) {
+                ProfileStatCell(
+                    icon = Icons.Filled.CheckCircle,
+                    value = stats.totalCorrect.toString(),
+                    label = "Correct",
+                    modifier = Modifier.weight(1f)
+                )
+                ProfileStatCell(
+                    icon = Icons.Filled.LocalFireDepartment,
+                    value = stats.currentStreakDays.toString(),
+                    label = "Streak",
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
     }

@@ -56,6 +56,8 @@ fun AppearanceScreen(
     onAccentChange: (String) -> Unit = {},
     iconFollowsOsTheme: Boolean = true,
     onIconFollowsOsThemeChange: (Boolean) -> Unit = {},
+    floatingNavBar: Boolean = false,
+    onFloatingNavBarChange: (Boolean) -> Unit = {},
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
 ) {
@@ -68,6 +70,7 @@ fun AppearanceScreen(
     }
 
     var iconFollowsOsThemeChecked by remember { mutableStateOf(iconFollowsOsTheme) }
+    var floatingNavBarChecked by remember { mutableStateOf(floatingNavBar) }
 
     Column(
         modifier = Modifier
@@ -213,6 +216,28 @@ fun AppearanceScreen(
 
 
             
+            // --- LAYOUT SECTION ---
+            SectionHeader("LAYOUT")
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(NazoSurface)
+            ) {
+                LayoutToggleRow(
+                    title = "Floating navigation bar",
+                    subtitle = "Elevated pill that lets the background show around it",
+                    isChecked = floatingNavBarChecked,
+                    onCheckedChange = {
+                        floatingNavBarChecked = it
+                        onFloatingNavBarChange(it)
+                    }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
             Spacer(modifier = Modifier.height(40.dp)) // bottom padding before nav
         }
         NazoBottomNav(

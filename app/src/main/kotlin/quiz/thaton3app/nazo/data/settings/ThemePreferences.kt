@@ -30,10 +30,17 @@ class ThemePreferences(context: Context) {
         get() = prefs.getBoolean(KEY_ICON_FOLLOWS_OS, true)
         set(value) = prefs.edit().putBoolean(KEY_ICON_FOLLOWS_OS, value).apply()
 
+    /** Whether the bottom navigation bar floats as an elevated pill (true) or is a
+     *  solid bar that covers the system gesture area (false). */
+    var floatingNavBar: Boolean
+        get() = prefs.getBoolean(KEY_FLOATING_NAV, false)
+        set(value) = prefs.edit().putBoolean(KEY_FLOATING_NAV, value).apply()
+
     private companion object {
         const val KEY_MODE = "theme_mode"
         const val KEY_ACCENT = "theme_accent"
         const val KEY_LAUNCHER_NIGHT = "launcher_night"
         const val KEY_ICON_FOLLOWS_OS = "icon_follows_os"
+        const val KEY_FLOATING_NAV = "floating_nav"
     }
 }

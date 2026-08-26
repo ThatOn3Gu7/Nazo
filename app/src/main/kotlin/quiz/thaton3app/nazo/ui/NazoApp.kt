@@ -80,6 +80,7 @@ fun NazoApp() {
 
     var themeMode by remember { mutableStateOf(themePrefs.mode) }
     var accentName by remember { mutableStateOf(themePrefs.accent) }
+    var navBarFloating by remember { mutableStateOf(themePrefs.floatingNavBar) }
 
     // Launcher-icon theme sync now happens silently when the app is backgrounded
     // (see MainActivity.onStop); no in-app prompt is shown. The Appearance toggle
@@ -302,6 +303,11 @@ fun NazoApp() {
                         currentAccent = accentName,
                         onModeChange = { themeMode = it; themePrefs.mode = it },
                         onAccentChange = { accentName = it; themePrefs.accent = it },
+                        floatingNavBar = navBarFloating,
+                        onFloatingNavBarChange = {
+                            navBarFloating = it
+                            themePrefs.floatingNavBar = it
+                        },
                         iconFollowsOsTheme = themePrefs.iconFollowsOsTheme,
                         onIconFollowsOsThemeChange = { enabled ->
                             // Just persist the preference; the actual swap happens silently

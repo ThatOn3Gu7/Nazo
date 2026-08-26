@@ -20,6 +20,38 @@ Conventions:
 
 ---
 
+## [2026-08-26 21:15] feat: profile polish + nav-bar particle clipping + floating-nav toggle
+
+- **Profile screen (owner feedback):**
+  - Removed the static decorative rounded-rectangle "shapes" that floated behind the
+    stats card (the mockup that originally inspired the ambient particles background) —
+    `ProfileStatsCard` is now just the bordered stats `Card`.
+  - The Statistics / Settings rows are no longer a single shared transparent `Card`; each
+    is now its own outlined `Card` (1.dp `NazoPrimary` @0.30 alpha border, rounded 16.dp,
+    `NazoSurfaceVariant`@0.5 fill) so the tappable label box is clearly delineated from
+    the background. Spaced 12.dp apart.
+  - Files: `ui/screens/ProfileScreen.kt` (removed `rotate` import, rewrote
+    `ProfileStatsCard` + `ProfileMenuItem`).
+- **Nav bar vs ambient particles:**
+  - Normal (solid) mode: in `NazoBottomNav` the `NazoNavBar` background is now applied
+    BEFORE `navigationBarsPadding`, so it also covers the system gesture area — the
+    ambient particles are no longer visible bleeding through under the nav bar.
+  - New floating mode (elevated rounded pill: 24.dp side margins + 16.dp bottom gap +
+    12.dp shadow): the pill no longer spans the full width/gesture area, so the particles
+    show through the gaps around it. Pill is intentionally a bit larger (18.dp vertical
+    padding). `NazoBottomNav` reads `ThemePreferences.floatingNavBar` directly, so every
+    screen's bar reflects the toggle live.
+  - Added `floatingNavBar` (default false) to `data/settings/ThemePreferences.kt`
+    (key `floating_nav`).
+  - Files: `ui/components/NazoBottomNav.kt`, `data/settings/ThemePreferences.kt`.
+- **Appearance screen:** re-added a **LAYOUT** section (removed earlier) containing a
+  "Floating navigation bar" `LayoutToggleRow` that toggles the new pref. Wired through
+  `NazoApp` (`navBarFloating` state ↔ `themePrefs.floatingNavBar`).
+  - Files: `ui/screens/AppearanceScreen.kt`, `ui/NazoApp.kt`.
+- Verified by inspection (cannot compile here); owner to build in Termux.
+
+---
+
 ## [2026-08-26 20:45] feat: system back pops one screen + double-back-to-exit on Home
 
 - Owner: the Android system back (swipe / 3-button) only exited or did nothing on

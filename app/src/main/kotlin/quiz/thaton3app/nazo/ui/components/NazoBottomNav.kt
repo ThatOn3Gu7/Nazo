@@ -3,6 +3,7 @@ package quiz.thaton3app.nazo.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.ui.theme.NazoNavBar
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
@@ -41,30 +43,59 @@ fun NazoBottomNav(
     onHomeClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            // Respect the system navigation bar (gesture handle / 3-button) so the
-            // bar sits above it instead of clipping through. Applied before the
-            // background so the background itself stops above the system UI.
-            .navigationBarsPadding()
-            .background(NazoNavBar)
-            .padding(vertical = 14.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-    ) {
-        NazoNavItem(
-            icon = Icons.Filled.Home,
-            label = "Home",
-            selected = selected == NazoTab.Home,
-            onClick = onHomeClick,
-        )
-        NazoNavItem(
-            icon = Icons.Filled.Settings,
-            label = "Settings",
-            selected = selected == NazoTab.Settings,
-            onClick = onSettingsClick,
-        )
+    // Floating mode is a user preference (Appearance → Layout). In floating mode the
+    // bar becomes an elevated rounded pill inset from the edges, so the ambient
+    // particles show through the gaps around it (and in the gesture area beneath).
+    val floating = ThemePreferences(LocalContext.current).floatingNavBar
+
+    if (floating) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .navigationBarsPadding()
+                .padding(bottom = 16.dp)
+                .shadow(elevation = 12.dp, shape = RoundedCornerShape(30.dp), clip = false)
+                .background(NazoNavBar, RoundedCornerShape(30.dp))
+                .padding(vertical = 18.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            NavItems(selected = selected, onHomeClick = onHomeClick, onSettingsClick = onSettingsClick)
+        }
+    } else {
+        // Solid bar: the background is applied BEFORE the navigation-bar padding so it
+        // also covers the system gesture area, hiding the ambient particles behind it.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(NazoNavBar)
+                .navigationBarsPadding()
+                .padding(vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            NavItems(selected = selected, onHomeClick = onHomeClick, onSettingsClick = onSettingsClick)
+        }
     }
+}
+
+@Composable
+private fun NavItems(
+    selected: NazoTab,
+    onHomeClick: () -> Unit,
+    onSettingsClick: () -> Unit,
+) {
+    NazoNavItem(
+        icon = Icons.Filled.Home,
+        label = "Home",
+        selected = selected == NazoTab.Home,
+        onClick = onHomeClick,
+    )
+    NazoNavItem(
+        icon = Icons.Filled.Settings,
+        label = "Settings",
+        selected = selected == NazoTab.Settings,
+        onClick = onSettingsClick,
+    )
 }
 
 @Composable
