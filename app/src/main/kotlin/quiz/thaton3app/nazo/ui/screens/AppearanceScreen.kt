@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Check
@@ -150,10 +151,24 @@ fun AppearanceScreen(
                     .padding(20.dp)
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Accents.forEach { accent ->
+                    val defaultAccent = Accents.firstOrNull { it.id == "mint" } ?: Accents.first()
+                    ColorAccentCircle(
+                        previewColors = previewColors(defaultAccent.id, isDark),
+                        isSelected = currentAccent == defaultAccent.id,
+                        onClick = { Haptics.soft(context); onAccentChange(defaultAccent.id) }
+                    )
+                    VerticalDivider(
+                        modifier = Modifier
+                            .height(32.dp)
+                            .align(Alignment.CenterVertically),
+                        color = NazoTextSecondary.copy(alpha = 0.25f)
+                    )
+                    Accents.filter { it.id != "mint" }.forEach { accent ->
                         ColorAccentCircle(
                             previewColors = previewColors(accent.id, isDark),
                             isSelected = currentAccent == accent.id,

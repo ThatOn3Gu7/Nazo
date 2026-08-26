@@ -185,12 +185,66 @@ data class Accent(
     val dark: NazoColors,
 )
 
+// Monochrome (black & white) palettes — hand-tuned grays, not a hue-shift, so the
+// whole app reads as neutral while keeping semantic success/error colors for clarity.
+private val MonoLightNazoColors = NazoColors(
+    background = Color(0xFFFAFAFA),
+    surface = Color(0xFFFFFFFF),
+    surfaceVariant = Color(0xFFECECEC),
+    badge = Color(0xFFE4E4E4),
+    pillUnselected = Color(0xFFE4E4E4),
+    primary = Color(0xFF1F1F1F),
+    navBar = Color(0xFFFAFAFA),
+    onPrimary = Color(0xFFFFFFFF),
+    textPrimary = Color(0xFF161616),
+    textSecondary = Color(0xFF5F5F5F),
+    textPlaceholder = Color(0xFF9A9A9A),
+    successBg = Color(0xFFDCF3E4),
+    success = Color(0xFF1FAA5A),
+    errorBg = Color(0xFFFBE1E1),
+    error = Color(0xFFE5484D),
+    statsCardBg = Color(0xFFF0F0F0),
+    darkCard = Color(0xFF2A2A2A),
+    darkCardAccent = Color(0xFF3A3A3A),
+    darkCardTrack = Color(0xFF202020),
+    onDarkCard = Color(0xFFFFFFFF),
+    onDarkCardMuted = Color(0xFFBDBDBD),
+)
+
+private val MonoDarkNazoColors = NazoColors(
+    background = Color(0xFF121212),
+    surface = Color(0xFF1E1E1E),
+    surfaceVariant = Color(0xFF2A2A2A),
+    badge = Color(0xFF333333),
+    pillUnselected = Color(0xFF333333),
+    primary = Color(0xFFE6E6E6),
+    navBar = Color(0xFF121212),
+    onPrimary = Color(0xFF121212),
+    textPrimary = Color(0xFFF2F2F2),
+    textSecondary = Color(0xFFB0B0B0),
+    textPlaceholder = Color(0xFF6E6E6E),
+    successBg = Color(0xFF103024),
+    success = Color(0xFF4CC38A),
+    errorBg = Color(0xFF3A1718),
+    error = Color(0xFFE5484D),
+    statsCardBg = Color(0xFF242424),
+    darkCard = Color(0xFF2A2A2A),
+    darkCardAccent = Color(0xFF3A3A3A),
+    darkCardTrack = Color(0xFF1A1A1A),
+    onDarkCard = Color(0xFFFFFFFF),
+    onDarkCardMuted = Color(0xFFBDBDBD),
+)
+
 val Accents: List<Accent> = listOf(
     Accent("mint", "Mint Green", LightNazoColors, DarkNazoColors),
     Accent("rose", "Rose", LightNazoColors.recolorToHue(345f), DarkNazoColors.recolorToHue(345f)),
-    Accent("indigo", "Indigo", LightNazoColors.recolorToHue(230f), DarkNazoColors.recolorToHue(230f)),
+    Accent("pink", "Pink", LightNazoColors.recolorToHue(322f), DarkNazoColors.recolorToHue(322f)),
+    Accent("orange", "Orange", LightNazoColors.recolorToHue(22f), DarkNazoColors.recolorToHue(22f)),
     Accent("bronze", "Bronze", LightNazoColors.recolorToHue(35f), DarkNazoColors.recolorToHue(35f)),
+    Accent("indigo", "Indigo", LightNazoColors.recolorToHue(230f), DarkNazoColors.recolorToHue(230f)),
     Accent("slate", "Slate", LightNazoColors.recolorToHue(200f), DarkNazoColors.recolorToHue(200f)),
+    Accent("violet", "Violet", LightNazoColors.recolorToHue(275f), DarkNazoColors.recolorToHue(275f)),
+    Accent("mono", "Mono", MonoLightNazoColors, MonoDarkNazoColors),
 )
 
 fun resolveAccent(id: String, dark: Boolean): NazoColors =

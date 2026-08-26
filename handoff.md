@@ -20,6 +20,23 @@ Conventions:
 
 ---
 
+## [2026-08-26 17:10] Feature: Separate default accent + add new palettes (pink/orange/violet/mono)
+
+- Goal: keep Mint as the obvious default, visually separated from the rest, and grow
+  the palette choice (pink, orange, violet, and a black & white "mono" scheme) while
+  staying light/desaturated like the mint feel.
+- `AppearanceScreen` COLOR ACCENTS row now shows the default (Mint) first, then a
+  `VerticalDivider` separator, then the other accents. Row is now horizontally
+  scrollable (`horizontalScroll`) since 9 pills no longer fit on one screen.
+- `Color.kt`: added hand-tuned `MonoLight/MonoDarkNazoColors` (neutral grays, semantic
+  success/error kept for clarity); extended `Accents` with pink (hue 322), orange (22),
+  violet (275) via `recolorToHue` plus mono — all preserve lightness/saturation so the
+  app stays soft, not bright.
+- Files: `ui/theme/Color.kt`, `ui/screens/AppearanceScreen.kt`.
+- Verified by inspection; user to build in Termux.
+
+---
+
 ## [2026-08-26 16:30] Feature: Functional multi-color accent themes (whole-app palette + pie preview)
 
 - Goal: make the 5 color accents actually theme the entire app (not just a primary
