@@ -72,7 +72,6 @@ fun AppearanceScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(NazoBackground)
             .statusBarsPadding()
     ) {
         Column(

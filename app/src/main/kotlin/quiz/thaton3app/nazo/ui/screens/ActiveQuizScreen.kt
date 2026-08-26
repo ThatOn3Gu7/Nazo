@@ -84,9 +84,8 @@ fun ActiveQuizScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .background(NazoBackground)
-                .statusBarsPadding()
+            .fillMaxSize()
+            .statusBarsPadding()
         ) {
         Column(
             modifier = Modifier

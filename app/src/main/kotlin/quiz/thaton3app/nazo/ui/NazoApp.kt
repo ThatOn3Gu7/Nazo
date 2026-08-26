@@ -26,6 +26,7 @@ import quiz.thaton3app.nazo.data.settings.ProfilePreferences
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.ui.components.OfflineWarningDialog
+import quiz.thaton3app.nazo.ui.components.FloatingParticlesBackground
 import quiz.thaton3app.nazo.ui.components.StartupMode
 import quiz.thaton3app.nazo.ui.screens.*
 import quiz.thaton3app.nazo.ui.theme.NazoTheme
@@ -99,6 +100,9 @@ fun NazoApp() {
     // Tracks where the Statistics screen was opened from so its back arrow returns
     // to the correct place (Profile vs Settings).
     var statisticsSource by remember { mutableStateOf<Screen>(Screen.Settings) }
+    // Tracks where the Settings screen was opened from so its back arrow returns to the
+    // correct place (Profile vs Home), e.g. Profile -> Settings -> back -> Profile.
+    var settingsSource by remember { mutableStateOf<Screen>(Screen.Home) }
     var questions by remember { mutableStateOf(emptyList<Question>()) }
     var userAnswers by remember { mutableStateOf<List<String?>>(emptyList()) }
     var currentQuestionIndex by remember { mutableIntStateOf(0) }
@@ -174,11 +178,15 @@ fun NazoApp() {
 
     NazoTheme(darkTheme = isDark, accentId = accentName) {
         Box(modifier = Modifier.fillMaxSize()) {
+            // Base color + animated floating particles live OUTSIDE AnimatedContent so the
+            // animation never resets on screen changes. Screens render transparent on top,
+            // letting the particles drift behind their content.
+            Box(modifier = Modifier.fillMaxSize().background(NazoBackground))
+            FloatingParticlesBackground(modifier = Modifier.fillMaxSize())
             AnimatedContent(
                 targetState = currentScreen,
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(NazoBackground)
                     .then(if (startupDialogMode != null) Modifier.blur(16.dp) else Modifier),
                 transitionSpec = {
                     fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
@@ -189,7 +197,10 @@ fun NazoApp() {
                     Screen.Home -> HomeScreen(
                         apiKeyActive = apiKeyStore.hasAnyActiveKey(),
                         offline = isOfflineMode,
-                        onSettingsClick = { currentScreen = Screen.Settings },
+                        onSettingsClick = {
+                            settingsSource = Screen.Home
+                            currentScreen = Screen.Settings
+                        },
                         profileName = profileName,
                         profilePictureUri = profilePictureUri,
                         onProfileClick = { currentScreen = Screen.Profile },
@@ -203,7 +214,7 @@ fun NazoApp() {
                     )
 
                     Screen.Settings -> SettingsScreen(
-                        onBackClick = { currentScreen = Screen.Home },
+                        onBackClick = { currentScreen = settingsSource },
                         onHomeClick = { currentScreen = Screen.Home },
                         onOpenAiProvider = { currentScreen = Screen.AiProvider },
                         onOpenStatistics = {
@@ -234,7 +245,10 @@ fun NazoApp() {
                             statisticsSource = Screen.Profile
                             currentScreen = Screen.Statistics
                         },
-                        onNavigateToSettings = { currentScreen = Screen.Settings },
+                        onNavigateToSettings = {
+                            settingsSource = Screen.Profile
+                            currentScreen = Screen.Settings
+                        },
                     )
 
                     Screen.AiProvider -> AiProviderScreen(
@@ -291,12 +305,18 @@ fun NazoApp() {
                         difficulty = quizDifficulty,
                         onPlayAnother = { currentScreen = Screen.Home },
                         onReviewAnswers = { currentScreen = Screen.Review },
-                        onSettingsClick = { currentScreen = Screen.Settings },
+                        onSettingsClick = {
+                            settingsSource = Screen.Home
+                            currentScreen = Screen.Settings
+                        },
                     )
 
                     Screen.Loading -> LoadingScreen(
                         onHomeClick = { currentScreen = Screen.Home },
-                        onSettingsClick = { currentScreen = Screen.Settings },
+                        onSettingsClick = {
+                            settingsSource = Screen.Home
+                            currentScreen = Screen.Settings
+                        },
                     )
 
                     Screen.Review -> ReviewAnswersScreen(

@@ -144,7 +144,6 @@ fun StatisticsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(NazoBackground)
             .statusBarsPadding()
     ) {
         Column(

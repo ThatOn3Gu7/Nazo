@@ -842,3 +842,19 @@ covered by `BUG_AUDIT.md` + this log).
        on back. Added `statisticsSource` state in `NazoApp.kt`, set to `Screen.Profile` when the
        Profile menu opens Statistics (and `Screen.Settings` from Settings), and StatisticsScreen's
        `onBackClick` now returns to `statisticsSource`.
+
+  - **Settings back-nav bug + global animated particles background:**
+    1. *Settings back-nav*: entering Settings from the Profile screen returned to Home on back.
+       Added `settingsSource` state in `NazoApp.kt`; Home/Loading/Results set it to `Screen.Home`
+       and Profile sets it to `Screen.Profile` before navigating, and SettingsScreen's `onBackClick`
+       now returns to `settingsSource`. (Mirrors the earlier `statisticsSource` fix.)
+    2. *FloatingParticlesBackground*: new `ui/components/FloatingParticlesBackground.kt` draws ~16
+       circles/squares/triangles on a `Canvas` via `rememberInfiniteTransition`, gently drifting
+       and slowly rotating forever. Colors come from the active palette (`NazoPrimary`/`NazoSuccess`/
+       `NazoError`) so they adapt to the chosen accent. In `NazoApp.kt` it is placed OUTSIDE
+       `AnimatedContent` (with a base `NazoBackground` Box) so the animation is continuous across
+       every screen. To let it show behind content, the root `background(NazoBackground)` was removed
+       from all screen Columns (Home, Settings, Statistics, Appearance, AiProvider, About,
+       BackupRestore, ReviewAnswers, Loading, QuizComplete, ActiveQuiz) and ProfileScreen's Scaffold
+       `containerColor` set to `Color.Transparent`; the base layer provides the color, particles
+       drift behind cards/info. Alpha kept low (0.10-0.22) so it stays ambient, not cluttered.

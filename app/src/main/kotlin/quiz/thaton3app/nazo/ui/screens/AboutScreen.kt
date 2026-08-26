@@ -235,7 +235,6 @@ fun AboutScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(NazoBackground)
             .statusBarsPadding()
     ) {
         Column(

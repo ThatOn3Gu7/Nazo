@@ -89,6 +89,7 @@ fun ProfileScreen(
     )
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
