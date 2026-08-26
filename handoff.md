@@ -20,6 +20,21 @@ Conventions:
 
 ---
 
+## [2026-08-26 18:30] Docs: Add project README with logo, badges, and dev notes
+
+- Added `README.md` (repo root): app overview + features, how-it-works (quiz flow,
+  theming, updates, icon theming), build-from-source (clone + chmod + assemble),
+  project architecture/layout, tech-stack table, and releases section.
+- App logo is `assets/logo.png` — a 512x512 mint (`#36A06F`, the adaptive-icon background)
+  rounded tile with the `ic_launcher_foreground` character composited on top (generated via
+  ImageMagick). The legacy `mipmap-*/*.webp` files are the default Android Studio icon and
+  must NOT be used as the logo. shields.io badges at the top.
+- Skipped a separate "install" section per request (assumed common knowledge).
+- GitHub repo description suggested separately (paste in repo Settings → Description).
+- Files: `README.md`.
+
+---
+
 ## [2026-08-26 18:00] CI: Add GitHub release workflow (adapted from Shouze)
 
 - Goal: ship Nazo via GitHub Releases without reinventing tooling — reused Shouze's
