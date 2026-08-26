@@ -135,7 +135,7 @@ fun SettingsScreen(
                 SettingsRow(
                     icon = Icons.Filled.Info,
                     title = "About",
-                    subtitle = "App version 1.0.0 & credits",
+                    subtitle = "App version 2.0 & credits",
                     onClick = onOpenAbout,
                 )
             }

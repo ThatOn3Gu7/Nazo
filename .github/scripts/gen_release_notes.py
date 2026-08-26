@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate release notes from the commits in the given range (e.g. v1.3.0..HEAD)."""
+"""Generate release notes from the commits in the given range (e.g. v2.0..HEAD)."""
 import subprocess
 import sys
 

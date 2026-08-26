@@ -20,6 +20,26 @@ Conventions:
 
 ---
 
+## [2026-08-26 23:00] chore: bump app version to 2.0 (release prep)
+
+- Owner: prepare a GitHub release — it's been a while and there are many new features /
+  commits since 1.0. Bump the version everywhere it's referenced.
+- `app/build.gradle.kts`: `versionCode` 1 → 2, `versionName` "1.0" → "2.0".
+- `ui/screens/SettingsScreen.kt`: the About/Settings row subtitle was hard-coded
+  `"App version 1.0.0 & credits"` → `"App version 2.0 & credits"`. The rest of the app
+  already reads the real version from `BuildConfig.VERSION_NAME` / `PackageManager`
+  (`AboutScreen` hero + rows, `UpdateChecker`, `UpdateCheckWorker`), so no other code change.
+- Docs: updated the example release tag in `handoff.md` (was `v1.1`) and
+  `.github/workflows/build-release.yml` (was `v1.3.0`) to `v2.0`; updated the
+  `gen_release_notes.py` docstring example similarly.
+- Next step (owner): tag `v2.0` and push to trigger `.github/workflows/build-release.yml`
+  (it reads `versionName` from `build.gradle.kts` for the APK name + release title). Ensure
+  the GitHub repo secrets (`SIGNING_*`) are set for signed builds.
+- Files: `app/build.gradle.kts`, `ui/screens/SettingsScreen.kt`, `handoff.md`,
+  `.github/workflows/build-release.yml`, `.github/scripts/gen_release_notes.py`.
+
+---
+
 ## [2026-08-26 22:30] tweak: floating-nav polish — smaller pill, scroll-behind on Home, nav bar only on Home
 
 - Owner feedback (4 points):
@@ -156,7 +176,7 @@ Conventions:
   `ThatOn3Gu7/Nazo`); builds "What's Changed" from commit range between tags.
 - Renamed APK outputs + release title to **Nazo** (`Nazo-release-<ver>.apk`, etc.).
 - Note for maintainer: add repo secrets `SIGNING_KEY_BASE64`, `SIGNING_STORE_PASSWORD`,
-  `SIGNING_KEY_ALIAS`, `SIGNING_KEY_PASSWORD` for signed builds; tag like `v1.1` to publish.
+   `SIGNING_KEY_ALIAS`, `SIGNING_KEY_PASSWORD` for signed builds; tag like `v2.0` to publish.
 - Files: `.github/workflows/build-release.yml`, `.github/scripts/gen_release_notes.py`.
 
 ---

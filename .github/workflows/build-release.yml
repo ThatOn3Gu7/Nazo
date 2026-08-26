@@ -1,6 +1,6 @@
 name: Build & Release
 
-# Runs when you push a version tag like v1.3.0. The tag IS the release
+# Runs when you push a version tag like v2.0. The tag IS the release
 # version — bump versionName in app/build.gradle.kts yourself before tagging.
 on:
   push:

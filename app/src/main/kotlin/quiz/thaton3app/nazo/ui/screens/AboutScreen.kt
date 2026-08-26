@@ -151,7 +151,7 @@ fun AboutScreen(
             context.packageManager.getPackageInfo(context.packageName, 0)
         }.getOrNull()
     }
-    val versionName = remember(packageInfo) { packageInfo?.versionName ?: "1.0.0" }
+    val versionName = remember(packageInfo) { packageInfo?.versionName ?: "2.0" }
     val versionCodeStr = remember(packageInfo) {
         packageInfo?.let { info ->
             if (Build.VERSION.SDK_INT >= 28) {
