@@ -20,6 +20,42 @@ Conventions:
 
 ---
 
+## [2026-08-26 20:45] feat: system back pops one screen + double-back-to-exit on Home
+
+- Owner: the Android system back (swipe / 3-button) only exited or did nothing on
+  sub-screens; only the in-app back arrows worked. Request: system back should step
+  back through sub-screens one level at a time, and on Home a first back press shows a
+  "Press back again to exit" Toast while a second press (within ~2s) closes the app;
+  the flag resets after 2s.
+- Reworked `ui/NazoApp.kt` navigation from a single `currentScreen` var +
+  `settingsSource`/`statisticsSource` trackers into a real back-stack:
+  `navigationStack = remember { mutableStateListOf<Screen>(Screen.Home) }`,
+  `val currentScreen = navigationStack.last()`, helpers `navigate(screen)` (push),
+  `replace(screen)` (swap top — used for Loading→Quiz so we don't leave a
+  [Home,Loading,Quiz] trail), `goBack()` (pop if size>1), `goHome()` (clear+push Home).
+  - All screen callbacks now call these helpers instead of assigning `currentScreen`
+    directly: HomeScreen settings/profile → `navigate`; sub-screen `onBackClick` →
+    `goBack()`; `onHomeClick` → `goHome()`; `ActiveQuizScreen.onCloseClick` → `goHome()`;
+    Profile/Settings `onNavigateTo*` → `navigate`; `QuizComplete` review →
+    `navigate(Screen.Review)`; `startQuiz`/`answer` use `navigate`/`replace`.
+  - Removed `settingsSource` / `statisticsSource` entirely (back-stack makes them redundant).
+- Added `BackHandler(enabled = true)` (import `androidx.activity.compose.BackHandler`):
+  - If the startup connectivity dialog is showing, back dismisses it.
+  - Else if `navigationStack.size > 1`, pops one level (`goBack()`).
+  - Else (Home): first press sets `backPressedOnce = true` + shows
+    `Toast.makeText(context, "Press back again to exit", Toast.LENGTH_SHORT)`; a second
+    press within 2s calls `activity?.finish()`. The flag auto-resets after 2s via
+    `LaunchedEffect(backPressedOnce) { delay(2000) }` and is cleared whenever the user
+    leaves Home (`LaunchedEffect(currentScreen)`).
+  - `activity` is `context as? Activity` (`android.app.Activity` import); `context` is the
+    existing `LocalContext.current`.
+- Verified against Compose `BackHandler` semantics and `mutableStateListOf` snapshot
+  recomposition (so `AnimatedContent`'s `targetState = currentScreen` updates). Agent
+  cannot compile; owner to build in Termux.
+- Files: `ui/NazoApp.kt`.
+
+---
+
 ## [2026-08-26 18:30] Docs: Add project README with logo, badges, and dev notes
 
 - Added `README.md` (repo root): app overview + features, how-it-works (quiz flow,

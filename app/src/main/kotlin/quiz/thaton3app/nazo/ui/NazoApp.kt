@@ -15,6 +15,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import android.app.Activity
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.data.LocalQuestionBank
@@ -95,14 +99,55 @@ fun NazoApp() {
         "light" -> false
         else -> isSystemInDarkTheme()
     }
-    // Navigation + quiz session state (single source of truth for the whole app).
-    var currentScreen by remember { mutableStateOf<Screen>(Screen.Home) }
-    // Tracks where the Statistics screen was opened from so its back arrow returns
-    // to the correct place (Profile vs Settings).
-    var statisticsSource by remember { mutableStateOf<Screen>(Screen.Settings) }
-    // Tracks where the Settings screen was opened from so its back arrow returns to the
-    // correct place (Profile vs Home), e.g. Profile -> Settings -> back -> Profile.
-    var settingsSource by remember { mutableStateOf<Screen>(Screen.Home) }
+    // Navigation back-stack: `navigationStack` is the source of truth for where we are and
+    // where "back" should return to. Both the system back (gesture / hardware button) and the
+    // in-app back arrows pop this stack, so a user always returns to the screen they came from.
+    val navigationStack = remember { mutableStateListOf<Screen>(Screen.Home) }
+    val currentScreen = navigationStack.last()
+    var backPressedOnce by remember { mutableStateOf(false) }
+
+    fun navigate(screen: Screen) {
+        navigationStack.add(screen)
+    }
+    fun replace(screen: Screen) {
+        if (navigationStack.isNotEmpty()) navigationStack[navigationStack.lastIndex] = screen
+    }
+    fun goBack() {
+        if (navigationStack.size > 1) navigationStack.removeAt(navigationStack.lastIndex)
+    }
+    fun goHome() {
+        navigationStack.clear()
+        navigationStack.add(Screen.Home)
+    }
+
+    // Leaving Home cancels the "press back again to exit" flag; it also auto-resets after 2s.
+    LaunchedEffect(currentScreen) {
+        if (currentScreen != Screen.Home) backPressedOnce = false
+    }
+    LaunchedEffect(backPressedOnce) {
+        if (backPressedOnce) {
+            delay(2000)
+            backPressedOnce = false
+        }
+    }
+
+    val activity = context as? Activity
+    BackHandler(enabled = true) {
+        if (startupDialogMode != null) {
+            startupDialogMode = null
+            return@BackHandler
+        }
+        if (navigationStack.size > 1) {
+            goBack()
+        } else {
+            if (backPressedOnce) {
+                activity?.finish()
+            } else {
+                backPressedOnce = true
+                Toast.makeText(context, "Press back again to exit", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
     var questions by remember { mutableStateOf(emptyList<Question>()) }
     var userAnswers by remember { mutableStateOf<List<String?>>(emptyList()) }
     var currentQuestionIndex by remember { mutableIntStateOf(0) }
@@ -120,7 +165,7 @@ fun NazoApp() {
             userAnswers = emptyList()
             currentQuestionIndex = 0
             score = 0
-            currentScreen = Screen.Quiz
+            navigate(Screen.Quiz)
             return
         }
         quizDifficulty = difficulty
@@ -130,7 +175,7 @@ fun NazoApp() {
         val model = provider?.let { apiKeyStore.getModel(it) }.orEmpty()
 
         if (provider != null && !key.isNullOrBlank() && model.isNotBlank()) {
-            currentScreen = Screen.Loading
+            navigate(Screen.Loading)
             scope.launch {
                 ApiClient.generateQuiz(provider, key, model, topic, difficulty, count)
                     .onSuccess { qs ->
@@ -139,14 +184,14 @@ fun NazoApp() {
                         userAnswers = emptyList()
                         currentQuestionIndex = 0
                         score = 0
-                        currentScreen = Screen.Quiz
+                        replace(Screen.Quiz)
                     }
                     .onFailure {
                         questions = LocalQuestionBank.getQuestions(count, topic, difficulty)
                         userAnswers = emptyList()
                         currentQuestionIndex = 0
                         score = 0
-                        currentScreen = Screen.Quiz
+                        replace(Screen.Quiz)
                     }
             }
         } else {
@@ -154,7 +199,7 @@ fun NazoApp() {
             userAnswers = emptyList()
             currentQuestionIndex = 0
             score = 0
-            currentScreen = Screen.Quiz
+            navigate(Screen.Quiz)
         }
     }
 
@@ -172,7 +217,7 @@ fun NazoApp() {
                 statsStore.record(finishedDifficulty, finishedQuestions, finishedAnswers)
                 quizStats = statsStore.get()
             }
-            currentScreen = Screen.Results
+            navigate(Screen.Results)
         }
     }
 
@@ -197,13 +242,10 @@ fun NazoApp() {
                     Screen.Home -> HomeScreen(
                         apiKeyActive = apiKeyStore.hasAnyActiveKey(),
                         offline = isOfflineMode,
-                        onSettingsClick = {
-                            settingsSource = Screen.Home
-                            currentScreen = Screen.Settings
-                        },
+                        onSettingsClick = { navigate(Screen.Settings) },
                         profileName = profileName,
                         profilePictureUri = profilePictureUri,
-                        onProfileClick = { currentScreen = Screen.Profile },
+                        onProfileClick = { navigate(Screen.Profile) },
                         onStartQuiz = { topic, difficulty, count -> startQuiz(topic, difficulty, count) },
                         topic = homeTopic,
                         difficultyName = homeDifficultyName,
@@ -214,16 +256,13 @@ fun NazoApp() {
                     )
 
                     Screen.Settings -> SettingsScreen(
-                        onBackClick = { currentScreen = settingsSource },
-                        onHomeClick = { currentScreen = Screen.Home },
-                        onOpenAiProvider = { currentScreen = Screen.AiProvider },
-                        onOpenStatistics = {
-                            statisticsSource = Screen.Settings
-                            currentScreen = Screen.Statistics
-                        },
-                        onOpenAppearance = { currentScreen = Screen.Appearance },
-                        onOpenBackupRestore = { currentScreen = Screen.BackupRestore },
-                        onOpenAbout = { currentScreen = Screen.About },
+                        onBackClick = { goBack() },
+                        onHomeClick = { goHome() },
+                        onOpenAiProvider = { navigate(Screen.AiProvider) },
+                        onOpenStatistics = { navigate(Screen.Statistics) },
+                        onOpenAppearance = { navigate(Screen.Appearance) },
+                        onOpenBackupRestore = { navigate(Screen.BackupRestore) },
+                        onOpenAbout = { navigate(Screen.About) },
                     forceOffline = forceOffline,
                     onForceOfflineChange = { v -> forceOffline = v },
                 )
@@ -232,7 +271,7 @@ fun NazoApp() {
                         username = profileName,
                         profilePictureUri = profilePictureUri,
                         quizStats = quizStats,
-                        onBack = { currentScreen = Screen.Home },
+                        onBack = { goBack() },
                         onUsernameChange = { name ->
                             profileName = name
                             profilePrefs.username = name
@@ -241,27 +280,21 @@ fun NazoApp() {
                             profilePictureUri = uri
                             profilePrefs.profilePictureUri = uri
                         },
-                        onNavigateToStatistics = {
-                            statisticsSource = Screen.Profile
-                            currentScreen = Screen.Statistics
-                        },
-                        onNavigateToSettings = {
-                            settingsSource = Screen.Profile
-                            currentScreen = Screen.Settings
-                        },
+                        onNavigateToStatistics = { navigate(Screen.Statistics) },
+                        onNavigateToSettings = { navigate(Screen.Settings) },
                     )
 
                     Screen.AiProvider -> AiProviderScreen(
                         apiKeyStore = apiKeyStore,
-                        onBackClick = { currentScreen = Screen.Settings },
-                        onHomeClick = { currentScreen = Screen.Home },
-                        onSaved = { currentScreen = Screen.Settings },
+                        onBackClick = { goBack() },
+                        onHomeClick = { goHome() },
+                        onSaved = { goBack() },
                     )
 
                     Screen.Statistics -> StatisticsScreen(
                         stats = quizStats,
-                        onBackClick = { currentScreen = statisticsSource },
-                        onHomeClick = { currentScreen = Screen.Home },
+                        onBackClick = { goBack() },
+                        onHomeClick = { goHome() },
                     )
 
                     Screen.Appearance -> AppearanceScreen(
@@ -275,18 +308,18 @@ fun NazoApp() {
                             // when the app is backgrounded (MainActivity.onStop).
                             themePrefs.iconFollowsOsTheme = enabled
                         },
-                        onBackClick = { currentScreen = Screen.Settings },
-                        onHomeClick = { currentScreen = Screen.Home },
+                        onBackClick = { goBack() },
+                        onHomeClick = { goHome() },
                     )
 
                     Screen.BackupRestore -> BackupRestoreScreen(
-                        onBackClick = { currentScreen = Screen.Settings },
-                        onHomeClick = { currentScreen = Screen.Home },
+                        onBackClick = { goBack() },
+                        onHomeClick = { goHome() },
                     )
 
                     Screen.About -> AboutScreen(
-                        onBackClick = { currentScreen = Screen.Settings },
-                        onHomeClick = { currentScreen = Screen.Home },
+                        onBackClick = { goBack() },
+                        onHomeClick = { goHome() },
                     )
 
                     Screen.Quiz -> ActiveQuizScreen(
@@ -295,7 +328,7 @@ fun NazoApp() {
                         totalQuestions = questions.size,
                         difficulty = quizDifficulty,
                         onNextQuestion = { isCorrect, selected -> answer(isCorrect, selected) },
-                        onCloseClick = { currentScreen = Screen.Home },
+                        onCloseClick = { goHome() },
                     )
 
                     Screen.Results -> QuizCompleteScreen(
@@ -303,27 +336,21 @@ fun NazoApp() {
                         totalQuestions = questions.size,
                         timeSpent = formatElapsed(quizStartedAt),
                         difficulty = quizDifficulty,
-                        onPlayAnother = { currentScreen = Screen.Home },
-                        onReviewAnswers = { currentScreen = Screen.Review },
-                        onSettingsClick = {
-                            settingsSource = Screen.Home
-                            currentScreen = Screen.Settings
-                        },
+                        onPlayAnother = { goHome() },
+                        onReviewAnswers = { navigate(Screen.Review) },
+                        onSettingsClick = { navigate(Screen.Settings) },
                     )
 
                     Screen.Loading -> LoadingScreen(
-                        onHomeClick = { currentScreen = Screen.Home },
-                        onSettingsClick = {
-                            settingsSource = Screen.Home
-                            currentScreen = Screen.Settings
-                        },
+                        onHomeClick = { goHome() },
+                        onSettingsClick = { navigate(Screen.Settings) },
                     )
 
                     Screen.Review -> ReviewAnswersScreen(
                         questions = questions,
                         userAnswers = userAnswers,
-                        onBackClick = { currentScreen = Screen.Results },
-                        onHomeClick = { currentScreen = Screen.Home },
+                        onBackClick = { goBack() },
+                        onHomeClick = { goHome() },
                     )
                 }
             }
