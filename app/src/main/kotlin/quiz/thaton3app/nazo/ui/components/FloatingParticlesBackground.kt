@@ -1,5 +1,6 @@
 package quiz.thaton3app.nazo.ui.components
 
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -40,7 +41,7 @@ private data class Particle(
  * Subtle ambient background of floating shapes (circles, squares, triangles) that drift and
  * slowly rotate forever. Drawn once at the app root (outside AnimatedContent) so the animation
  * is continuous across every screen. Colors come from the active Nazo palette, so the particles
- * adapt to the selected accent. Rendered with very low alpha so they stay behind the content.
+ * adapt to the selected accent. Rendered with low alpha so they stay behind the content.
  */
 @Composable
 fun FloatingParticlesBackground(modifier: Modifier = Modifier) {
@@ -51,8 +52,8 @@ fun FloatingParticlesBackground(modifier: Modifier = Modifier) {
         transition.animateFloat(
             initialValue = 0f,
             targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                tween(durationMillis = p.duration, easing = androidx.compose.animation.core.LinearEasing),
+            animationSpec = infiniteRepeatable<Float>(
+                tween<Float>(durationMillis = p.duration, easing = LinearEasing),
                 repeatMode = RepeatMode.Reverse,
             ),
             label = "particle-${p.colorIndex}",
@@ -62,12 +63,12 @@ fun FloatingParticlesBackground(modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
-        val base = minOf(w, h)
+        val base = if (w < h) w else h
         particles.forEachIndexed { i, p ->
             val t = ts[i].value
             val ang = p.phase + t * PI.toFloat() * 2f
-            val cx = (p.baseX + cos(ang) * p.ampX) * w
-            val cy = (p.baseY + sin(ang) * p.ampY) * h
+            val cx = (p.baseX + cos(ang).toFloat() * p.ampX) * w
+            val cy = (p.baseY + sin(ang).toFloat() * p.ampY) * h
             val r = p.size * base
             val color = colors[p.colorIndex % colors.size].copy(alpha = p.alpha)
             when (p.shape) {
@@ -76,14 +77,18 @@ fun FloatingParticlesBackground(modifier: Modifier = Modifier) {
                     radius = r,
                     center = Offset(cx, cy),
                 )
-                ParticleShape.SQUARE -> rotate(degrees = t * p.rotSpeed, pivot = Offset(cx, cy)) {
+                ParticleShape.SQUARE -> withTransform({
+                    rotate(degrees = t * p.rotSpeed, pivot = Offset(cx, cy))
+                }) {
                     drawRect(
                         color = color,
                         topLeft = Offset(cx - r, cy - r),
                         size = Size(r * 2, r * 2),
                     )
                 }
-                ParticleShape.TRIANGLE -> rotate(degrees = t * p.rotSpeed, pivot = Offset(cx, cy)) {
+                ParticleShape.TRIANGLE -> withTransform({
+                    rotate(degrees = t * p.rotSpeed, pivot = Offset(cx, cy))
+                }) {
                     val path = Path().apply {
                         moveTo(cx, cy - r)
                         lineTo(cx - r, cy + r)
