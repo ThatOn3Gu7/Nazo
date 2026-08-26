@@ -826,3 +826,19 @@ covered by `BUG_AUDIT.md` + this log).
     `ProfilePreferences` (SharedPreferences, `"nazo_profile"`) persists username + profilePictureUri;
     `NazoApp` holds `profileName`/`profilePictureUri` state and wires callbacks. NOT YET BUILT —
     user to verify compile in Termux.
+
+  - **Profile polish pass (3 fixes):**
+    1. *Avatar glyph size*: `ProfileInitials` now takes the avatar `size` and derives the
+       letter/“?” font as `size * 0.40f` (was a fixed `displayMedium` ~45sp, oversized in the
+       40dp home header and pushing the pill). Emoji fallback uses the same scaled size.
+    2. *Stats card decoration*: the plain `QuizStats` card on the Profile screen is now
+       `ProfileStatsCard` — a `Card` with a 1dp `NazoPrimary` (alpha .30) rounded outline and two
+       static decorative rounded-rectangles (low-alpha `NazoPrimary` / `NazoSurfaceVariant`) rotated
+       and offset to peek out behind it. Each stat cell also got a small tonal Material icon
+       (Quizzes=Quiz, Answered=QuestionAnswer, Correct=CheckCircle, Streak=LocalFireDepartment).
+       No animation, per request. Added imports: `foundation.border`, `ui.draw.rotate`,
+       `ui.graphics.vector.ImageVector`, and the missing `shape.RoundedCornerShape`.
+    3. *Statistics back-nav bug*: entering Statistics from the Profile screen returned to Settings
+       on back. Added `statisticsSource` state in `NazoApp.kt`, set to `Screen.Profile` when the
+       Profile menu opens Statistics (and `Screen.Settings` from Settings), and StatisticsScreen's
+       `onBackClick` now returns to `statisticsSource`.

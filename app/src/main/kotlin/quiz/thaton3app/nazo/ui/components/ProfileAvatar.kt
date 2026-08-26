@@ -16,6 +16,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoSurface
@@ -41,7 +42,7 @@ fun SafeRemoteImage(
 }
 
 @Composable
-fun ProfileInitials(username: String, modifier: Modifier = Modifier) {
+fun ProfileInitials(username: String, size: Dp, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -50,8 +51,10 @@ fun ProfileInitials(username: String, modifier: Modifier = Modifier) {
     ) {
         Text(
             text = username.firstOrNull()?.uppercase() ?: "?",
-            style = MaterialTheme.typography.displayMedium,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleLarge.copy(
+                fontSize = (size.value * 0.40f).sp,
+                fontWeight = FontWeight.Bold,
+            ),
             color = NazoPrimary,
         )
     }
@@ -77,7 +80,9 @@ fun ProfileAvatar(
                 ) {
                     Text(
                         pictureUri.removePrefix("emoji:"),
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontSize = (size.value * 0.40f).sp,
+                        ),
                         color = NazoPrimary,
                     )
                 }
@@ -87,12 +92,12 @@ fun ProfileAvatar(
                     contentDescription = "Profile picture",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
-                    placeholder = { ProfileInitials(name) },
-                    errorContent = { ProfileInitials(name) },
+                    placeholder = { ProfileInitials(name, size) },
+                    errorContent = { ProfileInitials(name, size) },
                 )
             }
         } else {
-            ProfileInitials(name)
+            ProfileInitials(name, size)
         }
     }
     val base = modifier.size(size).clip(shape).background(NazoSurface)

@@ -96,6 +96,9 @@ fun NazoApp() {
     }
     // Navigation + quiz session state (single source of truth for the whole app).
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Home) }
+    // Tracks where the Statistics screen was opened from so its back arrow returns
+    // to the correct place (Profile vs Settings).
+    var statisticsSource by remember { mutableStateOf<Screen>(Screen.Settings) }
     var questions by remember { mutableStateOf(emptyList<Question>()) }
     var userAnswers by remember { mutableStateOf<List<String?>>(emptyList()) }
     var currentQuestionIndex by remember { mutableIntStateOf(0) }
@@ -203,7 +206,10 @@ fun NazoApp() {
                         onBackClick = { currentScreen = Screen.Home },
                         onHomeClick = { currentScreen = Screen.Home },
                         onOpenAiProvider = { currentScreen = Screen.AiProvider },
-                        onOpenStatistics = { currentScreen = Screen.Statistics },
+                        onOpenStatistics = {
+                            statisticsSource = Screen.Settings
+                            currentScreen = Screen.Statistics
+                        },
                         onOpenAppearance = { currentScreen = Screen.Appearance },
                         onOpenBackupRestore = { currentScreen = Screen.BackupRestore },
                         onOpenAbout = { currentScreen = Screen.About },
@@ -224,7 +230,10 @@ fun NazoApp() {
                             profilePictureUri = uri
                             profilePrefs.profilePictureUri = uri
                         },
-                        onNavigateToStatistics = { currentScreen = Screen.Statistics },
+                        onNavigateToStatistics = {
+                            statisticsSource = Screen.Profile
+                            currentScreen = Screen.Statistics
+                        },
                         onNavigateToSettings = { currentScreen = Screen.Settings },
                     )
 
@@ -237,7 +246,7 @@ fun NazoApp() {
 
                     Screen.Statistics -> StatisticsScreen(
                         stats = quizStats,
-                        onBackClick = { currentScreen = Screen.Settings },
+                        onBackClick = { currentScreen = statisticsSource },
                         onHomeClick = { currentScreen = Screen.Home },
                     )
 

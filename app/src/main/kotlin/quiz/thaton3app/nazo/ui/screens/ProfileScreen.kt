@@ -4,10 +4,12 @@ import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -21,7 +23,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -158,41 +162,7 @@ fun ProfileScreen(
             Spacer(modifier = Modifier.height(32.dp))
 
             if (quizStats.totalQuizzes > 0) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.extraLarge,
-                    colors = CardDefaults.cardColors(
-                        containerColor = NazoSurfaceVariant.copy(alpha = 0.5f)
-                    )
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth()) {
-                            ProfileStatCell(
-                                value = quizStats.totalQuizzes.toString(),
-                                label = "Quizzes",
-                                modifier = Modifier.weight(1f)
-                            )
-                            ProfileStatCell(
-                                value = quizStats.totalQuestionsAnswered.toString(),
-                                label = "Answered",
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Row(modifier = Modifier.fillMaxWidth()) {
-                            ProfileStatCell(
-                                value = quizStats.totalCorrect.toString(),
-                                label = "Correct",
-                                modifier = Modifier.weight(1f)
-                            )
-                            ProfileStatCell(
-                                value = quizStats.currentStreakDays.toString(),
-                                label = "Streak",
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-                }
+                ProfileStatsCard(stats = quizStats)
                 Spacer(modifier = Modifier.height(24.dp))
             }
 
@@ -525,6 +495,7 @@ private fun ProfileMenuItem(
 
 @Composable
 private fun ProfileStatCell(
+    icon: ImageVector,
     value: String,
     label: String,
     modifier: Modifier = Modifier
@@ -533,6 +504,13 @@ private fun ProfileStatCell(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = NazoPrimary.copy(alpha = 0.85f),
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = value,
             style = MaterialTheme.typography.headlineSmall,
@@ -545,6 +523,75 @@ private fun ProfileStatCell(
             style = MaterialTheme.typography.labelMedium,
             color = NazoTextSecondary
         )
+    }
+}
+
+@Composable
+private fun ProfileStatsCard(stats: QuizStats) {
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center
+    ) {
+        // Static decorative shapes floating behind the card (no animation).
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .offset(x = 14.dp, y = (-14).dp)
+                .size(56.dp)
+                .rotate(-12f)
+                .clip(RoundedCornerShape(16.dp))
+                .background(NazoPrimary.copy(alpha = 0.10f))
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .offset(x = (-14).dp, y = 14.dp)
+                .size(46.dp)
+                .rotate(12f)
+                .clip(RoundedCornerShape(14.dp))
+                .background(NazoSurfaceVariant.copy(alpha = 0.6f))
+        )
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, NazoPrimary.copy(alpha = 0.30f), RoundedCornerShape(24.dp)),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = NazoSurfaceVariant.copy(alpha = 0.45f)
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    ProfileStatCell(
+                        icon = Icons.Filled.Quiz,
+                        value = stats.totalQuizzes.toString(),
+                        label = "Quizzes",
+                        modifier = Modifier.weight(1f)
+                    )
+                    ProfileStatCell(
+                        icon = Icons.Filled.QuestionAnswer,
+                        value = stats.totalQuestionsAnswered.toString(),
+                        label = "Answered",
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    ProfileStatCell(
+                        icon = Icons.Filled.CheckCircle,
+                        value = stats.totalCorrect.toString(),
+                        label = "Correct",
+                        modifier = Modifier.weight(1f)
+                    )
+                    ProfileStatCell(
+                        icon = Icons.Filled.LocalFireDepartment,
+                        value = stats.currentStreakDays.toString(),
+                        label = "Streak",
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
     }
 }
 
