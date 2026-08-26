@@ -858,3 +858,12 @@ covered by `BUG_AUDIT.md` + this log).
        BackupRestore, ReviewAnswers, Loading, QuizComplete, ActiveQuiz) and ProfileScreen's Scaffold
        `containerColor` set to `Color.Transparent`; the base layer provides the color, particles
        drift behind cards/info. Alpha kept low (0.10-0.22) so it stays ambient, not cluttered.
+
+  - **Particles background refined (Gemini pass):** Replaced our first pass of
+    `FloatingParticlesBackground` with a more polished version (user reviewed and approved).
+    Key improvements: rounded-corner strokes via `PathEffect.cornerPathEffect` (the "cool" factor),
+    manual 2D point rotation (bypasses the Compose `rotate()`/`withTransform` APIs that don't resolve
+    in this version), Lissajous drift paths (`sin/cos` with per-particle driftFreq/phase/amp) so shapes
+    wander without clumping, and slow 45s ping-pong `Animatable` loop for a "breathing" feel. 12
+    particles on a jittered 3x4 grid, sizes 5-12% of min dimension, alpha 0.06-0.16. Still uses
+    `NazoPrimary`/`NazoSuccess`/`NazoError` so it adapts to the accent. Left as-is per user request.
