@@ -12,6 +12,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -67,17 +68,20 @@ fun FloatingParticlesBackground(modifier: Modifier = Modifier) {
             val cx = (p.baseX + cos(ang).toFloat() * p.ampX) * w
             val cy = (p.baseY + sin(ang).toFloat() * p.ampY) * h
             val r = p.size * base
+            val strokeWidth = (r * 0.16f).coerceAtLeast(3f)
             val color = colors[p.colorIndex % colors.size].copy(alpha = p.alpha)
             when (p.shape) {
                 ParticleShape.CIRCLE -> drawCircle(
                     color = color,
                     radius = r,
                     center = Offset(cx, cy),
+                    style = Stroke(width = strokeWidth),
                 )
                 ParticleShape.SQUARE -> drawRect(
                     color = color,
                     topLeft = Offset(cx - r, cy - r),
                     size = Size(r * 2, r * 2),
+                    style = Stroke(width = strokeWidth),
                 )
                 ParticleShape.TRIANGLE -> {
                     val path = Path().apply {
@@ -86,7 +90,7 @@ fun FloatingParticlesBackground(modifier: Modifier = Modifier) {
                         lineTo(cx + r, cy + r)
                         close()
                     }
-                    drawPath(path = path, color = color)
+                    drawPath(path = path, color = color, style = Stroke(width = strokeWidth))
                 }
             }
         }
@@ -96,18 +100,18 @@ fun FloatingParticlesBackground(modifier: Modifier = Modifier) {
 private fun buildParticles(): List<Particle> {
     val r = Random(20240826)
     val shapes = ParticleShape.values()
-    return List(16) {
+    return List(10) {
         Particle(
             baseX = r.nextFloat(),
             baseY = r.nextFloat(),
-            size = 0.012f + r.nextFloat() * 0.030f, // 1.2%..4.2% of min dimension
+            size = 0.045f + r.nextFloat() * 0.06f,  // 4.5%..10.5% of min dimension (big)
             shape = shapes[r.nextInt(shapes.size)],
             colorIndex = r.nextInt(3),
             duration = 7000 + r.nextInt(9000),      // 7s..16s gentle cycle
             ampX = 0.02f + r.nextFloat() * 0.04f,
             ampY = 0.03f + r.nextFloat() * 0.05f,
             phase = r.nextFloat() * PI.toFloat() * 2f,
-            alpha = 0.10f + r.nextFloat() * 0.12f,   // 0.10..0.22 subtle but visible
+            alpha = 0.12f + r.nextFloat() * 0.12f,   // 0.12..0.24 subtle but visible outlines
         )
     }
 }
