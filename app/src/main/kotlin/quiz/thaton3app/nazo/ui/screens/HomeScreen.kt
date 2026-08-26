@@ -60,6 +60,7 @@ import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoErrorBg
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.ProfileAvatar
 
 enum class Difficulty(val label: String) {
     EASY("Easy"),
@@ -74,6 +75,9 @@ fun HomeScreen(
     apiKeyActive: Boolean,
     offline: Boolean = false,
     onSettingsClick: () -> Unit = {},
+    profileName: String = "",
+    profilePictureUri: String? = null,
+    onProfileClick: () -> Unit = {},
     onStartQuiz: (topic: String, difficulty: String, count: Int) -> Unit,
     topic: String = "",
     difficultyName: String = Difficulty.MEDIUM.name,
@@ -101,7 +105,12 @@ fun HomeScreen(
                 .padding(horizontal = 20.dp)
         ) {
             Spacer(Modifier.height(28.dp))
-            HomeHeader(onSettingsClick = onSettingsClick)
+            HomeHeader(
+                onSettingsClick = onSettingsClick,
+                profileName = profileName,
+                profilePictureUri = profilePictureUri,
+                onProfileClick = onProfileClick,
+            )
             Spacer(Modifier.height(16.dp))
             ApiKeyBadge(active = apiKeyActive, offline = offline)
             Spacer(Modifier.height(20.dp))
@@ -165,7 +174,12 @@ fun HomeScreen(
 }
 
 @Composable
-private fun HomeHeader(onSettingsClick: () -> Unit) {
+private fun HomeHeader(
+    onSettingsClick: () -> Unit,
+    profileName: String,
+    profilePictureUri: String?,
+    onProfileClick: () -> Unit,
+) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         // Logo + title wrapped in a pill (same visual language as the API-key / offline
         // badges). Both sit on the same horizontal line (the inner Row is center-aligned)
@@ -191,20 +205,13 @@ private fun HomeHeader(onSettingsClick: () -> Unit) {
             )
         }
         Spacer(Modifier.weight(1f))
-        IconButton(
-            onClick = onSettingsClick,
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(NazoSurface),
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Settings,
-                contentDescription = "Settings",
-                tint = NazoTextSecondary,
-                modifier = Modifier.size(18.dp),
-            )
-        }
+        ProfileAvatar(
+            name = profileName,
+            pictureUri = profilePictureUri,
+            size = 40.dp,
+            onClick = onProfileClick,
+            modifier = Modifier.size(40.dp),
+        )
     }
 }
 

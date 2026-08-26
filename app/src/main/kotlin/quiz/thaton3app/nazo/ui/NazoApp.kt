@@ -22,6 +22,7 @@ import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.data.remote.Connectivity
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
+import quiz.thaton3app.nazo.data.settings.ProfilePreferences
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.ui.components.OfflineWarningDialog
@@ -33,6 +34,7 @@ import quiz.thaton3app.nazo.ui.theme.NazoTheme
 // uniform fade-in / fade-out transition between ALL screens (Roadmap #2).
 sealed interface Screen {
     data object Home : Screen
+    data object Profile : Screen
     data object Settings : Screen
     data object AiProvider : Screen
     data object Statistics : Screen
@@ -52,6 +54,9 @@ fun NazoApp() {
     val themePrefs = remember { ThemePreferences(context) }
     val statsStore = remember { QuizStatsStore(context.applicationContext) }
     var quizStats by remember { mutableStateOf(statsStore.get()) }
+    val profilePrefs = remember { ProfilePreferences(context) }
+    var profileName by remember { mutableStateOf(profilePrefs.username) }
+    var profilePictureUri by remember { mutableStateOf(profilePrefs.profilePictureUri) }
 
     // Offline / online mode. `forceOffline` is the manual Settings switch and is
     // SESSION-ONLY (never persisted) — when the app is killed and reopened the network
@@ -182,6 +187,9 @@ fun NazoApp() {
                         apiKeyActive = apiKeyStore.hasAnyActiveKey(),
                         offline = isOfflineMode,
                         onSettingsClick = { currentScreen = Screen.Settings },
+                        profileName = profileName,
+                        profilePictureUri = profilePictureUri,
+                        onProfileClick = { currentScreen = Screen.Profile },
                         onStartQuiz = { topic, difficulty, count -> startQuiz(topic, difficulty, count) },
                         topic = homeTopic,
                         difficultyName = homeDifficultyName,
@@ -202,6 +210,23 @@ fun NazoApp() {
                     forceOffline = forceOffline,
                     onForceOfflineChange = { v -> forceOffline = v },
                 )
+
+                    Screen.Profile -> ProfileScreen(
+                        username = profileName,
+                        profilePictureUri = profilePictureUri,
+                        quizStats = quizStats,
+                        onBack = { currentScreen = Screen.Home },
+                        onUsernameChange = { name ->
+                            profileName = name
+                            profilePrefs.username = name
+                        },
+                        onProfilePictureChange = { uri ->
+                            profilePictureUri = uri
+                            profilePrefs.profilePictureUri = uri
+                        },
+                        onNavigateToStatistics = { currentScreen = Screen.Statistics },
+                        onNavigateToSettings = { currentScreen = Screen.Settings },
+                    )
 
                     Screen.AiProvider -> AiProviderScreen(
                         apiKeyStore = apiKeyStore,

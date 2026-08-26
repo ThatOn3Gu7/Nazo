@@ -808,3 +808,21 @@ covered by `BUG_AUDIT.md` + this log).
     in `Haptics.kt` that captures the context in Composable scope. Each touched screen got
     `import quiz.thaton3app.nazo.ui.components.rememberHapticBack` (and dropped the now-unused
     `LocalContext`/`Haptics` imports).
+
+  - **Profile screen added (ported + refactored from Shouze):** New `ProfileScreen.kt` replaces
+    the top-right settings gear on Home with a dynamic profile avatar (`ProfileAvatar` in
+    `ui/components/ProfileAvatar.kt`) that shows the user's initials, an emoji, a gallery image,
+    or a remote avatar URL. Tapping it opens `Screen.Profile` (added to the sealed `Screen`
+    interface in `NazoApp.kt`). The profile hero uses the new `ProfileAvatar` (size 132dp); the
+    username is a pill (tappable → rename dialog with a random-anime-name generator); stats card
+    shows QuizStats (totalQuizzes / answered / correct / streak) only when quizzes > 0; a menu
+    card links to Statistics and Settings. Avatar picker dialog pulls open-source presets:
+    DiceBear (adventurer/pixel-art/shapes), RoboHash (robots/monsters/cats), Pravatar (portraits)
+    rebuilt with a refresh nonce, plus async fetched tabs from Jikan, waifu.im and RandomUser
+    (rewritten with `HttpURLConnection` + `org.json` instead of Shouze's OkHttp/kotlinx). Coil
+    (`io.coil-kt:coil-compose` 2.7.0) added to `libs.versions.toml` + `app/build.gradle.kts` for
+    `SubcomposeAsyncImage`. All colors use Nazo palette accessors (`NazoPrimary`, `NazoSurfaceVariant`,
+    etc.) and Plus Jakarta Sans — NOT Material colorScheme tokens (those fall back to purple).
+    `ProfilePreferences` (SharedPreferences, `"nazo_profile"`) persists username + profilePictureUri;
+    `NazoApp` holds `profileName`/`profilePictureUri` state and wires callbacks. NOT YET BUILT —
+    user to verify compile in Termux.

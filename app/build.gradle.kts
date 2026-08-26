@@ -45,6 +45,7 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation("androidx.compose.material:material-icons-extended")
+    implementation(libs.coil)
     // Room Database components
     val roomVersion = "2.6.1" // Use the latest stable version
     implementation("androidx.room:room-runtime:$roomVersion")
