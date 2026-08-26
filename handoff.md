@@ -20,6 +20,47 @@ Conventions:
 
 ---
 
+## [2026-08-26 22:30] tweak: floating-nav polish — smaller pill, scroll-behind on Home, nav bar only on Home
+
+- Owner feedback (4 points):
+  1. The Appearance LAYOUT section sat too close to the APP ICON section → added a
+     32.dp spacer before the LAYOUT header.
+  2. In floating mode the bar should let content scroll *under* it and stay visible
+     (previously content was clipped where the bar sat).
+  3. The bottom nav should NOT appear on Profile / Settings sub-screens at all — only
+     on Home. This also fixes the "nav bar disappears when swiping back between
+     sub-screens" bug and the toggle-not-updating-live issue (Home re-reads the pref
+     on return, so it updates when you come back Home).
+  4. Floating pill a touch smaller.
+- Changes:
+  - `ui/components/NazoBottomNav.kt`: added a `modifier: Modifier = Modifier` param
+    (prepended to both branches). Floating branch shrunk — 20.dp side margins, 12.dp
+    bottom gap, 8.dp shadow, 26.dp corner radius, 12.dp vertical padding — and made
+    the pill slightly translucent (`NazoNavBar.copy(alpha = 0.92f)`) so content behind
+    it stays visible. Solid branch unchanged (still opaque, full-width, covers the
+    gesture area).
+  - `ui/screens/HomeScreen.kt`: root `Column` → `Box`; the scrolling content `Column`
+    now uses `fillMaxSize()` + `padding(bottom = 96.dp)` (was `weight(1f)`) and the nav
+    bar is placed as an overlay via `Modifier.align(Alignment.BottomCenter)` — so in
+    floating mode content scrolls *under* the pill and remains visible. Added the
+    `androidx.compose.foundation.layout.align` import. Home is now the ONLY screen that
+    renders the nav bar.
+  - Removed the `NazoBottomNav(...)` call from the sub-screens: `SettingsScreen`,
+    `StatisticsScreen`, `QuizCompleteScreen`, `AboutScreen`, `ReviewAnswersScreen`,
+    `LoadingScreen`, `BackupRestoreScreen`, `AiProviderScreen`, `AppearanceScreen`.
+    (Their now-unused `NazoBottomNav` / `NazoTab` imports remain; harmless warnings.)
+  - `ui/screens/AppearanceScreen.kt`: added the 32.dp spacer before the LAYOUT section;
+    dropped the now-redundant "bottom padding before nav" comment.
+- Files: `ui/components/NazoBottomNav.kt`, `ui/screens/HomeScreen.kt`,
+  `ui/screens/AppearanceScreen.kt`, `ui/screens/SettingsScreen.kt`,
+  `ui/screens/StatisticsScreen.kt`, `ui/screens/QuizCompleteScreen.kt`,
+  `ui/screens/AboutScreen.kt`, `ui/screens/ReviewAnswersScreen.kt`,
+  `ui/screens/LoadingScreen.kt`, `ui/screens/BackupRestoreScreen.kt`,
+  `ui/screens/AiProviderScreen.kt`, `handoff.md`.
+- Verified by inspection (cannot compile here); owner to build in Termux.
+
+---
+
 ## [2026-08-26 21:15] feat: profile polish + nav-bar particle clipping + floating-nav toggle
 
 - **Profile screen (owner feedback):**

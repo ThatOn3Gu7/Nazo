@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.align
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -92,16 +93,17 @@ fun HomeScreen(
     val difficulty = Difficulty.valueOf(difficultyName)
     val context = LocalContext.current
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
     ) {
         Column(
             modifier = Modifier
-                .weight(1f)
+                .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
+                .padding(bottom = 96.dp)
         ) {
             Spacer(Modifier.height(28.dp))
             HomeHeader(
@@ -168,7 +170,11 @@ fun HomeScreen(
             )
             Spacer(Modifier.height(16.dp))
         }
-        NazoBottomNav(selected = NazoTab.Home, onSettingsClick = onSettingsClick)
+        NazoBottomNav(
+            selected = NazoTab.Home,
+            onSettingsClick = onSettingsClick,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
 

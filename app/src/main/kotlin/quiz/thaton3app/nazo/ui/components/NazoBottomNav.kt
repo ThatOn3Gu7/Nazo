@@ -31,33 +31,31 @@ import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 import quiz.thaton3app.nazo.ui.components.Haptics
 
-// Confirmed against the mockup pixels: the active tab has NO pill/capsule highlight
-// behind it — active vs inactive is shown purely by icon/label color (dark green vs
-// muted gray-green) and label weight.
-
 enum class NazoTab { Home, Settings }
 
 @Composable
 fun NazoBottomNav(
     selected: NazoTab,
+    modifier: Modifier = Modifier,
     onHomeClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
 ) {
     // Floating mode is a user preference (Appearance → Layout). In floating mode the
-    // bar becomes an elevated rounded pill inset from the edges, so the ambient
-    // particles show through the gaps around it (and in the gesture area beneath).
+    // bar becomes an elevated rounded pill, inset from the edges and slightly
+    // translucent, so screen content scrolling *under* it stays visible. The caller
+    // (Home) positions it via `modifier` (e.g. align(BottomCenter)) so it overlays.
     val floating = ThemePreferences(LocalContext.current).floatingNavBar
 
     if (floating) {
         Row(
-            modifier = Modifier
+            modifier = modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp)
+                .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
-                .padding(bottom = 16.dp)
-                .shadow(elevation = 12.dp, shape = RoundedCornerShape(30.dp), clip = false)
-                .background(NazoNavBar, RoundedCornerShape(30.dp))
-                .padding(vertical = 18.dp),
+                .padding(bottom = 12.dp)
+                .shadow(elevation = 8.dp, shape = RoundedCornerShape(26.dp), clip = false)
+                .background(NazoNavBar.copy(alpha = 0.92f), RoundedCornerShape(26.dp))
+                .padding(vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
             NavItems(selected = selected, onHomeClick = onHomeClick, onSettingsClick = onSettingsClick)
@@ -66,7 +64,7 @@ fun NazoBottomNav(
         // Solid bar: the background is applied BEFORE the navigation-bar padding so it
         // also covers the system gesture area, hiding the ambient particles behind it.
         Row(
-            modifier = Modifier
+            modifier = modifier
                 .fillMaxWidth()
                 .background(NazoNavBar)
                 .navigationBarsPadding()

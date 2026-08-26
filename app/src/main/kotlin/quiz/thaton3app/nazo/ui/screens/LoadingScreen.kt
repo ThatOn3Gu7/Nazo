@@ -46,10 +46,5 @@ fun LoadingScreen(
                 color = NazoTextPrimary,
             )
         }
-        NazoBottomNav(
-            selected = NazoTab.Home,
-            onHomeClick = onHomeClick,
-            onSettingsClick = onSettingsClick,
-        )
     }
 }

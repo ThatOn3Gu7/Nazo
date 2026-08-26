@@ -187,7 +187,6 @@ fun AiProviderScreen(
             })
             Spacer(Modifier.height(16.dp))
         }
-        NazoBottomNav(selected = NazoTab.Settings, onHomeClick = onHomeClick, onSettingsClick = onBackClick)
     }
 }
 

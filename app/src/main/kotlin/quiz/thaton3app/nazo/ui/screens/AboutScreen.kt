@@ -312,7 +312,6 @@ fun AboutScreen(
 
             Spacer(Modifier.height(32.dp))
         }
-        NazoBottomNav(selected = NazoTab.Settings, onHomeClick = onHomeClick, onSettingsClick = onBackClick)
     }
 
     if (showUpdate) {

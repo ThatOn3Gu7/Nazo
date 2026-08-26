@@ -202,7 +202,6 @@ fun StatisticsScreen(
             // --- NEW COMPONENTS END HERE ---
             
         }
-        NazoBottomNav(selected = NazoTab.Settings, onHomeClick = onHomeClick, onSettingsClick = onBackClick)
     }
 }
 

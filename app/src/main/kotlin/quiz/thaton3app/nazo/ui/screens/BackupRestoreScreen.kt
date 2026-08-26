@@ -119,7 +119,6 @@ fun BackupRestoreScreen(
             
             Spacer(Modifier.height(32.dp))
         }
-        NazoBottomNav(selected = NazoTab.Settings, onHomeClick = onHomeClick, onSettingsClick = onBackClick)
     }
 }
 

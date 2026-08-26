@@ -216,6 +216,8 @@ fun AppearanceScreen(
 
 
             
+            Spacer(modifier = Modifier.height(32.dp))
+
             // --- LAYOUT SECTION ---
             SectionHeader("LAYOUT")
 
@@ -238,13 +240,8 @@ fun AppearanceScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            Spacer(modifier = Modifier.height(40.dp)) // bottom padding before nav
+            Spacer(modifier = Modifier.height(40.dp))
         }
-        NazoBottomNav(
-            selected = NazoTab.Settings,
-            onHomeClick = onHomeClick,
-            onSettingsClick = onBackClick,
-        )
     }
 }
 

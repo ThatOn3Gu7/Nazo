@@ -137,7 +137,6 @@ fun QuizCompleteScreen(
                 Text("Review Answers & Explanations", color = NazoTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
         }
-        NazoBottomNav(selected = NazoTab.Home, onSettingsClick = onSettingsClick)
     }
 }
 

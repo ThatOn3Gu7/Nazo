@@ -95,11 +95,6 @@ fun ReviewAnswersScreen(
             }
             Spacer(Modifier.height(16.dp))
         }
-        NazoBottomNav(
-            selected = NazoTab.Home,
-            onHomeClick = onHomeClick,
-            onSettingsClick = onSettingsClick,
-        )
     }
 }
 
