@@ -20,6 +20,23 @@ Conventions:
 
 ---
 
+## [2026-08-26 18:00] CI: Add GitHub release workflow (adapted from Shouze)
+
+- Goal: ship Nazo via GitHub Releases without reinventing tooling — reused Shouze's
+  tag-triggered release pipeline and re-skinned it for this app.
+- Added `.github/workflows/build-release.yml`: on push of a `v*` tag, checks out,
+  sets up JDK 17 + Gradle, builds `assembleRelease`/`assembleDebug` (supports signing
+  via `SIGNING_*` secrets, falls back to unsigned), stages APKs, generates notes, and
+  creates a GitHub Release.
+- Added `.github/scripts/gen_release_notes.py` (copied from Shouze, `repo` set to
+  `ThatOn3Gu7/Nazo`); builds "What's Changed" from commit range between tags.
+- Renamed APK outputs + release title to **Nazo** (`Nazo-release-<ver>.apk`, etc.).
+- Note for maintainer: add repo secrets `SIGNING_KEY_BASE64`, `SIGNING_STORE_PASSWORD`,
+  `SIGNING_KEY_ALIAS`, `SIGNING_KEY_PASSWORD` for signed builds; tag like `v1.1` to publish.
+- Files: `.github/workflows/build-release.yml`, `.github/scripts/gen_release_notes.py`.
+
+---
+
 ## [2026-08-26 17:40] Refactor: Remove unused layout section from Appearance screen
 
 - Removed the LAYOUT section (Compact List View + Card Style toggles) — they were
