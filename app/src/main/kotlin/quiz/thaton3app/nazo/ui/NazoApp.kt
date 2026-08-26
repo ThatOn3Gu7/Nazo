@@ -14,7 +14,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
@@ -90,8 +89,6 @@ fun NazoApp() {
         "light" -> false
         else -> isSystemInDarkTheme()
     }
-    val accentColor = accentToColor(accentName)
-
     // Navigation + quiz session state (single source of truth for the whole app).
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Home) }
     var questions by remember { mutableStateOf(emptyList<Question>()) }
@@ -167,7 +164,7 @@ fun NazoApp() {
         }
     }
 
-    NazoTheme(darkTheme = isDark, accentColor = accentColor) {
+    NazoTheme(darkTheme = isDark, accentId = accentName) {
         Box(modifier = Modifier.fillMaxSize()) {
             AnimatedContent(
                 targetState = currentScreen,
@@ -297,10 +294,4 @@ private fun formatElapsed(startedAt: Long): String {
     return "${secs / 60}m ${secs % 60}s"
 }
 
-private fun accentToColor(name: String): Color = when (name) {
-    "rose" -> Color(0xFFC05C72)
-    "indigo" -> Color(0xFF324888)
-    "bronze" -> Color(0xFFAD7931)
-    "slate" -> Color(0xFF4C5E57)
-    else -> Color(0xFF246D4C) // mint
-}
+

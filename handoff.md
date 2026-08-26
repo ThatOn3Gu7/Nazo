@@ -10,8 +10,40 @@ Conventions:
   ("Easy" / "Medium" / "Hard" / "Otaku Master") and are passed straight through
   to `data/QuizEngine.kt`, which owns difficulty→behavior rules.
 - Theme palette lives in `ui/theme/Color.kt` as a module-level `MutableState`
-  (`_nazoColors`) updated by `NazoTheme` via `setNazoColors(brand)`. Screens read
+  (`_nazoColors`) updated by `NazoTheme` via `setNazoColors(palette)`. Screens read
   it through the `NazoXxx` accessors (e.g. `NazoBackground`).
+- Accents are full light+dark `NazoColors` palettes (`Accents` list in `Color.kt`,
+  ids: mint/rose/indigo/bronze/slate). `NazoTheme(accentId)` resolves
+  `resolveAccent(accentId, darkTheme)` to a complete palette; non-mint accents are
+  HSL hue-shifts of the mint base (`recolorToHue`), preserving lightness/saturation
+  so text contrast stays intact. Semantic error/success colors are left unchanged.
+
+---
+
+## [2026-08-26 16:30] Feature: Functional multi-color accent themes (whole-app palette + pie preview)
+
+- Goal: make the 5 color accents actually theme the entire app (not just a primary
+  chip) and show a multi-color preview so users can tell them apart.
+- Approach: each accent is now a complete light+dark `NazoColors` palette. Non-mint
+  accents are derived via HSL hue-shift of the mint base
+  (`Light/DarkNazoColors.recolorToHue(targetHue)`) preserving each role's
+  lightness/saturation (keeps internal harmony + text contrast). error/success left
+  unchanged. Target hues: rose 345, indigo 230, bronze 35, slate 200.
+- `NazoTheme(darkTheme, accentId, content)` now resolves
+  `resolveAccent(accentId, darkTheme)` into a full `palette` and calls
+  `setNazoColors(palette)`, so every screen recolors automatically when the accent
+  changes (no per-screen edits).
+- `ThemePreferences.accent` stores the accent id string; `NazoApp` passes
+  `accentName` → `NazoTheme`. Removed the old `AccentColor` enum and the unused
+  `Color.kt` `withPrimary` helper.
+- `AppearanceScreen` COLOR ACCENTS section is now registry-driven (`Accents.forEach`)
+  and the selection pill (`ColorAccentCircle`) renders a 4-slice pie
+  (primary/surface/background/textPrimary) via `Canvas.drawArc` using
+  `previewColors(id, isDark)`; `isDark` derived from the current theme mode / system.
+  Description text updated accordingly.
+- Files: `ui/theme/Color.kt`, `ui/theme/Theme.kt`, `ui/NazoApp.kt`,
+  `ui/screens/AppearanceScreen.kt`.
+- Verified by inspection (cannot compile in this env); user to build in Termux.
 
 ---
 

@@ -13,43 +13,43 @@ import android.graphics.drawable.ColorDrawable
 import androidx.core.view.WindowCompat
 
 // Theme now reacts to the user's Appearance-screen choices: a real dark "deep forest"
-// theme, plus a selectable accent that overrides `primary`. Dynamic color (Material You)
+// theme, plus a selectable accent that applies a full palette. Dynamic color (Material You)
 // is intentionally NOT wired up: the brief is to match the mockup's fixed palette.
 @Composable
 fun NazoTheme(
     darkTheme: Boolean,
-    accentColor: Color,
+    accentId: String,
     content: @Composable () -> Unit,
 ) {
-    val brand = (if (darkTheme) DarkNazoColors else LightNazoColors).withPrimary(accentColor)
+    val palette = resolveAccent(accentId, darkTheme)
     // Publish the active palette so every screen's `NazoXxx` accessor reflects it.
-    setNazoColors(brand)
+    setNazoColors(palette)
 
     val colorScheme = if (darkTheme) {
         darkColorScheme(
-            primary = brand.primary,
-            onPrimary = brand.onPrimary,
-            background = brand.background,
-            onBackground = brand.textPrimary,
-            surface = brand.surface,
-            onSurface = brand.textPrimary,
-            surfaceVariant = brand.surfaceVariant,
-            onSurfaceVariant = brand.textSecondary,
-            secondaryContainer = brand.pillUnselected,
-            onSecondaryContainer = brand.textPrimary,
+            primary = palette.primary,
+            onPrimary = palette.onPrimary,
+            background = palette.background,
+            onBackground = palette.textPrimary,
+            surface = palette.surface,
+            onSurface = palette.textPrimary,
+            surfaceVariant = palette.surfaceVariant,
+            onSurfaceVariant = palette.textSecondary,
+            secondaryContainer = palette.pillUnselected,
+            onSecondaryContainer = palette.textPrimary,
         )
     } else {
         lightColorScheme(
-            primary = brand.primary,
-            onPrimary = brand.onPrimary,
-            background = brand.background,
-            onBackground = brand.textPrimary,
-            surface = brand.surface,
-            onSurface = brand.textPrimary,
-            surfaceVariant = brand.surfaceVariant,
-            onSurfaceVariant = brand.textSecondary,
-            secondaryContainer = brand.pillUnselected,
-            onSecondaryContainer = brand.textPrimary,
+            primary = palette.primary,
+            onPrimary = palette.onPrimary,
+            background = palette.background,
+            onBackground = palette.textPrimary,
+            surface = palette.surface,
+            onSurface = palette.textPrimary,
+            surfaceVariant = palette.surfaceVariant,
+            onSurfaceVariant = palette.textSecondary,
+            secondaryContainer = palette.pillUnselected,
+            onSecondaryContainer = palette.textPrimary,
         )
     }
 
@@ -75,7 +75,7 @@ fun NazoTheme(
             // Keep the Activity's own window background in sync with the in-app theme.
             // This prevents the white system window from bleeding through during the
             // AnimatedContent crossfade (especially in forced-dark mode) — see handoff log.
-            window.setBackgroundDrawable(ColorDrawable(brand.background.toArgb()))
+            window.setBackgroundDrawable(ColorDrawable(palette.background.toArgb()))
             val insets = WindowCompat.getInsetsController(window, view)
             insets.isAppearanceLightStatusBars = !darkTheme
             insets.isAppearanceLightNavigationBars = !darkTheme

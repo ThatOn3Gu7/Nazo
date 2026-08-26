@@ -86,6 +86,121 @@ val DarkNazoColors = NazoColors(
     onDarkCardMuted = Color(0xFF9DB5A6),
 )
 
+// ---- Accent themes -------------------------------------------------------
+// Each accent is a *complete* light + dark palette (not just a primary color), so selecting
+// it themes the whole app. Non-mint accents are derived by hue-shifting the mint base while
+// preserving each role's lightness/saturation — this keeps the internal harmony (and text
+// contrast) intact. Semantic colors (error/success) are intentionally left alone.
+
+private data class Hsl(val h: Float, val s: Float, val l: Float)
+
+private fun Color.toHsl(): Hsl {
+    val r = red; val g = green; val b = blue
+    val max = if (r > g) if (r > b) r else b else if (g > b) g else b
+    val min = if (r < g) if (r < b) r else b else if (g < b) g else b
+    val l = (max + min) / 2f
+    var h = 0f; var s = 0f
+    val d = max - min
+    if (d > 0.0001f) {
+        s = if (l > 0.5f) d / (2f - max - min) else d / (max + min)
+        h = when (max) {
+            r -> (g - b) / d + (if (g < b) 6f else 0f)
+            g -> (b - r) / d + 2f
+            b -> (r - g) / d + 4f
+            else -> 0f
+        }
+        h /= 6f
+    }
+    return Hsl(h * 360f, s, l)
+}
+
+private fun Hsl.toColor(): Color {
+    val h = h / 360f
+    val r: Float; val g: Float; val b: Float
+    if (s <= 0.0001f) {
+        val v = (l * 255f).toInt().coerceIn(0, 255)
+        return Color(0xFF000000.toInt() or (v shl 16) or (v shl 8) or v)
+    }
+    val q = if (l < 0.5f) l * (1f + s) else l + s - l * s
+    val p = 2f * l - q
+    fun hue2c(t: Float): Float {
+        var tt = t
+        if (tt < 0f) tt += 1f
+        if (tt > 1f) tt -= 1f
+        return when {
+            tt < 1f / 6f -> p + (q - p) * 6f * tt
+            tt < 1f / 2f -> q
+            tt < 2f / 3f -> p + (q - p) * (2f / 3f - tt) * 6f
+            else -> p
+        }
+    }
+    r = hue2c(h + 1f / 3f)
+    g = hue2c(h)
+    b = hue2c(h - 1f / 3f)
+    val r8 = (r * 255f).toInt().coerceIn(0, 255)
+    val g8 = (g * 255f).toInt().coerceIn(0, 255)
+    val b8 = (b * 255f).toInt().coerceIn(0, 255)
+    return Color(0xFF000000.toInt() or (r8 shl 16) or (g8 shl 8) or b8)
+}
+
+private val REFERENCE_HUE = LightNazoColors.primary.toHsl().h
+
+private fun NazoColors.recolorToHue(targetHue: Float): NazoColors {
+    val delta = targetHue - REFERENCE_HUE
+    fun Color.shift(): Color {
+        val hsl = toHsl()
+        val m = (hsl.h + delta) % 360f
+        val newHue = if (m < 0f) m + 360f else m
+        return Hsl(newHue, hsl.s, hsl.l).toColor()
+    }
+    return copy(
+        background = background.shift(),
+        surface = surface.shift(),
+        surfaceVariant = surfaceVariant.shift(),
+        badge = badge.shift(),
+        pillUnselected = pillUnselected.shift(),
+        primary = primary.shift(),
+        navBar = navBar.shift(),
+        onPrimary = onPrimary,
+        textPrimary = textPrimary.shift(),
+        textSecondary = textSecondary.shift(),
+        textPlaceholder = textPlaceholder.shift(),
+        successBg = successBg,
+        success = success,
+        errorBg = errorBg,
+        error = error,
+        statsCardBg = statsCardBg.shift(),
+        darkCard = darkCard.shift(),
+        darkCardAccent = darkCardAccent.shift(),
+        darkCardTrack = darkCardTrack.shift(),
+        onDarkCard = onDarkCard,
+        onDarkCardMuted = onDarkCardMuted.shift(),
+    )
+}
+
+data class Accent(
+    val id: String,
+    val label: String,
+    val light: NazoColors,
+    val dark: NazoColors,
+)
+
+val Accents: List<Accent> = listOf(
+    Accent("mint", "Mint Green", LightNazoColors, DarkNazoColors),
+    Accent("rose", "Rose", LightNazoColors.recolorToHue(345f), DarkNazoColors.recolorToHue(345f)),
+    Accent("indigo", "Indigo", LightNazoColors.recolorToHue(230f), DarkNazoColors.recolorToHue(230f)),
+    Accent("bronze", "Bronze", LightNazoColors.recolorToHue(35f), DarkNazoColors.recolorToHue(35f)),
+    Accent("slate", "Slate", LightNazoColors.recolorToHue(200f), DarkNazoColors.recolorToHue(200f)),
+)
+
+fun resolveAccent(id: String, dark: Boolean): NazoColors =
+    (Accents.firstOrNull { it.id == id } ?: Accents.first()).let { if (dark) it.dark else it.light }
+
+fun previewColors(id: String, dark: Boolean): List<Color> {
+    val p = resolveAccent(id, dark)
+    return listOf(p.primary, p.surface, p.background, p.textPrimary)
+}
+
 // Active palette. Updated by NazoTheme; read by every screen through the accessors below.
 // Reading/writing the plain State is non-composable, so it's safe from property getters.
 private val _nazoColors = mutableStateOf(LightNazoColors)
@@ -93,13 +208,6 @@ private val _nazoColors = mutableStateOf(LightNazoColors)
 internal fun setNazoColors(colors: NazoColors) {
     _nazoColors.value = colors
 }
-
-/** Returns a copy of these colors with [primary] (and accent-dependent surfaces) overridden. */
-fun NazoColors.withPrimary(primary: Color): NazoColors = copy(
-    primary = primary,
-    badge = primary,
-    darkCardAccent = primary,
-)
 
 // Top-level accessors — existing screen code keeps using `NazoBackground`, etc.
 val NazoBackground: Color get() = _nazoColors.value.background

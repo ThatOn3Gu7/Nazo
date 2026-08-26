@@ -29,6 +29,12 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import quiz.thaton3app.nazo.ui.theme.Accents
+import quiz.thaton3app.nazo.ui.theme.previewColors
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
@@ -41,14 +47,6 @@ private enum class ThemeMode(val mode: String) {
     Light("light"),
     Dark("dark"),
 }
-private enum class AccentColor(val accentName: String, val color: Color, val label: String) {
-    Mint("mint", Color(0xFF246D4C), "Mint Green"),
-    Rose("rose", Color(0xFFC05C72), "Rose"),
-    Indigo("indigo", Color(0xFF324888), "Indigo"),
-    Bronze("bronze", Color(0xFFAD7931), "Bronze"),
-    Slate("slate", Color(0xFF4C5E57), "Slate"),
-}
-
 @Composable
 fun AppearanceScreen(
     currentMode: String = "system",
@@ -61,6 +59,13 @@ fun AppearanceScreen(
     onHomeClick: () -> Unit = {},
 ) {
     val context = LocalContext.current
+
+    val isDark = when (currentMode) {
+        "dark" -> true
+        "light" -> false
+        else -> isSystemInDarkTheme()
+    }
+
     var compactViewChecked by remember { mutableStateOf(true) }
     var cardStyleChecked by remember { mutableStateOf(false) }
     var iconFollowsOsThemeChecked by remember { mutableStateOf(iconFollowsOsTheme) }
@@ -148,11 +153,11 @@ fun AppearanceScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    AccentColor.entries.forEach { accent ->
+                    Accents.forEach { accent ->
                         ColorAccentCircle(
-                            color = accent.color,
-                            isSelected = currentAccent == accent.accentName,
-                            onClick = { Haptics.soft(context); onAccentChange(accent.accentName) }
+                            previewColors = previewColors(accent.id, isDark),
+                            isSelected = currentAccent == accent.id,
+                            onClick = { Haptics.soft(context); onAccentChange(accent.id) }
                         )
                     }
                 }
@@ -161,9 +166,9 @@ fun AppearanceScreen(
                 
                 Text(
                     text = buildAnnotatedString {
-                        append("Material You accents recolor cards, chips and progress rings.\nCurrently using ")
+                        append("Each accent themes the whole app — background, cards, toggles and text.\nCurrently using ")
                         withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
-                            append(AccentColor.entries.firstOrNull { it.accentName == currentAccent }?.label ?: "Mint Green")
+                            append(Accents.firstOrNull { it.id == currentAccent }?.label ?: "Mint Green")
                         }
                         append(".")
                     },
@@ -316,7 +321,7 @@ private fun ThemeModeRow(
 
 @Composable
 private fun ColorAccentCircle(
-    color: Color,
+    previewColors: List<Color>,
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
@@ -324,15 +329,27 @@ private fun ColorAccentCircle(
         modifier = Modifier
             .size(48.dp)
             .clip(CircleShape)
-            .background(color)
             .clickable(onClick = onClick)
-            // Add a subtle border if selected, matching the mockup's inner padding look
             .then(
-                if (isSelected) Modifier.border(2.dp, NazoTextPrimary, CircleShape) 
+                if (isSelected) Modifier.border(2.dp, NazoTextPrimary, CircleShape)
                 else Modifier
             ),
         contentAlignment = Alignment.Center
     ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val diameter = size.minDimension
+            val slice = 360f / previewColors.size
+            previewColors.forEachIndexed { i, c ->
+                drawArc(
+                    color = c,
+                    startAngle = i * slice,
+                    sweepAngle = slice,
+                    useCenter = true,
+                    topLeft = Offset(0f, 0f),
+                    size = Size(diameter, diameter),
+                )
+            }
+        }
         if (isSelected) {
             Icon(
                 imageVector = Icons.Outlined.Check,
