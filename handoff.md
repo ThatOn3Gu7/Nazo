@@ -20,6 +20,17 @@ Conventions:
 
 ---
 
+## [2026-08-26 17:40] Refactor: Remove unused layout section from Appearance screen
+
+- Removed the LAYOUT section (Compact List View + Card Style toggles) — they were
+  non-functional stubs with no future plans, per request.
+- Dropped the now-unused `compactViewChecked` / `cardStyleChecked` state vars.
+- Kept `LayoutToggleRow` (still powers the App Icon "Match icon to system theme" row).
+- Files: `ui/screens/AppearanceScreen.kt`.
+- Verified by inspection; user to build in Termux.
+
+---
+
 ## [2026-08-26 17:10] Feature: Separate default accent + add new palettes (pink/orange/violet/mono)
 
 - Goal: keep Mint as the obvious default, visually separated from the rest, and grow

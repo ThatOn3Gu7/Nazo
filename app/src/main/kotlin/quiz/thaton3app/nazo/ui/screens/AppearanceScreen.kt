@@ -67,8 +67,6 @@ fun AppearanceScreen(
         else -> isSystemInDarkTheme()
     }
 
-    var compactViewChecked by remember { mutableStateOf(true) }
-    var cardStyleChecked by remember { mutableStateOf(false) }
     var iconFollowsOsThemeChecked by remember { mutableStateOf(iconFollowsOsTheme) }
 
     Column(
@@ -214,37 +212,7 @@ fun AppearanceScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
 
-            // --- LAYOUT SECTION ---
-            SectionHeader("LAYOUT")
-            
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(NazoSurface)
-            ) {
-                LayoutToggleRow(
-                    title = "Compact List View",
-                    subtitle = "Denser rows for long quiz histories",
-                    isChecked = compactViewChecked,
-                    onCheckedChange = { compactViewChecked = it }
-                )
-                
-                HorizontalDivider(
-                    modifier = Modifier.padding(horizontal = 20.dp),
-                    color = NazoBackground, 
-                    thickness = 2.dp
-                )
-                
-                LayoutToggleRow(
-                    title = "Card Style",
-                    subtitle = "Elevated tonal cards with 24dp corners",
-                    isChecked = cardStyleChecked,
-                    onCheckedChange = { cardStyleChecked = it }
-                )
-            }
             
             Spacer(modifier = Modifier.height(40.dp)) // bottom padding before nav
         }
