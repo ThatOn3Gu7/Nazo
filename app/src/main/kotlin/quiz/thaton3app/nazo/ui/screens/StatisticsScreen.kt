@@ -59,6 +59,24 @@ import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
 import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Typeface
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.FileProvider
+import androidx.core.content.res.ResourcesCompat
+import quiz.thaton3app.nazo.R
+import java.io.File
+import java.io.FileOutputStream
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
 private data class DifficultyStat(val label: String, val played: Int, val accuracyPercent: Int)
 
 // New data class for the anime stats
@@ -197,7 +215,7 @@ fun StatisticsScreen(
             Spacer(Modifier.height(16.dp))
             TopAnimeCard(data.topAnime)
             Spacer(Modifier.height(24.dp))
-            ShareButton()
+            ShareButton(data)
             Spacer(Modifier.height(24.dp))
             // --- NEW COMPONENTS END HERE ---
             
@@ -318,7 +336,15 @@ private fun StatTile(
         Spacer(Modifier.height(10.dp))
         Text(text = label, style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
         Spacer(Modifier.height(2.dp))
-        Text(text = value, style = MaterialTheme.typography.headlineMedium.copy(fontSize = 22.sp), color = NazoTextPrimary, fontWeight = FontWeight.Bold)
+        Text(
+            text = value,
+            style = MaterialTheme.typography.headlineMedium.copy(fontSize = 22.sp),
+            color = NazoTextPrimary,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier.basicMarquee(),
+        )
         if (subtitle.isNotEmpty()) {
             Text(text = subtitle, style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
         }
@@ -475,9 +501,34 @@ private fun TopAnimeRow(row: MasteredAnimeStat) {
 }
 
 @Composable
-private fun ShareButton() {
+private fun ShareButton(data: StatsData) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     Button(
-        onClick = { /* TODO: Hook up share intent */ },
+        onClick = {
+            scope.launch(Dispatchers.IO) {
+                try {
+                    val file = data.shareBitmap(context)
+                    val uri = FileProvider.getUriForFile(
+                        context,
+                        context.packageName + ".fileprovider",
+                        file,
+                    )
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "image/png"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    withContext(Dispatchers.Main) {
+                        context.startActivity(
+                            Intent.createChooser(intent, "Share your Nazo stats"),
+                        )
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        },
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp),
@@ -493,4 +544,147 @@ private fun ShareButton() {
             fontWeight = FontWeight.SemiBold
         )
     }
+}
+
+private fun StatsData.shareBitmap(context: Context): File {
+    val W = 1080
+    val H = 1350
+    val bitmap = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+
+    val bg = (NazoBackground.value).toInt()
+    val card = (NazoDarkCard.value).toInt()
+    val onCard = (NazoOnDarkCard.value).toInt()
+    val onMuted = (NazoOnDarkCardMuted.value).toInt()
+    val primary = (NazoPrimary.value).toInt()
+    val onPrimary = (NazoOnPrimary.value).toInt()
+    val chipBg = (NazoOnDarkCard.copy(alpha = 0.10f).value).toInt()
+
+    val fontBold = ResourcesCompat.getFont(context, R.font.plus_jakarta_sans_bold)
+    val fontReg = ResourcesCompat.getFont(context, R.font.plus_jakarta_sans_regular)
+    val fontSemi = ResourcesCompat.getFont(context, R.font.plus_jakarta_sans_semibold)
+
+    fun textCentered(text: String, cx: Float, cy: Float, paint: Paint) {
+        val fm = paint.fontMetrics
+        val baseline = cy - (fm.ascent + fm.descent) / 2f
+        paint.textAlign = Paint.Align.CENTER
+        canvas.drawText(text, cx, baseline, paint)
+    }
+
+    // background
+    canvas.drawPaint(Paint().apply { color = bg; isAntiAlias = true })
+
+    // card
+    val cardLeft = 60f
+    val cardTop = 60f
+    val cardRight = (W - 60).toFloat()
+    val cardBottom = (H - 60).toFloat()
+    canvas.drawRoundRect(
+        cardLeft, cardTop, cardRight, cardBottom, 64f, 64f,
+        Paint().apply { color = card; isAntiAlias = true },
+    )
+
+    val pad = 80f
+
+    // header
+    textCentered(
+        "Nazo", (W / 2f), cardTop + pad,
+        Paint().apply { color = onCard; textSize = 66f; typeface = fontBold; isAntiAlias = true },
+    )
+    textCentered(
+        "MY STATS", (W / 2f), cardTop + pad + 54f,
+        Paint().apply { color = onMuted; textSize = 28f; typeface = fontReg; isAntiAlias = true; letterSpacing = 0.2f },
+    )
+
+    // hero level circle
+    val heroCy = 360f
+    val heroR = 120f
+    val heroCx = W / 2f
+    canvas.drawCircle(heroCx, heroCy, heroR, Paint().apply { color = primary; isAntiAlias = true })
+    textCentered(
+        data.level.toString(), heroCx, heroCy - 10f,
+        Paint().apply { color = onPrimary; textSize = 84f; typeface = fontBold; isAntiAlias = true },
+    )
+    textCentered(
+        "LEVEL", heroCx, heroCy + 58f,
+        Paint().apply { color = onPrimary; textSize = 24f; typeface = fontReg; isAntiAlias = true; letterSpacing = 0.15f },
+    )
+
+    // three stat chips
+    val chipY = heroCy + heroR + 60f
+    val chipH = 130f
+    val gap = 26f
+    val chipW = (W - 2 * pad - 2 * gap) / 3f
+    val chips = listOf(
+        Triple(data.totalQuizzes.toString(), "QUIZZES", primary),
+        Triple("${data.overallAccuracyPercent}%", "ACCURACY", primary),
+        Triple("${data.currentStreakDays}", "DAY STREAK", primary),
+    )
+    chips.forEachIndexed { i, (value, label, accent) ->
+        val x = pad + i * (chipW + gap)
+        canvas.drawRoundRect(
+            x, chipY, x + chipW, chipY + chipH, 28f, 28f,
+            Paint().apply { color = chipBg; isAntiAlias = true },
+        )
+        canvas.drawCircle(x + chipW / 2f, chipY + 40f, 7f, Paint().apply { color = accent; isAntiAlias = true })
+        textCentered(
+            value, x + chipW / 2f, chipY + 86f,
+            Paint().apply { color = onCard; textSize = 42f; typeface = fontBold; isAntiAlias = true },
+        )
+        textCentered(
+            label, x + chipW / 2f, chipY + 118f,
+            Paint().apply { color = onMuted; textSize = 19f; typeface = fontReg; isAntiAlias = true; letterSpacing = 0.1f },
+        )
+    }
+
+    // best topic
+    val btY = chipY + chipH + 50f
+    canvas.drawText(
+        "BEST TOPIC", pad, btY,
+        Paint().apply { color = onMuted; textSize = 24f; typeface = fontReg; isAntiAlias = true; letterSpacing = 0.1f },
+    )
+    val topicRaw = data.bestTopic ?: "—"
+    val topic = if (topicRaw.length > 24) topicRaw.take(22) + "…" else topicRaw
+    canvas.drawText(
+        topic, pad, btY + 52f,
+        Paint().apply { color = onCard; textSize = 44f; typeface = fontSemi; isAntiAlias = true },
+    )
+
+    // top anime
+    val taY = btY + 110f
+    canvas.drawText(
+        "TOP MASTERED ANIME", pad, taY,
+        Paint().apply { color = onMuted; textSize = 24f; typeface = fontReg; isAntiAlias = true; letterSpacing = 0.1f },
+    )
+    val listTop = taY + 54f
+    data.topAnime.take(3).forEachIndexed { i, row ->
+        val ry = listTop + i * 96f
+        canvas.drawCircle(pad + 30f, ry, 30f, Paint().apply { color = primary; isAntiAlias = true })
+        textCentered(
+            row.rank.toString(), pad + 30f, ry,
+            Paint().apply { color = onPrimary; textSize = 32f; typeface = fontBold; isAntiAlias = true },
+        )
+        val titleRaw = row.title
+        val title = if (titleRaw.length > 20) titleRaw.take(18) + "…" else titleRaw
+        canvas.drawText(
+            title, pad + 80f, ry - 6f,
+            Paint().apply { color = onCard; textSize = 36f; typeface = fontSemi; isAntiAlias = true },
+        )
+        canvas.drawText(
+            "${row.quizzes} quizzes · ${row.avgScore}% avg", pad + 80f, ry + 36f,
+            Paint().apply { color = onMuted; textSize = 26f; typeface = fontReg; isAntiAlias = true },
+        )
+    }
+
+    // footer
+    textCentered(
+        "Nazo · Quiz & Learn Anime", W / 2f, cardBottom - 44f,
+        Paint().apply { color = onMuted; textSize = 24f; typeface = fontReg; isAntiAlias = true },
+    )
+
+    val dir = context.getExternalFilesDir(null) ?: context.filesDir
+    val file = File(dir, "nazo_stats.png")
+    FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    bitmap.recycle()
+    return file
 }

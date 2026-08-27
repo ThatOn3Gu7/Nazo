@@ -20,6 +20,33 @@ Conventions:
 
 ---
 
+## [2026-08-27 00:30] feat: best-topic marquee + shareable stats image
+
+- Owner: (1) the "Best Topic" stat tile wrapped long anime names onto a 2nd line and broke the
+  pill's equal height; (2) the "Share My Stats" button did nothing — wants a Duolingo-style
+  shareable image card.
+- Best Topic marquee (`ui/screens/StatisticsScreen.kt`): the `StatTile` value `Text` now uses
+  `maxLines = 1` + `Modifier.basicMarquee()`. `basicMarquee` only animates when the text is wider
+  than its tile, so short values like "3 Days" stay static and all four pills keep equal height;
+  long anime names scroll right→left continuously.
+- Shareable stats image (`ui/screens/StatisticsScreen.kt`):
+  - New `StatsData.shareBitmap(context)` draws a 1080×1350 PNG with `android.graphics.Canvas`:
+    mint background + a dark rounded card (reusing the RankCard palette — `NazoDarkCard` /
+    `NazoOnDarkCard` / `NazoPrimary`), a hero "Level N" circle, three stat chips (Quizzes /
+    Accuracy / Day Streak), the Best Topic, and the Top 3 Mastered Anime. Uses the bundled Plus
+    Jakarta Sans fonts; colors are read live from the current `NazoXxx` palette.
+  - Saved to `getExternalFilesDir(null)/nazo_stats.png` and shared via `ACTION_SEND` +
+    `FileProvider` (existing `quiz.thaton3app.nazo.fileprovider` authority / `apk` path mapping).
+  - `ShareButton(data)` now generates + shares on a `Dispatchers.IO` coroutine and launches the
+    system chooser on `Dispatchers.Main`. Long names are truncated with an ellipsis (a static
+    image can't marquee).
+- Files: `ui/screens/StatisticsScreen.kt`, `handoff.md`.
+- Notes for owner review: the image is a DRAFT — layout/spacing/colors are easy to tweak. The
+  brand kanji 謎 is intentionally NOT drawn on the canvas (Plus Jakarta Sans has no CJK glyphs),
+  so the card uses the "Nazo" wordmark. Agent cannot compile; owner to build & test.
+
+---
+
 ## [2026-08-26 23:00] chore: bump app version to 2.0 (release prep)
 
 - Owner: prepare a GitHub release — it's been a while and there are many new features /
