@@ -508,7 +508,7 @@ private fun ShareButton(data: StatsData) {
         onClick = {
             scope.launch(Dispatchers.IO) {
                 try {
-                    val file = data.shareBitmap(context)
+                    val file = shareBitmap(data, context)
                     val uri = FileProvider.getUriForFile(
                         context,
                         context.packageName + ".fileprovider",
@@ -546,7 +546,7 @@ private fun ShareButton(data: StatsData) {
     }
 }
 
-private fun StatsData.shareBitmap(context: Context): File {
+private fun shareBitmap(data: StatsData, context: Context): File {
     val W = 1080
     val H = 1350
     val bitmap = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)

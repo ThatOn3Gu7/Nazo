@@ -30,7 +30,7 @@ Conventions:
   than its tile, so short values like "3 Days" stay static and all four pills keep equal height;
   long anime names scroll right→left continuously.
 - Shareable stats image (`ui/screens/StatisticsScreen.kt`):
-  - New `StatsData.shareBitmap(context)` draws a 1080×1350 PNG with `android.graphics.Canvas`:
+  - New `shareBitmap(data, context)` draws a 1080×1350 PNG with `android.graphics.Canvas`:
     mint background + a dark rounded card (reusing the RankCard palette — `NazoDarkCard` /
     `NazoOnDarkCard` / `NazoPrimary`), a hero "Level N" circle, three stat chips (Quizzes /
     Accuracy / Day Streak), the Best Topic, and the Top 3 Mastered Anime. Uses the bundled Plus
