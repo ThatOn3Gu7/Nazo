@@ -3,6 +3,10 @@ package quiz.thaton3app.nazo.ui.screens
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
@@ -135,20 +139,26 @@ fun BackupRestoreScreen(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        restoreUri = uri
-        showRestoreConfirm = true
+        scope.launch {
+            if (BackupRepository.validateUri(context, uri)) {
+                restoreUri = uri
+                showRestoreConfirm = true
+            } else {
+                Toast.makeText(context, "Invalid backup file", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     val autoBackupPath = BackupRepository.autoBackupPath(context)
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
     ) {
         Column(
             modifier = Modifier
-                .weight(1f)
+                .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
@@ -226,7 +236,12 @@ fun BackupRestoreScreen(
         }
     }
 
-    if (showRestoreConfirm && restoreUri != null) {
+    AnimatedVisibility(
+        visible = showRestoreConfirm && restoreUri != null,
+            enter = fadeIn(animationSpec = tween(durationMillis = 220)),
+            exit = fadeOut(animationSpec = tween(durationMillis = 180)),
+            modifier = Modifier.fillMaxSize(),
+        ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -304,13 +319,18 @@ fun BackupRestoreScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text("Restore", color = NazoOnPrimary, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-                    }
                 }
             }
         }
-    }
+        }
+}
 
-    if (showFreqDialog) {
+    AnimatedVisibility(
+        visible = showFreqDialog,
+            enter = fadeIn(animationSpec = tween(durationMillis = 220)),
+            exit = fadeOut(animationSpec = tween(durationMillis = 180)),
+            modifier = Modifier.fillMaxSize(),
+        ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -383,7 +403,7 @@ fun BackupRestoreScreen(
                 }
             }
         }
-    }
+        }
 }
 
 @Composable

@@ -110,39 +110,91 @@ object BackupRepository {
     }
 
     suspend fun importFromUri(context: Context, uri: Uri) {
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            ?: throw IllegalStateException("Unable to open backup file")
-        applyJson(context, bytes.toString(Charsets.UTF_8))
+        val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+            ?: throw IllegalStateException("Unable to read backup file")
+        applyValidated(context, parseAndValidate(content))
     }
 
     suspend fun importFromPath(context: Context, path: String) {
         val file = File(path)
         if (!file.exists()) throw IllegalStateException("No auto-backup file found")
-        applyJson(context, file.readText(Charsets.UTF_8))
+        applyValidated(context, parseAndValidate(file.readText(Charsets.UTF_8)))
     }
 
-    private fun applyJson(context: Context, json: String) {
-        val root = JSONObject(json)
-        val stores = root.getJSONObject("stores")
+    /** True only if the file is a well-formed Nazo backup bundle. */
+    suspend fun validateUri(context: Context, uri: Uri): Boolean {
+        return try {
+            val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                ?: return false
+            parseAndValidate(content)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    suspend fun validatePath(context: Context, path: String): Boolean {
+        return try {
+            parseAndValidate(File(path).readText(Charsets.UTF_8))
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Parse and fully validate the backup JSON into memory. Throws if the file is
+     * malformed or structurally invalid, so [applyValidated] only ever runs on a
+     * verified bundle (no partial / corrupting restores).
+     */
+    private fun parseAndValidate(content: String): Map<String, Map<String, Pair<String, Any?>>> {
+        val root = JSONObject(content)
+        val stores = root.optJSONObject("stores")
+            ?: throw IllegalArgumentException("Invalid backup file (missing 'stores')")
+        val pending = LinkedHashMap<String, MutableMap<String, Pair<String, Any?>>>()
         for (name in stores.keys().asSequence().toList()) {
-            val prefs = context.getSharedPreferences(name, Context.MODE_PRIVATE)
-            val map = stores.getJSONObject(name)
-            val edit: SharedPreferences.Editor = prefs.edit()
-            edit.clear()
+            val map = stores.optJSONObject(name)
+                ?: throw IllegalArgumentException("Invalid backup file (store '$name')")
+            val entry = LinkedHashMap<String, Pair<String, Any?>>()
             for (k in map.keys().asSequence().toList()) {
-                val tv = map.getJSONObject(k)
-                when (tv.getString("t")) {
-                    "string" -> edit.putString(k, tv.getString("v"))
-                    "bool" -> edit.putBoolean(k, tv.getBoolean("v"))
-                    "int" -> edit.putInt(k, tv.getInt("v"))
-                    "long" -> edit.putLong(k, tv.getLong("v"))
-                    "float" -> edit.putFloat(k, tv.getDouble("v").toFloat())
+                val tv = map.optJSONObject(k)
+                    ?: throw IllegalArgumentException("Invalid backup file (entry '$k')")
+                val t = tv.optString("t")
+                val v: Any? = when (t) {
+                    "string" -> tv.optString("v", "")
+                    "bool" -> tv.optBoolean("v")
+                    "int" -> tv.optInt("v")
+                    "long" -> tv.optLong("v")
+                    "float" -> tv.optDouble("v").toFloat()
                     "string_set" -> {
-                        val arr = tv.getJSONArray("v")
+                        val arr = tv.optJSONArray("v") ?: JSONArray()
                         val set = LinkedHashSet<String>()
-                        for (i in 0 until arr.length()) set.add(arr.getString(i))
-                        edit.putStringSet(k, set)
+                        for (i in 0 until arr.length()) set.add(arr.optString(i))
+                        set
                     }
+                    else -> throw IllegalArgumentException("Invalid backup file (type '$t')")
+                }
+                entry[k] = t to v
+            }
+            pending[name] = entry
+        }
+        return pending
+    }
+
+    private fun applyValidated(context: Context, pending: Map<String, Map<String, Pair<String, Any?>>>) {
+        for ((name, entry) in pending) {
+            val prefs = context.getSharedPreferences(name, Context.MODE_PRIVATE)
+            val edit = prefs.edit()
+            edit.clear()
+            for ((k, pair) in entry) {
+                val (t, v) = pair
+                when (t) {
+                    "string" -> edit.putString(k, v as String)
+                    "bool" -> edit.putBoolean(k, v as Boolean)
+                    "int" -> edit.putInt(k, v as Int)
+                    "long" -> edit.putLong(k, v as Long)
+                    "float" -> edit.putFloat(k, v as Float)
+                    "string_set" -> edit.putStringSet(k, v as Set<String>)
                 }
             }
             edit.apply()
