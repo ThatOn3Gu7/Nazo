@@ -20,6 +20,26 @@ Conventions:
 
 ---
 
+## [2026-08-27 02:30] tweak: share-card polish (name offset, divider breathing room) + remove dead code
+
+- Follow-up to the Gemini-refined share card (active `shareBitmap` is Gemini's version: canvas
+  1080×1440, taller to avoid bottom overflow; muted-mint badge, ✨ FAB, "Otaku in training" hero,
+  "nazo.app" footer, Nazo branding). Two small visual fixes requested by owner:
+  1. **Header wordmark nudged down:** the "Nazo" title y went from `cardTop + pad + 10f` →
+     `cardTop + pad + 16f` (~6px lower) so it sits better under the card top edge.
+  2. **Top Mastered dividers were cramped:** row spacing was `86f` and the divider was drawn at
+     `ry - 28f` — that lands inside the current row's title, so the separator looked jammed against
+     the text. Bumped row spacing to `104f` and moved the divider to `ry - 50f`, which centers it
+     in the actual gap between the previous row's subtitle and the current row's title (real ~32px
+     breathing room). Rank/title/subtitle baselines left as Gemini set them.
+- Removed the ~250-line **commented-out legacy** `shareBitmap`/`drawTrophy`/`drawFlame` block that
+  sat at the end of `StatisticsScreen.kt` (kept earlier "just in case"); the live code is the only
+  copy now. (No other commented-out code touched.)
+- Files: `ui/screens/StatisticsScreen.kt`, `handoff.md`.
+- Note: agent cannot compile; owner to build & eyeball the two tweaks.
+
+---
+
 ## [2026-08-27 02:00] feat: redesign "Share My Stats" card (Gemini mockup, Nazo branding)
 
 - Owner supplied a Gemini mockup for the shareable stats card. IMPORTANT branding

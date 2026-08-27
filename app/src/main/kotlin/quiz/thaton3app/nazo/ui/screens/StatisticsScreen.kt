@@ -554,21 +554,20 @@ private fun ShareButton(data: StatsData) {
 
 private fun shareBitmap(data: StatsData, context: Context): File {
     val W = 1080
-    val H = 1350
+    val H = 1440 // Increased canvas height to prevent overflow at the bottom
     val bitmap = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
 
-    // On-brand palette — fixed, independent of the app's light/dark theme so the
-    // shared card always looks as designed (live dark-mode colors made it near-black).
+    // On-brand palette
     val bgTop = 0xFFF3FCF4.toInt()
     val bgBottom = 0xFFE6F6EA.toInt()
     val card = 0xFF163A2A.toInt()        // dark forest green
-    val onCard = 0xFFF3FBF5.toInt()      // crisp white
+    val onCard = 0xFFFFFFFF.toInt()      // crisp white
     val onMuted = 0xFFA9C9B6.toInt()     // translucent mint/white
-    val mint = 0xFF3FBF86.toInt()        // bright mint accent
+    val mint = 0xFFC5E5D4.toInt()        // muted mint accent for badge
     val darkOnMint = card                // dark green text on mint
     val innerCard = 0xFF214C39.toInt()   // lighter green for stat cards
-    val fabBg = 0xFF2E6B4C.toInt()       // lighter green for FAB
+    val fabBg = 0xFF214C39.toInt()       // matching lighter green for FAB
 
     val fontBold = ResourcesCompat.getFont(context, R.font.plus_jakarta_sans_bold)
     val fontReg = ResourcesCompat.getFont(context, R.font.plus_jakarta_sans_regular)
@@ -581,7 +580,7 @@ private fun shareBitmap(data: StatsData, context: Context): File {
         canvas.drawText(text, cx, baseline, paint)
     }
 
-    // light mint / off-white background gradient
+    // Background gradient
     val bgPaint = Paint().apply { isAntiAlias = true }
     bgPaint.shader = LinearGradient(0f, 0f, 0f, H.toFloat(), bgTop, bgBottom, Shader.TileMode.CLAMP)
     canvas.drawPaint(bgPaint)
@@ -592,177 +591,187 @@ private fun shareBitmap(data: StatsData, context: Context): File {
     val cardBottom = (H - 48).toFloat()
     val radius = 72f
 
-    // faux drop shadow (setShadowLayer is ignored on software canvases)
+    // Faux drop shadow
     canvas.drawRoundRect(
         cardLeft, cardTop + 30f, cardRight, cardBottom + 30f, radius, radius,
-        Paint().apply { color = 0x35000000.toInt(); isAntiAlias = true },
+        Paint().apply { color = 0x35000000.toInt(); isAntiAlias = true }
     )
 
-    // dark green card
+    // Main dark green card
     canvas.drawRoundRect(
         cardLeft, cardTop, cardRight, cardBottom, radius, radius,
-        Paint().apply { color = card; isAntiAlias = true },
+        Paint().apply { color = card; isAntiAlias = true }
     )
 
-    val pad = 72f
+    val pad = 64f // Slightly adjusted padding for perfect scaling
 
-    // --- clip inner content to the card so corner accents stay inside ---
+    // --- Clip inner content so accents don't bleed out ---
     canvas.save()
     val clip = Path()
     clip.addRoundRect(cardLeft, cardTop, cardRight, cardBottom, radius, radius, Path.Direction.CW)
     canvas.clipPath(clip)
 
-    // corner accents: concentric translucent circles peeking from the corners
+    // Corner accents: Thick, semi-transparent bands
     val accentPaint = Paint().apply {
-        isAntiAlias = true; color = 0x22F3FBF5.toInt(); style = Paint.Style.STROKE; strokeWidth = 3f
+        isAntiAlias = true
+        color = 0x0FFFFFFF
+        style = Paint.Style.STROKE
+        strokeWidth = 64f
     }
     fun cornerAccent(cx: Float, cy: Float) {
-        for (r in listOf(120f, 170f, 220f)) canvas.drawCircle(cx, cy, r, accentPaint)
+        canvas.drawCircle(cx, cy, 130f, accentPaint)
+        canvas.drawCircle(cx, cy, 210f, accentPaint)
     }
-    cornerAccent(cardRight + 30f, cardTop - 30f)
-    cornerAccent(cardLeft - 30f, cardBottom + 30f)
+    cornerAccent(cardRight, cardTop)
+    cornerAccent(cardLeft, cardBottom)
 
-    // header
+    // Header
     canvas.drawText(
-        "Nazo", cardLeft + pad, cardTop + pad,
-        Paint().apply { color = onCard; textSize = 58f; typeface = fontBold; isAntiAlias = true },
+        "Nazo", cardLeft + pad, cardTop + pad + 16f,
+        Paint().apply { color = onCard; textSize = 64f; typeface = fontBold; isAntiAlias = true }
     )
     canvas.drawText(
-        "MY ANIME STATS", cardLeft + pad, cardTop + pad + 44f,
-        Paint().apply { color = onMuted; textSize = 22f; typeface = fontReg; isAntiAlias = true; letterSpacing = 0.2f },
+        "MY ANIME STATS", cardLeft + pad, cardTop + pad + 54f,
+        Paint().apply { color = onMuted; textSize = 22f; typeface = fontSemi; isAntiAlias = true; letterSpacing = 0.15f }
     )
 
-    // top-right circular FAB with a star
-    val fabCx = cardRight - pad - 42f
-    val fabCy = cardTop + pad + 42f
-    canvas.drawCircle(fabCx, fabCy, 42f, Paint().apply { color = fabBg; isAntiAlias = true })
-    textCentered("★", fabCx, fabCy, Paint().apply { color = darkOnMint; textSize = 46f; typeface = fontBold; isAntiAlias = true })
+    // Top-right circular FAB
+    val fabCx = cardRight - pad - 20f
+    val fabCy = cardTop + pad + 20f
+    canvas.drawCircle(fabCx, fabCy, 46f, Paint().apply { color = fabBg; isAntiAlias = true })
+    textCentered("✨", fabCx, fabCy, Paint().apply { textSize = 42f; isAntiAlias = true })
 
-    // hero badge: bright mint circle with a dark-green trophy + level
+    // Hero badge
     val badgeCx = W / 2f
-    val badgeCy = cardTop + 330f
-    val badgeR = 125f
+    val badgeCy = cardTop + 300f
+    val badgeR = 135f
+    canvas.drawCircle(badgeCx, badgeCy, badgeR + 10f, Paint().apply { color = 0x1AFFFFFF; isAntiAlias = true; style = Paint.Style.STROKE; strokeWidth = 4f })
     canvas.drawCircle(badgeCx, badgeCy, badgeR, Paint().apply { color = mint; isAntiAlias = true })
-    drawTrophy(canvas, badgeCx, badgeCy - 58f, 72f, darkOnMint)
+    
+    drawTrophy(canvas, badgeCx, badgeCy - 60f, 50f, darkOnMint)
     textCentered(
-        data.level.toString(), badgeCx, badgeCy + 14f,
-        Paint().apply { color = darkOnMint; textSize = 78f; typeface = fontBold; isAntiAlias = true },
+        data.level.toString(), badgeCx, badgeCy + 10f,
+        Paint().apply { color = darkOnMint; textSize = 90f; typeface = fontBold; isAntiAlias = true }
     )
     textCentered(
-        "LEVEL", badgeCx, badgeCy + 60f,
-        Paint().apply { color = darkOnMint; textSize = 22f; typeface = fontReg; isAntiAlias = true; letterSpacing = 0.15f },
-    )
-
-    // hero text under the badge
-    textCentered(
-        "Level ${data.level} Otaku", badgeCx, badgeCy + badgeR + 54f,
-        Paint().apply { color = onCard; textSize = 42f; typeface = fontBold; isAntiAlias = true },
-    )
-    textCentered(
-        String.format("%,d XP earned", data.totalXp), badgeCx, badgeCy + badgeR + 98f,
-        Paint().apply { color = onMuted; textSize = 26f; typeface = fontReg; isAntiAlias = true },
+        "LEVEL", badgeCx, badgeCy + 70f,
+        Paint().apply { color = darkOnMint; textSize = 22f; typeface = fontSemi; isAntiAlias = true; letterSpacing = 0.2f }
     )
 
-    // stats grid (3 lighter-green chips)
-    val gridTop = badgeCy + badgeR + 150f
+    // Hero text
+    textCentered(
+        "Otaku in training", badgeCx, badgeCy + badgeR + 50f,
+        Paint().apply { color = onCard; textSize = 44f; typeface = fontBold; isAntiAlias = true }
+    )
+    textCentered(
+        String.format("%,d XP earned", data.totalXp), badgeCx, badgeCy + badgeR + 92f,
+        Paint().apply { color = onMuted; textSize = 26f; typeface = fontReg; isAntiAlias = true }
+    )
+
+    // Stats grid
+    val gridTop = badgeCy + badgeR + 135f
     val gridH = 140f
-    val gap = 22f
+    val gap = 20f
     val gridW = (cardRight - cardLeft - 2 * pad - 2 * gap) / 3f
     val chips = listOf(
         Pair(data.totalQuizzes.toString(), "QUIZZES"),
         Pair("${data.overallAccuracyPercent}%", "ACCURACY"),
-        Pair("${data.currentStreakDays}", "DAY STREAK"),
+        Pair("${data.currentStreakDays}", "DAY STREAK")
     )
     chips.forEachIndexed { i, (value, label) ->
         val x = cardLeft + pad + i * (gridW + gap)
         canvas.drawRoundRect(
             x, gridTop, x + gridW, gridTop + gridH, 28f, 28f,
-            Paint().apply { color = innerCard; isAntiAlias = true },
+            Paint().apply { color = innerCard; isAntiAlias = true }
         )
         textCentered(
             value, x + gridW / 2f, gridTop + 58f,
-            Paint().apply { color = onCard; textSize = 46f; typeface = fontBold; isAntiAlias = true },
+            Paint().apply { color = onCard; textSize = 44f; typeface = fontBold; isAntiAlias = true }
         )
         textCentered(
             label, x + gridW / 2f, gridTop + 106f,
-            Paint().apply { color = onMuted; textSize = 17f; typeface = fontReg; isAntiAlias = true; letterSpacing = 0.1f },
+            Paint().apply { color = onMuted; textSize = 17f; typeface = fontSemi; isAntiAlias = true; letterSpacing = 0.15f }
         )
     }
 
-    // best topic + mint pill with the top anime accuracy
-    val btY = gridTop + gridH + 48f
+    // Best topic + Pill
+    val btY = gridTop + gridH + 65f
     canvas.drawText(
         "BEST TOPIC", cardLeft + pad, btY,
-        Paint().apply { color = onMuted; textSize = 22f; typeface = fontReg; isAntiAlias = true; letterSpacing = 0.1f },
+        Paint().apply { color = onMuted; textSize = 22f; typeface = fontSemi; isAntiAlias = true; letterSpacing = 0.15f }
     )
     val pillText = "${data.topAnime.firstOrNull()?.avgScore ?: 0}%"
     val pillPaint = Paint().apply { textSize = 26f; typeface = fontBold; isAntiAlias = true }
-    val pillW = pillPaint.measureText(pillText) + 40f
+    val pillW = pillPaint.measureText(pillText) + 48f
     val pillX = cardRight - pad - pillW
     val pillH = 52f
+    
     var btTitle = data.bestTopic ?: "—"
-    val titlePaint = Paint().apply { textSize = 40f; typeface = fontSemi; isAntiAlias = true }
-    val maxTitleW = pillX - 16f - (cardLeft + pad)
+    val titlePaint = Paint().apply { textSize = 42f; typeface = fontBold; isAntiAlias = true; color = onCard }
+    val maxTitleW = pillX - 24f - (cardLeft + pad)
     while (titlePaint.measureText(btTitle) > maxTitleW && btTitle.length > 1) {
         btTitle = btTitle.dropLast(1)
     }
     if (btTitle != (data.bestTopic ?: "—")) btTitle = btTitle.dropLast(1) + "…"
-    if (btTitle.isEmpty()) btTitle = "—"
-    canvas.drawText(btTitle, cardLeft + pad, btY + 50f, titlePaint)
+    
+    canvas.drawText(btTitle, cardLeft + pad, btY + 52f, titlePaint)
+    
     canvas.drawRoundRect(
-        pillX, btY - 4f, pillX + pillW, btY - 4f + pillH, pillH / 2f, pillH / 2f,
-        Paint().apply { color = mint; isAntiAlias = true },
+        pillX, btY + 10f, pillX + pillW, btY + 10f + pillH, pillH / 2f, pillH / 2f,
+        Paint().apply { color = mint; isAntiAlias = true }
     )
     textCentered(
-        pillText, pillX + pillW / 2f, btY - 4f + pillH / 2f,
-        Paint().apply { color = darkOnMint; textSize = 26f; typeface = fontBold; isAntiAlias = true },
+        pillText, pillX + pillW / 2f, btY + 10f + pillH / 2f,
+        Paint().apply { color = darkOnMint; textSize = 26f; typeface = fontBold; isAntiAlias = true }
     )
 
-    // top mastered anime list
-    val taY = btY + 110f
-    drawFlame(canvas, cardLeft + pad + 8f, taY - 6f, 18f, mint)
+    // Top mastered list
+    val taY = btY + 130f
+    drawFlame(canvas, cardLeft + pad + 10f, taY - 8f, 18f, onMuted)
     canvas.drawText(
-        "TOP MASTERED ANIME", cardLeft + pad + 32f, taY,
-        Paint().apply { color = onMuted; textSize = 22f; typeface = fontReg; isAntiAlias = true; letterSpacing = 0.1f },
+        "TOP MASTERED ANIME", cardLeft + pad + 38f, taY,
+        Paint().apply { color = onMuted; textSize = 22f; typeface = fontSemi; isAntiAlias = true; letterSpacing = 0.15f }
     )
-    val listTop = taY + 56f
+    
+    val listTop = taY + 52f
     data.topAnime.take(3).forEachIndexed { i, row ->
-        val ry = listTop + i * 84f
+        val ry = listTop + i * 104f
         if (i > 0) {
             canvas.drawLine(
-                cardLeft + pad, ry - 28f, cardRight - pad, ry - 28f,
-                Paint().apply { color = 0x22FFFFFF.toInt(); isAntiAlias = true; strokeWidth = 1f },
+                cardLeft + pad, ry - 50f, cardRight - pad, ry - 50f,
+                Paint().apply { color = 0x1AFFFFFF.toInt(); isAntiAlias = true; strokeWidth = 2f }
             )
         }
         textCentered(
-            String.format("%02d", row.rank), cardLeft + pad, ry,
-            Paint().apply { color = mint; textSize = 32f; typeface = fontBold; isAntiAlias = true },
+            String.format("%02d", row.rank), cardLeft + pad + 10f, ry + 6f,
+            Paint().apply { color = onCard; textSize = 30f; typeface = fontBold; isAntiAlias = true }
         )
+        
         var rowTitle = row.title
-        val rowTitlePaint = Paint().apply { textSize = 32f; typeface = fontSemi; isAntiAlias = true; color = onCard }
-        val maxRowW = cardRight - pad - (cardLeft + pad + 70f) - 8f
+        val rowTitlePaint = Paint().apply { textSize = 32f; typeface = fontBold; isAntiAlias = true; color = onCard }
+        val maxRowW = cardRight - pad - (cardLeft + pad + 90f)
         while (rowTitlePaint.measureText(rowTitle) > maxRowW && rowTitle.length > 1) {
             rowTitle = rowTitle.dropLast(1)
         }
         if (rowTitle != row.title) rowTitle = rowTitle.dropLast(1) + "…"
-        if (rowTitle.isEmpty()) rowTitle = "—"
-        canvas.drawText(rowTitle, cardLeft + pad + 70f, ry - 4f, rowTitlePaint)
+        
+        canvas.drawText(rowTitle, cardLeft + pad + 90f, ry - 4f, rowTitlePaint)
         canvas.drawText(
-            "${row.quizzes} quizzes · ${row.avgScore}% avg", cardLeft + pad + 70f, ry + 34f,
-            Paint().apply { color = onMuted; textSize = 24f; typeface = fontReg; isAntiAlias = true },
+            "${row.quizzes} quizzes · ${row.avgScore}% avg", cardLeft + pad + 90f, ry + 32f,
+            Paint().apply { color = onMuted; textSize = 22f; typeface = fontReg; isAntiAlias = true }
         )
     }
 
     canvas.restore()
 
-    // footer
-    val footerY = cardBottom - 48f
+    // Footer
+    val footerY = cardBottom - 40f
     val footerPaint = Paint().apply {
-        color = onMuted; textSize = 22f; typeface = fontReg; isAntiAlias = true; textAlign = Paint.Align.LEFT
+        color = onMuted; textSize = 20f; typeface = fontReg; isAntiAlias = true; textAlign = Paint.Align.LEFT
     }
     canvas.drawText("Quiz. Learn. Level up.", cardLeft + pad, footerY, footerPaint)
     footerPaint.textAlign = Paint.Align.RIGHT
-    canvas.drawText("nazo", cardRight - pad, footerY, footerPaint)
+    canvas.drawText("nazo.app", cardRight - pad, footerY, footerPaint)
 
     val dir = context.getExternalFilesDir(null) ?: context.filesDir
     val file = File(dir, "nazo_stats.png")
@@ -770,6 +779,7 @@ private fun shareBitmap(data: StatsData, context: Context): File {
     bitmap.recycle()
     return file
 }
+
 
 private fun drawTrophy(c: Canvas, cx: Float, cy: Float, h: Float, color: Int) {
     val p = Paint().apply { isAntiAlias = true; this.color = color }
