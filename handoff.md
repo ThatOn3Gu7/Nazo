@@ -20,6 +20,39 @@ Conventions:
 
 ---
 
+## [2026-08-27 03:00] fix: every screen scrollable + clears the system navigation bar
+
+- Owner tested on an old/small phone: screen content was buried under the system navigation
+  bar (3-button / gesture) and, on `QuizCompleteScreen`, the bottom buttons were unreachable
+  because the layout didn't scroll at all.
+- Root cause: the scrollable content area on every screen reached the very bottom of the
+  screen (behind the system nav). Each screen already used a bounded
+  `Column(fillMaxSize) > Column(weight(1f)/fillMaxSize + verticalScroll)` pattern (so
+  `verticalScroll` already scrolls ONLY when content overflows and fits when it doesn't — no
+  custom "is it cramped?" detection needed), but nothing reserved space for the system bar.
+- Fix: added `.navigationBarsPadding().padding(bottom = 12.dp)` to the scroll container of
+  every screen so the last item can always scroll a bit above the nav bar: About, ActiveQuiz,
+  AiProvider, Appearance, BackupRestore, Home, ReviewAnswers, Settings, Statistics,
+  QuizComplete. DEVIATION FROM PLAN: applied `navigationBarsPadding()` per-screen rather than
+  globally on `NazoApp`'s `AnimatedContent`, to avoid double-insetting `ProfileScreen`
+  (its `Scaffold` already clears the system bar) and `HomeScreen`. `ProfileScreen` keeps its
+  existing `padding(horizontal = 24.dp, vertical = 16.dp)` (16.dp bottom already ≥ 12).
+- `HomeScreen`: changed `.padding(bottom = 96.dp)` → `.navigationBarsPadding().padding(bottom = 96.dp)`
+  so the floating bottom-nav reserve also clears the system bar.
+- `QuizCompleteScreen`: the results layout was a NON-scrolling `weight(1f)` Column → now
+  `weight(1f).verticalScroll(rememberScrollState()).navigationBarsPadding().padding(horizontal=20.dp).padding(bottom=12.dp)`
+  (added `androidx.compose.foundation.verticalScroll` + `rememberScrollState` imports). The
+  "Play Another" / "Review Answers" buttons are now reachable on short screens.
+- Added `import androidx.compose.foundation.layout.navigationBarsPadding` to the 7 screens that
+  import layout members individually (About/AiProvider/Backup/Home/Review/Settings/Statistics);
+  the `layout.*` screens (ActiveQuiz/Appearance/Profile/QuizComplete) get it via the wildcard.
+- Files: all 11 `ui/screens/*.kt`, `handoff.md`.
+- Note: agent cannot compile; owner to build & verify on the small phone that (a) every screen
+  scrolls when cramped, (b) bottom content clears the nav bar, (c) when content fits there's no
+  scrolling. Width-reflow pass (step 4 of the plan) still pending.
+
+---
+
 ## [2026-08-27 02:30] tweak: share-card polish (name offset, divider breathing room) + remove dead code
 
 - Follow-up to the Gemini-refined share card (active `shareBitmap` is Gemini's version: canvas

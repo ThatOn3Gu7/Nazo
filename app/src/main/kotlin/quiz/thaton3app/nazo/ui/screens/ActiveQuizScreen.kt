@@ -92,6 +92,8 @@ fun ActiveQuizScreen(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
+                .navigationBarsPadding()
+                .padding(bottom = 12.dp)
         ) {
             Spacer(Modifier.height(20.dp))
             

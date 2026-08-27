@@ -82,6 +82,8 @@ fun AppearanceScreen(
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
+                .navigationBarsPadding()
+                .padding(bottom = 12.dp)
         ) {
             Spacer(modifier = Modifier.height(28.dp))
             Row(
