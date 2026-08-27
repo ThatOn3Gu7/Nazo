@@ -52,6 +52,15 @@ Conventions:
   explanation 220ms, progress 400ms, question transition 260-in/120-out.
 - Files: `ui/screens/HomeScreen.kt`, `ui/screens/ActiveQuizScreen.kt`, `handoff.md`.
 - Note: agent cannot compile; owner to build in Termux and eyeball the three motion changes.
+- CORRECTION (build fix): `animateFloatAsState` lives in `androidx.compose.animation.core`
+  (the `androidx.compose.animation` import is wrong → "Unresolved reference"). Also the
+  per-option `AnimatedVisibility` (letter↔Check/Close) originally sat inside the option `Row`,
+  where the compiler resolves `AnimatedVisibility` to the `RowScope` extension and errors with
+  "cannot be called in this context with an implicit receiver". Extracted the circle into a
+  private top-level `OptionCircle(reveal, isThisCorrectAnswer, isThisSelected, label)` composable
+  (no enclosing `RowScope`), so `AnimatedVisibility` resolves to the plain top-level overload.
+  `androidx.compose.animation.animateFloatAsState` → `core.animateFloatAsState`; `OptionCircle`
+  owns the circle `Box` + its 3 `AnimatedVisibility` layers + the `circleColor` animation.
 
 ---
 
