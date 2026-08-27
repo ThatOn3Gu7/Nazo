@@ -609,7 +609,7 @@ private fun shareBitmap(data: StatsData, context: Context): File {
     // --- clip inner content to the card so corner accents stay inside ---
     canvas.save()
     val clip = Path()
-    clip.addRoundRect(RectF(cardLeft, cardTop, cardRight, cardBottom), radius, radius)
+    clip.addRoundRect(cardLeft, cardTop, cardRight, cardBottom, radius, radius, Path.Direction.CW)
     canvas.clipPath(clip)
 
     // corner accents: concentric translucent circles peeking from the corners
