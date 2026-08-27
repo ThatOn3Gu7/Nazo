@@ -97,14 +97,14 @@ fun ActiveQuizScreen(
         ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
                 .padding(bottom = 12.dp)
         ) {
             Spacer(Modifier.height(20.dp))
-            
+
             // Header with Progress
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
@@ -145,7 +145,7 @@ fun ActiveQuizScreen(
                     )
                 }
             }
-            
+
             Spacer(Modifier.height(16.dp))
             val progressAnim = animateFloatAsState(
                 targetValue = (currentQuestionIndex + 1) / totalQuestions.toFloat(),
@@ -161,9 +161,9 @@ fun ActiveQuizScreen(
                 color = NazoPrimary,
                 trackColor = NazoSurface
             )
-            
+
             Spacer(Modifier.height(24.dp))
-            
+
             AnimatedContent(
                 targetState = question,
                 transitionSpec = { fadeIn(tween(260)) togetherWith fadeOut(tween(120)) },
@@ -254,7 +254,7 @@ fun ActiveQuizScreen(
                 }
 
                 // Explanation Card (shows after answering OR when time runs out)
-                AnimatedVisibility(
+                androidx.compose.animation.AnimatedVisibility(
                     visible = reveal,
                     enter = fadeIn(tween(220)),
                     exit = fadeOut(tween(120))
@@ -300,60 +300,12 @@ fun ActiveQuizScreen(
                                 Text(if (currentQuestionIndex == totalQuestions - 1) "Finish Quiz" else "Next Question", color = NazoOnPrimary, fontWeight = FontWeight.Bold)
                                 Spacer(Modifier.width(8.dp))
                                 Icon(Icons.Filled.ArrowForward, contentDescription = null, tint = NazoOnPrimary, modifier = Modifier.size(18.dp))
-        }
-    }
-}
-
-@Composable
-private fun OptionCircle(
-    reveal: Boolean,
-    isThisCorrectAnswer: Boolean,
-    isThisSelected: Boolean,
-    label: String,
-) {
-    val circleColor = animateColorAsState(
-        targetValue = when {
-            !reveal -> NazoBackground
-            isThisCorrectAnswer -> Color(0xFF2E7D32)
-            isThisSelected && !isThisCorrectAnswer -> Color(0xFFC62828)
-            else -> NazoBackground
-        },
-        animationSpec = tween(220),
-        label = "optionCircle"
-    ).value
-    Box(
-        modifier = Modifier
-            .size(28.dp)
-            .clip(CircleShape)
-            .background(circleColor),
-        contentAlignment = Alignment.Center
-    ) {
-        androidx.compose.animation.AnimatedVisibility(
-            visible = !(reveal && (isThisCorrectAnswer || isThisSelected)),
-            enter = fadeIn(tween(160)),
-            exit = fadeOut(tween(160))
-        ) {
-            Text(label, style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary, fontWeight = FontWeight.Bold)
-        }
-        androidx.compose.animation.AnimatedVisibility(
-            visible = reveal && isThisCorrectAnswer,
-            enter = fadeIn(tween(240)),
-            exit = fadeOut(tween(120))
-        ) {
-            Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(16.dp))
-        }
-        androidx.compose.animation.AnimatedVisibility(
-            visible = reveal && isThisSelected && !isThisCorrectAnswer,
-            enter = fadeIn(tween(240)),
-            exit = fadeOut(tween(120))
-        ) {
-            Icon(Icons.Filled.Close, null, tint = Color.White, modifier = Modifier.size(16.dp))
-        }
-    }
-}
-    }
-}
-
+                            }
+                        }
+                    }
+                }
+                }
+            }
             Spacer(Modifier.height(32.dp))
         }
         }
@@ -451,3 +403,50 @@ private fun OptionCircle(
     }
 }
 
+@Composable
+private fun OptionCircle(
+    reveal: Boolean,
+    isThisCorrectAnswer: Boolean,
+    isThisSelected: Boolean,
+    label: String,
+) {
+    val circleColor = animateColorAsState(
+        targetValue = when {
+            !reveal -> NazoBackground
+            isThisCorrectAnswer -> Color(0xFF2E7D32)
+            isThisSelected && !isThisCorrectAnswer -> Color(0xFFC62828)
+            else -> NazoBackground
+        },
+        animationSpec = tween(220),
+        label = "optionCircle"
+    ).value
+    Box(
+        modifier = Modifier
+            .size(28.dp)
+            .clip(CircleShape)
+            .background(circleColor),
+        contentAlignment = Alignment.Center
+    ) {
+        androidx.compose.animation.AnimatedVisibility(
+            visible = !(reveal && (isThisCorrectAnswer || isThisSelected)),
+            enter = fadeIn(tween(160)),
+            exit = fadeOut(tween(160))
+        ) {
+            Text(label, style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary, fontWeight = FontWeight.Bold)
+        }
+        androidx.compose.animation.AnimatedVisibility(
+            visible = reveal && isThisCorrectAnswer,
+            enter = fadeIn(tween(240)),
+            exit = fadeOut(tween(120))
+        ) {
+            Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(16.dp))
+        }
+        androidx.compose.animation.AnimatedVisibility(
+            visible = reveal && isThisSelected && !isThisCorrectAnswer,
+            enter = fadeIn(tween(240)),
+            exit = fadeOut(tween(120))
+        ) {
+            Icon(Icons.Filled.Close, null, tint = Color.White, modifier = Modifier.size(16.dp))
+        }
+    }
+}
