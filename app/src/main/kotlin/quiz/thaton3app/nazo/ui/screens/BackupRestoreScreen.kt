@@ -1,7 +1,7 @@
 package quiz.thaton3app.nazo.ui.screens
 
-import quiz.thaton3app.nazo.ui.components.rememberHapticBack
-
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -28,20 +28,40 @@ import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.SettingsBackupRestore
 import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import android.net.Uri
+import android.widget.Toast
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import quiz.thaton3app.nazo.data.backup.BackupScheduler
+import quiz.thaton3app.nazo.data.settings.BackupPrefs
+import quiz.thaton3app.nazo.data.settings.BackupRepository
+import quiz.thaton3app.nazo.data.settings.ProfilePreferences
+import quiz.thaton3app.nazo.data.settings.QuizStatsStore
+import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoTab
+import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoDarkCard
 import quiz.thaton3app.nazo.ui.theme.NazoDarkCardAccent
@@ -57,8 +77,61 @@ fun BackupRestoreScreen(
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
 ) {
-    // Empty state: null means no backup has ever been made on this device.
-    val lastBackupDate: String? = null 
+    val context = LocalContext.current
+    val backupPrefs = remember { BackupPrefs(context) }
+    val statsStore = remember { QuizStatsStore(context) }
+    val profilePrefs = remember { ProfilePreferences(context) }
+    val themePrefs = remember { ThemePreferences(context) }
+    val scope = rememberCoroutineScope()
+
+    val lastBackupText = backupPrefs.lastBackupEpoch?.let { formatBackupDate(it) }
+
+    val stats = statsStore.get()
+    val summaryParts = mutableListOf<String>()
+    if (stats.totalQuizzes > 0) {
+        summaryParts += "${stats.totalQuizzes} ${if (stats.totalQuizzes == 1) "quiz" else "quizzes"}"
+    }
+    if (stats.currentStreakDays > 0) {
+        summaryParts += "${stats.currentStreakDays}-day streak"
+    }
+    summaryParts += "${themePrefs.accent} theme"
+    if (profilePrefs.username.isNotBlank()) {
+        summaryParts += "profile \"${profilePrefs.username}\""
+    }
+    val summaryText = if (summaryParts.isEmpty()) {
+        "No quiz data yet — your settings will still be backed up."
+    } else {
+        summaryParts.joinToString(" · ")
+    }
+
+    var showRestoreConfirm by remember { mutableStateOf(false) }
+    var restoreUri by remember { mutableStateOf<Uri?>(null) }
+    var showFreqDialog by remember { mutableStateOf(false) }
+
+    val createLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            try {
+                BackupRepository.exportToUri(context, uri)
+                backupPrefs.lastBackupEpoch = System.currentTimeMillis()
+                Toast.makeText(context, "Backup saved", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Backup failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val openLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(arrayOf("application/json", "*/*"))
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        restoreUri = uri
+        showRestoreConfirm = true
+    }
+
+    val autoBackupPath = BackupRepository.autoBackupPath(context)
 
     Column(
         modifier = Modifier
@@ -76,52 +149,135 @@ fun BackupRestoreScreen(
             Spacer(Modifier.height(28.dp))
             ScreenHeader(title = "Backup & Restore", onBackClick = onBackClick)
             Spacer(Modifier.height(20.dp))
-            
-            LastBackupCard(date = lastBackupDate)
-            
+
+            LastBackupCard(date = lastBackupText, summary = summaryText)
+
             Spacer(Modifier.height(24.dp))
             SectionLabel("MANUAL BACKUP")
             Spacer(Modifier.height(10.dp))
-            
+
             SettingsCard {
                 ActionRow(
                     icon = Icons.Filled.Upload,
                     title = "Create Local Backup",
                     subtitle = "Export your data as a JSON file",
-                    onClick = { /* TODO: Launch export intent */ }
+                    onClick = {
+                        val name = "Nazo_backup_${System.currentTimeMillis()}.json"
+                        createLauncher.launch(name)
+                    }
                 )
                 RowDivider()
                 ActionRow(
                     icon = Icons.Filled.Folder,
                     title = "Restore Data",
                     subtitle = "Import a backup file from this device",
-                    onClick = { /* TODO: Launch import intent */ }
+                    onClick = { openLauncher.launch(arrayOf("application/json", "*/*")) }
+                )
+                RowDivider()
+                ActionRow(
+                    icon = Icons.Filled.SettingsBackupRestore,
+                    title = "Restore from Auto-Backup",
+                    subtitle = "Use the last automatic backup on this device",
+                    onClick = {
+                        scope.launch {
+                            try {
+                                BackupRepository.importFromPath(context, autoBackupPath)
+                                Toast.makeText(context, "Restored from auto-backup", Toast.LENGTH_SHORT).show()
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "No auto-backup yet: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
                 )
             }
-            
+
             Spacer(Modifier.height(24.dp))
             SectionLabel("AUTOMATION")
             Spacer(Modifier.height(10.dp))
-            
+
             SettingsCard {
                 ActionRow(
                     icon = Icons.Filled.Event,
                     title = "Auto-Backup Frequency",
                     subtitle = "How often backups are generated",
-                    trailingText = "Daily",
-                    onClick = { /* TODO: Show frequency dialog */ }
+                    trailingText = freqLabel(backupPrefs.autoBackupFrequency),
+                    onClick = { showFreqDialog = true }
                 )
                 RowDivider()
                 ActionRow(
                     icon = Icons.Filled.Folder,
                     title = "Backup Location",
-                    subtitle = "/storage/emulated/0/Nazo",
-                    onClick = { /* TODO: Show location picker */ }
+                    subtitle = autoBackupPath,
+                    onClick = {
+                        Toast.makeText(context, "Auto-backups are saved here", Toast.LENGTH_SHORT).show()
+                    }
                 )
             }
-            
+
             Spacer(Modifier.height(32.dp))
         }
+    }
+
+    if (showRestoreConfirm && restoreUri != null) {
+        AlertDialog(
+            onDismissRequest = { showRestoreConfirm = false },
+            title = { Text("Restore backup?", color = NazoTextPrimary) },
+            text = {
+                Text(
+                    "This will overwrite your current quiz stats, profile and settings " +
+                        "with the data from the selected backup.",
+                    color = NazoTextSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRestoreConfirm = false
+                        val uri = restoreUri!!
+                        scope.launch {
+                            try {
+                                BackupRepository.importFromUri(context, uri)
+                                Toast.makeText(context, "Data restored", Toast.LENGTH_SHORT).show()
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Restore failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                ) { Text("Restore", color = NazoPrimary) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestoreConfirm = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showFreqDialog) {
+        AlertDialog(
+            onDismissRequest = { showFreqDialog = false },
+            title = { Text("Auto-Backup Frequency", color = NazoTextPrimary) },
+            text = {
+                Column {
+                    listOf("off" to "Off", "daily" to "Daily", "weekly" to "Weekly").forEach { (value, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    backupPrefs.autoBackupFrequency = value
+                                    BackupScheduler.apply(context, value)
+                                    showFreqDialog = false
+                                    Toast.makeText(context, "Auto-backup: $label", Toast.LENGTH_SHORT).show()
+                                }
+                                .padding(vertical = 12.dp)
+                        ) {
+                            Text(label, color = NazoTextPrimary, style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showFreqDialog = false }) { Text("Close") }
+            }
+        )
     }
 }
 
@@ -141,8 +297,9 @@ private fun ScreenHeader(title: String, onBackClick: () -> Unit) {
         Text(text = title, style = MaterialTheme.typography.titleLarge, color = NazoTextPrimary)
     }
 }
+
 @Composable
-private fun LastBackupCard(date: String?) {
+private fun LastBackupCard(date: String?, summary: String) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -156,12 +313,12 @@ private fun LastBackupCard(date: String?) {
                     .size(44.dp)
                     .clip(CircleShape)
                     .background(NazoDarkCardAccent),
-                contentAlignment = Alignment.Center,
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Filled.SettingsBackupRestore, 
-                    contentDescription = null, 
-                    tint = NazoOnDarkCard, 
+                    imageVector = Icons.Filled.SettingsBackupRestore,
+                    contentDescription = null,
+                    tint = NazoOnDarkCard,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -182,22 +339,18 @@ private fun LastBackupCard(date: String?) {
         }
         Spacer(Modifier.height(16.dp))
         Text(
-            text = if (date != null) {
-                "42 quizzes, 6 provider profiles and all custom settings are included in the export bundle."
-            } else {
-                "Your quiz history and custom settings are currently not backed up. Create a manual backup below."
-            },
+            text = summary,
             style = MaterialTheme.typography.bodyMedium,
             color = NazoOnDarkCardMuted
-            // Removed the crashing lineHeight calculation here!
         )
     }
 }
+
 @Composable
 private fun SectionLabel(text: String) {
     Text(
-        text = text, 
-        style = MaterialTheme.typography.labelSmall, 
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
         color = NazoTextSecondary,
         modifier = Modifier.padding(start = 8.dp)
     )
@@ -217,7 +370,7 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
 @Composable
 private fun RowDivider() {
     HorizontalDivider(
-        color = NazoBackground, 
+        color = NazoBackground,
         thickness = 2.dp,
         modifier = Modifier.padding(horizontal = 16.dp)
     )
@@ -239,9 +392,9 @@ private fun ActionRow(
             .padding(horizontal = 16.dp, vertical = 16.dp),
     ) {
         Icon(
-            imageVector = icon, 
-            contentDescription = null, 
-            tint = NazoTextPrimary, 
+            imageVector = icon,
+            contentDescription = null,
+            tint = NazoTextPrimary,
             modifier = Modifier.size(24.dp)
         )
         Spacer(Modifier.width(16.dp))
@@ -254,13 +407,13 @@ private fun ActionRow(
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                text = subtitle, 
-                style = MaterialTheme.typography.bodyMedium, 
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
                 color = NazoTextSecondary
             )
         }
         Spacer(Modifier.width(8.dp))
-        
+
         if (trailingText != null) {
             Text(
                 text = trailingText,
@@ -273,8 +426,19 @@ private fun ActionRow(
                 imageVector = Icons.Filled.ChevronRight,
                 contentDescription = null,
                 tint = NazoTextSecondary,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(20.dp)
             )
         }
     }
+}
+
+private fun formatBackupDate(epoch: Long): String {
+    val sdf = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault())
+    return sdf.format(Date(epoch))
+}
+
+private fun freqLabel(freq: String): String = when (freq) {
+    "daily" -> "Daily"
+    "weekly" -> "Weekly"
+    else -> "Off"
 }

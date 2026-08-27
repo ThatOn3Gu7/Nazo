@@ -25,7 +25,9 @@ import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.data.remote.Connectivity
+import quiz.thaton3app.nazo.data.backup.BackupScheduler
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
+import quiz.thaton3app.nazo.data.settings.BackupPrefs
 import quiz.thaton3app.nazo.data.settings.ProfilePreferences
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
@@ -62,6 +64,11 @@ fun NazoApp() {
     val profilePrefs = remember { ProfilePreferences(context) }
     var profileName by remember { mutableStateOf(profilePrefs.username) }
     var profilePictureUri by remember { mutableStateOf(profilePrefs.profilePictureUri) }
+    val backupPrefs = remember { BackupPrefs(context) }
+
+    LaunchedEffect(Unit) {
+        BackupScheduler.apply(context, backupPrefs.autoBackupFrequency)
+    }
 
     // Offline / online mode. `forceOffline` is the manual Settings switch and is
     // SESSION-ONLY (never persisted) — when the app is killed and reopened the network
