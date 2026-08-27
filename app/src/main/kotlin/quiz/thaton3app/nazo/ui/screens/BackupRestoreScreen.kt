@@ -5,6 +5,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,13 +32,12 @@ import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.SettingsBackupRestore
 import androidx.compose.material.icons.filled.Upload
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,10 +47,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import android.net.Uri
 import android.widget.Toast
 import java.text.SimpleDateFormat
@@ -66,7 +71,9 @@ import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoDarkCard
 import quiz.thaton3app.nazo.ui.theme.NazoDarkCardAccent
+import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnDarkCard
+import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoOnDarkCardMuted
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoSurface
@@ -220,65 +227,162 @@ fun BackupRestoreScreen(
     }
 
     if (showRestoreConfirm && restoreUri != null) {
-        AlertDialog(
-            onDismissRequest = { showRestoreConfirm = false },
-            title = { Text("Restore backup?", color = NazoTextPrimary) },
-            text = {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .clickable { showRestoreConfirm = false },
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 340.dp)
+                    .clip(RoundedCornerShape(32.dp))
+                    .background(NazoSurface)
+                    .border(1.5.dp, NazoTextSecondary.copy(alpha = 0.3f), RoundedCornerShape(32.dp))
+                    .padding(28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .background(NazoError),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("!", color = NazoOnPrimary, fontWeight = FontWeight.Bold, fontSize = 34.sp)
+                }
+                Spacer(Modifier.height(18.dp))
+                Text(
+                    "Restore backup?",
+                    color = NazoTextPrimary,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(10.dp))
                 Text(
                     "This will overwrite your current quiz stats, profile and settings " +
                         "with the data from the selected backup.",
-                    color = NazoTextSecondary
+                    color = NazoTextSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
                 )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showRestoreConfirm = false
-                        val uri = restoreUri!!
-                        scope.launch {
-                            try {
-                                BackupRepository.importFromUri(context, uri)
-                                Toast.makeText(context, "Data restored", Toast.LENGTH_SHORT).show()
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "Restore failed: ${e.message}", Toast.LENGTH_SHORT).show()
-                            }
-                        }
+                Spacer(Modifier.height(22.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .border(1.5.dp, NazoTextSecondary.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                            .clickable { showRestoreConfirm = false },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("Cancel", color = NazoTextPrimary, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
                     }
-                ) { Text("Restore", color = NazoPrimary) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRestoreConfirm = false }) { Text("Cancel") }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(NazoPrimary)
+                            .clickable {
+                                showRestoreConfirm = false
+                                val uri = restoreUri!!
+                                scope.launch {
+                                    try {
+                                        BackupRepository.importFromUri(context, uri)
+                                        Toast.makeText(context, "Data restored", Toast.LENGTH_SHORT).show()
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Restore failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("Restore", color = NazoOnPrimary, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
-        )
+        }
     }
 
     if (showFreqDialog) {
-        AlertDialog(
-            onDismissRequest = { showFreqDialog = false },
-            title = { Text("Auto-Backup Frequency", color = NazoTextPrimary) },
-            text = {
-                Column {
-                    listOf("off" to "Off", "daily" to "Daily", "weekly" to "Weekly").forEach { (value, label) ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    backupPrefs.autoBackupFrequency = value
-                                    BackupScheduler.apply(context, value)
-                                    showFreqDialog = false
-                                    Toast.makeText(context, "Auto-backup: $label", Toast.LENGTH_SHORT).show()
-                                }
-                                .padding(vertical = 12.dp)
-                        ) {
-                            Text(label, color = NazoTextPrimary, style = MaterialTheme.typography.bodyLarge)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .clickable { showFreqDialog = false },
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 340.dp)
+                    .clip(RoundedCornerShape(32.dp))
+                    .background(NazoSurface)
+                    .border(1.5.dp, NazoTextSecondary.copy(alpha = 0.3f), RoundedCornerShape(32.dp))
+                    .padding(28.dp),
+            ) {
+                Text(
+                    "Auto-Backup Frequency",
+                    color = NazoTextPrimary,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Choose how often Nazo saves a backup to this device.",
+                    color = NazoTextSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(16.dp))
+                listOf("off" to "Off", "daily" to "Daily", "weekly" to "Weekly").forEach { (value, label) ->
+                    val selected = backupPrefs.autoBackupFrequency == value
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable {
+                                backupPrefs.autoBackupFrequency = value
+                                BackupScheduler.apply(context, value)
+                                showFreqDialog = false
+                                Toast.makeText(context, "Auto-backup: $label", Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(vertical = 14.dp, horizontal = 8.dp),
+                    ) {
+                        Text(
+                            label,
+                            color = NazoTextPrimary,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (selected) {
+                            Icon(Icons.Filled.Check, contentDescription = null, tint = NazoPrimary, modifier = Modifier.size(20.dp))
                         }
                     }
+                    if (value != "weekly") {
+                        HorizontalDivider(color = NazoBackground, thickness = 1.dp)
+                    }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { showFreqDialog = false }) { Text("Close") }
+                Spacer(Modifier.height(20.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(NazoPrimary)
+                        .clickable { showFreqDialog = false },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("Close", color = NazoOnPrimary, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                }
             }
-        )
+        }
     }
 }
 
