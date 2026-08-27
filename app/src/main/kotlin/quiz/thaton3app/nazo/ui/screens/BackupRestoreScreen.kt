@@ -3,6 +3,7 @@ package quiz.thaton3app.nazo.ui.screens
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -124,7 +125,7 @@ fun BackupRestoreScreen(
     }
 
     val openLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument(arrayOf("application/json", "*/*"))
+        ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         restoreUri = uri
