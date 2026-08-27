@@ -300,8 +300,6 @@ fun ActiveQuizScreen(
                                 Text(if (currentQuestionIndex == totalQuestions - 1) "Finish Quiz" else "Next Question", color = NazoOnPrimary, fontWeight = FontWeight.Bold)
                                 Spacer(Modifier.width(8.dp))
                                 Icon(Icons.Filled.ArrowForward, contentDescription = null, tint = NazoOnPrimary, modifier = Modifier.size(18.dp))
-                }
-            }
         }
     }
 }
@@ -330,21 +328,21 @@ private fun OptionCircle(
             .background(circleColor),
         contentAlignment = Alignment.Center
     ) {
-        AnimatedVisibility(
+        androidx.compose.animation.AnimatedVisibility(
             visible = !(reveal && (isThisCorrectAnswer || isThisSelected)),
             enter = fadeIn(tween(160)),
             exit = fadeOut(tween(160))
         ) {
             Text(label, style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary, fontWeight = FontWeight.Bold)
         }
-        AnimatedVisibility(
+        androidx.compose.animation.AnimatedVisibility(
             visible = reveal && isThisCorrectAnswer,
             enter = fadeIn(tween(240)),
             exit = fadeOut(tween(120))
         ) {
             Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(16.dp))
         }
-        AnimatedVisibility(
+        androidx.compose.animation.AnimatedVisibility(
             visible = reveal && isThisSelected && !isThisCorrectAnswer,
             enter = fadeIn(tween(240)),
             exit = fadeOut(tween(120))
@@ -353,7 +351,9 @@ private fun OptionCircle(
         }
     }
 }
-            }
+    }
+}
+
             Spacer(Modifier.height(32.dp))
         }
         }

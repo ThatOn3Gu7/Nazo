@@ -55,12 +55,16 @@ Conventions:
 - CORRECTION (build fix): `animateFloatAsState` lives in `androidx.compose.animation.core`
   (the `androidx.compose.animation` import is wrong → "Unresolved reference"). Also the
   per-option `AnimatedVisibility` (letter↔Check/Close) originally sat inside the option `Row`,
-  where the compiler resolves `AnimatedVisibility` to the `RowScope` extension and errors with
-  "cannot be called in this context with an implicit receiver". Extracted the circle into a
-  private top-level `OptionCircle(reveal, isThisCorrectAnswer, isThisSelected, label)` composable
-  (no enclosing `RowScope`), so `AnimatedVisibility` resolves to the plain top-level overload.
-  `androidx.compose.animation.animateFloatAsState` → `core.animateFloatAsState`; `OptionCircle`
-  owns the circle `Box` + its 3 `AnimatedVisibility` layers + the `circleColor` animation.
+  where the compiler resolves `AnimatedVisibility` to the `RowScope` extension → "cannot be called
+  in this context with an implicit receiver". Fix: extracted the circle into a `private` TOP-LEVEL
+  (file-scope, NOT nested) `OptionCircle(reveal, isThisCorrectAnswer, isThisSelected, label)` composable
+  whose `Box` content calls `AnimatedVisibility` via its fully-qualified name
+  `androidx.compose.animation.AnimatedVisibility(...)` so the top-level overload is chosen (the
+  qualified call avoids the `RowScope`/`ColumnScope`/`BoxScope` extension clash entirely). The first
+  attempt nested `OptionCircle` inside `ActiveQuizScreen` (so `private` errored as "local function")
+  and mis-placed the closing braces — fixed by moving `OptionCircle` to true file scope and repairing
+  the tail braces. `OptionCircle` owns the circle `Box` + its 3 `AnimatedVisibility` layers +
+  the `circleColor` animation.
 
 ---
 
