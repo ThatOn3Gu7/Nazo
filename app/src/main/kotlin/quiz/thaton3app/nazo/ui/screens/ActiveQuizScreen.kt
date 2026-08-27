@@ -8,6 +8,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -139,8 +147,13 @@ fun ActiveQuizScreen(
             }
             
             Spacer(Modifier.height(16.dp))
+            val progressAnim = animateFloatAsState(
+                targetValue = (currentQuestionIndex + 1) / totalQuestions.toFloat(),
+                animationSpec = tween(durationMillis = 400),
+                label = "quizProgress"
+            ).value
             LinearProgressIndicator(
-                progress = { (currentQuestionIndex + 1) / totalQuestions.toFloat() },
+                progress = { progressAnim },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(6.dp)
@@ -151,141 +164,179 @@ fun ActiveQuizScreen(
             
             Spacer(Modifier.height(24.dp))
             
-            // Question Card
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(NazoSurface)
-                    .padding(24.dp)
-            ) {
-                Text(
-                    text = question.theme.uppercase(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = NazoPrimary,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = question.text,
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = NazoTextPrimary,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            
-            Spacer(Modifier.height(24.dp))
-            
-            // Options
-            val labels = listOf("A", "B", "C", "D")
-            question.options.forEachIndexed { index, optionText ->
-                val isThisSelected = selectedAnswer == optionText
-                val isThisCorrectAnswer = optionText == question.correctAnswer
-                
-                val bgColor = when {
-                    !reveal -> NazoSurfaceVariant
-                    isThisCorrectAnswer -> Color(0xFFD4E7D5) // Light green mockup color
-                    isThisSelected && !isThisCorrectAnswer -> Color(0xFFF2D5D5) // Light red mockup color
-                    else -> NazoSurfaceVariant // Unselected when answered
-                }
-
-                val borderColor = when {
-                    !reveal -> Color.Transparent
-                    isThisCorrectAnswer -> Color(0xFF2E7D32) // Dark green
-                    isThisSelected && !isThisCorrectAnswer -> Color(0xFFC62828) // Dark red
-                    else -> Color.Transparent
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(bgColor)
-                        .border(1.dp, borderColor, RoundedCornerShape(50))
-                        .clickable(enabled = !reveal) {
-                            if (optionText == question.correctAnswer) Haptics.light(context)
-                            else Haptics.doubleLight(context)
-                            selectedAnswer = optionText
-                        }
-                        .padding(horizontal = 20.dp, vertical = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(
-                                when {
-                                    !reveal -> NazoBackground
-                                    isThisCorrectAnswer -> Color(0xFF2E7D32)
-                                    isThisSelected && !isThisCorrectAnswer -> Color(0xFFC62828)
-                                    else -> NazoBackground
-                                }
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (reveal && isThisCorrectAnswer) {
-                            Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                        } else if (reveal && isThisSelected && !isThisCorrectAnswer) {
-                            Icon(Icons.Filled.Close, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                        } else {
-                            Text(labels[index], style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                    Spacer(Modifier.width(16.dp))
-                    Text(
-                        text = optionText,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = if (reveal && (isThisCorrectAnswer || isThisSelected)) borderColor else NazoTextPrimary,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-            
-            // Explanation Card (shows after answering OR when time runs out)
-            if (reveal) {
-                Spacer(Modifier.height(12.dp))
+            AnimatedContent(
+                targetState = question,
+                transitionSpec = { fadeIn(tween(260)) togetherWith fadeOut(tween(120)) },
+                label = "questionTransition"
+            ) { q ->
+                Column {
+                // Question Card
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(24.dp))
                         .background(NazoSurface)
-                        .padding(20.dp)
+                        .padding(24.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.Lightbulb, contentDescription = null, tint = NazoPrimary, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Explanation", style = MaterialTheme.typography.titleMedium, color = NazoTextPrimary, fontWeight = FontWeight.Bold)
-                    }
+                    Text(
+                        text = q.theme.uppercase(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NazoPrimary,
+                        fontWeight = FontWeight.Bold
+                    )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = question.explanation,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NazoTextSecondary,
-                        lineHeight = 22.sp
+                        text = q.text,
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = NazoTextPrimary,
+                        fontWeight = FontWeight.Bold
                     )
-                    Spacer(Modifier.height(20.dp))
-                    
-                    // Next Question Button
+                }
+
+                Spacer(Modifier.height(24.dp))
+
+                // Options
+                val labels = listOf("A", "B", "C", "D")
+                q.options.forEachIndexed { index, optionText ->
+                    val isThisSelected = selectedAnswer == optionText
+                    val isThisCorrectAnswer = optionText == q.correctAnswer
+
+                    val bgColor by animateColorAsState(
+                        targetValue = when {
+                            !reveal -> NazoSurfaceVariant
+                            isThisCorrectAnswer -> Color(0xFFD4E7D5) // Light green mockup color
+                            isThisSelected && !isThisCorrectAnswer -> Color(0xFFF2D5D5) // Light red mockup color
+                            else -> NazoSurfaceVariant // Unselected when answered
+                        },
+                        animationSpec = tween(220),
+                        label = "optionBg"
+                    )
+                    val borderColor by animateColorAsState(
+                        targetValue = when {
+                            !reveal -> Color.Transparent
+                            isThisCorrectAnswer -> Color(0xFF2E7D32) // Dark green
+                            isThisSelected && !isThisCorrectAnswer -> Color(0xFFC62828) // Dark red
+                            else -> Color.Transparent
+                        },
+                        animationSpec = tween(220),
+                        label = "optionBorder"
+                    )
+                    val circleColor by animateColorAsState(
+                        targetValue = when {
+                            !reveal -> NazoBackground
+                            isThisCorrectAnswer -> Color(0xFF2E7D32)
+                            isThisSelected && !isThisCorrectAnswer -> Color(0xFFC62828)
+                            else -> NazoBackground
+                        },
+                        animationSpec = tween(220),
+                        label = "optionCircle"
+                    )
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .padding(bottom = 12.dp)
                             .clip(RoundedCornerShape(50))
-                            .background(NazoPrimary)
-                            .clickable { 
-                                Haptics.light(context)
-                                onNextQuestion(isCorrect, selectedAnswer)
-                                selectedAnswer = null // Reset for next question
+                            .background(bgColor)
+                            .border(1.dp, borderColor, RoundedCornerShape(50))
+                            .clickable(enabled = !reveal) {
+                                if (optionText == q.correctAnswer) Haptics.light(context)
+                                else Haptics.doubleLight(context)
+                                selectedAnswer = optionText
                             }
-                            .padding(vertical = 16.dp),
-                        horizontalArrangement = Arrangement.Center,
+                            .padding(horizontal = 20.dp, vertical = 16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(if (currentQuestionIndex == totalQuestions - 1) "Finish Quiz" else "Next Question", color = NazoOnPrimary, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.width(8.dp))
-                        Icon(Icons.Filled.ArrowForward, contentDescription = null, tint = NazoOnPrimary, modifier = Modifier.size(18.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(circleColor),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AnimatedVisibility(
+                                visible = !(reveal && (isThisCorrectAnswer || isThisSelected)),
+                                enter = fadeIn(tween(160)),
+                                exit = fadeOut(tween(160))
+                            ) {
+                                Text(labels[index], style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary, fontWeight = FontWeight.Bold)
+                            }
+                            AnimatedVisibility(
+                                visible = reveal && isThisCorrectAnswer,
+                                enter = fadeIn(tween(240)),
+                                exit = fadeOut(tween(120))
+                            ) {
+                                Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            }
+                            AnimatedVisibility(
+                                visible = reveal && isThisSelected && !isThisCorrectAnswer,
+                                enter = fadeIn(tween(240)),
+                                exit = fadeOut(tween(120))
+                            ) {
+                                Icon(Icons.Filled.Close, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                        Spacer(Modifier.width(16.dp))
+                        Text(
+                            text = optionText,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (reveal && (isThisCorrectAnswer || isThisSelected)) borderColor else NazoTextPrimary,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
+                }
+
+                // Explanation Card (shows after answering OR when time runs out)
+                AnimatedVisibility(
+                    visible = reveal,
+                    enter = fadeIn(tween(220)),
+                    exit = fadeOut(tween(120))
+                ) {
+                    Column {
+                        Spacer(Modifier.height(12.dp))
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(24.dp))
+                                .background(NazoSurface)
+                                .padding(20.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Outlined.Lightbulb, contentDescription = null, tint = NazoPrimary, modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Explanation", style = MaterialTheme.typography.titleMedium, color = NazoTextPrimary, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = q.explanation,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = NazoTextSecondary,
+                                lineHeight = 22.sp
+                            )
+                            Spacer(Modifier.height(20.dp))
+
+                            // Next Question Button
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(50))
+                                    .background(NazoPrimary)
+                                    .clickable {
+                                        Haptics.light(context)
+                                        onNextQuestion(isCorrect, selectedAnswer)
+                                        selectedAnswer = null // Reset for next question
+                                    }
+                                    .padding(vertical = 16.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(if (currentQuestionIndex == totalQuestions - 1) "Finish Quiz" else "Next Question", color = NazoOnPrimary, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.width(8.dp))
+                                Icon(Icons.Filled.ArrowForward, contentDescription = null, tint = NazoOnPrimary, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                }
                 }
             }
             Spacer(Modifier.height(32.dp))

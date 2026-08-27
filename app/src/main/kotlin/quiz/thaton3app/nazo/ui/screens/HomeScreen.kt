@@ -25,6 +25,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Settings
@@ -351,10 +353,20 @@ private fun PillButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val pillBg = animateColorAsState(
+        targetValue = if (selected) NazoPrimary else NazoPillUnselected,
+        animationSpec = tween(durationMillis = 160),
+        label = "pillBg",
+    ).value
+    val pillFg = animateColorAsState(
+        targetValue = if (selected) NazoOnPrimary else NazoTextPrimary,
+        animationSpec = tween(durationMillis = 160),
+        label = "pillFg",
+    ).value
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(50))
-            .background(if (selected) NazoPrimary else NazoPillUnselected)
+            .background(pillBg)
             .clickable(onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
@@ -362,7 +374,7 @@ private fun PillButton(
         Text(
             text = text,
             style = MaterialTheme.typography.bodyMedium,
-            color = if (selected) NazoOnPrimary else NazoTextPrimary,
+            color = pillFg,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
         )
     }

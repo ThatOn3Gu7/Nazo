@@ -20,6 +20,41 @@ Conventions:
 
 ---
 
+## [2026-08-27 04:00] feat: animation polish — pill selection, answer reveal, progress bar, question transition
+
+- Owner asked the UI to feel less "instant": (1) the Home difficulty/count pills should
+  fade when switching in/out of selection, not snap; (2) the ActiveQuiz answer reveal
+  (correct/wrong highlight + letter→check/close icon + explanation) should fade in, and the
+  next question should fade in; (3) the ActiveQuiz progress bar should fill smoothly, not jump.
+- **HomeScreen:** `PillButton` now uses `animateColorAsState(tween(160))` for its background
+  (`NazoPrimary`↔`NazoPillUnselected`) and text (`NazoOnPrimary`↔`NazoTextPrimary`), so a
+  selected/deselected pill cross-fades color over ~160ms. Added imports `animateColorAsState`
+  + `core.tween`. (The difficulty/count selectors already route through `PillButton`.)
+- **ActiveQuizScreen:** added animation imports (`AnimatedContent`, `AnimatedVisibility`,
+  `animateColorAsState`, `animateFloatAsState`, `fadeIn`, `fadeOut`, `core.tween`,
+  `togetherWith`). Changes:
+  - **Progress bar:** `LinearProgressIndicator` now reads `progressAnim = animateFloatAsState(
+    (currentQuestionIndex+1)/totalQuestions, tween(400))` so it eases to the new fill in ~400ms
+    instead of snapping on question change.
+  - **Question transition:** the Question card + Options + Explanation are now wrapped in
+    `AnimatedContent(targetState = question, transitionSpec = fadeIn(260) togetherWith
+    fadeOut(120))` and reference the lambda's `q` — so the outgoing question fades out while the
+    incoming fades in (avoids both frames briefly showing the NEW question).
+  - **Answer reveal:** each option's bg/border/circle color is now an `animateColorAsState(
+    tween(220))` that eases from neutral to green/red on reveal. The letter badge cross-fades to
+    a Check (correct) or Close (wrong) icon via three `AnimatedVisibility` layers (letter exits,
+    icon enters) so the swap fades rather than pops.
+  - **Explanation:** the Explanation card is wrapped in `AnimatedVisibility(visible = reveal,
+    enter = fadeIn(220), exit = fadeOut(120))` so it fades in once the answer is revealed (and
+    out on the next question).
+- Chosen timings are perceptible-but-not-annoying (owner originally wrote "3ms" but deferred the
+  exact numbers to the agent); Home pill 160ms, option colors 220ms, icon crossfade 160/240ms,
+  explanation 220ms, progress 400ms, question transition 260-in/120-out.
+- Files: `ui/screens/HomeScreen.kt`, `ui/screens/ActiveQuizScreen.kt`, `handoff.md`.
+- Note: agent cannot compile; owner to build in Termux and eyeball the three motion changes.
+
+---
+
 ## [2026-08-27 03:00] fix: every screen scrollable + clears the system navigation bar
 
 - Owner tested on an old/small phone: screen content was buried under the system navigation
