@@ -63,7 +63,9 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Shader
 import android.graphics.Typeface
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.runtime.rememberCoroutineScope
@@ -204,7 +206,7 @@ fun StatisticsScreen(
                     icon = Icons.Filled.TrackChanges,
                     label = "Best Topic",
                     value = data.bestTopic ?: "—",
-                    subtitle = if (data.bestTopic == null) "No quizzes yet" else "",
+                    subtitle = if (data.bestTopic == null) "No quizzes yet" else "Top mastered anime",
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -343,10 +345,10 @@ private fun StatTile(
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             softWrap = false,
-            modifier = Modifier.basicMarquee(),
+            modifier = Modifier.basicMarquee(repeatDelayMillis = 0),
         )
         if (subtitle.isNotEmpty()) {
-            Text(text = subtitle, style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
+            Text(text = subtitle, style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary, maxLines = 1)
         }
     }
 }
@@ -552,13 +554,16 @@ private fun shareBitmap(data: StatsData, context: Context): File {
     val bitmap = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
 
-    val bg = (NazoBackground.value).toInt()
-    val card = (NazoDarkCard.value).toInt()
-    val onCard = (NazoOnDarkCard.value).toInt()
-    val onMuted = (NazoOnDarkCardMuted.value).toInt()
-    val primary = (NazoPrimary.value).toInt()
-    val onPrimary = (NazoOnPrimary.value).toInt()
-    val chipBg = (NazoOnDarkCard.copy(alpha = 0.10f).value).toInt()
+    // Fixed, on-brand palette for the share card — intentionally NOT the live theme
+    // palette (reading dark-mode colors produced a near-black image).
+    val bgTop = 0xFFEAF8EE.toInt()
+    val bgBottom = 0xFFF6FCF7.toInt()
+    val card = 0xFF1A4331.toInt()
+    val onCard = 0xFFF6FBF4.toInt()
+    val onMuted = 0xFFA8C2B0.toInt()
+    val primary = 0xFF246D4C.toInt()
+    val onPrimary = 0xFFF7FEF8.toInt()
+    val chipBg = 0x26F6FBF4.toInt()
 
     val fontBold = ResourcesCompat.getFont(context, R.font.plus_jakarta_sans_bold)
     val fontReg = ResourcesCompat.getFont(context, R.font.plus_jakarta_sans_regular)
@@ -571,8 +576,10 @@ private fun shareBitmap(data: StatsData, context: Context): File {
         canvas.drawText(text, cx, baseline, paint)
     }
 
-    // background
-    canvas.drawPaint(Paint().apply { color = bg; isAntiAlias = true })
+    // background gradient (fixed, on-brand — independent of app light/dark theme)
+    val bgPaint = Paint().apply { isAntiAlias = true }
+    bgPaint.shader = LinearGradient(0f, 0f, 0f, H.toFloat(), bgTop, bgBottom, Shader.TileMode.CLAMP)
+    canvas.drawPaint(bgPaint)
 
     // card
     val cardLeft = 60f

@@ -20,6 +20,23 @@ Conventions:
 
 ---
 
+## [2026-08-27 01:00] fix: share card black in dark mode + marquee pause + tile height
+
+- **Share card rendered black:** `shareBitmap` read the *live* theme palette, so in dark mode the
+  card was near-black deep-forest green and read as black. Now uses a FIXED on-brand palette
+  (light mint gradient background + dark-green card, light text) regardless of the app's light/dark
+  setting, so the shared image is always bright/readable. Background is a `LinearGradient`
+  (added `android.graphics.LinearGradient` + `android.graphics.Shader` imports).
+- **Marquee pause:** `basicMarquee`'s default `repeatDelayMillis = 1500` caused a ~1s "refuel" pause
+  between loops. Set `repeatDelayMillis = 0` for a continuous scroll.
+- **Tile height:** the Best Topic tile dropped its subtitle when a topic existed (empty string), so it
+  was one line shorter than the others. Now always shows a subtitle ("Top mastered anime" / "No quizzes
+  yet"), and the subtitle `Text` is capped at `maxLines = 1` so all four tiles keep equal height.
+- Files: `ui/screens/StatisticsScreen.kt`, `handoff.md`.
+- Owner to build & confirm the share image now looks right (and that the marquee scrolls without pausing).
+
+---
+
 ## [2026-08-27 00:30] feat: best-topic marquee + shareable stats image
 
 - Owner: (1) the "Best Topic" stat tile wrapped long anime names onto a 2nd line and broke the
@@ -31,10 +48,10 @@ Conventions:
   long anime names scroll right→left continuously.
 - Shareable stats image (`ui/screens/StatisticsScreen.kt`):
   - New `shareBitmap(data, context)` draws a 1080×1350 PNG with `android.graphics.Canvas`:
-    mint background + a dark rounded card (reusing the RankCard palette — `NazoDarkCard` /
-    `NazoOnDarkCard` / `NazoPrimary`), a hero "Level N" circle, three stat chips (Quizzes /
-    Accuracy / Day Streak), the Best Topic, and the Top 3 Mastered Anime. Uses the bundled Plus
-    Jakarta Sans fonts; colors are read live from the current `NazoXxx` palette.
+    a light mint gradient background + a dark-green rounded card, a hero "Level N" circle, three
+    stat chips (Quizzes / Accuracy / Day Streak), the Best Topic, and the Top 3 Mastered Anime.
+    Uses a FIXED on-brand palette (independent of the app's light/dark theme — reading the live
+    palette made the card near-black in dark mode) and the bundled Plus Jakarta Sans fonts.
   - Saved to `getExternalFilesDir(null)/nazo_stats.png` and shared via `ACTION_SEND` +
     `FileProvider` (existing `quiz.thaton3app.nazo.fileprovider` authority / `apk` path mapping).
   - `ShareButton(data)` now generates + shares on a `Dispatchers.IO` coroutine and launches the
