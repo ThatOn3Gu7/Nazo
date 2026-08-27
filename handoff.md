@@ -20,6 +20,36 @@ Conventions:
 
 ---
 
+## [2026-08-27 02:00] feat: redesign "Share My Stats" card (Gemini mockup, Nazo branding)
+
+- Owner supplied a Gemini mockup for the shareable stats card. IMPORTANT branding
+  note: the mockup used the label "AnimeMind AI" / "animemind.ai" — that is WRONG; the
+  app is **Nazo**. The card uses the "Nazo" wordmark (top-left) and a "nazo" footer,
+  NOT AnimeMind AI / animemind.ai. (Plus Jakarta Sans has no CJK glyphs, so we keep the
+  "Nazo" wordmark rather than the 謎 kanji on the canvas.)
+- Rewrote `shareBitmap(data, context)` in `ui/screens/StatisticsScreen.kt` to match the
+  mockup: light mint/off-white gradient background; a dark forest-green rounded card
+  (radius 72) with a faux drop shadow (manual translucent round-rect — `setShadowLayer`
+  is ignored on software canvases); concentric translucent corner accents (clipped to the
+  card); header "Nazo" + tracked "MY ANIME STATS"; top-right circular FAB with a "★";
+  a bright-mint hero badge with a drawn trophy (new `drawTrophy` helper) + big level
+  number + "LEVEL"; "Level N Otaku" + "X XP earned" (needs the new `totalXp` field);
+  3 lighter-green stat chips (QUIZZES / ACCURACY / DAY STREAK); a BEST TOPIC title with a
+  mint pill showing the top anime accuracy; a TOP MASTERED ANIME list (new `drawFlame`
+  helper) with rank 01/02/03, title, "N quizzes · X% avg", and faint dividers; footer
+  "Quiz. Learn. Level up." / "nazo". All text uses the bundled Plus Jakarta Sans fonts.
+- Added `val totalXp: Int` to the private `StatsData` data class and set it in
+  `toStatsData` (= `totalCorrect*10 + totalQuizzes*5`, the same value already computed as
+  `xp`). Long titles are width-measured and truncated with "…" so they never overflow
+  into the pill/rows.
+- Added imports `android.graphics.Path` + `android.graphics.RectF` (for card clip + round-rect).
+- Files: `ui/screens/StatisticsScreen.kt`, `handoff.md`.
+- Note: agent cannot compile; owner to build in Termux and visually confirm the layout
+  (spacing/colors easily tweakable). The mockup image itself is a JWT-named file in the
+  repo root that the agent cannot open (model can't read images).
+
+---
+
 ## [2026-08-27 01:00] fix: share card black in dark mode + marquee pause + tile height
 
 - **Share card rendered black:** `shareBitmap` read the *live* theme palette, so in dark mode the
