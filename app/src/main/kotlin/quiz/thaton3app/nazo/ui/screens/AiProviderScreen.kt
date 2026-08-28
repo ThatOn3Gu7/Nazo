@@ -22,15 +22,21 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -383,14 +389,15 @@ private fun StatusBadge(status: KeyStatus) {
 @Composable
 private fun ModelDropdown(models: List<String>, selected: String, onSelect: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    Box {
+    Column {
+        // Trigger "pill" — tapping expands the list inline (no system/menu overlay).
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
                 .background(NazoSurfaceVariant)
-                .clickable { expanded = true }
+                .clickable { expanded = !expanded }
                 .padding(horizontal = 14.dp, vertical = 14.dp),
         ) {
             Text(
@@ -399,18 +406,57 @@ private fun ModelDropdown(models: List<String>, selected: String, onSelect: (Str
                 color = if (selected.isEmpty()) NazoTextPlaceholder else NazoTextPrimary,
                 modifier = Modifier.weight(1f),
             )
-            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = NazoTextSecondary, modifier = Modifier.size(20.dp))
+            Icon(
+                if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                contentDescription = null,
+                tint = NazoTextSecondary,
+                modifier = Modifier.size(20.dp),
+            )
         }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.heightIn(min = 50.dp, max = 240.dp),
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(200)),
+            exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(200)),
         ) {
-            models.forEach { m ->
-                DropdownMenuItem(
-                    text = { Text(m, color = NazoTextPrimary) },
-                    onClick = { onSelect(m); expanded = false },
-                )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 240.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(top = 8.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(NazoSurface)
+                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.2f), RoundedCornerShape(14.dp)),
+            ) {
+                models.forEachIndexed { i, m ->
+                    val isSel = m == selected
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(m); expanded = false }
+                            .padding(horizontal = 14.dp, vertical = 13.dp),
+                    ) {
+                        Text(
+                            text = m,
+                            color = if (isSel) NazoPrimary else NazoTextPrimary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (isSel) FontWeight.SemiBold else FontWeight.Normal,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (isSel) {
+                            Icon(
+                                Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = NazoPrimary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
+                    if (i != models.lastIndex) {
+                        HorizontalDivider(color = NazoTextSecondary.copy(alpha = 0.12f))
+                    }
+                }
             }
         }
     }

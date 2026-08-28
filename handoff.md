@@ -1356,3 +1356,30 @@ covered by `BUG_AUDIT.md` + this log).
 - Build in Termux: (a) fetch models → background/kill/relaunch app → the fetched list + selected
   model should still be there (no re-fetch needed); (b) re-fetch with a different list → selection
   stays if still present; (c) a long model list dropdown expands ~240dp max and scrolls in place.
+
+---
+
+## [2026-08-29 01:00] feat: custom inline-expanding model dropdown (themed, replaces Material overlay)
+
+- Owner: replace the Material3 `DropdownMenu` overlay (broke the app's color/layout aesthetic
+  and covered the screen for long lists) with a **custom inline-expanding dropdown** — the model
+  "pill" itself expands to reveal the options in place, using the app palette. This also seeds the
+  animated expand/collapse pattern the owner wants reused across the app.
+- `ModelDropdown` (AiProviderScreen) and `ModelPicker` (LoadingScreen error screen) rewritten:
+  - Trigger pill: `NazoSurfaceVariant` box, rounded 14dp, chevron rotates (`KeyboardArrowDown`/
+    `Up`) on toggle, tappable to expand/collapse.
+  - Options revealed via `AnimatedVisibility` (`expandVertically`+`fadeIn` / `shrinkVertically`+
+    `fadeOut`, tween 200).
+  - Options list: `NazoSurface` box with a 1dp `NazoTextSecondary`@0.2 border, `heightIn(max = 240.dp)`
+    + `verticalScroll` so long lists scroll in place (no screen takeover); each row `NazoTextPrimary`,
+    the selected one tinted `NazoPrimary` (SemiBold) with a `Check` icon; faint `HorizontalDivider`
+    between rows. Selecting calls `onSelect(m)` and collapses.
+- Imports: dropped `DropdownMenu`/`DropdownMenuItem`; added `AnimatedVisibility`/`expandVertically`/
+  `shrinkVertically`/`fadeIn`/`fadeOut`/`tween` + `Check`/`KeyboardArrowUp` (LoadingScreen) +
+  `border` (AiProviderScreen). `heightIn` already present in both.
+- This is the reference pattern for the other providers' model selectors (owner plans to configure
+  each provider one by one after animation/layout polish).
+- Files: `ui/screens/AiProviderScreen.kt`, `ui/screens/LoadingScreen.kt`, `handoff.md`.
+- Build in Termux: open a provider card → Model section expands inline with theme colors + animates;
+  long lists scroll within ~240dp; selecting updates + collapses. Same behaviour on the generation
+  error screen's "Pick a different model" picker.
