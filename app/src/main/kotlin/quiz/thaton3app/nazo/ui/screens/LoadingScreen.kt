@@ -11,12 +11,11 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -201,27 +200,35 @@ private fun LoadingContent(providerModel: String, onCancel: () -> Unit) {
         )
     }
     Spacer(Modifier.height(22.dp))
-    // Bouncy "stretching" spinner: the indeterminate arc keeps spinning while a spring scales it
-    // in and out (Reverse loop), so it visibly stretches rather than just rotating flat.
-    val bounce = rememberInfiniteTransition(label = "loadingBounce")
-    val scale by bounce.animateFloat(
-        initialValue = 0.82f,
-        targetValue = 1.18f,
-        animationSpec = infiniteRepeatable(
-            animation = spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
-                stiffness = Spring.StiffnessMedium,
-            ),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "bounceScale",
-    )
+    // Bouncy "stretching" spinner: the indeterminate arc keeps spinning while a spring animates
+    // the scale up and down forever (medium-bouncy), so it visibly stretches instead of just
+    // rotating flat. An Animatable + LaunchedEffect loop is used because spring specs aren't
+    // accepted by infiniteRepeatable.
+    val scale = remember { Animatable(0.82f) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            scale.animateTo(
+                targetValue = 1.18f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMedium,
+                ),
+            )
+            scale.animateTo(
+                targetValue = 0.82f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMedium,
+                ),
+            )
+        }
+    }
     CircularProgressIndicator(
         color = NazoPrimary,
         strokeWidth = 3.dp,
         modifier = Modifier
             .size(44.dp)
-            .scale(scale),
+            .scale(scale.value),
     )
     Spacer(Modifier.height(24.dp))
     TextButton(label = "Cancel", onClick = onCancel)

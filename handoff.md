@@ -1439,3 +1439,16 @@ covered by `BUG_AUDIT.md` + this log).
   (`RepeatMode`, `Spring`, `infiniteRepeatable`, `rememberInfiniteTransition`, `spring`,
   `scale`). Loading emblem (prior commit) stays above the title.
 - Files: `ui/screens/LoadingScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 02:30] fix: bouncy spinner build error (spring not allowed in infiniteRepeatable)
+
+- Termux build failed: `infiniteRepeatable` only accepts a `DurationBasedAnimationSpec`, not a
+  `spring` (`SpringSpec`), so `InfiniteTransition.animateFloat` couldn't resolve.
+- Rewrote the spinner drive in `LoadingScreen.LoadingContent` to use `Animatable(0.82f)` +
+  `LaunchedEffect(Unit) { while(true) animateTo(1.18f) / animateTo(0.82f) }` with a medium-bouncy
+  `spring` for each leg. This gives the same bouncy stretch but with a real spring. Removed the
+  now-unused `RepeatMode`/`infiniteRepeatable`/`rememberInfiniteTransition` imports; added
+  `Animatable` + `LaunchedEffect`.
+- Files: `ui/screens/LoadingScreen.kt`, `handoff.md`.
