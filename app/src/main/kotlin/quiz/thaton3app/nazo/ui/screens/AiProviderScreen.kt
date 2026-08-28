@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -129,13 +130,17 @@ private fun defaultProviders() = listOf(
     ),
 )
 
-// Load the persisted key/model for each provider so the UI reflects what's stored on device.
+// Load the persisted key/model/list for each provider so the UI reflects what's stored on device.
+// The fetched model list is cached in prefs (see ApiKeyStore.getModels), so a previously fetched
+// list survives an app restart and the user doesn't have to re-fetch.
 private fun initialProviders(store: ApiKeyStore): List<ProviderUiState> =
     defaultProviders().map { p ->
         val storedKey = store.getKey(p.id).orEmpty()
-        val storedModel = store.getModel(p.id) ?: p.models.firstOrNull().orEmpty()
+        val storedModels = store.getModels(p.id)
+        val models = if (storedModels.isNotEmpty()) storedModels else p.models
+        val storedModel = store.getModel(p.id) ?: models.firstOrNull().orEmpty()
         val status = if (storedKey.isNotBlank()) KeyStatus.VALID else KeyStatus.NOT_CONFIGURED
-        p.copy(apiKey = storedKey, model = storedModel, status = status)
+        p.copy(apiKey = storedKey, model = storedModel, models = models, status = status)
     }
 
 @Composable
@@ -167,7 +172,10 @@ fun AiProviderScreen(
                 .onSuccess { models ->
                     fetchingId = null
                     providers = providers.toMutableList().also { list ->
-                        val next = if (models.isNotEmpty()) models.first() else provider.model
+                        // Keep the user's current selection if it's still in the new list;
+                        // only fall back to the first model when it isn't (or the list is empty).
+                        val next = if (provider.model in models) provider.model
+                        else models.firstOrNull() ?: provider.model
                         list[index] = list[index].copy(models = models, model = next)
                     }
                     apiKeyStore.saveModels(provider.id, models)
@@ -393,9 +401,16 @@ private fun ModelDropdown(models: List<String>, selected: String, onSelect: (Str
             )
             Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = NazoTextSecondary, modifier = Modifier.size(20.dp))
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.heightIn(min = 50.dp, max = 240.dp),
+        ) {
             models.forEach { m ->
-                DropdownMenuItem(text = { Text(m) }, onClick = { onSelect(m); expanded = false })
+                DropdownMenuItem(
+                    text = { Text(m, color = NazoTextPrimary) },
+                    onClick = { onSelect(m); expanded = false },
+                )
             }
         }
     }

@@ -1329,3 +1329,30 @@ covered by `BUG_AUDIT.md` + this log).
 - Note: the picker lists whatever was last fetched/saved for that provider, so a user who fetched
   models can jump straight to a working one (e.g. gemini-3.x-pro) from the error screen. Build in
   Termux; verify a 404 shows the model dropdown and that picking a working model retries successfully.
+
+---
+
+## [2026-08-29 00:30] fix: persist fetched model list (survives restart) + cap dropdown height
+
+- Owner feedback on the AI provider flow:
+  1. **Fetched models weren't persisted across app restarts.** Reopening showed only the
+     static default list; the user had to re-fetch (which also reset their selection). The
+     list is now cached in `ApiKeyStore` (`saveModels`) and **reloaded on launch**.
+  2. **Refetch wiped the current selection** (`fetchModelsFor` set the model to
+     `models.first()`). Now it keeps the existing selection if it's still in the new list.
+  3. **Dropdown covered the whole screen** for long model lists (system Material menu). Both
+     the provider-screen `ModelDropdown` and the error-screen `ModelPicker` now cap the menu
+     with `Modifier.heightIn(min = 50.dp, max = 240.dp)` so it anchors under the field and
+     scrolls internally instead of filling the screen.
+- `AiProviderScreen.kt`: `initialProviders` now loads `store.getModels(id)` (falling back to
+  the static defaults) into each provider's `models` field; `fetchModelsFor` preserves the
+  selection via `if (provider.model in models) provider.model else models.firstOrNull()`.
+  `ModelDropdown`'s `DropdownMenu` got `heightIn(min=50.dp, max=240.dp)` + item text colored
+  `NazoTextPrimary`; added `import androidx.compose.foundation.layout.heightIn`.
+- `LoadingScreen.kt`: `ModelPicker`'s `DropdownMenu` got the same `heightIn(50.dp..240.dp)`.
+- `ApiKeyStore.kt` already had `getModels`/`saveModels` (added in the prior commit); this
+  commit makes the UI actually load them on init and stop clobbering the selection.
+- Files: `ui/screens/AiProviderScreen.kt`, `ui/screens/LoadingScreen.kt`, `handoff.md`.
+- Build in Termux: (a) fetch models → background/kill/relaunch app → the fetched list + selected
+  model should still be there (no re-fetch needed); (b) re-fetch with a different list → selection
+  stays if still present; (c) a long model list dropdown expands ~240dp max and scrolls in place.

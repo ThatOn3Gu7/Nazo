@@ -259,7 +259,7 @@ private fun ModelPicker(models: List<String>, selected: String, onSelect: (Strin
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.fillMaxWidth().background(NazoSurface),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp, max = 240.dp).background(NazoSurface),
         ) {
             models.forEach { m ->
                 DropdownMenuItem(
