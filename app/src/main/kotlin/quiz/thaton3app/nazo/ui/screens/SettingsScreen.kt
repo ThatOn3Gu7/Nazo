@@ -1,5 +1,6 @@
 package quiz.thaton3app.nazo.ui.screens
 
+import quiz.thaton3app.nazo.BuildConfig
 import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 
 import androidx.compose.foundation.background
@@ -138,7 +139,7 @@ fun SettingsScreen(
                 SettingsRow(
                     icon = Icons.Filled.Info,
                     title = "About",
-                    subtitle = "App version 2.0 & credits",
+                    subtitle = "App version ${BuildConfig.VERSION_NAME} & credits",
                     onClick = onOpenAbout,
                 )
             }
