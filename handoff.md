@@ -1426,3 +1426,16 @@ covered by `BUG_AUDIT.md` + this log).
   stretching" Play-Store-style spinner. Not done yet — awaiting which exact animation is wanted
   (see open question to owner).
 - Files: `ui/NazoApp.kt`, `ui/screens/HomeScreen.kt`, `ui/screens/LoadingScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 02:15] visual: bouncy "stretching" loading spinner
+
+- Owner picked the "Bouncy scale" spinner for the Generate-AI-Quiz loading screen.
+- `LoadingScreen.LoadingContent`: replaced the static indeterminate `CircularProgressIndicator`
+  with the same arc wrapped in a `rememberInfiniteTransition` spring scale (0.82f↔1.18f,
+  `DampingRatioMediumBouncy`/`StiffnessMedium`, `RepeatMode.Reverse`) via `Modifier.scale(scale)`.
+  So it keeps spinning AND springy-stretches in size. Added imports
+  (`RepeatMode`, `Spring`, `infiniteRepeatable`, `rememberInfiniteTransition`, `spring`,
+  `scale`). Loading emblem (prior commit) stays above the title.
+- Files: `ui/screens/LoadingScreen.kt`, `handoff.md`.

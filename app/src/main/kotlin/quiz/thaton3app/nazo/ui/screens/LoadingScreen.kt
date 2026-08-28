@@ -11,7 +11,13 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
@@ -195,10 +201,27 @@ private fun LoadingContent(providerModel: String, onCancel: () -> Unit) {
         )
     }
     Spacer(Modifier.height(22.dp))
+    // Bouncy "stretching" spinner: the indeterminate arc keeps spinning while a spring scales it
+    // in and out (Reverse loop), so it visibly stretches rather than just rotating flat.
+    val bounce = rememberInfiniteTransition(label = "loadingBounce")
+    val scale by bounce.animateFloat(
+        initialValue = 0.82f,
+        targetValue = 1.18f,
+        animationSpec = infiniteRepeatable(
+            animation = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessMedium,
+            ),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "bounceScale",
+    )
     CircularProgressIndicator(
         color = NazoPrimary,
         strokeWidth = 3.dp,
-        modifier = Modifier.size(38.dp),
+        modifier = Modifier
+            .size(44.dp)
+            .scale(scale),
     )
     Spacer(Modifier.height(24.dp))
     TextButton(label = "Cancel", onClick = onCancel)
