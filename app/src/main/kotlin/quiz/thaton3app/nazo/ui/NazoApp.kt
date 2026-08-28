@@ -93,7 +93,8 @@ fun NazoApp() {
 
     LaunchedEffect(Unit) {
         detectedOffline = !Connectivity.isOnline(context)
-        startupDialogMode = if (detectedOffline) StartupMode.OFFLINE else StartupMode.ONLINE
+        // Only block with a popup when offline — the "you're online" notice is no longer needed.
+        startupDialogMode = if (detectedOffline) StartupMode.OFFLINE else null
     }
 
     var themeMode by remember { mutableStateOf(themePrefs.mode) }
@@ -307,6 +308,7 @@ fun NazoApp() {
                 when (screen) {
                     Screen.Home -> HomeScreen(
                         apiKeyActive = apiKeyStore.hasAnyActiveKey(),
+                        activeProvider = apiKeyStore.getActiveProvider(),
                         offline = isOfflineMode,
                         onSettingsClick = { navigate(Screen.Settings) },
                         profileName = profileName,

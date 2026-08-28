@@ -76,6 +76,7 @@ enum class Difficulty(val label: String) {
 @Composable
 fun HomeScreen(
     apiKeyActive: Boolean,
+    activeProvider: String? = null,
     offline: Boolean = false,
     onSettingsClick: () -> Unit = {},
     profileName: String = "",
@@ -116,7 +117,7 @@ fun HomeScreen(
                 onProfileClick = onProfileClick,
             )
             Spacer(Modifier.height(16.dp))
-            ApiKeyBadge(active = apiKeyActive, offline = offline)
+            ApiKeyBadge(active = apiKeyActive, activeProvider = activeProvider, offline = offline)
             Spacer(Modifier.height(20.dp))
             Text(
                 text = "Ready to test your\nanime knowledge?",
@@ -224,7 +225,7 @@ private fun HomeHeader(
 }
 
 @Composable
-private fun ApiKeyBadge(active: Boolean, offline: Boolean = false) {
+private fun ApiKeyBadge(active: Boolean, activeProvider: String? = null, offline: Boolean = false) {
     val (bg, dot, text) = if (offline) {
         Triple(NazoPillUnselected, NazoTextSecondary, NazoTextSecondary)
     } else {
@@ -233,6 +234,11 @@ private fun ApiKeyBadge(active: Boolean, offline: Boolean = false) {
             if (active) NazoPrimary else NazoError,
             if (active) NazoPrimary else NazoError,
         )
+    }
+    val label = when {
+        offline -> "Offline mode"
+        active -> activeProvider?.let { PROVIDER_DISPLAY[it] ?: it } ?: "API Key active"
+        else -> "API Key inactive"
     }
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -249,16 +255,22 @@ private fun ApiKeyBadge(active: Boolean, offline: Boolean = false) {
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            text = when {
-                offline -> "Offline mode"
-                active -> "API Key active"
-                else -> "API Key inactive"
-            },
+            text = label,
             style = MaterialTheme.typography.bodyMedium,
             color = text,
         )
     }
 }
+
+// Friendly names for the active-provider pill (id -> display name).
+private val PROVIDER_DISPLAY = mapOf(
+    "gemini" to "Google Gemini",
+    "chatgpt" to "OpenAI ChatGPT",
+    "claude" to "Anthropic Claude",
+    "openrouter" to "OpenRouter",
+    "deepseek" to "DeepSeek",
+    "mistral" to "Mistral AI",
+)
 
 @Composable
 private fun SectionLabel(text: String) {

@@ -164,6 +164,22 @@ fun LoadingScreen(
 
 @Composable
 private fun LoadingContent(providerModel: String, onCancel: () -> Unit) {
+    // App emblem at the top of the card.
+    Box(
+        modifier = Modifier
+            .size(64.dp)
+            .clip(CircleShape)
+            .background(NazoPrimary),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "謎",
+            color = NazoOnPrimary,
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+    Spacer(Modifier.height(18.dp))
     Text(
         text = "Generating your quiz…",
         color = NazoTextPrimary,

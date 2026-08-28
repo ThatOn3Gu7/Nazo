@@ -1406,3 +1406,23 @@ covered by `BUG_AUDIT.md` + this log).
 - Build in Termux: generate same params → answer all → generate same params again → should now
   produce a different question set (network call), not the answered one. Relaunch + same params →
   also fresh (cache gone).
+
+---
+
+## [2026-08-29 02:00] visual: launch/home/loading polish (part 1 — popup, provider pill, logo)
+
+- Owner wanted visual improvements, done incrementally. This commit covers the unambiguous parts.
+- **Removed the "You're online" startup popup.** `NazoApp.kt` now sets `startupDialogMode = null`
+  when online (only `StartupMode.OFFLINE` still blocks). The offline popup is unchanged. (The
+  `StartupMode.ONLINE` branch in `OfflineWarningDialog` is now dead but left in place — harmless.)
+- **Home pill now shows the active AI provider name.** `HomeScreen.ApiKeyBadge` gained an
+  `activeProvider: String?` param; when a key is active it displays the friendly provider name
+  (e.g. "Google Gemini") via a new `PROVIDER_DISPLAY` map, falling back to the raw id. `NazoApp`
+  passes `activeProvider = apiKeyStore.getActiveProvider()`. Inactive still shows "API Key
+  inactive"; offline still shows "Offline mode".
+- **Loading card gets an app emblem.** `LoadingScreen.LoadingContent` now shows a 64dp circular
+  NazoPrimary badge with the "謎" mark (NazoOnPrimary) above the title.
+- PENDING (owner to clarify): replace the loading `CircularProgressIndicator` with the "bouncy
+  stretching" Play-Store-style spinner. Not done yet — awaiting which exact animation is wanted
+  (see open question to owner).
+- Files: `ui/NazoApp.kt`, `ui/screens/HomeScreen.kt`, `ui/screens/LoadingScreen.kt`, `handoff.md`.
