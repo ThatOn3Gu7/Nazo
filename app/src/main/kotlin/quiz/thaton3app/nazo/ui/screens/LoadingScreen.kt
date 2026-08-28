@@ -11,7 +11,12 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
@@ -20,8 +25,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.CircularWavyProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,6 +42,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.PI
 import quiz.thaton3app.nazo.ui.theme.NazoSurface
 import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
@@ -163,7 +172,6 @@ fun LoadingScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LoadingContent(providerModel: String, onCancel: () -> Unit) {
     // App emblem at the top of the card.
@@ -197,15 +205,53 @@ private fun LoadingContent(providerModel: String, onCancel: () -> Unit) {
         )
     }
     Spacer(Modifier.height(22.dp))
-    // Wavy, indeterminate progress indicator (Material3 Expressive) — the arc spins along a
-    // visible track with the "snake biting its tail" wave, no custom animation loop needed.
-    CircularWavyProgressIndicator(
-        color = NazoPrimary,
-        trackColor = NazoTextSecondary.copy(alpha = 0.2f),
-        modifier = Modifier.size(44.dp),
-    )
+    // Wavy "snake-biting-its-tail" spinner, drawn on a Canvas and themed with NazoPrimary.
+    // (AOSP's CircularWavyProgressIndicator only ships in Material3 1.5.0-alpha — no stable
+    // release exists — so we draw our own to keep the project on the stable Compose BOM.)
+    WavySpinner(color = NazoPrimary, modifier = Modifier.size(44.dp))
     Spacer(Modifier.height(24.dp))
     TextButton(label = "Cancel", onClick = onCancel)
+}
+
+/**
+ * Custom wavy progress indicator: a stroked ring whose radius oscillates with a traveling sine
+ * wave, so the wave appears to chase its own tail — matching the look of AOSP's
+ * CircularWavyProgressIndicator without requiring the Material3 1.5.0-alpha BOM.
+ */
+@Composable
+private fun WavySpinner(color: Color, modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "wavySpinner")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 2f * PI.toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "wavyPhase",
+    )
+    Canvas(modifier = modifier) {
+        val strokeWidth = 4.dp.toPx()
+        val baseR = (size.minDimension / 2f) - strokeWidth / 2f
+        val amp = 3.dp.toPx()
+        val waves = 5
+        val steps = 160
+        val path = Path()
+        for (i in 0..steps) {
+            val t = i.toFloat() / steps
+            val angle = t * 2f * PI.toFloat()
+            val r = baseR + amp * sin(waves * angle + phase)
+            val x = size.width / 2f + r * cos(angle)
+            val y = size.height / 2f + r * sin(angle)
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        path.close()
+        drawPath(
+            path = path,
+            color = color,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+        )
+    }
 }
 
 @Composable

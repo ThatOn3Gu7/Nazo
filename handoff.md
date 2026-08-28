@@ -1471,3 +1471,25 @@ covered by `BUG_AUDIT.md` + this log).
   BOM's Material3 is older than expected — bump `composeBom` to a newer 2025.x BOM (or pin
   `material3` to `1.4.0`+) and retry.
 - Files: `ui/screens/LoadingScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 03:30] fix: CircularWavyProgressIndicator unresolved — it's alpha-only, draw our own
+
+- Build FAILED: `Unresolved reference CircularWavyProgressIndicator`. Gemini assumed it was stable
+  in Material3 1.3.0+, but per Android docs it was **Added in Material3 1.5.0-alpha24** and there
+  is STILL no stable release (stable Material3 is 1.4.0 as of mid-2026). It also needs
+  `ExperimentalMaterial3ExpressiveApi`. Getting the real AOSP component would require jumping the
+  whole app to a 2026 **alpha** Compose BOM (risk of broad breakage) — not worth it for one spinner.
+- Decision: drop the AOSP dependency and draw an equivalent wavy "snake-biting-its-tail" spinner
+  ourselves on a `Canvas`, themed with `NazoPrimary` (44dp, 4dp stroke, 3dp amplitude, 5 waves,
+  phase travels via `infiniteRepeatable(tween 1400ms, LinearEasing)`). Added `WavySpinner`
+  composable in `LoadingScreen.kt`. Removed the alpha-only imports
+  (`CircularWavyProgressIndicator`, `ExperimentalMaterial3Api`) and the `@OptIn`; added
+  `Canvas`, `Path`, `Stroke`, `StrokeCap`, `RepeatMode`, `infiniteRepeatable`, `LinearEasing`,
+  `rememberInfiniteTransition`, and `kotlin.math.*`.
+- Net: builds on the existing STABLE Compose BOM (2025.10.01 / Material3 1.4.0), no new deps.
+- If owner later wants the exact AOSP component: switch `compose-bom` to a 2026 alpha BOM
+  (`androidx.compose:compose-bom-alpha:<date>`) and re-enable `CircularWavyProgressIndicator` +
+  `ExperimentalMaterial3ExpressiveApi`. Not recommended for now.
+- Files: `ui/screens/LoadingScreen.kt`, `handoff.md`.
