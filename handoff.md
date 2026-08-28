@@ -1383,3 +1383,26 @@ covered by `BUG_AUDIT.md` + this log).
 - Build in Termux: open a provider card → Model section expands inline with theme colors + animates;
   long lists scroll within ~240dp; selecting updates + collapses. Same behaviour on the generation
   error screen's "Pick a different model" picker.
+
+---
+
+## [2026-08-29 01:30] fix: don't repeat already-answered AI questions (session cache guard)
+
+- Owner: generate AI quiz (same topic/difficulty/count) → answer it → generate again → the
+  in-memory `QuizCache` returned the SAME questions. Wanted: once a set is answered, a repeat
+  generation should fetch a FRESH set from the API instead of replaying it.
+- `NazoApp.kt`: added `answeredKeys` (`Set<String>`, session-only `remember` state). Keyed by
+  the same `QuizCache.key(provider, model, topic, difficulty, count)`.
+  - In `answer()`, when a quiz finishes AND `aiGenerated` is true, the current request's key is
+    added to `answeredKeys`.
+  - In `launchGeneration`, the cache is only used when `cacheKey !in answeredKeys`; if it IS in
+    the set, we skip the cache and call `ApiClient.generateQuiz` for a fresh set (which then
+    replaces the cache entry). Local (offline) quizzes are unaffected (they don't use QuizCache
+    and `aiGenerated` is false there).
+- Scope is **session-based on purpose**: `answeredKeys` and `QuizCache` are both in-memory, so a
+  process restart clears them and the first generation after relaunch always hits the API → new
+  questions anyway. No persistence added (owner preferred this).
+- Files: `ui/NazoApp.kt`, `handoff.md`.
+- Build in Termux: generate same params → answer all → generate same params again → should now
+  produce a different question set (network call), not the answered one. Relaunch + same params →
+  also fresh (cache gone).
