@@ -1452,3 +1452,22 @@ covered by `BUG_AUDIT.md` + this log).
   now-unused `RepeatMode`/`infiniteRepeatable`/`rememberInfiniteTransition` imports; added
   `Animatable` + `LaunchedEffect`.
 - Files: `ui/screens/LoadingScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 03:00] visual: swap spinner for Material3 Expressive CircularWavyProgressIndicator
+
+- Owner got a Compose-expert (Gemini) suggestion: replace the custom bouncy `Animatable` spinner
+  with `androidx.compose.material3.CircularWavyProgressIndicator` (the Material3 Expressive wavy
+  indeterminate indicator — "snake biting its tail" spin). Confirmed the project's Compose BOM
+  `2025.10.01` already ships Material3 1.4.x (Expressive), so no dependency bump was needed.
+- `LoadingScreen.kt`: added imports `CircularWavyProgressIndicator` + `ExperimentalMaterial3Api`;
+  added `@OptIn(ExperimentalMaterial3Api::class)` to `LoadingContent`; replaced the
+  `Animatable`+`LaunchedEffect`+`CircularProgressIndicator` block with
+  `CircularWavyProgressIndicator(color = NazoPrimary, trackColor = NazoTextSecondary@0.2, size 44)`.
+  Removed now-unused imports (`Animatable`, `Spring`, `spring`, `LaunchedEffect`, `scale`,
+  `CircularProgressIndicator`).
+- NOTE: if the build still errors with "Unresolved reference CircularWavyProgressIndicator", the
+  BOM's Material3 is older than expected — bump `composeBom` to a newer 2025.x BOM (or pin
+  `material3` to `1.4.0`+) and retry.
+- Files: `ui/screens/LoadingScreen.kt`, `handoff.md`.

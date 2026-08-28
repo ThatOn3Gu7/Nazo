@@ -11,12 +11,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
@@ -25,7 +20,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.CircularWavyProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -167,6 +163,7 @@ fun LoadingScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LoadingContent(providerModel: String, onCancel: () -> Unit) {
     // App emblem at the top of the card.
@@ -200,35 +197,12 @@ private fun LoadingContent(providerModel: String, onCancel: () -> Unit) {
         )
     }
     Spacer(Modifier.height(22.dp))
-    // Bouncy "stretching" spinner: the indeterminate arc keeps spinning while a spring animates
-    // the scale up and down forever (medium-bouncy), so it visibly stretches instead of just
-    // rotating flat. An Animatable + LaunchedEffect loop is used because spring specs aren't
-    // accepted by infiniteRepeatable.
-    val scale = remember { Animatable(0.82f) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            scale.animateTo(
-                targetValue = 1.18f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessMedium,
-                ),
-            )
-            scale.animateTo(
-                targetValue = 0.82f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessMedium,
-                ),
-            )
-        }
-    }
-    CircularProgressIndicator(
+    // Wavy, indeterminate progress indicator (Material3 Expressive) — the arc spins along a
+    // visible track with the "snake biting its tail" wave, no custom animation loop needed.
+    CircularWavyProgressIndicator(
         color = NazoPrimary,
-        strokeWidth = 3.dp,
-        modifier = Modifier
-            .size(44.dp)
-            .scale(scale.value),
+        trackColor = NazoTextSecondary.copy(alpha = 0.2f),
+        modifier = Modifier.size(44.dp),
     )
     Spacer(Modifier.height(24.dp))
     TextButton(label = "Cancel", onClick = onCancel)
