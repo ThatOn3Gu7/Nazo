@@ -1493,3 +1493,16 @@ covered by `BUG_AUDIT.md` + this log).
   (`androidx.compose:compose-bom-alpha:<date>`) and re-enable `CircularWavyProgressIndicator` +
   `ExperimentalMaterial3ExpressiveApi`. Not recommended for now.
 - Files: `ui/screens/LoadingScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 03:45] fix: wavy spinner compile errors (Stroke package + animateFloat import)
+
+- Build FAILED again: `Stroke` unresolved and `animateFloat` unresolved (cascading Double mismatches
+  on the `sin/cos` math because `phase` had no type).
+- `Stroke` is in `androidx.compose.ui.graphics.drawscope.Stroke` (not `ui.graphics.Stroke`) — fixed
+  the import. `animateFloat` is a top-level **extension** on `InfiniteTransition` in
+  `androidx.compose.animation.core`, so it needed an explicit `import
+  androidx.compose.animation.core.animateFloat` (the earlier spring failure masked this). With it
+  imported, `phase: Float` is inferred and the `sin/cos` Double errors disappear.
+- Files: `ui/screens/LoadingScreen.kt`, `handoff.md`.

@@ -14,6 +14,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -43,7 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.Stroke
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
 import kotlin.math.cos
 import kotlin.math.sin
