@@ -1168,6 +1168,133 @@ covered by `BUG_AUDIT.md` + this log).
     Key improvements: rounded-corner strokes via `PathEffect.cornerPathEffect` (the "cool" factor),
     manual 2D point rotation (bypasses the Compose `rotate()`/`withTransform` APIs that don't resolve
     in this version), Lissajous drift paths (`sin/cos` with per-particle driftFreq/phase/amp) so shapes
-    wander without clumping, and slow 45s ping-pong `Animatable` loop for a "breathing" feel. 12
+    wander without clumping, and slow 45s ping-pong `    Animatable` loop for a "breathing" feel. 12
     particles on a jittered 3x4 grid, sizes 5-12% of min dimension, alpha 0.06-0.16. Still uses
     `NazoPrimary`/`NazoSuccess`/`NazoError` so it adapts to the accent. Left as-is per user request.
+
+  - **Backup & Restore implemented (real, not stub):** `BackupRestoreScreen.kt` was a visual stub
+    (fake "42 quizzes, 6 provider profiles" text, no actions). Replaced with a working feature per the
+    user's decisions:
+      * *Manual backup* via SAF `ActivityResultContracts.CreateDocument("application/json")` — no
+        storage permission needed (Manifest has `allowBackup=false` and no storage perms).
+      * *Manual restore* via SAF `OpenDocument` with a confirmation dialog; overwrites current stores.
+      * *Auto-backup* via `BackupWorker` (CoroutineWorker) scheduled by `BackupScheduler`
+        (mirrors `UpdateScheduler`): unique periodic work `"nazo_backup"`, Daily = 1 DAYS, Weekly = 7
+        DAYS, "off" cancels. The worker writes to the app-external
+        `getExternalFilesDir(null)/Nazo/auto_backup.json` and stamps `lastBackupEpoch`.
+      * *Frequency chooser* row (Off/Daily/Weekly) in the screen, persisted in `BackupPrefs`
+        (`nazo_backup` prefs: `lastBackupEpoch`, `autoBackupFrequency`) and applied live via
+        `BackupScheduler.apply`.
+      * *Restore from Auto-Backup* row reads `Nazo/auto_backup.json` (shows error toast if absent).
+      * *Backup Location* row now shows the real `autoBackupPath`.
+      * *Last Backup card* shows the real date + a real summary (N quizzes · X-day streak · accent
+        theme · profile name), or "No backups yet".
+    Data format: a single JSON `{"version":1,"createdAt":...,"stores":{<name>:{<key>:{"t":<type>,"v":<val>}}}}`
+    with type tags (string/bool/int/long/float/string_set). `BackupRepository` reads the known stores
+    `nazo_stats`, `nazo_profile`, `nazo_theme`, `nazo_provider_models`, `nazo_secure` (API keys/
+    key ciphertext included — user chose to include despite AndroidKeystore device-binding) and writes
+    them with `edit().clear().putAll(...).apply()`. `content://` profile pictures are skipped on export
+    (not portable); emoji/remote-URL pictures and username are kept. Import strips unknown keys per
+    store and skips `content://` profile picture to avoid restoring a dead gallery reference.
+    Bootstrap: `NazoApp.kt` now builds `BackupPrefs` and calls `BackupScheduler.apply` in a
+    `LaunchedEffect(Unit)`. New files: `data/settings/BackupPrefs.kt`, `data/settings/BackupRepository.kt`,
+    `data/backup/BackupWorker.kt`, `data/backup/BackupScheduler.kt`. Committed `88c4ecb`.
+    User to build in Termux and verify (manual export produces an openable JSON; restore re-populates;
+    Daily auto-backup creates the file; Last Backup reflects real date).
+
+  - **Backup dialogs restyled (commit `a6fa5bf`):** The frequency chooser and restore-confirmation
+    pop-ups previously used the default Material3 `AlertDialog` (looked out of place). Both were
+    replaced with custom `NazoSurface` cards that mirror `OfflineWarningDialog.kt`: 32.dp rounded
+    corners, 1.5dp `NazoTextSecondary`-alpha border, `Color.Black` scrim at 0.5 alpha, `NazoPrimary`
+    filled buttons and an icon circle. The frequency dialog lists Off/Daily/Weekly as tappable rows
+    with a `NazoPrimary` checkmark on the active selection; the restore dialog uses a `NazoError`
+    "!" icon and side-by-side Cancel (`NazoTextPrimary`, outlined) / Restore (`NazoPrimary`) buttons.
+    `AlertDialog`/`TextButton` imports removed; added `Color`, `border`, `widthIn`, `Arrangement`,
+    `TextAlign`, `sp`, `Icons.Filled.Check`, `NazoError`, `NazoOnPrimary` imports.
+
+  - **Backup validation + dialog animations (commit `cde00f9`):** Hardened restore against
+    corrupt/invalid files. Previously `applyJson` parsed and applied store-by-store, so a broken
+    store could partially overwrite existing data before throwing. Now `BackupRepository` does a
+    full in-memory `parseAndValidate` (checks top-level `stores` object, each store is an object,
+    each entry is a tagged `{"t","v"}` object, known `t` types) and only then `applyValidated`
+    commits — a bad file throws and changes nothing. Added public `validateUri`/`validatePath`;
+    the file picker (`OpenDocument` launcher) calls `validateUri` and shows "Invalid backup file"
+    *before* the confirm dialog is shown, so users no longer get an overwrite prompt for junk.
+    Both pop-ups wrapped in `AnimatedVisibility` with `fadeIn(tween(220))/fadeOut(tween(180))`
+    (matching the app's normal fade behaviour) and the screen root changed from `Column` to `Box`
+    so the dialogs overlay the content instead of pushing layout. `AnimatedVisibility`, `fadeIn`,
+    `fadeOut`, `tween` imports added.
+
+  - **Release v3.0 prep (commit `6faef76`):** Bumped `app/build.gradle.kts` `versionName` 2.0 -> 3.0
+    and `versionCode` 2 -> 3. Tag convention is `vX.Y` (existing tags `v1.0`, `v2.0`), so the release
+    tag is `v3.0` (user creates + pushes it; the GitHub workflow builds the release artifact). NOTE:
+    user's phrasing "version code two three" was read as "version code to three" -> 3; if they actually
+    meant `versionCode = 23` this one-line change must be made before tagging.
+
+  - **In-app version references (commit `975f699`):** Audited the whole source tree for version
+    strings. The only hardcoded ones were `SettingsScreen.kt` "About" row subtitle ("App version 2.0
+    & credits") and `AboutScreen.kt` `versionName` fallback default (`"2.0"`). SettingsScreen now reads
+    `BuildConfig.VERSION_NAME` so it always shows the real version (no future manual edits); AboutScreen
+    fallback updated to `"3.0"`. `AboutScreen`/`UpdateChecker` already resolve `versionName` from the
+    package at runtime,    and `res/` contains no version strings.
+
+---
+
+## [2026-08-28 22:00] feat: Gemini AI quiz generation (structured JSON, model fetch, themed error/use-local)
+
+- Owner approved wiring the AI quiz feature for real (Phase 1 = Gemini only, end-to-end).
+  Decisions: (1) on API failure show an explicit Error screen with **Retry** + **Use local**
+  (no silent local fallback); (2) an **in-memory cache** for the session; (3) Gemini emits a
+  content sub-category (`theme`) while the app sets `anime = topic`. New constraint: any new
+  screen/popup must match the app's exact theme (mirror `OfflineWarningDialog`). Also: when an
+  API key is entered the app should **fetch the models that key can actually use** and let the
+  user pick one, not just default.
+- **ProviderConfig.kt:** `requestBody(prompt, model, systemPrompt = "")` now adds
+  `systemInstruction` + `generationConfig` (`responseMimeType = "application/json"` +
+  `responseSchema`) for GEMINI so the model returns valid JSON directly (no fence-stripping
+  needed). OPENAI gets `response_format = {type:"json_object"}`; ANTHROPIC gets `system`. Added
+  `modelsUrl(apiKey): String?` (GEMINI `v1beta/models` list endpoint; null for others) and a
+  private `questionSchema()` describing the 5 expected keys. `endpoint.kind` already drives error
+  text; `endpoint.models` is the static fallback list.
+- **ApiClient.kt:**
+  - `GEMINI_SYSTEM_PROMPT` constant (strict JSON-only + 4-option + exact-`correctAnswer` + difficulty
+    calibration rules) and `buildUserPrompt(topic, difficulty, count, language="English")`.
+  - `generateQuiz` now passes `GEMINI_SYSTEM_PROMPT` into `requestBody` and throws
+    `friendlyHttpError(code, kind)` (400→check model, 401/403→key rejected, 429→quota, 5xx→unavailable).
+  - `parseQuestions` hardened: drops malformed entries instead of crashing; sets `anime = topic`;
+    guarantees `correctAnswer ∈ options` (falls back to first option); no longer requires `anime` key.
+  - NEW `object QuizCache` — LRU (20) in-memory cache keyed by
+    `provider:model:topic:difficulty:count` via `key(...)` / `get(...)` / `put(...)`.
+  - NEW `suspend fun fetchModels(providerId, apiKey): Result<List<String>>` — for GEMINI calls
+    `modelsUrl`, keeps only models whose `supportedGenerationMethods` contains "generateContent",
+    else returns the static `endpoint.models`; other providers return their static list.
+- **AiProviderScreen.kt:** each provider card now has a themed **"Fetch models"** button (NazoPrimary
+  pill) that calls `ApiClient.fetchModels`; on success it swaps that provider's model list and selects
+  the first; on error it shows the message inline (still falls back to the static models). Added
+  `rememberCoroutineScope` + `launch` imports and per-provider `fetchingId`/`fetchError` state.
+- **NazoApp.kt:** added `generationState: GenerationState` (sealed, defined in LoadingScreen.kt),
+  `generationRequest` holder, and `aiGenerated` flag. `startQuiz` now routes online+key →
+  `launchGeneration(req)`: checks `QuizCache` (cache hit → quiz immediately), else sets
+  `GenerationState.Loading("provider • model")`, navigates to Loading, and `ApiClient.generateQuiz`
+  → on success cache + `replace(Screen.Quiz)`, on failure sets `GenerationState.Error` (stays on
+  Loading screen — **no silent fallback**). Retry re-runs `launchGeneration`; Use Local runs
+  `LocalQuestionBank`; Cancel returns Home. Offline / no-key still go straight to the local bank.
+  `LoadingScreen` is wired with `state` + `onRetry`/`onUseLocal`/`onCancel`; `ActiveQuizScreen`
+  receives `isAiGenerated = aiGenerated`.
+- **LoadingScreen.kt:** rewritten. Now defines `sealed interface GenerationState
+  { Idle; Loading(providerModel); Error(message) }` and renders a themed card (NazoSurface box +
+  1.5dp NazoTextSecondary-alpha border, matching `OfflineWarningDialog`): **Loading** = title
+  "Generating your quiz…" + "Using provider • model" + spinner + Cancel; **Error** = red "Couldn't
+  generate quiz" + message + Retry (filled) + Use local quiz (outlined) + Cancel. A small top bar
+  (back→cancel, settings) is included. NOTE: `NazoSurface` is a *Color*, not a composable — the card
+  is a `Box` with `.clip(...).background(NazoSurface).border(...)`.
+- **ActiveQuizScreen.kt:** added `isAiGenerated: Boolean = false`; shows a "✦ AI" chip
+  (NazoPrimary @0.16 alpha pill, NazoPrimary text) in the header row when true.
+- Phase 1 is Gemini-only for the full experience (schema + model fetch); the OPENAI/ANTHROPIC bodies
+  were extended so enabling them later is a small change, but only Gemini is exercised end-to-end.
+- Files: `data/remote/ProviderConfig.kt`, `data/remote/ApiClient.kt`, `ui/screens/AiProviderScreen.kt`,
+  `ui/NazoApp.kt`, `ui/screens/LoadingScreen.kt`, `ui/screens/ActiveQuizScreen.kt`, `handoff.md`.
+- Agent cannot compile; verified by inspection (imports/brackets/sealed-when). Owner to build in
+  Termux and test: (a) set a Gemini key + Fetch models → pick a model; (b) generate a quiz → verify
+  questions + "✦ AI" chip; (c) simulate a bad key → Error screen with Retry/Use local; (d) re-generate
+  same params → comes from cache instantly. Release is **v3.0** (not yet tagged/pushed).

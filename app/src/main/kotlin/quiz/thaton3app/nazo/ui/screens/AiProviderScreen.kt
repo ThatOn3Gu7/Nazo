@@ -40,7 +40,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -50,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
+import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoErrorBg
@@ -144,6 +147,37 @@ fun AiProviderScreen(
 ) {
     var providers by remember { mutableStateOf(initialProviders(apiKeyStore)) }
     var expandedId by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    var fetchingId by remember { mutableStateOf<String?>(null) }
+    var fetchError by remember { mutableStateOf<String?>(null) }
+    var fetchErrorId by remember { mutableStateOf<String?>(null) }
+
+    fun fetchModelsFor(index: Int, provider: ProviderUiState) {
+        val key = provider.apiKey
+        if (key.isBlank()) {
+            fetchErrorId = provider.id
+            fetchError = "Enter an API key first."
+            return
+        }
+        fetchingId = provider.id
+        fetchError = null
+        fetchErrorId = null
+        scope.launch {
+            ApiClient.fetchModels(provider.id, key)
+                .onSuccess { models ->
+                    fetchingId = null
+                    providers = providers.toMutableList().also { list ->
+                        val next = if (models.isNotEmpty()) models.first() else provider.model
+                        list[index] = list[index].copy(models = models, model = next)
+                    }
+                }
+                .onFailure { e ->
+                    fetchingId = null
+                    fetchErrorId = provider.id
+                    fetchError = e.message ?: "Couldn't fetch models."
+                }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -174,9 +208,12 @@ fun AiProviderScreen(
                             it[index] = it[index].copy(apiKey = newKey, status = updatedStatus) 
                         }
                     },
-                    onModelChange = { newModel ->
-                        providers = providers.toMutableList().also { it[index] = it[index].copy(model = newModel) }
-                    },
+                        onModelChange = { newModel ->
+                            providers = providers.toMutableList().also { it[index] = it[index].copy(model = newModel) }
+                        },
+                        onFetchModels = { fetchModelsFor(index, provider) },
+                        isFetching = fetchingId == provider.id,
+                        fetchError = if (fetchErrorId == provider.id) fetchError else null,
                 )
                 Spacer(Modifier.height(14.dp))
             }
@@ -217,6 +254,9 @@ private fun ProviderCard(
     onToggleExpand: () -> Unit,
     onApiKeyChange: (String) -> Unit,
     onModelChange: (String) -> Unit,
+    onFetchModels: () -> Unit = {},
+    isFetching: Boolean = false,
+    fetchError: String? = null,
 ) {
     Column(
         modifier = Modifier
@@ -277,6 +317,33 @@ private fun ProviderCard(
                     Icon(Icons.Filled.Lock, contentDescription = null, tint = NazoTextSecondary, modifier = Modifier.size(12.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("Stored Securely on device", style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
+                }
+                Spacer(Modifier.height(20.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .height(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(NazoPrimary)
+                            .clickable(enabled = !isFetching, onClick = onFetchModels)
+                            .padding(horizontal = 16.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = if (isFetching) "Fetching…" else "Fetch models",
+                            color = NazoOnPrimary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    if (fetchError != null) {
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            text = fetchError ?: "",
+                            color = NazoError,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
             }
         }

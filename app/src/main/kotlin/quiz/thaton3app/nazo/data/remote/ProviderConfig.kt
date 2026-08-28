@@ -36,9 +36,15 @@ data class ProviderEndpoint(
         return map
     }
 
-    fun requestBody(prompt: String, model: String): String = when (kind) {
-        ProviderKind.GEMINI -> JSONObject()
-            .put(
+    fun requestBody(prompt: String, model: String, systemPrompt: String = ""): String = when (kind) {
+        ProviderKind.GEMINI -> JSONObject().apply {
+            if (systemPrompt.isNotBlank()) {
+                put(
+                    "systemInstruction",
+                    JSONObject().put("parts", JSONArray().put(JSONObject().put("text", systemPrompt))),
+                )
+            }
+            put(
                 "contents",
                 JSONArray().put(
                     JSONObject().put(
@@ -47,29 +53,82 @@ data class ProviderEndpoint(
                     ),
                 ),
             )
-            .toString()
-
-        ProviderKind.OPENAI -> JSONObject()
-            .put("model", model)
-            .put(
-                "messages",
-                JSONArray().put(
-                    JSONObject().put("role", "user").put("content", prompt),
-                ),
+            put(
+                "generationConfig",
+                JSONObject().apply {
+                    put("temperature", 0.9)
+                    put("maxOutputTokens", 8192)
+                    put("responseMimeType", "application/json")
+                    put("responseSchema", questionSchema())
+                },
             )
-            .put("temperature", 0.7)
-            .toString()
+        }.toString()
 
-        ProviderKind.ANTHROPIC -> JSONObject()
-            .put("model", model)
-            .put("max_tokens", 2048)
-            .put(
+        ProviderKind.OPENAI -> JSONObject().apply {
+            val messages = JSONArray()
+            if (systemPrompt.isNotBlank()) {
+                messages.put(JSONObject().put("role", "system").put("content", systemPrompt))
+            }
+            messages.put(JSONObject().put("role", "user").put("content", prompt))
+            put("model", model)
+            put("messages", messages)
+            put("temperature", 0.7)
+            put("response_format", JSONObject().put("type", "json_object"))
+        }.toString()
+
+        ProviderKind.ANTHROPIC -> JSONObject().apply {
+            put("model", model)
+            put("max_tokens", 4096)
+            if (systemPrompt.isNotBlank()) put("system", systemPrompt)
+            put(
                 "messages",
-                JSONArray().put(
-                    JSONObject().put("role", "user").put("content", prompt),
-                ),
+                JSONArray().put(JSONObject().put("role", "user").put("content", prompt)),
             )
-            .toString()
+        }.toString()
+    }
+
+    /** Gemini model-list endpoint (used to let the user pick from models they can access). Null for providers that don't support it. */
+    fun modelsUrl(apiKey: String): String? =
+        if (urlKey) "https://$host/v1beta/models?key=$apiKey" else null
+
+    private fun questionSchema(): JSONObject = JSONObject().apply {
+        put("type", "ARRAY")
+        put(
+            "items",
+            JSONObject().apply {
+                put("type", "OBJECT")
+                put(
+                    "properties",
+                    JSONObject().apply {
+                        put("theme", JSONObject().put("type", "STRING"))
+                        put("question", JSONObject().put("type", "STRING"))
+                        put(
+                            "options",
+                            JSONObject().apply {
+                                put("type", "ARRAY")
+                                put("items", JSONObject().put("type", "STRING"))
+                                put("minItems", 4)
+                                put("maxItems", 4)
+                            },
+                        )
+                        put("correctAnswer", JSONObject().put("type", "STRING"))
+                        put("explanation", JSONObject().put("type", "STRING"))
+                    },
+                )
+                put(
+                    "required",
+                    JSONArray().apply {
+                        put("theme"); put("question"); put("options"); put("correctAnswer"); put("explanation")
+                    },
+                )
+                put(
+                    "propertyOrdering",
+                    JSONArray().apply {
+                        put("theme"); put("question"); put("options"); put("correctAnswer"); put("explanation")
+                    },
+                )
+            },
+        )
     }
 }
 

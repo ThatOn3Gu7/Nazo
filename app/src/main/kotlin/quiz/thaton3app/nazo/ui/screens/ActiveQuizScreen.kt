@@ -48,6 +48,7 @@ fun ActiveQuizScreen(
     currentQuestionIndex: Int,
     totalQuestions: Int,
     difficulty: String = "Medium",
+    isAiGenerated: Boolean = false,
     onNextQuestion: (Boolean, String?) -> Unit,
     onCloseClick: () -> Unit,
 ) {
@@ -129,6 +130,24 @@ fun ActiveQuizScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = NazoTextSecondary
                     )
+                }
+                if (isAiGenerated) {
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50.dp))
+                            .background(NazoPrimary.copy(alpha = 0.16f))
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "✦ AI",
+                            color = NazoPrimary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
                 }
                 Box(
                     modifier = Modifier
