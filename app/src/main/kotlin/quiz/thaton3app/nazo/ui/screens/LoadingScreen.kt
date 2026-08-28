@@ -8,13 +8,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -23,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import quiz.thaton3app.nazo.ui.theme.NazoSurface
+import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
@@ -38,7 +44,7 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 sealed interface GenerationState {
     data object Idle : GenerationState
     data class Loading(val providerModel: String) : GenerationState
-    data class Error(val message: String) : GenerationState
+    data class Error(val message: String, val isModelError: Boolean = false) : GenerationState
 }
 
 @Composable
@@ -49,6 +55,9 @@ fun LoadingScreen(
     onCancel: () -> Unit,
     onHomeClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    availableModels: List<String> = emptyList(),
+    currentModel: String = "",
+    onChangeModel: (String) -> Unit = {},
 ) {
     Box(
         modifier = Modifier
@@ -122,9 +131,13 @@ fun LoadingScreen(
                             )
                             is GenerationState.Error -> ErrorContent(
                                 message = state.message,
+                                isModelError = state.isModelError,
+                                availableModels = availableModels,
+                                currentModel = currentModel,
                                 onRetry = onRetry,
                                 onUseLocal = onUseLocal,
                                 onCancel = onCancel,
+                                onChangeModel = onChangeModel,
                             )
                             GenerationState.Idle -> LoadingContent(
                                 providerModel = "",
@@ -167,10 +180,15 @@ private fun LoadingContent(providerModel: String, onCancel: () -> Unit) {
 @Composable
 private fun ErrorContent(
     message: String,
+    isModelError: Boolean,
+    availableModels: List<String>,
+    currentModel: String,
     onRetry: () -> Unit,
     onUseLocal: () -> Unit,
     onCancel: () -> Unit,
+    onChangeModel: (String) -> Unit,
 ) {
+    val selected = remember { mutableStateOf(currentModel) }
     Text(
         text = "Couldn't generate quiz",
         color = NazoError,
@@ -184,12 +202,71 @@ private fun ErrorContent(
         style = MaterialTheme.typography.bodyMedium,
         textAlign = TextAlign.Center,
     )
-    Spacer(Modifier.height(24.dp))
-    PrimaryButton(label = "Retry", onClick = onRetry)
-    Spacer(Modifier.height(12.dp))
-    OutlineButton(label = "Use local quiz", onClick = onUseLocal)
-    Spacer(Modifier.height(12.dp))
-    TextButton(label = "Cancel", onClick = onCancel)
+    Spacer(Modifier.height(20.dp))
+    if (isModelError && availableModels.isNotEmpty()) {
+        Text(
+            text = "Pick a different model",
+            color = NazoTextSecondary,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Spacer(Modifier.height(8.dp))
+        ModelPicker(
+            models = availableModels,
+            selected = selected.value,
+            onSelect = { selected.value = it },
+        )
+        Spacer(Modifier.height(16.dp))
+        PrimaryButton(label = "Change model & retry", onClick = { onChangeModel(selected.value) })
+        Spacer(Modifier.height(12.dp))
+        OutlineButton(label = "Use local quiz", onClick = onUseLocal)
+        Spacer(Modifier.height(12.dp))
+        TextButton(label = "Cancel", onClick = onCancel)
+    } else {
+        PrimaryButton(label = "Retry", onClick = onRetry)
+        Spacer(Modifier.height(12.dp))
+        OutlineButton(label = "Use local quiz", onClick = onUseLocal)
+        Spacer(Modifier.height(12.dp))
+        TextButton(label = "Cancel", onClick = onCancel)
+    }
+}
+
+@Composable
+private fun ModelPicker(models: List<String>, selected: String, onSelect: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(NazoSurfaceVariant)
+            .clickable { expanded = true }
+            .padding(horizontal = 14.dp, vertical = 14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = if (selected.isNotBlank()) selected else "Select a model",
+                color = NazoTextPrimary,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(
+                Icons.Filled.KeyboardArrowDown,
+                contentDescription = null,
+                tint = NazoTextSecondary,
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.fillMaxWidth().background(NazoSurface),
+        ) {
+            models.forEach { m ->
+                DropdownMenuItem(
+                    text = { Text(m, color = NazoTextPrimary) },
+                    onClick = { onSelect(m); expanded = false },
+                )
+            }
+        }
+    }
 }
 
 @Composable

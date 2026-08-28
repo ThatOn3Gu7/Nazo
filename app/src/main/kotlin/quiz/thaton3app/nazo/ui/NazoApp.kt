@@ -220,7 +220,11 @@ fun NazoApp() {
                     replace(Screen.Quiz)
                 }
                 .onFailure { e ->
-                    generationState = GenerationState.Error(e.message ?: "Something went wrong.")
+                    val msg = e.message ?: "Something went wrong."
+                    generationState = GenerationState.Error(
+                        message = msg,
+                        isModelError = msg.contains("model", ignoreCase = true),
+                    )
                 }
         }
     }
@@ -401,6 +405,16 @@ fun NazoApp() {
                         },
                         onHomeClick = { goHome() },
                         onSettingsClick = { navigate(Screen.Settings) },
+                        availableModels = generationRequest?.provider?.let { apiKeyStore.getModels(it) } ?: emptyList(),
+                        currentModel = generationRequest?.model ?: "",
+                        onChangeModel = { model ->
+                            generationRequest?.let { req ->
+                                apiKeyStore.saveModel(req.provider, model)
+                                val next = req.copy(model = model)
+                                generationRequest = next
+                                launchGeneration(next)
+                            }
+                        },
                     )
 
                     Screen.Review -> ReviewAnswersScreen(

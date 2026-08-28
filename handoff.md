@@ -1298,3 +1298,34 @@ covered by `BUG_AUDIT.md` + this log).
   Termux and test: (a) set a Gemini key + Fetch models → pick a model; (b) generate a quiz → verify
   questions + "✦ AI" chip; (c) simulate a bad key → Error screen with Retry/Use local; (d) re-generate
   same params → comes from cache instantly. Release is **v3.0** (not yet tagged/pushed).
+
+---
+
+## [2026-08-28 23:30] feat: change model directly from the generation error screen
+
+- Owner confirmed generation works but some fetched Gemini model ids 404 on `generateContent`
+  (e.g. gemini-2.5/2.0 gave "model not found" while gemini-3.x-pro worked — some listed ids
+  simply aren't enabled for that key). Request: on a **model-related** error, let the user switch
+  models right there instead of navigating back to AI & Model Configuration.
+- `ApiKeyStore.kt`: added `getModels(providerId)` / `saveModels(providerId, List)` (prefs key
+  `models_<id>`, "|"-joined; falls back to `ProviderConfig.providerById(id)?.models` when nothing
+  stored). Fetched model lists are now persisted per provider.
+- `AiProviderScreen.kt`: `saveModels(provider.id, models)` on Fetch success and in the Save loop,
+  so the persisted list is available later on the error screen.
+- `LoadingScreen.kt`: `GenerationState.Error` gained `isModelError: Boolean = false`. `LoadingScreen`
+  now takes `availableModels` / `currentModel` / `onChangeModel`. `ErrorContent` shows a themed
+  `ModelPicker` (DropdownMenu, NazoSurfaceVariant box) + "Change model & retry" button (plus Use
+  local / Cancel) **only when** `isModelError && availableModels.isNotEmpty()`; otherwise it shows
+  the plain "Retry". New `ModelPicker` composable + DropdownMenu/DropdownMenuItem/KeyboardArrowDown/
+  NazoSurfaceVariant/remember/mutableStateOf imports.
+- `NazoApp.kt`: `onFailure` sets `isModelError = message.contains("model", ignoreCase = true)`
+  (our 400/404 messages contain "model", so this cleanly separates model vs auth/quota failures).
+  The LoadingScreen call passes `availableModels = apiKeyStore.getModels(activeProvider)`,
+  `currentModel = request model`, and `onChangeModel` which persists the new model
+  (`apiKeyStore.saveModel`), updates `generationRequest`, and re-runs `launchGeneration` (cache miss
+  → fresh call with the new model).
+- Files: `data/settings/ApiKeyStore.kt`, `ui/screens/AiProviderScreen.kt`,
+  `ui/screens/LoadingScreen.kt`, `ui/NazoApp.kt`, `handoff.md`.
+- Note: the picker lists whatever was last fetched/saved for that provider, so a user who fetched
+  models can jump straight to a working one (e.g. gemini-3.x-pro) from the error screen. Build in
+  Termux; verify a 404 shows the model dropdown and that picking a working model retries successfully.

@@ -170,6 +170,7 @@ fun AiProviderScreen(
                         val next = if (models.isNotEmpty()) models.first() else provider.model
                         list[index] = list[index].copy(models = models, model = next)
                     }
+                    apiKeyStore.saveModels(provider.id, models)
                 }
                 .onFailure { e ->
                     fetchingId = null
@@ -222,6 +223,7 @@ fun AiProviderScreen(
                 providers.forEach { p ->
                     apiKeyStore.saveKey(p.id, p.apiKey)
                     apiKeyStore.saveModel(p.id, p.model)
+                    apiKeyStore.saveModels(p.id, p.models)
                 }
                 onSaved()
             })
