@@ -172,7 +172,7 @@ private fun LoadingContent(providerModel: String, onCancel: () -> Unit) {
     // App emblem at the top of the card.
     Box(
         modifier = Modifier
-            .size(64.dp)
+            .size(88.dp)
             .clip(CircleShape)
             .background(NazoPrimary),
         contentAlignment = Alignment.Center,
@@ -180,7 +180,7 @@ private fun LoadingContent(providerModel: String, onCancel: () -> Unit) {
         Text(
             text = "謎",
             color = NazoOnPrimary,
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.Bold,
         )
     }
