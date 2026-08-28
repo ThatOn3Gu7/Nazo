@@ -131,7 +131,9 @@ Hard rules:
             }?.filter { it.isNotBlank() } ?: emptyList()
             // Skip malformed entries so a single bad question can't break the whole quiz.
             if (options.isEmpty()) continue
-            val questionText = o.optString("question", o.optString("text", "")).ifBlank { continue }
+            val rawQuestion = o.optString("question", o.optString("text", ""))
+            if (rawQuestion.isBlank()) continue
+            val questionText = rawQuestion
             val rawCorrect = o.optString("correctAnswer", "")
             val correctAnswer = if (rawCorrect in options) rawCorrect else options.first()
             list += Question(
