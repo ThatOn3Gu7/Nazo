@@ -2,7 +2,7 @@ package quiz.thaton3app.nazo.data.settings
 
 import android.content.Context
 import android.content.SharedPreferences
-import quiz.thaton3app.nazo.data.remote.ProviderConfig
+import quiz.thaton3app.nazo.data.remote.providerById
 
 /**
  * Persists per-provider API keys (securely via [SecureStorage]) and selected models
@@ -34,7 +34,7 @@ class ApiKeyStore(context: Context) {
         if (!raw.isNullOrBlank()) {
             return raw.split("|").filter { it.isNotBlank() }
         }
-        return ProviderConfig.providerById(providerId)?.models ?: emptyList()
+        return providerById(providerId)?.models ?: emptyList()
     }
 
     fun saveModels(providerId: String, models: List<String>) {
