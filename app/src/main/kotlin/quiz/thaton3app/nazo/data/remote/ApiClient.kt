@@ -197,7 +197,12 @@ Hard rules:
                     val canGenerate = methods != null && (0 until methods.length())
                         .any { methods.getString(it).contains("generateContent", ignoreCase = true) }
                     if (canGenerate) {
-                        list += m.optString("name", "").removePrefix("models/")
+                        // The API returns names like "models/gemini-2.5-flash-lite" or
+                        // "publishers/google/models/gemini-2.5-flash-lite"; we only need the
+                        // final segment for the generateContent path. A bare "models/" strip
+                        // left the "publishers/google/models/" prefix -> HTTP 404.
+                        val id = m.optString("name", "").substringAfterLast("/")
+                        if (id.startsWith("gemini", ignoreCase = true)) list += id
                     }
                 }
                 list.ifEmpty { endpoint.models }
@@ -210,6 +215,7 @@ Hard rules:
     private fun friendlyHttpError(code: Int, kind: ProviderKind): String = when (code) {
         400 -> "Request error (check the selected model)."
         401, 403 -> "The API key was rejected. Check it in AI & Model Configuration."
+        404 -> "That model wasn't found. Re-fetch models or pick another from the list."
         429 -> "Rate limit / quota reached. Try again later or use a local quiz."
         in 500..599 -> "The provider is temporarily unavailable. Try again."
         else -> "Provider returned HTTP $code."
