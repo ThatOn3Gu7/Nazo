@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.fadeIn
@@ -34,13 +35,13 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -62,9 +63,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -268,6 +273,7 @@ private fun ProviderCard(
     var showHelp by remember { mutableStateOf(false) }
     val alphaAnim = remember { Animatable(0f) }
     var popupMounted by remember { mutableStateOf(false) }
+    
     LaunchedEffect(showHelp) {
         if (showHelp) {
             popupMounted = true
@@ -277,28 +283,31 @@ private fun ProviderCard(
             popupMounted = false
         }
     }
+    
     val density = LocalDensity.current
+    
     Box(
         modifier = Modifier
             .fillMaxWidth(),
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(NazoSurface),
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(NazoSurface)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(20.dp)),
         ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
+                // Moved clickable here so the ripple fills the whole header and is clipped by the parent's RoundedCornerShape
+                .clickable(onClick = onToggleExpand)
                 .padding(16.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable(onClick = onToggleExpand),
+                modifier = Modifier.weight(1f),
             ) {
                 Box(
                     modifier = Modifier
@@ -338,22 +347,24 @@ private fun ProviderCard(
                 )
             }
             Spacer(Modifier.width(4.dp))
+            val arrowRotation by animateFloatAsState(targetValue = if (expanded) 180f else 0f, label = "arrowRotation")
             IconButton(
                 onClick = onToggleExpand,
                 modifier = Modifier.size(36.dp),
             ) {
                 Icon(
-                    imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                    imageVector = Icons.Filled.KeyboardArrowDown,
                     contentDescription = null,
                     tint = NazoTextSecondary,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(20.dp).rotate(arrowRotation),
                 )
             }
         }
         AnimatedVisibility(
             visible = expanded,
-            enter = expandVertically(animationSpec = tween(220)),
-            exit = shrinkVertically(animationSpec = tween(220)),
+            // Combined vertical expansion with a subtle fade for a smoother feeling
+            enter = expandVertically(animationSpec = tween(220)) + fadeIn(animationSpec = tween(220)),
+            exit = shrinkVertically(animationSpec = tween(220)) + fadeOut(animationSpec = tween(220)),
         ) {
             Column {
                 HorizontalDivider(color = NazoBackground, thickness = 1.dp)
@@ -497,13 +508,23 @@ private fun ProviderCard(
     }
 }
 
-    @Composable
-    private fun StatusBadge(status: KeyStatus) {
-    val (bg, fg) = when (status) {
-        KeyStatus.VALID -> NazoSuccessBg to NazoSuccess
-        KeyStatus.NOT_CONFIGURED -> NazoPillUnselected to NazoTextPrimary
-        KeyStatus.ERROR -> NazoErrorBg to NazoError
+@Composable
+private fun StatusBadge(status: KeyStatus) {
+    val targetBg = when (status) {
+        KeyStatus.VALID -> NazoSuccessBg
+        KeyStatus.NOT_CONFIGURED -> NazoPillUnselected
+        KeyStatus.ERROR -> NazoErrorBg
     }
+    val targetFg = when (status) {
+        KeyStatus.VALID -> NazoSuccess
+        KeyStatus.NOT_CONFIGURED -> NazoTextPrimary
+        KeyStatus.ERROR -> NazoError
+    }
+    
+    // Animate color transitions smoothly when API key is entered
+    val bg by animateColorAsState(targetValue = targetBg, label = "statusBg")
+    val fg by animateColorAsState(targetValue = targetFg, label = "statusFg")
+    
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -532,6 +553,15 @@ private fun ModelDropdown(models: List<ModelInfo>, selected: String, onSelect: (
     var expanded by remember { mutableStateOf(false) }
     var searching by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
+    
+    val focusRequester = remember { FocusRequester() }
+
+    // Auto-focus the search field when search mode opens
+    LaunchedEffect(searching) {
+        if (searching) {
+            focusRequester.requestFocus()
+        }
+    }
 
     val filtered = remember(models, query) {
         if (query.isBlank()) {
@@ -564,6 +594,7 @@ private fun ModelDropdown(models: List<ModelInfo>, selected: String, onSelect: (
                     .weight(1f)
                     .clip(RoundedCornerShape(14.dp))
                     .background(NazoSurfaceVariant)
+                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
                     .clickable { if (!searching) expanded = !expanded }
                     .padding(horizontal = 14.dp, vertical = 14.dp),
             ) {
@@ -573,7 +604,10 @@ private fun ModelDropdown(models: List<ModelInfo>, selected: String, onSelect: (
                         onValueChange = { query = it },
                         singleLine = true,
                         textStyle = MaterialTheme.typography.bodyLarge.copy(color = NazoTextPrimary),
-                        modifier = Modifier.weight(1f),
+                        cursorBrush = SolidColor(NazoPrimary),
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequester),
                         decorationBox = { innerTextField ->
                             Box {
                                 if (query.isEmpty()) {
@@ -594,11 +628,12 @@ private fun ModelDropdown(models: List<ModelInfo>, selected: String, onSelect: (
                         color = if (selected.isEmpty()) NazoTextPlaceholder else NazoTextPrimary,
                         modifier = Modifier.weight(1f),
                     )
+                    val rotation by animateFloatAsState(targetValue = if (expanded) 180f else 0f, label = "dropdownArrowRotation")
                     Icon(
-                        if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                        Icons.Filled.KeyboardArrowDown,
                         contentDescription = null,
                         tint = NazoTextSecondary,
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(20.dp).rotate(rotation),
                     )
                 }
             }
@@ -626,8 +661,8 @@ private fun ModelDropdown(models: List<ModelInfo>, selected: String, onSelect: (
         }
         AnimatedVisibility(
             visible = expanded,
-            enter = expandVertically(animationSpec = tween(200)),
-            exit = shrinkVertically(animationSpec = tween(200)),
+            enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(200)),
+            exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(200)),
         ) {
             LazyColumn(
                 modifier = Modifier
@@ -733,6 +768,7 @@ private fun ApiKeyField(value: String, onValueChange: (String) -> Unit) {
             onValueChange = onValueChange,
             visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
             textStyle = MaterialTheme.typography.bodyLarge.copy(color = NazoTextPrimary),
+            cursorBrush = SolidColor(NazoPrimary),
             singleLine = true,
             modifier = Modifier.weight(1f),
         )
@@ -766,3 +802,4 @@ private fun SaveButton(onClick: () -> Unit) {
         )
     }
 }
+
