@@ -1516,3 +1516,17 @@ covered by `BUG_AUDIT.md` + this log).
   of `LoadingScreen.ErrorContent`, above the "Couldn't generate quiz" title (18dp spacer). Mirrors
   the loading emblem's layout for consistency.
 - Files: `ui/screens/LoadingScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 04:15] bug: system back gesture now shows quiz quit confirmation
+
+- Owner reported: on the question screen, the X button opens the "Quit quiz?" confirmation, but the
+  system back gesture / back button silently went back without it.
+- `ActiveQuizScreen.kt`: added `BackHandler(enabled = true)` that toggles `showQuitDialog`
+  (first back opens the same confirmation; second back dismisses it), reusing the existing
+  `showQuitDialog` state the X button uses. Added `import androidx.activity.compose.BackHandler`.
+  Inner composable's BackHandler takes precedence over NazoApp's root BackHandler while on this
+  screen, so back no longer pops the stack silently. Quitting via the dialog still calls
+  `onCloseClick` and leaves the screen.
+- Files: `ui/screens/ActiveQuizScreen.kt`, `handoff.md`.

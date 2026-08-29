@@ -27,6 +27,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -58,6 +59,12 @@ fun ActiveQuizScreen(
     var remainingSeconds by remember { mutableIntStateOf(secondsPerQuestion) }
     val context = LocalContext.current
     var showQuitDialog by remember { mutableStateOf(false) }
+
+    // Intercept the system back gesture/button too, so leaving via gesture shows the same
+    // "quit quiz?" confirmation as the X button (instead of silently going back).
+    BackHandler(enabled = true) {
+        showQuitDialog = !showQuitDialog
+    }
 
     // Lifecycle-safe countdown: one timer per question (keyed on the index). The
     // coroutine auto-cancels when this screen leaves composition, and it stops early
