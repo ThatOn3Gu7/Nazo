@@ -336,7 +336,11 @@ fun ActiveQuizScreen(
         }
         }
 
-        if (showQuitDialog) {
+        AnimatedVisibility(
+            visible = showQuitDialog,
+            enter = fadeIn(tween(180)),
+            exit = fadeOut(tween(180)),
+        ) {
             Box(
                     modifier = Modifier
                         .fillMaxSize()

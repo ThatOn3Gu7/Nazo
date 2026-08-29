@@ -921,7 +921,11 @@ private fun AboutDevDialog(onDismiss: () -> Unit) {
         icon = { Icon(Icons.Filled.PersonOutline, contentDescription = null, tint = NazoPrimary) },
         title = { Text("About the Developer", color = NazoTextPrimary) },
         text = {
-            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp),
+            ) {
                 item {
                     Text("The Story", style = MaterialTheme.typography.titleMedium, color = NazoPrimary)
                     Spacer(Modifier.height(4.dp))

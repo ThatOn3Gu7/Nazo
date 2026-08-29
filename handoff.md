@@ -1547,3 +1547,18 @@ covered by `BUG_AUDIT.md` + this log).
   expanded the Credits section with a "Third-party services" block listing the AI providers, Coil,
   GitHub API, and Google connectivity check (with a "not affiliated/endorsed" disclaimer).
 - Files: `ui/screens/AboutScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 04:45] visual: animate quiz quit dialog + cap About-dev dialog height
+
+- Owner wanted two polish changes:
+  1) Quiz "Quit quiz?" warning currently appears/disappears instantly. Wrapped the custom overlay
+     in `ActiveQuizScreen` with `AnimatedVisibility(visible = showQuitDialog, enter = fadeIn(180),
+     exit = fadeOut(180))` instead of `if (showQuitDialog)` — so the scrim + card now fade in/out.
+     (AnimatedVisibility/fadeIn/fadeOut already imported.)
+  2) "About the Developer" dialog took over the whole screen. Its `text` is a `LazyColumn` with no
+     height limit, so the Material3 AlertDialog expanded to full height. Added
+     `.heightIn(max = 420.dp)` to the LazyColumn so the dialog stays a centered, scrollable card
+     (like the small crop-option popup) instead of filling the screen.
+- Files: `ui/screens/ActiveQuizScreen.kt`, `ui/screens/AboutScreen.kt`, `handoff.md`.
