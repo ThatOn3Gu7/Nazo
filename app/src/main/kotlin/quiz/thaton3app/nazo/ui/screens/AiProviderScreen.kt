@@ -33,7 +33,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.MutableTransitionState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
@@ -61,6 +61,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.alpha
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -265,8 +266,17 @@ private fun ProviderCard(
     fetchError: String? = null,
 ) {
     var showHelp by remember { mutableStateOf(false) }
-    val popupVisible = remember { MutableTransitionState(false) }
-    LaunchedEffect(showHelp) { popupVisible.targetState = showHelp }
+    val alphaAnim = remember { Animatable(0f) }
+    var popupMounted by remember { mutableStateOf(false) }
+    LaunchedEffect(showHelp) {
+        if (showHelp) {
+            popupMounted = true
+            alphaAnim.animateTo(1f, tween(160))
+        } else {
+            alphaAnim.animateTo(0f, tween(160))
+            popupMounted = false
+        }
+    }
     val density = LocalDensity.current
     Box(
         modifier = Modifier
@@ -436,7 +446,7 @@ private fun ProviderCard(
         }
         }
 
-        if (popupVisible.current || popupVisible.targetState) {
+        if (popupMounted) {
             Popup(
                 popupPositionProvider = remember(density) {
                     object : PopupPositionProvider {
@@ -457,34 +467,29 @@ private fun ProviderCard(
                 },
                 onDismissRequest = { showHelp = false },
             ) {
-                AnimatedVisibility(
-                    visibleState = popupVisible,
-                    enter = fadeIn(animationSpec = tween(160)),
-                    exit = fadeOut(animationSpec = tween(160)),
+                Box(
+                    modifier = Modifier
+                        .alpha(alphaAnim.value)
+                        .width(250.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(NazoSurface)
+                        .border(1.dp, NazoPrimary.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                        .clickable { showHelp = false }
+                        .padding(14.dp),
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .width(250.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(NazoSurface)
-                            .border(1.dp, NazoPrimary.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
-                            .clickable { showHelp = false }
-                            .padding(14.dp),
-                    ) {
-                        Column {
-                            Text(
-                                text = "Don't know where to get your API key?",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = NazoTextPrimary,
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                text = providerSetupHelp(provider.id),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = NazoTextSecondary,
-                            )
-                        }
+                    Column {
+                        Text(
+                            text = "Don't know where to get your API key?",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = NazoTextPrimary,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = providerSetupHelp(provider.id),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NazoTextSecondary,
+                        )
                     }
                 }
             }
