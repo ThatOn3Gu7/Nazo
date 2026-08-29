@@ -22,6 +22,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -505,27 +507,6 @@ private fun ModelDropdown(models: List<ModelInfo>, selected: String, onSelect: (
 
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Filter icon on the LEFT — toggles an inline keyword search (e.g. "free" -> free models).
-            IconButton(
-                onClick = {
-                    searching = !searching
-                    if (searching) {
-                        expanded = true
-                    } else {
-                        query = ""
-                        expanded = false
-                    }
-                },
-                modifier = Modifier.size(36.dp),
-            ) {
-                Icon(
-                    if (searching) Icons.Filled.Close else Icons.Filled.Search,
-                    contentDescription = if (searching) "Close search" else "Search models",
-                    tint = if (searching) NazoPrimary else NazoTextSecondary,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-            Spacer(Modifier.width(8.dp))
             // Trigger "pill" — tapping expands the list inline (no system/menu overlay).
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -571,31 +552,53 @@ private fun ModelDropdown(models: List<ModelInfo>, selected: String, onSelect: (
                     )
                 }
             }
+            Spacer(Modifier.width(8.dp))
+            // Filter icon on the RIGHT — toggles an inline keyword search (e.g. "free" -> free models).
+            IconButton(
+                onClick = {
+                    searching = !searching
+                    if (searching) {
+                        expanded = true
+                    } else {
+                        query = ""
+                        expanded = false
+                    }
+                },
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    if (searching) Icons.Filled.Close else Icons.Filled.Search,
+                    contentDescription = if (searching) "Close search" else "Search models",
+                    tint = if (searching) NazoPrimary else NazoTextSecondary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
         }
         AnimatedVisibility(
             visible = expanded,
             enter = expandVertically(animationSpec = tween(200)),
             exit = shrinkVertically(animationSpec = tween(200)),
         ) {
-            Column(
+            LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 240.dp)
-                    .verticalScroll(rememberScrollState())
                     .padding(top = 8.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .background(NazoSurface)
                     .border(1.dp, NazoTextSecondary.copy(alpha = 0.2f), RoundedCornerShape(14.dp)),
             ) {
                 if (filtered.isEmpty()) {
-                    Text(
-                        text = "No models match.",
-                        color = NazoTextSecondary,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
-                    )
+                    item {
+                        Text(
+                            text = "No models match.",
+                            color = NazoTextSecondary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+                        )
+                    }
                 } else {
-                    filtered.forEachIndexed { i, m ->
+                    itemsIndexed(filtered, key = { _, m -> m.id }) { i, m ->
                         val isSel = m.id == selected
                         Row(
                             verticalAlignment = Alignment.CenterVertically,

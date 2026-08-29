@@ -1719,3 +1719,20 @@ covered by `BUG_AUDIT.md` + this log).
   floating popover yet) — owner said we'll refine the look after building.
 - Files: `data/remote/ProviderConfig.kt`, `data/settings/ApiKeyStore.kt`,
   `ui/screens/AiProviderScreen.kt`, `ui/screens/HomeScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 09:15] perf + animation + layout tweaks (3 requests)
+
+- **Home provider-switch now animates:** the previously-instant `if (showProviderSheet)` overlay is now
+  wrapped in nested `AnimatedVisibility` — the scrim fades (`fadeIn`/`fadeOut`) and the panel slides
+  up from the bottom (`slideInVertically`/`slideOutVertically`). Tapping outside (scrim) or an item
+  sets `showProviderSheet=false`, which plays the exit animation. No API/behavior change.
+- **Model dropdown search icon moved to the RIGHT:** in `ModelDropdown` (AiProviderScreen) the
+  filter/search `IconButton` was on the left; reordered so the trigger pill comes first (weight 1f)
+  and the search icon sits on the right. Toggle/search behavior unchanged.
+- **OpenRouter scroll lag fixed:** the model list in `ModelDropdown` was a non-lazy
+  `Column(verticalScroll)` that composed EVERY model at once (hundreds for OpenRouter) → scroll jank.
+  Replaced with a `LazyColumn` + `itemsIndexed` so only visible rows are composed. Look, colors,
+  Free badge, 2-line description, selected check, dividers — all identical. Added `key = {_, m -> m.id}`.
+- Files: `ui/screens/HomeScreen.kt`, `ui/screens/AiProviderScreen.kt`, `handoff.md`.

@@ -25,6 +25,11 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
@@ -190,7 +195,11 @@ fun HomeScreen(
             onSettingsClick = onSettingsClick,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
-        if (showProviderSheet) {
+        AnimatedVisibility(
+            visible = showProviderSheet,
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -198,14 +207,19 @@ fun HomeScreen(
                     .clickable { showProviderSheet = false },
                 contentAlignment = Alignment.BottomCenter,
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                        .background(NazoSurface)
-                        .padding(20.dp)
-                        .navigationBarsPadding(),
+                AnimatedVisibility(
+                    visible = showProviderSheet,
+                    enter = slideInVertically(initialOffsetY = { it }),
+                    exit = slideOutVertically(targetOffsetY = { it }),
                 ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                            .background(NazoSurface)
+                            .padding(20.dp)
+                            .navigationBarsPadding(),
+                    ) {
                     Text(
                         text = "Switch API key",
                         style = MaterialTheme.typography.titleLarge,
@@ -304,6 +318,7 @@ fun HomeScreen(
                         )
                     }
                 }
+            }
             }
         }
     }
