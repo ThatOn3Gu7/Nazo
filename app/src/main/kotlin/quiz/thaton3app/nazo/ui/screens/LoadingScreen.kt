@@ -267,6 +267,22 @@ private fun ErrorContent(
     onChangeModel: (String) -> Unit,
 ) {
     val selected = remember { mutableStateOf(currentModel) }
+    // Big "!" emblem so the error state reads clearly as an error zone.
+    Box(
+        modifier = Modifier
+            .size(88.dp)
+            .clip(CircleShape)
+            .background(NazoError),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "!",
+            color = Color.White,
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+    Spacer(Modifier.height(18.dp))
     Text(
         text = "Couldn't generate quiz",
         color = NazoError,

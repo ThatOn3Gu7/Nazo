@@ -1506,3 +1506,13 @@ covered by `BUG_AUDIT.md` + this log).
   androidx.compose.animation.core.animateFloat` (the earlier spring failure masked this). With it
   imported, `phase: Float` is inferred and the `sin/cos` Double errors disappear.
 - Files: `ui/screens/LoadingScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 04:00] visual: big "!" emblem on the AI generation error screen
+
+- Owner wanted the error state to read clearly as an error zone, like the loading emblem but for
+  errors. Added an 88dp circular `NazoError` badge with a bold white "!" (headlineLarge) at the top
+  of `LoadingScreen.ErrorContent`, above the "Couldn't generate quiz" title (18dp spacer). Mirrors
+  the loading emblem's layout for consistency.
+- Files: `ui/screens/LoadingScreen.kt`, `handoff.md`.
