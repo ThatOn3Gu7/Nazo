@@ -66,7 +66,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -264,20 +263,10 @@ private fun ProviderCard(
     fetchError: String? = null,
 ) {
     var showHelp by remember { mutableStateOf(false) }
-    var cardRect by remember { mutableStateOf(IntRect.Zero) }
     val density = LocalDensity.current
     Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .onGloballyPositioned { coordinates ->
-                val r = coordinates.boundsInWindow()
-                cardRect = IntRect(
-                    r.left.roundToInt(),
-                    r.top.roundToInt(),
-                    r.right.roundToInt(),
-                    r.bottom.roundToInt(),
-                )
-            },
+            .fillMaxWidth(),
     ) {
         Column(
             modifier = Modifier
@@ -445,7 +434,7 @@ private fun ProviderCard(
 
         if (showHelp) {
             Popup(
-                popupPositionProvider = remember(cardRect, density) {
+                popupPositionProvider = remember(density) {
                     object : PopupPositionProvider {
                         override fun calculatePosition(
                             anchorBounds: IntRect,
@@ -455,9 +444,9 @@ private fun ProviderCard(
                         ): IntOffset {
                             val margin = with(density) { 12.dp.roundToPx() }
                             val drop = with(density) { 52.dp.roundToPx() }
-                            val x = (cardRect.right - popupContentSize.width - margin)
+                            val x = (anchorBounds.right - popupContentSize.width - margin)
                                 .coerceAtLeast(0)
-                            val y = cardRect.top + drop
+                            val y = anchorBounds.top + drop
                             return IntOffset(x, y)
                         }
                     }
