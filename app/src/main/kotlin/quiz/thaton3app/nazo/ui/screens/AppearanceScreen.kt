@@ -150,6 +150,7 @@ fun AppearanceScreen(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(24.dp))
                     .background(NazoSurface)
+                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
                     .padding(20.dp)
             ) {
                 Row(
@@ -204,6 +205,7 @@ fun AppearanceScreen(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(24.dp))
                     .background(NazoSurface)
+                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
             ) {
                 LayoutToggleRow(
                     title = "Match icon to system theme",
@@ -228,6 +230,7 @@ fun AppearanceScreen(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(24.dp))
                     .background(NazoSurface)
+                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
             ) {
                 LayoutToggleRow(
                     title = "Floating navigation bar",
@@ -274,6 +277,7 @@ private fun ThemeModeRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
             .background(backgroundColor)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
