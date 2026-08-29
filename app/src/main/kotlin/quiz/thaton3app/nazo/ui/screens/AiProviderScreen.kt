@@ -17,8 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -339,8 +338,8 @@ private fun ProviderCard(
                         Text("Stored Securely on device", style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
                     }
                     Spacer(Modifier.height(20.dp))
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Box(
@@ -389,6 +388,9 @@ private fun ProviderCard(
                             visible = fetchError != null,
                             enter = fadeIn(animationSpec = tween(160)),
                             exit = fadeOut(animationSpec = tween(160)),
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .padding(start = 12.dp),
                         ) {
                             Box(
                                 modifier = Modifier

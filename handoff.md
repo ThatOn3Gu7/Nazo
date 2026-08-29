@@ -1631,3 +1631,17 @@ covered by `BUG_AUDIT.md` + this log).
   `expandVertically`/`shrinkVertically` remain (used by the provider-card + ModelDropdown
   expand/contract, which the owner is happy with).
 - Files: `ui/screens/AiProviderScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 06:12] fix: fetch error pill line-jump glitch + missing weight import
+
+- The fetch error pill lived inside a `FlowRow`, which re-laid-out the animated child during the
+  fade: it briefly measured the error as "needs next line" then reflowed it up beside the button —
+  an instant snap/glitch. Replaced the `FlowRow` with a plain `Row(verticalAlignment =
+  CenterVertically)`; the error `AnimatedVisibility` now uses `Modifier.weight(1f, fill = false)` so
+  it is always laid out BESIDE the Fetch button (wrapping its own text within that space) and never
+  jumps lines. Removed now-unused `FlowRow` + `Arrangement` imports.
+- Found the file was missing `import androidx.compose.foundation.layout.weight` despite `.weight()`
+  being used in ~6 places (provider card, ModelDropdown, etc.) — added it so the screen compiles.
+- Files: `ui/screens/AiProviderScreen.kt`, `handoff.md`.
