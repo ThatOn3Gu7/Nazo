@@ -1614,3 +1614,20 @@ covered by `BUG_AUDIT.md` + this log).
   so every provider card already animates; nothing was single-provider. Re-added `fadeIn`/`fadeOut`
   imports (used by the error pill only).
 - Files: `ui/screens/AiProviderScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 06:00] fix: fetch button crossfade + error pill plain fade (no glitchy slide)
+
+- Owner clarification: the error pill used `expandVertically`/`shrinkVertically` + fade and looked
+  glitchy ("slides in from somewhere"). They want it to simply **fade in/out in place**. Changed the
+  error `AnimatedVisibility` to `enter = fadeIn(160)` / `exit = fadeOut(160)` only.
+- The "Fetch models" ⇄ "Fetching…" label swap was instant (no transaction animation). Wrapped the
+  button's inner content in `AnimatedContent(targetState = isFetching)` with a `fadeIn togetherWith
+  fadeOut` (160ms) crossfade, and while fetching it now shows a small `CircularProgressIndicator`
+  (16dp, NazoOnPrimary) + "Fetching…" that fades in, then fades out back to "Fetch models". So the
+  fetch/fetching transaction animates instead of snapping.
+- Added imports: `AnimatedContent`, `togetherWith`, `material3.CircularProgressIndicator`.
+  `expandVertically`/`shrinkVertically` remain (used by the provider-card + ModelDropdown
+  expand/contract, which the owner is happy with).
+- Files: `ui/screens/AiProviderScreen.kt`, `handoff.md`.

@@ -29,6 +29,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
@@ -44,6 +46,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -349,17 +352,43 @@ private fun ProviderCard(
                                 .padding(horizontal = 16.dp),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(
-                                text = if (isFetching) "Fetching…" else "Fetch models",
-                                color = NazoOnPrimary,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                            )
+                            AnimatedContent(
+                                targetState = isFetching,
+                                transitionSpec = {
+                                    fadeIn(animationSpec = tween(160)) togetherWith
+                                        fadeOut(animationSpec = tween(160))
+                                },
+                                label = "fetchLabel",
+                            ) { fetching ->
+                                if (fetching) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CircularProgressIndicator(
+                                            color = NazoOnPrimary,
+                                            strokeWidth = 2.dp,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            text = "Fetching…",
+                                            color = NazoOnPrimary,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                    }
+                                } else {
+                                    Text(
+                                        text = "Fetch models",
+                                        color = NazoOnPrimary,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                            }
                         }
                         AnimatedVisibility(
                             visible = fetchError != null,
-                            enter = expandVertically(animationSpec = tween(160)) + fadeIn(animationSpec = tween(160)),
-                            exit = shrinkVertically(animationSpec = tween(160)) + fadeOut(animationSpec = tween(160)),
+                            enter = fadeIn(animationSpec = tween(160)),
+                            exit = fadeOut(animationSpec = tween(160)),
                         ) {
                             Box(
                                 modifier = Modifier
