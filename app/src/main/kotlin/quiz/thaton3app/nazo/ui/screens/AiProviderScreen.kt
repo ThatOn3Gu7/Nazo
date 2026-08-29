@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.matchParentSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -428,8 +427,9 @@ private fun ProviderCard(
         if (showHelp) {
             Box(
                 modifier = Modifier
-                    .matchParentSize()
-                    .clickable { showHelp = false },
+                    .align(Alignment.TopEnd)
+                    .size(0.dp),
+                contentAlignment = Alignment.TopEnd,
             ) {
                 Box(
                     modifier = Modifier
