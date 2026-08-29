@@ -1530,3 +1530,20 @@ covered by `BUG_AUDIT.md` + this log).
   screen, so back no longer pops the stack silently. Quitting via the dialog still calls
   `onCloseClick` and leaves the screen.
 - Files: `ui/screens/ActiveQuizScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 04:30] docs: add third-party service/library credits (About screen)
+
+- Owner wanted attribution in the About screen's license area for the external services/APIs the
+  app uses (mentioned profile pictures "use many APIs").
+- Investigation: `ProfileAvatar`/`SafeRemoteImage` load images via **Coil**
+  (`coil.compose.SubcomposeAsyncImage`) from user-provided URLs — there is NO hardcoded avatar API
+  in the app, so the correct credit is Coil (generic remote-image loading), not a specific avatar
+  service. AI question generation integrates Google Gemini, OpenAI (ChatGPT), Anthropic (Claude),
+  OpenRouter, DeepSeek, Mistral AI (ids in `ProviderConfig`). `UpdateChecker` uses the GitHub API;
+  `Connectivity` uses Google's `connectivitycheck.gstatic.com`.
+- `AboutScreen.kt`: added "Coil (image loading) — Apache-2.0" to the Open-source Licenses dialog;
+  expanded the Credits section with a "Third-party services" block listing the AI providers, Coil,
+  GitHub API, and Google connectivity check (with a "not affiliated/endorsed" disclaimer).
+- Files: `ui/screens/AboutScreen.kt`, `handoff.md`.

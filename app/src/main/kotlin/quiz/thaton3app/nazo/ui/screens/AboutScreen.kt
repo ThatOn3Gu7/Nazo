@@ -353,6 +353,7 @@ fun AboutScreen(
                     "AndroidX Lifecycle — Apache-2.0",
                     "AndroidX WorkManager — Apache-2.0",
                     "Material Icons Extended — Apache-2.0",
+                    "Coil (image loading) — Apache-2.0",
                     "Kotlin stdlib — Apache-2.0",
                     "Local data stored via Android SharedPreferences (framework)",
                 )
@@ -975,6 +976,23 @@ private fun AboutDevDialog(onDismiss: () -> Unit) {
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "Nazo is built with Jetpack Compose and Kotlin, with a local question bank and an optional AI provider for fresh questions. Thanks to the open-source community that makes projects like this possible.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = NazoTextSecondary,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Third-party services",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = NazoPrimary,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Optional AI question generation is powered by third-party providers — " +
+                            "Google Gemini, OpenAI (ChatGPT), Anthropic (Claude), OpenRouter, " +
+                            "DeepSeek, and Mistral AI. Remote images (e.g. profile pictures) are " +
+                            "loaded with Coil. Update checks use the GitHub API, and network " +
+                            "connectivity is verified via Google's service. These services are not " +
+                            "affiliated with or endorsed by Nazo.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = NazoTextSecondary,
                     )
