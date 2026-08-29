@@ -1600,3 +1600,17 @@ covered by `BUG_AUDIT.md` + this log).
      the next line). Removed `fillMaxWidth` from the error pill so it sizes to content and can wrap.
      Added `import androidx.compose.foundation.layout.FlowRow` + `Arrangement`.
 - Files: `ui/screens/AiProviderScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 05:45] fix: animate fetch error pill (applies to every provider)
+
+- Owner: clicking "Fetch models" → the outlined error pill appeared/disappeared instantly (no
+  transition between idle / fetching / error). Wrapped the error `Box` in `AnimatedVisibility`
+  (`expandVertically + fadeIn` / `shrinkVertically + fadeOut`, tween 160ms) inside `ProviderCard`.
+- **Applies to ALL providers automatically**: the error pill animation lives in the shared
+  `ProviderCard` composable (rendered per provider in a loop), and the earlier expand/contract
+  animation on the provider card + nested `ModelDropdown` also lives in those shared composables —
+  so every provider card already animates; nothing was single-provider. Re-added `fadeIn`/`fadeOut`
+  imports (used by the error pill only).
+- Files: `ui/screens/AiProviderScreen.kt`, `handoff.md`.

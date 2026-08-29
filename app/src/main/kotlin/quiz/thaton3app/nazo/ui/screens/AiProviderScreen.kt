@@ -27,6 +27,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
@@ -354,7 +356,11 @@ private fun ProviderCard(
                                 fontWeight = FontWeight.SemiBold,
                             )
                         }
-                        if (fetchError != null) {
+                        AnimatedVisibility(
+                            visible = fetchError != null,
+                            enter = expandVertically(animationSpec = tween(160)) + fadeIn(animationSpec = tween(160)),
+                            exit = shrinkVertically(animationSpec = tween(160)) + fadeOut(animationSpec = tween(160)),
+                        ) {
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(12.dp))
