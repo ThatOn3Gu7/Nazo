@@ -66,6 +66,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
@@ -256,9 +264,20 @@ private fun ProviderCard(
     fetchError: String? = null,
 ) {
     var showHelp by remember { mutableStateOf(false) }
+    var cardRect by remember { mutableStateOf(IntRect.Zero) }
+    val density = LocalDensity.current
     Box(
         modifier = Modifier
-            .fillMaxWidth(),
+            .fillMaxWidth()
+            .onGloballyPositioned { coordinates ->
+                val r = coordinates.boundsInWindow()
+                cardRect = IntRect(
+                    r.left.roundToInt(),
+                    r.top.roundToInt(),
+                    r.right.roundToInt(),
+                    r.bottom.roundToInt(),
+                )
+            },
     ) {
         Column(
             modifier = Modifier
@@ -425,16 +444,28 @@ private fun ProviderCard(
         }
 
         if (showHelp) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .size(0.dp),
-                contentAlignment = Alignment.TopEnd,
+            Popup(
+                popupPositionProvider = remember(cardRect, density) {
+                    object : PopupPositionProvider {
+                        override fun calculatePosition(
+                            anchorBounds: IntRect,
+                            windowSize: IntSize,
+                            layoutDirection: LayoutDirection,
+                            popupContentSize: IntSize,
+                        ): IntOffset {
+                            val margin = with(density) { 12.dp.roundToPx() }
+                            val drop = with(density) { 52.dp.roundToPx() }
+                            val x = (cardRect.right - popupContentSize.width - margin)
+                                .coerceAtLeast(0)
+                            val y = cardRect.top + drop
+                            return IntOffset(x, y)
+                        }
+                    }
+                },
+                onDismissRequest = { showHelp = false },
             ) {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = (-12).dp, y = 52.dp)
                         .width(240.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(NazoSurface)
