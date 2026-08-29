@@ -5,6 +5,7 @@ import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -422,7 +423,7 @@ private fun ProviderCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 8.dp, end = 12.dp),
-                horizontalArrangement = Alignment.End,
+                horizontalArrangement = Arrangement.End,
             ) {
                 Box(
                     modifier = Modifier

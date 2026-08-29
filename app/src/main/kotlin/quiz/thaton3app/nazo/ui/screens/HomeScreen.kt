@@ -101,11 +101,6 @@ fun HomeScreen(
     val difficulty = Difficulty.valueOf(difficultyName)
     val context = LocalContext.current
     var showProviderSheet by remember { mutableStateOf(false) }
-    // Selection state is hoisted to NazoApp (the always-composed root) so it
-    // survives navigating between screens; NazoApp persists it with
-    // rememberSaveable. Difficulty arrives as its enum name and is re-derived here.
-    val difficulty = Difficulty.valueOf(difficultyName)
-    val context = LocalContext.current
 
     Box(
         modifier = Modifier
