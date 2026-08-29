@@ -1643,5 +1643,10 @@ covered by `BUG_AUDIT.md` + this log).
   it is always laid out BESIDE the Fetch button (wrapping its own text within that space) and never
   jumps lines. Removed now-unused `FlowRow` + `Arrangement` imports.
 - Found the file was missing `import androidx.compose.foundation.layout.weight` despite `.weight()`
-  being used in ~6 places (provider card, ModelDropdown, etc.) — added it so the screen compiles.
+  being used in ~6 places (provider card, ModelDropdown, etc.). Adding that simple-name import
+  broke the build (`Cannot access 'val RowColumnParentData?.weight: Float': it is internal in
+  file`) because the name `weight` also resolves to an internal property. Fix: do NOT import it —
+  `weight` is a `RowScope`/`ColumnScope` extension, so it already resolves inside `Row`/`Column`
+  lambdas without an import (exactly how the existing `.weight()` usages compile). Removed the
+  import; the new `AnimatedVisibility` `weight` usage resolves the same way.
 - Files: `ui/screens/AiProviderScreen.kt`, `handoff.md`.
