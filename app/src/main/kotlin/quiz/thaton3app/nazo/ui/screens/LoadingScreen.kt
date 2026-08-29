@@ -11,9 +11,13 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -39,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -136,36 +141,43 @@ fun LoadingScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.92f)
-                        .clip(RoundedCornerShape(28.dp))
-                        .background(NazoSurface)
-                        .border(1.5.dp, NazoTextSecondary.copy(alpha = 0.25f), RoundedCornerShape(28.dp))
-                        .padding(28.dp),
+                // Smooth scale-in entrance animation for the central dialog card
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = true,
+                    enter = fadeIn(tween(250)) + scaleIn(tween(250, easing = LinearOutSlowInEasing), initialScale = 0.92f),
+                    exit = fadeOut(tween(200)) + scaleOut(tween(200, easing = FastOutLinearInEasing), targetScale = 0.92f)
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .clip(RoundedCornerShape(28.dp))
+                            .background(NazoSurface)
+                            .border(1.5.dp, NazoTextSecondary.copy(alpha = 0.25f), RoundedCornerShape(28.dp))
+                            .padding(28.dp),
                     ) {
-                        when (state) {
-                            is GenerationState.Loading -> LoadingContent(
-                                providerModel = state.providerModel,
-                                onCancel = onCancel,
-                            )
-                            is GenerationState.Error -> ErrorContent(
-                                message = state.message,
-                                isModelError = state.isModelError,
-                                availableModels = availableModels,
-                                currentModel = currentModel,
-                                onRetry = onRetry,
-                                onUseLocal = onUseLocal,
-                                onCancel = onCancel,
-                                onChangeModel = onChangeModel,
-                            )
-                            GenerationState.Idle -> LoadingContent(
-                                providerModel = "",
-                                onCancel = onCancel,
-                            )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            when (state) {
+                                is GenerationState.Loading -> LoadingContent(
+                                    providerModel = state.providerModel,
+                                    onCancel = onCancel,
+                                )
+                                is GenerationState.Error -> ErrorContent(
+                                    message = state.message,
+                                    isModelError = state.isModelError,
+                                    availableModels = availableModels,
+                                    currentModel = currentModel,
+                                    onRetry = onRetry,
+                                    onUseLocal = onUseLocal,
+                                    onCancel = onCancel,
+                                    onChangeModel = onChangeModel,
+                                )
+                                GenerationState.Idle -> LoadingContent(
+                                    providerModel = "",
+                                    onCancel = onCancel,
+                                )
+                            }
                         }
                     }
                 }
@@ -176,10 +188,23 @@ fun LoadingScreen(
 
 @Composable
 private fun LoadingContent(providerModel: String, onCancel: () -> Unit) {
-    // App emblem at the top of the card.
+    // Gentle pulsing animation for the emblem
+    val infiniteTransition = rememberInfiniteTransition(label = "emblemPulse")
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseScale"
+    )
+
+    // App emblem at the top of the card with pulse effect
     Box(
         modifier = Modifier
             .size(88.dp)
+            .scale(scale)
             .clip(CircleShape)
             .background(NazoPrimary),
         contentAlignment = Alignment.Center,
@@ -207,9 +232,7 @@ private fun LoadingContent(providerModel: String, onCancel: () -> Unit) {
         )
     }
     Spacer(Modifier.height(22.dp))
-    // Wavy "snake-biting-its-tail" spinner, drawn on a Canvas and themed with NazoPrimary.
-    // (AOSP's CircularWavyProgressIndicator only ships in Material3 1.5.0-alpha — no stable
-    // release exists — so we draw our own to keep the project on the stable Compose BOM.)
+    // Wavy spinner
     WavySpinner(color = NazoPrimary, modifier = Modifier.size(44.dp))
     Spacer(Modifier.height(24.dp))
     TextButton(label = "Cancel", onClick = onCancel)
@@ -217,8 +240,7 @@ private fun LoadingContent(providerModel: String, onCancel: () -> Unit) {
 
 /**
  * Custom wavy progress indicator: a stroked ring whose radius oscillates with a traveling sine
- * wave, so the wave appears to chase its own tail — matching the look of AOSP's
- * CircularWavyProgressIndicator without requiring the Material3 1.5.0-alpha BOM.
+ * wave, so the wave appears to chase its own tail.
  */
 @Composable
 private fun WavySpinner(color: Color, modifier: Modifier = Modifier) {
@@ -268,10 +290,24 @@ private fun ErrorContent(
     onChangeModel: (String) -> Unit,
 ) {
     val selected = remember { mutableStateOf(currentModel) }
-    // Big "!" emblem so the error state reads clearly as an error zone.
+    
+    // Gentle pulsing animation for the error emblem
+    val infiniteTransition = rememberInfiniteTransition(label = "errorPulse")
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.05f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "errorPulseScale"
+    )
+
+    // Big "!" emblem with pulse effect
     Box(
         modifier = Modifier
             .size(88.dp)
+            .scale(scale)
             .clip(CircleShape)
             .background(NazoError),
         contentAlignment = Alignment.Center,
@@ -463,3 +499,4 @@ private fun TextButton(label: String, onClick: () -> Unit) {
         )
     }
 }
+
