@@ -67,10 +67,14 @@ fun NazoTheme(
                 window.attributes.layoutInDisplayCutoutMode =
                     android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
+            // statusBarColor / navigationBarColor setters are deprecated on API 35+,
+            // but remain required to keep the bars transparent on the minSdk (26) we support.
+            @Suppress("DEPRECATION")
             window.statusBarColor = Color.Transparent.toArgb()
             // Transparent nav bar too, so the app's full-bleed background (blurred while a
             // popup is shown) bleeds behind the bottom swipe-gesture hint instead of a solid
             // bar. The system still draws its own hint line on top.
+            @Suppress("DEPRECATION")
             window.navigationBarColor = Color.Transparent.toArgb()
             // Keep the Activity's own window background in sync with the in-app theme.
             // This prevents the white system window from bleeding through during the

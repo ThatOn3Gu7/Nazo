@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import androidx.core.content.pm.PackageInfoCompat
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -68,6 +69,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -155,11 +157,7 @@ fun AboutScreen(
     val versionName = remember(packageInfo) { packageInfo?.versionName ?: "3.0" }
     val versionCodeStr = remember(packageInfo) {
         packageInfo?.let { info ->
-            if (Build.VERSION.SDK_INT >= 28) {
-                info.longVersionCode.toString()
-            } else {
-                info.versionCode.toString()
-            }
+            PackageInfoCompat.getLongVersionCode(info).toString()
         } ?: "1"
     }
     val installDateStr = remember(packageInfo) {
@@ -616,7 +614,7 @@ private fun UpdateMenuContent(
                 readOnly = true,
                 label = { Text("Auto-check frequency") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showFrequencyDropdown) },
-                modifier = Modifier.menuAnchor().fillMaxWidth(),
+                modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = NazoTextPrimary,
                     unfocusedTextColor = NazoTextPrimary,
@@ -708,11 +706,7 @@ private fun sendFeedback(context: android.content.Context) {
         context.packageManager.getPackageInfo(context.packageName, 0)
     }.getOrNull()
     val versionName = pkgInfo?.versionName ?: "?"
-    val versionCode = if (Build.VERSION.SDK_INT >= 28) {
-        pkgInfo?.longVersionCode
-    } else {
-        pkgInfo?.versionCode?.toLong()
-    }
+    val versionCode = pkgInfo?.let { PackageInfoCompat.getLongVersionCode(it) }
 
     val info = buildString {
         appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
