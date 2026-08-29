@@ -81,6 +81,22 @@ class ApiKeyStore(context: Context) {
 
     fun hasAnyActiveKey(): Boolean = getActiveProvider() != null
 
+    /** Provider id the user explicitly chose as active, or null when they haven't (falls back to auto). */
+    fun getSelectedProvider(): String? {
+        val sel = prefs.getString(selFor(), null)
+        return if (sel != null && !getKey(sel).isNullOrBlank() && !getModel(sel).isNullOrBlank()) sel else null
+    }
+
+    fun saveSelectedProvider(id: String?) {
+        prefs.edit().putString(selFor(), id).apply()
+    }
+
+    /** Providers that have both an API key and a selected model (i.e. ready to generate). */
+    fun getConfiguredProviders(): List<String> =
+        PROVIDER_ORDER.filter { !getKey(it).isNullOrBlank() && !getModel(it).isNullOrBlank() }
+
+    private fun selFor() = "selected_provider"
+
     private fun keyFor(id: String) = "key_$id"
     private fun modelFor(id: String) = "model_$id"
     private fun modelsFor(id: String) = "models_$id"
@@ -90,8 +106,6 @@ class ApiKeyStore(context: Context) {
             "gemini",
             "chatgpt",
             "openrouter",
-            "deepseek",
-            "mistral",
             "claude",
         )
     }

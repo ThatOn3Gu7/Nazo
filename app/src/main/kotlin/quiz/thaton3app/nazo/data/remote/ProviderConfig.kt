@@ -229,22 +229,6 @@ val PROVIDERS: List<ProviderEndpoint> = listOf(
         models = emptyList(),
     ),
     ProviderEndpoint(
-        id = "deepseek",
-        kind = ProviderKind.OPENAI,
-        host = "api.deepseek.com",
-        path = "/v1/chat/completions",
-        urlKey = false,
-        models = emptyList(),
-    ),
-    ProviderEndpoint(
-        id = "mistral",
-        kind = ProviderKind.OPENAI,
-        host = "api.mistral.ai",
-        path = "/v1/chat/completions",
-        urlKey = false,
-        models = emptyList(),
-    ),
-    ProviderEndpoint(
         id = "claude",
         kind = ProviderKind.ANTHROPIC,
         host = "api.anthropic.com",

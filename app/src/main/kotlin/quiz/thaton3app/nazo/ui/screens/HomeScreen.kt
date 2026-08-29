@@ -30,6 +30,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.Icon
@@ -45,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
@@ -89,7 +91,16 @@ fun HomeScreen(
     onTopicChange: (String) -> Unit = {},
     onDifficultyChange: (String) -> Unit = {},
     onQuestionCountChange: (Int) -> Unit = {},
+    configuredProviders: List<String> = emptyList(),
+    onSelectProvider: (String) -> Unit = {},
+    onManageClick: () -> Unit = {},
 ) {
+    // Selection state is hoisted to NazoApp (the always-composed root) so it
+    // survives navigating between screens; NazoApp persists it with
+    // rememberSaveable. Difficulty arrives as its enum name and is re-derived here.
+    val difficulty = Difficulty.valueOf(difficultyName)
+    val context = LocalContext.current
+    var showProviderSheet by remember { mutableStateOf(false) }
     // Selection state is hoisted to NazoApp (the always-composed root) so it
     // survives navigating between screens; NazoApp persists it with
     // rememberSaveable. Difficulty arrives as its enum name and is re-derived here.
@@ -117,7 +128,12 @@ fun HomeScreen(
                 onProfileClick = onProfileClick,
             )
             Spacer(Modifier.height(16.dp))
-            ApiKeyBadge(active = apiKeyActive, activeProvider = activeProvider, offline = offline)
+            ApiKeyBadge(
+                active = apiKeyActive,
+                activeProvider = activeProvider,
+                offline = offline,
+                onClick = if (offline) null else ({ showProviderSheet = true }),
+            )
             Spacer(Modifier.height(20.dp))
             Text(
                 text = "Ready to test your\nanime knowledge?",
@@ -179,6 +195,122 @@ fun HomeScreen(
             onSettingsClick = onSettingsClick,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
+        if (showProviderSheet) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    .clickable { showProviderSheet = false },
+                contentAlignment = Alignment.BottomCenter,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                        .background(NazoSurface)
+                        .padding(20.dp)
+                        .navigationBarsPadding(),
+                ) {
+                    Text(
+                        text = "Switch API key",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = NazoTextPrimary,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Choose which configured provider generates your quizzes.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = NazoTextSecondary,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    if (configuredProviders.isEmpty()) {
+                        Text(
+                            text = "You haven't set up any API keys yet.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = NazoTextSecondary,
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(NazoPrimary)
+                                .clickable { onManageClick(); showProviderSheet = false },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "Set up API keys",
+                                color = NazoOnPrimary,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    } else {
+                        configuredProviders.forEach { id ->
+                            val name = PROVIDER_DISPLAY[id] ?: id
+                            val isSel = id == activeProvider
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        onSelectProvider(id)
+                                        showProviderSheet = false
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 14.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isSel) NazoPrimary else NazoTextSecondary.copy(alpha = 0.3f)),
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    text = name,
+                                    modifier = Modifier.weight(1f),
+                                    color = if (isSel) NazoPrimary else NazoTextPrimary,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = if (isSel) FontWeight.SemiBold else FontWeight.Normal,
+                                )
+                            }
+                            HorizontalDivider(color = NazoTextSecondary.copy(alpha = 0.12f))
+                        }
+                        Spacer(Modifier.height(14.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(NazoPillUnselected)
+                                .clickable { onManageClick(); showProviderSheet = false },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "Manage keys in settings",
+                                color = NazoTextPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .clickable { showProviderSheet = false },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "Cancel",
+                            color = NazoTextSecondary,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -225,7 +357,12 @@ private fun HomeHeader(
 }
 
 @Composable
-private fun ApiKeyBadge(active: Boolean, activeProvider: String? = null, offline: Boolean = false) {
+private fun ApiKeyBadge(
+    active: Boolean,
+    activeProvider: String? = null,
+    offline: Boolean = false,
+    onClick: (() -> Unit)? = null,
+) {
     val (bg, dot, text) = if (offline) {
         Triple(NazoPillUnselected, NazoTextSecondary, NazoTextSecondary)
     } else {
@@ -243,6 +380,7 @@ private fun ApiKeyBadge(active: Boolean, activeProvider: String? = null, offline
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
+            .then(if (onClick != null) Modifier.clickable { onClick.invoke() } else Modifier)
             .clip(RoundedCornerShape(50))
             .background(bg)
             .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -259,6 +397,15 @@ private fun ApiKeyBadge(active: Boolean, activeProvider: String? = null, offline
             style = MaterialTheme.typography.bodyMedium,
             color = text,
         )
+        if (onClick != null) {
+            Spacer(Modifier.width(4.dp))
+            Icon(
+                Icons.Filled.KeyboardArrowDown,
+                contentDescription = null,
+                tint = text,
+                modifier = Modifier.size(16.dp),
+            )
+        }
     }
 }
 
@@ -268,8 +415,6 @@ private val PROVIDER_DISPLAY = mapOf(
     "chatgpt" to "OpenAI ChatGPT",
     "claude" to "Anthropic Claude",
     "openrouter" to "OpenRouter",
-    "deepseek" to "DeepSeek",
-    "mistral" to "Mistral AI",
 )
 
 @Composable

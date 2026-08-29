@@ -248,7 +248,7 @@ fun NazoApp() {
         }
         quizDifficulty = difficulty
         quizStartedAt = System.currentTimeMillis()
-        val provider = apiKeyStore.getActiveProvider()
+        val provider = apiKeyStore.getSelectedProvider() ?: apiKeyStore.getActiveProvider()
         val key = provider?.let { apiKeyStore.getKey(it) }
         val model = provider?.let { apiKeyStore.getModel(it) }.orEmpty()
 
@@ -288,6 +288,10 @@ fun NazoApp() {
         }
     }
 
+    var selectedProvider by remember { mutableStateOf(apiKeyStore.getSelectedProvider()) }
+    val activeProvider = selectedProvider ?: apiKeyStore.getActiveProvider()
+    val configuredProviders = apiKeyStore.getConfiguredProviders()
+
     NazoTheme(darkTheme = isDark, accentId = accentName) {
         Box(modifier = Modifier.fillMaxSize()) {
             // Base color + animated floating particles live OUTSIDE AnimatedContent so the
@@ -308,8 +312,14 @@ fun NazoApp() {
                 when (screen) {
                     Screen.Home -> HomeScreen(
                         apiKeyActive = apiKeyStore.hasAnyActiveKey(),
-                        activeProvider = apiKeyStore.getActiveProvider(),
+                        activeProvider = activeProvider,
                         offline = isOfflineMode,
+                        configuredProviders = configuredProviders,
+                        onSelectProvider = { id ->
+                            apiKeyStore.saveSelectedProvider(id)
+                            selectedProvider = id
+                        },
+                        onManageClick = { navigate(Screen.AiProvider) },
                         onSettingsClick = { navigate(Screen.Settings) },
                         profileName = profileName,
                         profilePictureUri = profilePictureUri,

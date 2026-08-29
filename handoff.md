@@ -1679,3 +1679,25 @@ covered by `BUG_AUDIT.md` + this log).
 - NOTE: owner mentioned a follow-up provider "OpenCode" after OpenRouter — not implemented yet.
 - Files: `data/remote/ProviderConfig.kt`, `data/remote/ApiClient.kt`, `data/settings/ApiKeyStore.kt`,
   `ui/screens/AiProviderScreen.kt`, `ui/screens/LoadingScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 07:40] feat: home provider-switch + remove DeepSeek/Mistral placeholders
+
+- **Provider-switch on Home:** the active-API-key badge (`HomeScreen.ApiKeyBadge`) is now clickable
+  (shows a ▾ caret) when not offline. Tapping it opens a bottom-sheet popup listing every provider
+  that has BOTH an API key and a selected model (i.e. ready to generate). Picking one makes it the
+  active provider; there's also a "Manage keys in settings" / "Set up API keys" action that jumps to
+  the AI & Model Configuration screen. Offline mode keeps the badge non-interactive.
+- Added persistence for the user's choice in `ApiKeyStore`: `getSelectedProvider()` (validated
+  against still-configured providers), `saveSelectedProvider(id)`, and `getConfiguredProviders()`
+  (ids with key+model set). `NazoApp` now holds `selectedProvider` state; generation
+  (`startQuiz`) uses `getSelectedProvider() ?: getActiveProvider()`, and the Home pill + popup are
+  driven by `configuredProviders`/`onSelectProvider`/`onManageClick`.
+- **Removed the placeholder providers DeepSeek and Mistral** from everywhere they were stubbed:
+  `ProviderConfig.PROVIDERS`, `ApiKeyStore.PROVIDER_ORDER`, `AiProviderScreen.defaultProviders()`,
+  and `HomeScreen.PROVIDER_DISPLAY`. Remaining providers: Gemini, OpenAI ChatGPT, OpenRouter,
+  Anthropic Claude. (Kept Claude even though its model-list can't be fetched — it has a working
+  request body + headers; revisit if desired.)
+- Files: `data/settings/ApiKeyStore.kt`, `data/remote/ProviderConfig.kt`,
+  `ui/screens/AiProviderScreen.kt`, `ui/screens/HomeScreen.kt`, `ui/NazoApp.kt`, `handoff.md`.

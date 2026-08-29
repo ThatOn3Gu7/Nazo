@@ -123,15 +123,9 @@ private fun defaultProviders() = listOf(
         status = KeyStatus.NOT_CONFIGURED,
     ),
     ProviderUiState(
-        id = "deepseek",
-        name = "DeepSeek",
-        avatarLetter = "D",
-        status = KeyStatus.NOT_CONFIGURED,
-    ),
-    ProviderUiState(
-        id = "mistral",
-        name = "Mistral AI",
-        avatarLetter = "M",
+        id = "claude",
+        name = "Anthropic Claude",
+        avatarLetter = "A",
         status = KeyStatus.NOT_CONFIGURED,
     ),
 )
