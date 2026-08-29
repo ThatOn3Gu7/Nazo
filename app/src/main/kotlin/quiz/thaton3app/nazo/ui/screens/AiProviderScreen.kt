@@ -33,6 +33,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
@@ -56,6 +57,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -263,6 +265,8 @@ private fun ProviderCard(
     fetchError: String? = null,
 ) {
     var showHelp by remember { mutableStateOf(false) }
+    val popupVisible = remember { MutableTransitionState(false) }
+    LaunchedEffect(showHelp) { popupVisible.targetState = showHelp }
     val density = LocalDensity.current
     Box(
         modifier = Modifier
@@ -432,7 +436,7 @@ private fun ProviderCard(
         }
         }
 
-        if (showHelp) {
+        if (popupVisible.current || popupVisible.targetState) {
             Popup(
                 popupPositionProvider = remember(density) {
                     object : PopupPositionProvider {
@@ -453,20 +457,35 @@ private fun ProviderCard(
                 },
                 onDismissRequest = { showHelp = false },
             ) {
-                Box(
-                    modifier = Modifier
-                        .width(240.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(NazoSurface)
-                        .border(1.dp, NazoPrimary.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
-                        .clickable { showHelp = false }
-                        .padding(14.dp),
+                AnimatedVisibility(
+                    visibleState = popupVisible,
+                    enter = fadeIn(animationSpec = tween(160)),
+                    exit = fadeOut(animationSpec = tween(160)),
                 ) {
-                    Text(
-                        text = providerSetupHelp(provider.id),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NazoTextSecondary,
-                    )
+                    Box(
+                        modifier = Modifier
+                            .width(250.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(NazoSurface)
+                            .border(1.dp, NazoPrimary.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                            .clickable { showHelp = false }
+                            .padding(14.dp),
+                    ) {
+                        Column {
+                            Text(
+                                text = "Don't know where to get your API key?",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = NazoTextPrimary,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = providerSetupHelp(provider.id),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NazoTextSecondary,
+                            )
+                        }
+                    }
                 }
             }
         }
