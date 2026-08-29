@@ -1562,3 +1562,25 @@ covered by `BUG_AUDIT.md` + this log).
      `.heightIn(max = 420.dp)` to the LazyColumn so the dialog stays a centered, scrollable card
      (like the small crop-option popup) instead of filling the screen.
 - Files: `ui/screens/ActiveQuizScreen.kt`, `ui/screens/AboutScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 05:15] AI provider screen: slide expansion, no dummy models, outlined fetch-error pill
+
+- Owner requested 3 changes to `AiProviderScreen` / `ProviderConfig`:
+  1) Provider pill expansion was instant. Wrapped the expanded area (API key field + model
+     dropdown + fetch) in `AnimatedVisibility` with `slideInVertically(initialOffsetY = { it })`
+     (slides up from the bottom) on enter and `slideOutVertically(targetOffsetY = { -it })` (slides
+     up and away) on exit, tween 220ms. Also switched the nested `ModelDropdown`
+     `AnimatedVisibility` from `expandVertically+fadeIn`/`shrinkVertically+fadeOut` to the same
+     slide. Replaced the now-unused `expandVertically`/`shrinkVertically`/`fadeIn`/`fadeOut`
+     imports with `slideInVertically`/`slideOutVertically`.
+  2) Removed all hardcoded default model lists. `defaultProviders()` in `AiProviderScreen` no
+     longer sets `models` (falls back to `emptyList()` default). `ProviderConfig.PROVIDERS` now
+     uses `models = emptyList()` (required ctor param, so kept the arg but empty) — we don't know
+     which models a key can actually access, so the user must Fetch to populate. `initialProviders`
+     still prefers stored (fetched) models; `ApiKeyStore.getModels` fallback now yields empty.
+  3) Fetch error is now its own outlined pill: moved it out of the inline Fetch row into a full-width
+     `Box` with `NazoErrorBg` background + `border(1.dp, NazoError)` (RoundedCornerShape 12dp),
+     below the Fetch button, instead of plain red text.
+- Files: `ui/screens/AiProviderScreen.kt`, `data/remote/ProviderConfig.kt`, `handoff.md`.

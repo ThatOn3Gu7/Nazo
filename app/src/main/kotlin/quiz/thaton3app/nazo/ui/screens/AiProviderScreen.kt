@@ -23,10 +23,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
@@ -97,42 +95,36 @@ private fun defaultProviders() = listOf(
         name = "Google Gemini",
         avatarLetter = "G",
         status = KeyStatus.NOT_CONFIGURED,
-        models = listOf("gemini-2.5-flash", "gemini-1.5-pro"),
     ),
     ProviderUiState(
         id = "claude",
         name = "Anthropic Claude",
         avatarLetter = "A",
         status = KeyStatus.NOT_CONFIGURED,
-        models = listOf("claude-3-5-sonnet", "claude-3-haiku"),
     ),
     ProviderUiState(
         id = "chatgpt",
         name = "OpenAI ChatGPT",
         avatarLetter = "O",
         status = KeyStatus.NOT_CONFIGURED,
-        models = listOf("gpt-4o", "gpt-4o-mini"),
     ),
     ProviderUiState(
         id = "openrouter",
         name = "OpenRouter",
         avatarLetter = "R",
         status = KeyStatus.NOT_CONFIGURED,
-        models = listOf("anthropic/claude-3.5-sonnet", "deepseek/deepseek-chat"),
     ),
     ProviderUiState(
         id = "deepseek",
         name = "DeepSeek",
         avatarLetter = "D",
         status = KeyStatus.NOT_CONFIGURED,
-        models = listOf("deepseek-chat", "deepseek-coder"),
     ),
     ProviderUiState(
         id = "mistral",
         name = "Mistral AI",
         avatarLetter = "M",
         status = KeyStatus.NOT_CONFIGURED,
-        models = listOf("mistral-large-latest", "mistral-small-latest"),
     ),
 )
 
@@ -318,47 +310,62 @@ private fun ProviderCard(
                 tint = NazoTextSecondary,
             )
         }
-        if (expanded) {
-            HorizontalDivider(color = NazoBackground, thickness = 1.dp)
-            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                Text("Model", style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
-                Spacer(Modifier.height(8.dp))
-                ModelDropdown(models = provider.models, selected = provider.model, onSelect = onModelChange)
-                Spacer(Modifier.height(16.dp))
-                Text("API Key", style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
-                Spacer(Modifier.height(8.dp))
-                ApiKeyField(value = provider.apiKey, onValueChange = onApiKeyChange)
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Lock, contentDescription = null, tint = NazoTextSecondary, modifier = Modifier.size(12.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Stored Securely on device", style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
-                }
-                Spacer(Modifier.height(20.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .height(40.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(NazoPrimary)
-                            .clickable(enabled = !isFetching, onClick = onFetchModels)
-                            .padding(horizontal = 16.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = if (isFetching) "Fetching…" else "Fetch models",
-                            color = NazoOnPrimary,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
+        AnimatedVisibility(
+            visible = expanded,
+            enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(220)),
+            exit = slideOutVertically(targetOffsetY = { -it }, animationSpec = tween(220)),
+        ) {
+            Column {
+                HorizontalDivider(color = NazoBackground, thickness = 1.dp)
+                Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                    Text("Model", style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
+                    Spacer(Modifier.height(8.dp))
+                    ModelDropdown(models = provider.models, selected = provider.model, onSelect = onModelChange)
+                    Spacer(Modifier.height(16.dp))
+                    Text("API Key", style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
+                    Spacer(Modifier.height(8.dp))
+                    ApiKeyField(value = provider.apiKey, onValueChange = onApiKeyChange)
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Lock, contentDescription = null, tint = NazoTextSecondary, modifier = Modifier.size(12.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Stored Securely on device", style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
+                    }
+                    Spacer(Modifier.height(20.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .height(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(NazoPrimary)
+                                .clickable(enabled = !isFetching, onClick = onFetchModels)
+                                .padding(horizontal = 16.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = if (isFetching) "Fetching…" else "Fetch models",
+                                color = NazoOnPrimary,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
                     }
                     if (fetchError != null) {
-                        Spacer(Modifier.width(12.dp))
-                        Text(
-                            text = fetchError ?: "",
-                            color = NazoError,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
+                        Spacer(Modifier.height(12.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(NazoErrorBg)
+                                .border(1.dp, NazoError, RoundedCornerShape(12.dp))
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                        ) {
+                            Text(
+                                text = fetchError ?: "",
+                                color = NazoError,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                     }
                 }
             }
@@ -415,8 +422,8 @@ private fun ModelDropdown(models: List<String>, selected: String, onSelect: (Str
         }
         AnimatedVisibility(
             visible = expanded,
-            enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(200)),
-            exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(200)),
+            enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(200)),
+            exit = slideOutVertically(targetOffsetY = { -it }, animationSpec = tween(200)),
         ) {
             Column(
                 modifier = Modifier

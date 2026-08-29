@@ -139,7 +139,7 @@ val PROVIDERS: List<ProviderEndpoint> = listOf(
         host = "generativelanguage.googleapis.com",
         path = "/v1beta/models/{model}:generateContent",
         urlKey = true,
-        models = listOf("gemini-2.5-flash", "gemini-1.5-pro"),
+        models = emptyList(),
     ),
     ProviderEndpoint(
         id = "chatgpt",
@@ -147,7 +147,7 @@ val PROVIDERS: List<ProviderEndpoint> = listOf(
         host = "api.openai.com",
         path = "/v1/chat/completions",
         urlKey = false,
-        models = listOf("gpt-4o", "gpt-4o-mini"),
+        models = emptyList(),
     ),
     ProviderEndpoint(
         id = "openrouter",
@@ -155,7 +155,7 @@ val PROVIDERS: List<ProviderEndpoint> = listOf(
         host = "openrouter.ai",
         path = "/api/v1/chat/completions",
         urlKey = false,
-        models = listOf("anthropic/claude-3.5-sonnet", "deepseek/deepseek-chat"),
+        models = emptyList(),
     ),
     ProviderEndpoint(
         id = "deepseek",
@@ -163,7 +163,7 @@ val PROVIDERS: List<ProviderEndpoint> = listOf(
         host = "api.deepseek.com",
         path = "/v1/chat/completions",
         urlKey = false,
-        models = listOf("deepseek-chat", "deepseek-coder"),
+        models = emptyList(),
     ),
     ProviderEndpoint(
         id = "mistral",
@@ -171,7 +171,7 @@ val PROVIDERS: List<ProviderEndpoint> = listOf(
         host = "api.mistral.ai",
         path = "/v1/chat/completions",
         urlKey = false,
-        models = listOf("mistral-large-latest", "mistral-small-latest"),
+        models = emptyList(),
     ),
     ProviderEndpoint(
         id = "claude",
@@ -179,7 +179,7 @@ val PROVIDERS: List<ProviderEndpoint> = listOf(
         host = "api.anthropic.com",
         path = "/v1/messages",
         urlKey = false,
-        models = listOf("claude-3-5-sonnet", "claude-3-haiku"),
+        models = emptyList(),
     ),
 )
 
