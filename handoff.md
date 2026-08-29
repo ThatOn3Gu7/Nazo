@@ -1736,3 +1736,22 @@ covered by `BUG_AUDIT.md` + this log).
   Replaced with a `LazyColumn` + `itemsIndexed` so only visible rows are composed. Look, colors,
   Free badge, 2-line description, selected check, dividers — all identical. Added `key = {_, m -> m.id}`.
 - Files: `ui/screens/HomeScreen.kt`, `ui/screens/AiProviderScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 09:45] home sheet slide + provider help popover float + "i" before arrow
+
+- **Home provider sheet now slides in AND out (bug fix):** previously the dim overlay wrapped the
+  panel and faded, which masked the panel's slide so entry looked like a fade. Reworked into TWO
+  sibling `AnimatedVisibility`s: the scrim `fadeIn`/`fadeOut`, and the panel `slideInVertically`
+  /`slideOutVertically` (from/to the bottom). Tapping outside or an item dismisses and plays the
+  slide-out. No API/behavior change otherwise.
+- **ProviderCard help popover floats (bug fix):** the "?" info box was an inline child of the card
+  body, so it forced the whole card to expand to fit it (glitchy). Now the root `Box` no longer clips;
+  `clip`/`background` moved to the inner content `Column`, and the help is a `matchParentSize()`
+  overlay layer with the box `align(Alignment.TopEnd)` + `offset(y=52.dp, x=-12.dp)` so it floats
+  OVER the card (does not expand it and never gets clipped). Tap anywhere on the overlay/popover
+  dismisses. `matchParentSize` + `offset` imports added.
+- **"i" moved before the expand arrow (improvement):** in `ProviderCard` header the info `IconButton`
+  now sits to the LEFT of the expand/collapse `IconButton`.
+- Files: `ui/screens/HomeScreen.kt`, `ui/screens/AiProviderScreen.kt`, `handoff.md`.

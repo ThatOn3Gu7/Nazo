@@ -197,29 +197,35 @@ fun HomeScreen(
         )
         AnimatedVisibility(
             visible = showProviderSheet,
-            enter = fadeIn(),
-            exit = fadeOut(),
+            enter = fadeIn(animationSpec = tween(200)),
+            exit = fadeOut(animationSpec = tween(150)),
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.45f))
                     .clickable { showProviderSheet = false },
+            )
+        }
+        AnimatedVisibility(
+            visible = showProviderSheet,
+            enter = slideInVertically(animationSpec = tween(250), initialOffsetY = { it }),
+            exit = slideOutVertically(animationSpec = tween(200), targetOffsetY = { it }),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable { showProviderSheet = false },
                 contentAlignment = Alignment.BottomCenter,
             ) {
-                AnimatedVisibility(
-                    visible = showProviderSheet,
-                    enter = slideInVertically(initialOffsetY = { it }),
-                    exit = slideOutVertically(targetOffsetY = { it }),
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                        .background(NazoSurface)
+                        .padding(20.dp)
+                        .navigationBarsPadding(),
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                            .background(NazoSurface)
-                            .padding(20.dp)
-                            .navigationBarsPadding(),
-                    ) {
                     Text(
                         text = "Switch API key",
                         style = MaterialTheme.typography.titleLarge,
@@ -318,7 +324,6 @@ fun HomeScreen(
                         )
                     }
                 }
-            }
             }
         }
     }

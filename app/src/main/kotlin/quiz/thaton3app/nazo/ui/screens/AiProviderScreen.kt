@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.matchParentSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -257,11 +259,14 @@ private fun ProviderCard(
     var showHelp by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(NazoSurface)
+            .fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(NazoSurface),
+        ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -301,24 +306,24 @@ private fun ProviderCard(
                 }
             }
             IconButton(
-                onClick = onToggleExpand,
-                modifier = Modifier.size(36.dp),
-            ) {
-                Icon(
-                    imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                    contentDescription = null,
-                    tint = NazoTextSecondary,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-            Spacer(Modifier.width(4.dp))
-            IconButton(
                 onClick = { showHelp = !showHelp },
                 modifier = Modifier.size(36.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Info,
                     contentDescription = "How to set up this provider",
+                    tint = NazoTextSecondary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Spacer(Modifier.width(4.dp))
+            IconButton(
+                onClick = onToggleExpand,
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                    contentDescription = null,
                     tint = NazoTextSecondary,
                     modifier = Modifier.size(20.dp),
                 )
@@ -421,14 +426,15 @@ private fun ProviderCard(
         }
 
         if (showHelp) {
-            Row(
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp, end = 12.dp),
-                horizontalArrangement = Arrangement.End,
+                    .matchParentSize()
+                    .clickable { showHelp = false },
             ) {
                 Box(
                     modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = (-12).dp, y = 52.dp)
                         .width(240.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(NazoSurface)
