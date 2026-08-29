@@ -24,6 +24,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -758,6 +759,7 @@ private fun HeroCard(versionName: String, versionCode: String) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
             .background(NazoSurface)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
             .padding(horizontal = 24.dp, vertical = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -790,6 +792,7 @@ private fun HeroCard(versionName: String, versionCode: String) {
             modifier = Modifier
                 .clip(RoundedCornerShape(50))
                 .background(NazoSurfaceVariant)
+                .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(50))
                 .padding(horizontal = 12.dp, vertical = 4.dp)
         ) {
             Text(
@@ -827,7 +830,8 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(NazoSurface),
+            .background(NazoSurface)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(20.dp)),
         content = content,
     )
 }
