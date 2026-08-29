@@ -57,6 +57,7 @@ import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
+import quiz.thaton3app.nazo.data.remote.ModelInfo
 
 /**
  * Drives the quiz-generation screen. The host (NazoApp) keeps this state in memory and
@@ -77,7 +78,7 @@ fun LoadingScreen(
     onCancel: () -> Unit,
     onHomeClick: () -> Unit,
     onSettingsClick: () -> Unit,
-    availableModels: List<String> = emptyList(),
+    availableModels: List<ModelInfo> = emptyList(),
     currentModel: String = "",
     onChangeModel: (String) -> Unit = {},
 ) {
@@ -259,7 +260,7 @@ private fun WavySpinner(color: Color, modifier: Modifier = Modifier) {
 private fun ErrorContent(
     message: String,
     isModelError: Boolean,
-    availableModels: List<String>,
+    availableModels: List<ModelInfo>,
     currentModel: String,
     onRetry: () -> Unit,
     onUseLocal: () -> Unit,
@@ -325,7 +326,7 @@ private fun ErrorContent(
 }
 
 @Composable
-private fun ModelPicker(models: List<String>, selected: String, onSelect: (String) -> Unit) {
+private fun ModelPicker(models: List<ModelInfo>, selected: String, onSelect: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Column {
         // Trigger "pill" — tapping it expands the list inline (no system/menu overlay).
@@ -366,16 +367,16 @@ private fun ModelPicker(models: List<String>, selected: String, onSelect: (Strin
                     .border(1.dp, NazoTextSecondary.copy(alpha = 0.2f), RoundedCornerShape(14.dp)),
             ) {
                 models.forEachIndexed { i, m ->
-                    val isSel = m == selected
+                    val isSel = m.id == selected
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onSelect(m); expanded = false }
+                            .clickable { onSelect(m.id); expanded = false }
                             .padding(horizontal = 14.dp, vertical = 13.dp),
                     ) {
                         Text(
-                            text = m,
+                            text = m.name.ifBlank { m.id },
                             color = if (isSel) NazoPrimary else NazoTextPrimary,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = if (isSel) FontWeight.SemiBold else FontWeight.Normal,

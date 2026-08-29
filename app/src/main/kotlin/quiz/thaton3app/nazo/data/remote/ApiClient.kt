@@ -165,11 +165,12 @@ Hard rules:
     }
 
     /**
-     * Fetches the list of models the user's key can actually use. For Gemini this queries the
-     * public model list and keeps only those supporting `generateContent`. Other providers return
-     * their static model list (best-effort; model fetching is not yet implemented for them).
+     * Fetches the list of models the user's key can actually use. For Gemini this queries the public
+     * model list and keeps only those supporting `generateContent`. OpenAI-style providers (incl.
+     * OpenRouter) hit their `/v1/models` endpoint behind a Bearer key. The response is parsed by
+     * [ProviderEndpoint.parseModels], which also extracts OpenRouter's free/priced metadata.
      */
-    suspend fun fetchModels(providerId: String, apiKey: String): Result<List<String>> = withContext(Dispatchers.IO) {
+    suspend fun fetchModels(providerId: String, apiKey: String): Result<List<ModelInfo>> = withContext(Dispatchers.IO) {
         runCatching {
             val endpoint = providerById(providerId)
                 ?: throw IllegalArgumentException("Unknown provider: $providerId")
@@ -180,6 +181,7 @@ Hard rules:
                 requestMethod = "GET"
                 connectTimeout = 15_000
                 readTimeout = 15_000
+                endpoint.headers(apiKey).forEach { (k, v) -> setRequestProperty(k, v) }
             }
             try {
                 val code = connection.responseCode
@@ -189,23 +191,8 @@ Hard rules:
                     connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
                 }
                 if (code !in 200..299) throw IOException("Models list returned HTTP $code")
-                val models = JSONObject(raw).optJSONArray("models") ?: JSONArray()
-                val list = mutableListOf<String>()
-                for (i in 0 until models.length()) {
-                    val m = models.getJSONObject(i)
-                    val methods = m.optJSONArray("supportedGenerationMethods")
-                    val canGenerate = methods != null && (0 until methods.length())
-                        .any { methods.getString(it).contains("generateContent", ignoreCase = true) }
-                    if (canGenerate) {
-                        // The API returns names like "models/gemini-2.5-flash-lite" or
-                        // "publishers/google/models/gemini-2.5-flash-lite"; we only need the
-                        // final segment for the generateContent path. A bare "models/" strip
-                        // left the "publishers/google/models/" prefix -> HTTP 404.
-                        val id = m.optString("name", "").substringAfterLast("/")
-                        if (id.startsWith("gemini", ignoreCase = true)) list += id
-                    }
-                }
-                list.ifEmpty { endpoint.models }
+                val models = endpoint.parseModels(raw)
+                models.ifEmpty { endpoint.models }
             } finally {
                 connection.disconnect()
             }

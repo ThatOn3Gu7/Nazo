@@ -39,6 +39,8 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,6 +65,7 @@ import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.data.remote.ApiClient
+import quiz.thaton3app.nazo.data.remote.ModelInfo
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoErrorBg
@@ -90,7 +93,7 @@ private data class ProviderUiState(
     val status: KeyStatus,
     val apiKey: String = "",
     val model: String = "",
-    val models: List<String> = emptyList(),
+    val models: List<ModelInfo> = emptyList(),
 )
 
 // Clean initial empty state for all providers
@@ -141,7 +144,7 @@ private fun initialProviders(store: ApiKeyStore): List<ProviderUiState> =
         val storedKey = store.getKey(p.id).orEmpty()
         val storedModels = store.getModels(p.id)
         val models = if (storedModels.isNotEmpty()) storedModels else p.models
-        val storedModel = store.getModel(p.id) ?: models.firstOrNull().orEmpty()
+        val storedModel = store.getModel(p.id) ?: models.firstOrNull()?.id.orEmpty()
         val status = if (storedKey.isNotBlank()) KeyStatus.VALID else KeyStatus.NOT_CONFIGURED
         p.copy(apiKey = storedKey, model = storedModel, models = models, status = status)
     }
@@ -177,8 +180,8 @@ fun AiProviderScreen(
                     providers = providers.toMutableList().also { list ->
                         // Keep the user's current selection if it's still in the new list;
                         // only fall back to the first model when it isn't (or the list is empty).
-                        val next = if (provider.model in models) provider.model
-                        else models.firstOrNull() ?: provider.model
+                        val next = if (models.any { it.id == provider.model }) provider.model
+                        else models.firstOrNull()?.id ?: provider.model
                         list[index] = list[index].copy(models = models, model = next)
                     }
                     apiKeyStore.saveModels(provider.id, models)
@@ -433,31 +436,101 @@ private fun StatusBadge(status: KeyStatus) {
 }
 
 @Composable
-private fun ModelDropdown(models: List<String>, selected: String, onSelect: (String) -> Unit) {
+private fun ModelDropdown(models: List<ModelInfo>, selected: String, onSelect: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
+    var searching by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+
+    val filtered = remember(models, query) {
+        if (query.isBlank()) {
+            models
+        } else if (query.trim().lowercase() == "free") {
+            models.filter { it.isFree }
+        } else {
+            val q = query.lowercase()
+            models.filter {
+                it.id.lowercase().contains(q) ||
+                    it.name.lowercase().contains(q) ||
+                    it.description.lowercase().contains(q)
+            }
+        }
+    }
+
+    val selectedInfo = models.firstOrNull { it.id == selected }
+    val triggerText = if (selected.isNotBlank()) {
+        selectedInfo?.name?.ifBlank { selected } ?: selected
+    } else {
+        models.firstOrNull()?.id ?: "Select a model"
+    }
+
     Column {
-        // Trigger "pill" — tapping expands the list inline (no system/menu overlay).
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(NazoSurfaceVariant)
-                .clickable { expanded = !expanded }
-                .padding(horizontal = 14.dp, vertical = 14.dp),
-        ) {
-            Text(
-                text = selected.ifEmpty { models.firstOrNull() ?: "Select a model" },
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (selected.isEmpty()) NazoTextPlaceholder else NazoTextPrimary,
-                modifier = Modifier.weight(1f),
-            )
-            Icon(
-                if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                contentDescription = null,
-                tint = NazoTextSecondary,
-                modifier = Modifier.size(20.dp),
-            )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Filter icon on the LEFT — toggles an inline keyword search (e.g. "free" -> free models).
+            IconButton(
+                onClick = {
+                    searching = !searching
+                    if (searching) {
+                        expanded = true
+                    } else {
+                        query = ""
+                        expanded = false
+                    }
+                },
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    if (searching) Icons.Filled.Close else Icons.Filled.Search,
+                    contentDescription = if (searching) "Close search" else "Search models",
+                    tint = if (searching) NazoPrimary else NazoTextSecondary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            // Trigger "pill" — tapping expands the list inline (no system/menu overlay).
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(NazoSurfaceVariant)
+                    .clickable { if (!searching) expanded = !expanded }
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+            ) {
+                if (searching) {
+                    BasicTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = NazoTextPrimary),
+                        modifier = Modifier.weight(1f),
+                        decorationBox = { innerTextField ->
+                            Box {
+                                if (query.isEmpty()) {
+                                    Text(
+                                        text = "Search models…",
+                                        color = NazoTextPlaceholder,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        },
+                    )
+                } else {
+                    Text(
+                        text = triggerText,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (selected.isEmpty()) NazoTextPlaceholder else NazoTextPrimary,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Icon(
+                        if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                        contentDescription = null,
+                        tint = NazoTextSecondary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
         }
         AnimatedVisibility(
             visible = expanded,
@@ -474,33 +547,74 @@ private fun ModelDropdown(models: List<String>, selected: String, onSelect: (Str
                     .background(NazoSurface)
                     .border(1.dp, NazoTextSecondary.copy(alpha = 0.2f), RoundedCornerShape(14.dp)),
             ) {
-                models.forEachIndexed { i, m ->
-                    val isSel = m == selected
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelect(m); expanded = false }
-                            .padding(horizontal = 14.dp, vertical = 13.dp),
-                    ) {
-                        Text(
-                            text = m,
-                            color = if (isSel) NazoPrimary else NazoTextPrimary,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = if (isSel) FontWeight.SemiBold else FontWeight.Normal,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (isSel) {
-                            Icon(
-                                Icons.Filled.Check,
-                                contentDescription = null,
-                                tint = NazoPrimary,
-                                modifier = Modifier.size(18.dp),
-                            )
+                if (filtered.isEmpty()) {
+                    Text(
+                        text = "No models match.",
+                        color = NazoTextSecondary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+                    )
+                } else {
+                    filtered.forEachIndexed { i, m ->
+                        val isSel = m.id == selected
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onSelect(m.id)
+                                    expanded = false
+                                    searching = false
+                                    query = ""
+                                }
+                                .padding(horizontal = 14.dp, vertical = 13.dp),
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = m.name.ifBlank { m.id },
+                                        color = if (isSel) NazoPrimary else NazoTextPrimary,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = if (isSel) FontWeight.SemiBold else FontWeight.Normal,
+                                    )
+                                    if (m.isFree) {
+                                        Spacer(Modifier.width(8.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(50))
+                                                .background(NazoSuccessBg)
+                                                .padding(horizontal = 8.dp, vertical = 2.dp),
+                                        ) {
+                                            Text(
+                                                text = "Free",
+                                                color = NazoSuccess,
+                                                style = MaterialTheme.typography.bodySmall,
+                                            )
+                                        }
+                                    }
+                                }
+                                if (m.description.isNotBlank()) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = m.description,
+                                        color = NazoTextSecondary,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 2,
+                                    )
+                                }
+                            }
+                            if (isSel) {
+                                Icon(
+                                    Icons.Filled.Check,
+                                    contentDescription = null,
+                                    tint = NazoPrimary,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
                         }
-                    }
-                    if (i != models.lastIndex) {
-                        HorizontalDivider(color = NazoTextSecondary.copy(alpha = 0.12f))
+                        if (i != filtered.lastIndex) {
+                            HorizontalDivider(color = NazoTextSecondary.copy(alpha = 0.12f))
+                        }
                     }
                 }
             }

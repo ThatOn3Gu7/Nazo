@@ -1650,3 +1650,32 @@ covered by `BUG_AUDIT.md` + this log).
   lambdas without an import (exactly how the existing `.weight()` usages compile). Removed the
   import; the new `AnimatedVisibility` `weight` usage resolves the same way.
 - Files: `ui/screens/AiProviderScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 07:00] feat: OpenRouter model fetching + search/filter in model dropdown
+
+- Added a shared `ModelInfo(id, name, description, isFree)` data class (`data/remote/ProviderConfig.kt`).
+  Previously models were just `List<String>` ids; now they carry display name + OpenRouter pricing
+  metadata so the UI can show names and surface free models.
+- `ProviderEndpoint.modelsUrl` is now provider-aware: Gemini keeps key-in-URL; OPENAI-kind returns
+  `https://$host/v1/models`, except `openrouter` -> `https://openrouter.ai/api/v1/models`; Anthropic
+  stays null (no public list). Added `ProviderEndpoint.parseModels(raw)` that handles each provider's
+  shape: Gemini `models[]` (filter generateContent), OpenAI `data[]` with `id`, and OpenRouter's
+  `data[]` with `id/name/description/pricing` (pricing prompt+completion == "0" => `isFree`).
+- `ApiClient.fetchModels` now returns `Result<List<ModelInfo>>`, always sends `endpoint.headers(apiKey)`
+  (so Bearer auth works for OpenAI-style providers), and delegates parsing to `parseModels`.
+- `ApiKeyStore.getModels/saveModels` now persist `List<ModelInfo>` as a JSON array; legacy `|`-separated
+  id lists are still parsed (mapped to `ModelInfo(id, id)`) for backwards compatibility.
+- `AiProviderScreen.ModelDropdown` gained a **filter (search) icon on the LEFT** of the trigger pill.
+  Tapping it toggles an inline search field; typing filters models live by id/name/description
+  (case-insensitive). The special query `free` shows only `isFree` models (OpenRouter). Each row shows
+  the model name (falls back to id) plus a green "Free" badge when free, and a 2-line description.
+  Selecting resets search/expanded. The LoadingScreen `ModelPicker`/`ErrorContent` were updated to the
+  same `List<ModelInfo>` type (show name, select by id).
+- Generation for OpenRouter works through the existing OPENAI-kind `requestBody` + Bearer headers
+  (model id stored verbatim, e.g. "openai/gpt-4o-mini"). Per-model `response_format` quirks are a
+  follow-up, not done here.
+- NOTE: owner mentioned a follow-up provider "OpenCode" after OpenRouter — not implemented yet.
+- Files: `data/remote/ProviderConfig.kt`, `data/remote/ApiClient.kt`, `data/settings/ApiKeyStore.kt`,
+  `ui/screens/AiProviderScreen.kt`, `ui/screens/LoadingScreen.kt`, `handoff.md`.
