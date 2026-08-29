@@ -17,14 +17,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
@@ -312,8 +314,8 @@ private fun ProviderCard(
         }
         AnimatedVisibility(
             visible = expanded,
-            enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(220)),
-            exit = slideOutVertically(targetOffsetY = { -it }, animationSpec = tween(220)),
+            enter = expandVertically(animationSpec = tween(220)),
+            exit = shrinkVertically(animationSpec = tween(220)),
         ) {
             Column {
                 HorizontalDivider(color = NazoBackground, thickness = 1.dp)
@@ -332,7 +334,11 @@ private fun ProviderCard(
                         Text("Stored Securely on device", style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
                     }
                     Spacer(Modifier.height(20.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    FlowRow(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
                         Box(
                             modifier = Modifier
                                 .height(40.dp)
@@ -349,22 +355,20 @@ private fun ProviderCard(
                                 fontWeight = FontWeight.SemiBold,
                             )
                         }
-                    }
-                    if (fetchError != null) {
-                        Spacer(Modifier.height(12.dp))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(NazoErrorBg)
-                                .border(1.dp, NazoError, RoundedCornerShape(12.dp))
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                        ) {
-                            Text(
-                                text = fetchError ?: "",
-                                color = NazoError,
-                                style = MaterialTheme.typography.bodySmall,
-                            )
+                        if (fetchError != null) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(NazoErrorBg)
+                                    .border(1.dp, NazoError, RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                            ) {
+                                Text(
+                                    text = fetchError ?: "",
+                                    color = NazoError,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
                         }
                     }
                 }
@@ -422,8 +426,8 @@ private fun ModelDropdown(models: List<String>, selected: String, onSelect: (Str
         }
         AnimatedVisibility(
             visible = expanded,
-            enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(200)),
-            exit = slideOutVertically(targetOffsetY = { -it }, animationSpec = tween(200)),
+            enter = expandVertically(animationSpec = tween(200)),
+            exit = shrinkVertically(animationSpec = tween(200)),
         ) {
             Column(
                 modifier = Modifier

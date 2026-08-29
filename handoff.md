@@ -1584,3 +1584,19 @@ covered by `BUG_AUDIT.md` + this log).
      `Box` with `NazoErrorBg` background + `border(1.dp, NazoError)` (RoundedCornerShape 12dp),
      below the Fetch button, instead of plain red text.
 - Files: `ui/screens/AiProviderScreen.kt`, `data/remote/ProviderConfig.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 05:30] fix: provider expand uses pill expand/contract; fetch error inline (wraps)
+
+- Owner feedback after `89cbc51`:
+  1) The `slideIn/OutVertically` made the *content* translate on its own (looked like it was pushing
+     its way in / glitchy on close). They want the **pill itself** to expand/contract and the
+     content to stay put. Switched both the provider-card `AnimatedVisibility` and the nested
+     `ModelDropdown` back to `expandVertically`/`shrinkVertically` (height clip reveal, tween 220/200).
+     Replaced `slideIn/OutVertically` imports with `expandVertically`/`shrinkVertically`.
+  2) Fetch error pill was on its own line below the button. Moved it back **beside** "Fetch models"
+     using a `FlowRow` (so it sits next to the button, and if the message is too long it wraps to
+     the next line). Removed `fillMaxWidth` from the error pill so it sizes to content and can wrap.
+     Added `import androidx.compose.foundation.layout.FlowRow` + `Arrangement`.
+- Files: `ui/screens/AiProviderScreen.kt`, `handoff.md`.
