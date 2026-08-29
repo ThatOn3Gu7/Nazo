@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -105,27 +106,9 @@ private fun defaultProviders() = listOf(
         status = KeyStatus.NOT_CONFIGURED,
     ),
     ProviderUiState(
-        id = "claude",
-        name = "Anthropic Claude",
-        avatarLetter = "A",
-        status = KeyStatus.NOT_CONFIGURED,
-    ),
-    ProviderUiState(
-        id = "chatgpt",
-        name = "OpenAI ChatGPT",
-        avatarLetter = "O",
-        status = KeyStatus.NOT_CONFIGURED,
-    ),
-    ProviderUiState(
         id = "openrouter",
         name = "OpenRouter",
         avatarLetter = "R",
-        status = KeyStatus.NOT_CONFIGURED,
-    ),
-    ProviderUiState(
-        id = "claude",
-        name = "Anthropic Claude",
-        avatarLetter = "A",
         status = KeyStatus.NOT_CONFIGURED,
     ),
 )
@@ -268,49 +251,75 @@ private fun ProviderCard(
     isFetching: Boolean = false,
     fetchError: String? = null,
 ) {
-    Column(
+    var showHelp by remember { mutableStateOf(false) }
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(NazoSurface)
     ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onToggleExpand)
                 .padding(16.dp),
         ) {
-            Box(
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(NazoPillUnselected),
-                contentAlignment = Alignment.Center,
+                    .weight(1f)
+                    .clickable(onClick = onToggleExpand),
             ) {
-                Text(
-                    text = provider.avatarLetter,
-                    color = NazoTextPrimary,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.bodyLarge,
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(NazoPillUnselected),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = provider.avatarLetter,
+                        color = NazoTextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = provider.name,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = NazoTextPrimary,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    StatusBadge(provider.status)
+                }
+            }
+            IconButton(
+                onClick = onToggleExpand,
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = NazoTextSecondary,
+                    modifier = Modifier.size(20.dp),
                 )
             }
-            Spacer(Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = provider.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = NazoTextPrimary,
-                    fontWeight = FontWeight.SemiBold,
+            Spacer(Modifier.width(4.dp))
+            IconButton(
+                onClick = { showHelp = !showHelp },
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Info,
+                    contentDescription = "How to set up this provider",
+                    tint = NazoTextSecondary,
+                    modifier = Modifier.size(20.dp),
                 )
-                Spacer(Modifier.height(6.dp))
-                StatusBadge(provider.status)
             }
-            Icon(
-                imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                contentDescription = null,
-                tint = NazoTextSecondary,
-            )
         }
         AnimatedVisibility(
             visible = expanded,
@@ -406,11 +415,37 @@ private fun ProviderCard(
                 }
             }
         }
+        }
+
+        if (showHelp) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, end = 12.dp),
+                horizontalArrangement = Alignment.End,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(240.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(NazoSurface)
+                        .border(1.dp, NazoPrimary.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                        .clickable { showHelp = false }
+                        .padding(14.dp),
+                ) {
+                    Text(
+                        text = providerSetupHelp(provider.id),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NazoTextSecondary,
+                    )
+                }
+            }
+        }
     }
 }
 
-@Composable
-private fun StatusBadge(status: KeyStatus) {
+    @Composable
+    private fun StatusBadge(status: KeyStatus) {
     val (bg, fg) = when (status) {
         KeyStatus.VALID -> NazoSuccessBg to NazoSuccess
         KeyStatus.NOT_CONFIGURED -> NazoPillUnselected to NazoTextPrimary
@@ -427,6 +462,16 @@ private fun StatusBadge(status: KeyStatus) {
         Spacer(Modifier.width(6.dp))
         Text(text = status.label, style = MaterialTheme.typography.bodyMedium, color = fg)
     }
+}
+
+private fun providerSetupHelp(id: String): String = when (id) {
+    "gemini" -> "1) Open Google AI Studio (aistudio.google.com) and create a free API key.\n" +
+        "2) Paste it into the API Key field below.\n" +
+        "3) Tap \"Fetch models\" to load the Gemini models you can use, pick one, then Save."
+    "openrouter" -> "1) Sign up at openrouter.ai and create an API key on the Keys page.\n" +
+        "2) Paste it below and tap \"Fetch models\".\n" +
+        "3) Tap the search icon and type \"free\" to list the \$0 models, pick one, then Save."
+    else -> "Enter your API key for this provider, tap Fetch models, choose a model, then Save."
 }
 
 @Composable

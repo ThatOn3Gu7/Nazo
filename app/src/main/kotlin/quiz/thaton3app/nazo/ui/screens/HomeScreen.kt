@@ -412,8 +412,6 @@ private fun ApiKeyBadge(
 // Friendly names for the active-provider pill (id -> display name).
 private val PROVIDER_DISPLAY = mapOf(
     "gemini" to "Google Gemini",
-    "chatgpt" to "OpenAI ChatGPT",
-    "claude" to "Anthropic Claude",
     "openrouter" to "OpenRouter",
 )
 

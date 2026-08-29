@@ -104,9 +104,7 @@ class ApiKeyStore(context: Context) {
     companion object {
         val PROVIDER_ORDER = listOf(
             "gemini",
-            "chatgpt",
             "openrouter",
-            "claude",
         )
     }
 }

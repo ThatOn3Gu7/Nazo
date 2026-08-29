@@ -1701,3 +1701,21 @@ covered by `BUG_AUDIT.md` + this log).
   request body + headers; revisit if desired.)
 - Files: `data/settings/ApiKeyStore.kt`, `data/remote/ProviderConfig.kt`,
   `ui/screens/AiProviderScreen.kt`, `ui/screens/HomeScreen.kt`, `ui/NazoApp.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 08:10] feat: per-provider "?" help popover + drop ChatGPT/Claude placeholders
+
+- **Removed ChatGPT (OpenAI) and Claude (Anthropic) as providers** — owner can't afford / can't test
+  those API keys, so they were unimplemented placeholders. Removed from `ProviderConfig.PROVIDERS`,
+  `ApiKeyStore.PROVIDER_ORDER`, `AiProviderScreen.defaultProviders()`, and `HomeScreen.PROVIDER_DISPLAY`.
+  Remaining providers: **Gemini** and **OpenRouter** only. (`ProviderKind.ANTHROPIC` enum value is now
+  unused but kept to avoid churning the exhaustive `when` branches in ProviderConfig.)
+- **Per-provider "?" help button:** each `ProviderCard` header now has an `Icons.Filled.Info` button
+  at the top-right (the expand arrow toggles the card; the "?" toggles help — separated so taps don't
+  collide). Tapping it shows a small help card with step-by-step setup instructions for that provider
+  (`providerSetupHelp(id)`: Gemini uses Google AI Studio; OpenRouter uses openrouter.ai + "free" search).
+  NOTE: implemented as a right-aligned inline help card inside the card for this first pass (no
+  floating popover yet) — owner said we'll refine the look after building.
+- Files: `data/remote/ProviderConfig.kt`, `data/settings/ApiKeyStore.kt`,
+  `ui/screens/AiProviderScreen.kt`, `ui/screens/HomeScreen.kt`, `handoff.md`.
