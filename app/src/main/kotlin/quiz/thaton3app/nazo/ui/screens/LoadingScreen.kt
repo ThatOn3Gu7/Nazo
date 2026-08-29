@@ -6,13 +6,31 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -25,10 +43,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.PI
 import quiz.thaton3app.nazo.ui.theme.NazoSurface
 import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
@@ -37,6 +62,7 @@ import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
+import quiz.thaton3app.nazo.data.remote.ModelInfo
 
 /**
  * Drives the quiz-generation screen. The host (NazoApp) keeps this state in memory and
@@ -57,7 +83,7 @@ fun LoadingScreen(
     onCancel: () -> Unit,
     onHomeClick: () -> Unit,
     onSettingsClick: () -> Unit,
-    availableModels: List<String> = emptyList(),
+    availableModels: List<ModelInfo> = emptyList(),
     currentModel: String = "",
     onChangeModel: (String) -> Unit = {},
 ) {
@@ -115,36 +141,43 @@ fun LoadingScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.92f)
-                        .clip(RoundedCornerShape(28.dp))
-                        .background(NazoSurface)
-                        .border(1.5.dp, NazoTextSecondary.copy(alpha = 0.25f), RoundedCornerShape(28.dp))
-                        .padding(28.dp),
+                // Smooth scale-in entrance animation for the central dialog card
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = true,
+                    enter = fadeIn(tween(250)) + scaleIn(tween(250, easing = LinearOutSlowInEasing), initialScale = 0.92f),
+                    exit = fadeOut(tween(200)) + scaleOut(tween(200, easing = FastOutLinearInEasing), targetScale = 0.92f)
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .clip(RoundedCornerShape(28.dp))
+                            .background(NazoSurface)
+                            .border(1.5.dp, NazoTextSecondary.copy(alpha = 0.25f), RoundedCornerShape(28.dp))
+                            .padding(28.dp),
                     ) {
-                        when (state) {
-                            is GenerationState.Loading -> LoadingContent(
-                                providerModel = state.providerModel,
-                                onCancel = onCancel,
-                            )
-                            is GenerationState.Error -> ErrorContent(
-                                message = state.message,
-                                isModelError = state.isModelError,
-                                availableModels = availableModels,
-                                currentModel = currentModel,
-                                onRetry = onRetry,
-                                onUseLocal = onUseLocal,
-                                onCancel = onCancel,
-                                onChangeModel = onChangeModel,
-                            )
-                            GenerationState.Idle -> LoadingContent(
-                                providerModel = "",
-                                onCancel = onCancel,
-                            )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            when (state) {
+                                is GenerationState.Loading -> LoadingContent(
+                                    providerModel = state.providerModel,
+                                    onCancel = onCancel,
+                                )
+                                is GenerationState.Error -> ErrorContent(
+                                    message = state.message,
+                                    isModelError = state.isModelError,
+                                    availableModels = availableModels,
+                                    currentModel = currentModel,
+                                    onRetry = onRetry,
+                                    onUseLocal = onUseLocal,
+                                    onCancel = onCancel,
+                                    onChangeModel = onChangeModel,
+                                )
+                                GenerationState.Idle -> LoadingContent(
+                                    providerModel = "",
+                                    onCancel = onCancel,
+                                )
+                            }
                         }
                     }
                 }
@@ -155,6 +188,35 @@ fun LoadingScreen(
 
 @Composable
 private fun LoadingContent(providerModel: String, onCancel: () -> Unit) {
+    // Gentle pulsing animation for the emblem
+    val infiniteTransition = rememberInfiniteTransition(label = "emblemPulse")
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseScale"
+    )
+
+    // App emblem at the top of the card with pulse effect
+    Box(
+        modifier = Modifier
+            .size(88.dp)
+            .scale(scale)
+            .clip(CircleShape)
+            .background(NazoPrimary),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "謎",
+            color = NazoOnPrimary,
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+    Spacer(Modifier.height(18.dp))
     Text(
         text = "Generating your quiz…",
         color = NazoTextPrimary,
@@ -170,20 +232,57 @@ private fun LoadingContent(providerModel: String, onCancel: () -> Unit) {
         )
     }
     Spacer(Modifier.height(22.dp))
-    CircularProgressIndicator(
-        color = NazoPrimary,
-        strokeWidth = 3.dp,
-        modifier = Modifier.size(38.dp),
-    )
+    // Wavy spinner
+    WavySpinner(color = NazoPrimary, modifier = Modifier.size(44.dp))
     Spacer(Modifier.height(24.dp))
     TextButton(label = "Cancel", onClick = onCancel)
+}
+
+/**
+ * Custom wavy progress indicator: a stroked ring whose radius oscillates with a traveling sine
+ * wave, so the wave appears to chase its own tail.
+ */
+@Composable
+private fun WavySpinner(color: Color, modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "wavySpinner")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 2f * PI.toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "wavyPhase",
+    )
+    Canvas(modifier = modifier) {
+        val strokeWidth = 4.dp.toPx()
+        val baseR = (size.minDimension / 2f) - strokeWidth / 2f
+        val amp = 3.dp.toPx()
+        val waves = 5
+        val steps = 160
+        val path = Path()
+        for (i in 0..steps) {
+            val t = i.toFloat() / steps
+            val angle = t * 2f * PI.toFloat()
+            val r = baseR + amp * sin(waves * angle + phase)
+            val x = size.width / 2f + r * cos(angle)
+            val y = size.height / 2f + r * sin(angle)
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        path.close()
+        drawPath(
+            path = path,
+            color = color,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+        )
+    }
 }
 
 @Composable
 private fun ErrorContent(
     message: String,
     isModelError: Boolean,
-    availableModels: List<String>,
+    availableModels: List<ModelInfo>,
     currentModel: String,
     onRetry: () -> Unit,
     onUseLocal: () -> Unit,
@@ -191,6 +290,36 @@ private fun ErrorContent(
     onChangeModel: (String) -> Unit,
 ) {
     val selected = remember { mutableStateOf(currentModel) }
+    
+    // Gentle pulsing animation for the error emblem
+    val infiniteTransition = rememberInfiniteTransition(label = "errorPulse")
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.05f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "errorPulseScale"
+    )
+
+    // Big "!" emblem with pulse effect
+    Box(
+        modifier = Modifier
+            .size(88.dp)
+            .scale(scale)
+            .clip(CircleShape)
+            .background(NazoError),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "!",
+            color = Color.White,
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+    Spacer(Modifier.height(18.dp))
     Text(
         text = "Couldn't generate quiz",
         color = NazoError,
@@ -233,39 +362,75 @@ private fun ErrorContent(
 }
 
 @Composable
-private fun ModelPicker(models: List<String>, selected: String, onSelect: (String) -> Unit) {
+private fun ModelPicker(models: List<ModelInfo>, selected: String, onSelect: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(NazoSurfaceVariant)
-            .clickable { expanded = true }
-            .padding(horizontal = 14.dp, vertical = 14.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    Column {
+        // Trigger "pill" — tapping it expands the list inline (no system/menu overlay).
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(NazoSurfaceVariant)
+                .clickable { expanded = !expanded }
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+        ) {
             Text(
                 text = if (selected.isNotBlank()) selected else "Select a model",
-                color = NazoTextPrimary,
+                color = if (selected.isNotBlank()) NazoTextPrimary else NazoTextSecondary,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.weight(1f),
             )
             Icon(
-                Icons.Filled.KeyboardArrowDown,
+                if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
                 contentDescription = null,
                 tint = NazoTextSecondary,
             )
         }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp, max = 240.dp).background(NazoSurface),
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(200)),
+            exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(200)),
         ) {
-            models.forEach { m ->
-                DropdownMenuItem(
-                    text = { Text(m, color = NazoTextPrimary) },
-                    onClick = { onSelect(m); expanded = false },
-                )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 240.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(top = 8.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(NazoSurface)
+                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.2f), RoundedCornerShape(14.dp)),
+            ) {
+                models.forEachIndexed { i, m ->
+                    val isSel = m.id == selected
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(m.id); expanded = false }
+                            .padding(horizontal = 14.dp, vertical = 13.dp),
+                    ) {
+                        Text(
+                            text = m.name.ifBlank { m.id },
+                            color = if (isSel) NazoPrimary else NazoTextPrimary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (isSel) FontWeight.SemiBold else FontWeight.Normal,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (isSel) {
+                            Icon(
+                                Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = NazoPrimary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
+                    if (i != models.lastIndex) {
+                        HorizontalDivider(color = NazoTextSecondary.copy(alpha = 0.12f))
+                    }
+                }
             }
         }
     }
@@ -334,3 +499,4 @@ private fun TextButton(label: String, onClick: () -> Unit) {
         )
     }
 }
+

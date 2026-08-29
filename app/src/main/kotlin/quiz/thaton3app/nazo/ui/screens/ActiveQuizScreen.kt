@@ -10,16 +10,27 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -27,6 +38,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -58,6 +70,12 @@ fun ActiveQuizScreen(
     var remainingSeconds by remember { mutableIntStateOf(secondsPerQuestion) }
     val context = LocalContext.current
     var showQuitDialog by remember { mutableStateOf(false) }
+
+    // Intercept the system back gesture/button too, so leaving via gesture shows the same
+    // "quit quiz?" confirmation as the X button (instead of silently going back).
+    BackHandler(enabled = true) {
+        showQuitDialog = !showQuitDialog
+    }
 
     // Lifecycle-safe countdown: one timer per question (keyed on the index). The
     // coroutine auto-cancels when this screen leaves composition, and it stops early
@@ -156,12 +174,34 @@ fun ActiveQuizScreen(
                         .background(NazoSurface),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = remainingSeconds.toString(),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = if (isTimeUp) NazoError else if (remainingSeconds <= 5) NazoError else NazoPrimary,
-                        fontWeight = FontWeight.Bold
+                    // Smoothly animate the timer color when hitting the final 5 seconds
+                    val timerColor by animateColorAsState(
+                        targetValue = if (isTimeUp || remainingSeconds <= 5) NazoError else NazoPrimary,
+                        animationSpec = tween(400),
+                        label = "timerColor"
                     )
+                    
+                    // The rolling countdown animation
+                    AnimatedContent(
+                        targetState = remainingSeconds,
+                        transitionSpec = {
+                            if (targetState < initialState) {
+                                (slideInVertically { height -> height } + fadeIn()) togetherWith 
+                                (slideOutVertically { height -> -height } + fadeOut())
+                            } else {
+                                (slideInVertically { height -> -height } + fadeIn()) togetherWith 
+                                (slideOutVertically { height -> height } + fadeOut())
+                            }.using(SizeTransform(clip = false))
+                        },
+                        label = "timerAnimation"
+                    ) { sec ->
+                        Text(
+                            text = sec.toString(),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = timerColor,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
 
@@ -183,9 +223,13 @@ fun ActiveQuizScreen(
 
             Spacer(Modifier.height(24.dp))
 
+            // Smooth sliding transition between questions
             AnimatedContent(
                 targetState = question,
-                transitionSpec = { fadeIn(tween(260)) togetherWith fadeOut(tween(120)) },
+                transitionSpec = { 
+                    (slideInHorizontally(tween(350)) { width -> width } + fadeIn(tween(350))) togetherWith 
+                    (slideOutHorizontally(tween(350)) { width -> -width } + fadeOut(tween(350)))
+                },
                 label = "questionTransition"
             ) { q ->
                 Column {
@@ -223,9 +267,9 @@ fun ActiveQuizScreen(
                     val bgColor by animateColorAsState(
                         targetValue = when {
                             !reveal -> NazoSurfaceVariant
-                            isThisCorrectAnswer -> Color(0xFFD4E7D5) // Light green mockup color
-                            isThisSelected && !isThisCorrectAnswer -> Color(0xFFF2D5D5) // Light red mockup color
-                            else -> NazoSurfaceVariant // Unselected when answered
+                            isThisCorrectAnswer -> NazoSuccessBg
+                            isThisSelected && !isThisCorrectAnswer -> NazoErrorBg
+                            else -> NazoSurfaceVariant
                         },
                         animationSpec = tween(220),
                         label = "optionBg"
@@ -233,8 +277,8 @@ fun ActiveQuizScreen(
                     val borderColor by animateColorAsState(
                         targetValue = when {
                             !reveal -> Color.Transparent
-                            isThisCorrectAnswer -> Color(0xFF2E7D32) // Dark green
-                            isThisSelected && !isThisCorrectAnswer -> Color(0xFFC62828) // Dark red
+                            isThisCorrectAnswer -> NazoSuccess 
+                            isThisSelected && !isThisCorrectAnswer -> NazoError 
                             else -> Color.Transparent
                         },
                         animationSpec = tween(220),
@@ -273,10 +317,11 @@ fun ActiveQuizScreen(
                 }
 
                 // Explanation Card (shows after answering OR when time runs out)
-                androidx.compose.animation.AnimatedVisibility(
+                AnimatedVisibility(
                     visible = reveal,
-                    enter = fadeIn(tween(220)),
-                    exit = fadeOut(tween(120))
+                    // Replaced simple fade with a beautiful expanding drop-down animation
+                    enter = expandVertically(tween(350)) + fadeIn(tween(350)),
+                    exit = shrinkVertically(tween(250)) + fadeOut(tween(250))
                 ) {
                     Column {
                         Spacer(Modifier.height(12.dp))
@@ -318,7 +363,7 @@ fun ActiveQuizScreen(
                             ) {
                                 Text(if (currentQuestionIndex == totalQuestions - 1) "Finish Quiz" else "Next Question", color = NazoOnPrimary, fontWeight = FontWeight.Bold)
                                 Spacer(Modifier.width(8.dp))
-                                Icon(Icons.Filled.ArrowForward, contentDescription = null, tint = NazoOnPrimary, modifier = Modifier.size(18.dp))
+                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = NazoOnPrimary, modifier = Modifier.size(18.dp))
                             }
                         }
                     }
@@ -329,7 +374,13 @@ fun ActiveQuizScreen(
         }
         }
 
-        if (showQuitDialog) {
+        // Quit Dialog Backdrop & Content
+        AnimatedVisibility(
+            visible = showQuitDialog,
+            // Added scale animation for a "pop up" feel
+            enter = fadeIn(tween(180)) + scaleIn(tween(180, easing = LinearOutSlowInEasing), initialScale = 0.9f),
+            exit = fadeOut(tween(180)) + scaleOut(tween(180, easing = FastOutLinearInEasing), targetScale = 0.9f),
+        ) {
             Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -429,16 +480,18 @@ private fun OptionCircle(
     isThisSelected: Boolean,
     label: String,
 ) {
+    // Also updated inner circle colors to match the dynamic theme variables perfectly
     val circleColor = animateColorAsState(
         targetValue = when {
             !reveal -> NazoBackground
-            isThisCorrectAnswer -> Color(0xFF2E7D32)
-            isThisSelected && !isThisCorrectAnswer -> Color(0xFFC62828)
+            isThisCorrectAnswer -> NazoSuccess
+            isThisSelected && !isThisCorrectAnswer -> NazoError
             else -> NazoBackground
         },
         animationSpec = tween(220),
         label = "optionCircle"
     ).value
+    
     Box(
         modifier = Modifier
             .size(28.dp)

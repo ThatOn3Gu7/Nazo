@@ -2,10 +2,16 @@ package quiz.thaton3app.nazo.ui.screens
 
 import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,10 +22,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -36,6 +41,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,8 +53,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import quiz.thaton3app.nazo.ui.components.NazoBottomNav
-import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.data.QuizStats
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoDarkCard
@@ -67,9 +75,7 @@ import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.RectF
 import android.graphics.Shader
-import android.graphics.Typeface
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
@@ -84,7 +90,6 @@ import kotlinx.coroutines.withContext
 
 private data class DifficultyStat(val label: String, val played: Int, val accuracyPercent: Int)
 
-// New data class for the anime stats
 private data class MasteredAnimeStat(val rank: Int, val title: String, val quizzes: Int, val avgScore: Int)
 
 private data class StatsData(
@@ -128,7 +133,6 @@ private fun QuizStats.toStatsData(): StatsData {
     }
     val bestTopic = topAnime.firstOrNull()?.title
 
-    // Lightweight progression: XP from correct answers + completed quizzes.
     val xp = totalCorrect * 10 + totalQuizzes * 5
     val xpForNextLevel = 200
     val level = (xp / xpForNextLevel) + 1
@@ -164,98 +168,148 @@ fun StatisticsScreen(
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
 ) {
-    val data = stats.toStatsData()
+    val data = remember(stats) { stats.toStatsData() }
+    
+    // Hoist the animation state to the screen level so it only plays once per visit
+    var playAnimations by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { 
+        // A tiny delay ensures the screen slide-in transition finishes before counting starts
+        kotlinx.coroutines.delay(150)
+        playAnimations = true 
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
     ) {
-        Column(
+        // Swapped Column with verticalScroll to LazyColumn for lazy visibility animation triggering
+        LazyColumn(
             modifier = Modifier
                 .weight(1f)
-                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
-                .navigationBarsPadding()
-                .padding(bottom = 12.dp)
+                .navigationBarsPadding(),
+            contentPadding = PaddingValues(top = 28.dp, bottom = 12.dp)
         ) {
-            Spacer(Modifier.height(28.dp))
-            ScreenHeader(title = "Statistics & Insights", onBackClick = onBackClick)
-            Spacer(Modifier.height(20.dp))
-            RankCard(data)
-            Spacer(Modifier.height(16.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                StatTile(
-                    icon = Icons.Filled.DoneAll,
-                    label = "Total Quizzes",
-                    value = data.totalQuizzes.toString(),
-                    subtitle = "Completed",
-                    modifier = Modifier.weight(1f),
-                )
-                StatTile(
-                    icon = Icons.Filled.Speed,
-                    label = "Overall Accuracy",
-                    value = "${data.overallAccuracyPercent}%",
-                    subtitle = "Correct answers",
-                    modifier = Modifier.weight(1f),
-                )
+            item {
+                ScreenHeader(title = "Statistics & Insights", onBackClick = onBackClick)
+                Spacer(Modifier.height(20.dp))
             }
-            Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                StatTile(
-                    icon = Icons.Filled.LocalFireDepartment,
-                    label = "Current Streak",
-                    value = "${data.currentStreakDays} Days",
-                    subtitle = "Keep it burning",
-                    modifier = Modifier.weight(1f),
-                )
-                StatTile(
-                    icon = Icons.Filled.TrackChanges,
-                    label = "Best Topic",
-                    value = data.bestTopic ?: "—",
-                    subtitle = if (data.bestTopic == null) "No quizzes yet" else "Top mastered anime",
-                    modifier = Modifier.weight(1f),
-                )
+            item {
+                RankCard(data, animate = playAnimations)
+                Spacer(Modifier.height(16.dp))
             }
-            Spacer(Modifier.height(16.dp))
-            DifficultyCard(data.difficulty)
-            
-            // --- NEW COMPONENTS START HERE ---
-            Spacer(Modifier.height(16.dp))
-            TopAnimeCard(data.topAnime)
-            Spacer(Modifier.height(24.dp))
-            ShareButton(data)
-            Spacer(Modifier.height(24.dp))
-            // --- NEW COMPONENTS END HERE ---
-            
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    NumberStatTile(
+                        icon = Icons.Filled.DoneAll,
+                        label = "Total Quizzes",
+                        targetValue = data.totalQuizzes,
+                        valueFormatter = { it.toString() },
+                        subtitle = "Completed",
+                        modifier = Modifier.weight(1f),
+                        animate = playAnimations,
+                    )
+                    NumberStatTile(
+                        icon = Icons.Filled.Speed,
+                        label = "Overall Accuracy",
+                        targetValue = data.overallAccuracyPercent,
+                        valueFormatter = { "$it%" },
+                        subtitle = "Correct answers",
+                        modifier = Modifier.weight(1f),
+                        animate = playAnimations,
+                    )
+                }
+                Spacer(Modifier.height(14.dp))
+            }
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    NumberStatTile(
+                        icon = Icons.Filled.LocalFireDepartment,
+                        label = "Current Streak",
+                        targetValue = data.currentStreakDays,
+                        valueFormatter = { "$it Days" },
+                        subtitle = "Keep it burning",
+                        modifier = Modifier.weight(1f),
+                        animate = playAnimations,
+                    )
+                    // Regular StatTile for String-based value that doesn't count up
+                    StatTile(
+                        icon = Icons.Filled.TrackChanges,
+                        label = "Best Topic",
+                        value = data.bestTopic ?: "—",
+                        subtitle = if (data.bestTopic == null) "No quizzes yet" else "Top mastered anime",
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+            item {
+                DifficultyCard(data.difficulty, animate = playAnimations)
+                Spacer(Modifier.height(16.dp))
+            }
+            item {
+                TopAnimeCard(data.topAnime, animate = playAnimations)
+                Spacer(Modifier.height(24.dp))
+            }
+            item {
+                ShareButton(data)
+                Spacer(Modifier.height(24.dp))
+            }
         }
     }
 }
 
 @Composable
 private fun ScreenHeader(title: String, onBackClick: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth()
+    ) {
         IconButton(
             onClick = rememberHapticBack(onBackClick),
             modifier = Modifier
-                .size(40.dp)
+                .size(44.dp)
                 .clip(CircleShape)
                 .background(NazoSurface),
         ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NazoTextSecondary, modifier = Modifier.size(20.dp))
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NazoTextPrimary, modifier = Modifier.size(22.dp))
         }
-        Spacer(Modifier.width(12.dp))
-        Text(text = title, style = MaterialTheme.typography.titleLarge, color = NazoTextPrimary)
+        Spacer(Modifier.width(16.dp))
+        Text(text = title, style = MaterialTheme.typography.titleLarge, color = NazoTextPrimary, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
-private fun RankCard(stats: StatsData) {
+private fun RankCard(stats: StatsData, animate: Boolean) {
+    val animatedXp by animateIntAsState(
+        targetValue = if (animate) stats.currentXp else 0,
+        animationSpec = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+        label = "animatedXp"
+    )
+
+    val targetProgress = if (stats.xpForNextLevel > 0) {
+        (stats.currentXp.toFloat() / stats.xpForNextLevel).coerceIn(0f, 1f)
+    } else 0f
+
+    val animatedProgress by animateFloatAsState(
+        targetValue = if (animate) targetProgress else 0f,
+        animationSpec = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+        label = "animatedProgress"
+    )
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(NazoDarkCard)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
             .padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -285,9 +339,7 @@ private fun RankCard(stats: StatsData) {
             Icon(Icons.Filled.StarBorder, contentDescription = null, tint = NazoOnDarkCardMuted, modifier = Modifier.size(22.dp))
         }
         Spacer(Modifier.height(14.dp))
-        val progress = if (stats.xpForNextLevel > 0) {
-            (stats.currentXp.toFloat() / stats.xpForNextLevel).coerceIn(0f, 1f)
-        } else 0f
+        
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -297,7 +349,8 @@ private fun RankCard(stats: StatsData) {
         ) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(progress)
+                    // coerceAtLeast(0.001f) prevents "fraction must be greater than 0" crash on exact 0f
+                    .fillMaxWidth(animatedProgress.coerceAtLeast(0.001f))
                     .height(6.dp)
                     .clip(RoundedCornerShape(50))
                     .background(NazoOnDarkCard)
@@ -306,17 +359,43 @@ private fun RankCard(stats: StatsData) {
         Spacer(Modifier.height(10.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(
-                text = "${stats.currentXp} / ${stats.xpForNextLevel} XP",
+                text = "$animatedXp / ${stats.xpForNextLevel} XP",
                 style = MaterialTheme.typography.bodyMedium,
                 color = NazoOnDarkCardMuted,
             )
             Text(
-                text = "${stats.xpForNextLevel - stats.currentXp} XP to Level ${stats.level + 1}",
+                text = "${stats.xpForNextLevel - animatedXp} XP to Level ${stats.level + 1}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = NazoOnDarkCardMuted,
             )
         }
     }
+}
+
+// Dedicated composable for tiles with number values that we want to count up dynamically
+@Composable
+private fun NumberStatTile(
+    icon: ImageVector,
+    label: String,
+    targetValue: Int,
+    valueFormatter: (Int) -> String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    animate: Boolean,
+) {
+    val animatedValue by animateIntAsState(
+        targetValue = if (animate) targetValue else 0,
+        animationSpec = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+        label = label
+    )
+
+    StatTile(
+        icon = icon,
+        label = label,
+        value = valueFormatter(animatedValue),
+        subtitle = subtitle,
+        modifier = modifier
+    )
 }
 
 @Composable
@@ -331,6 +410,7 @@ private fun StatTile(
         modifier = modifier
             .clip(RoundedCornerShape(20.dp))
             .background(NazoStatsCardBg)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
             .padding(16.dp)
     ) {
         Box(
@@ -361,12 +441,13 @@ private fun StatTile(
 }
 
 @Composable
-private fun DifficultyCard(rows: List<DifficultyStat>) {
+private fun DifficultyCard(rows: List<DifficultyStat>, animate: Boolean) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(NazoStatsCardBg)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
             .padding(16.dp)
     ) {
         Text(
@@ -377,14 +458,26 @@ private fun DifficultyCard(rows: List<DifficultyStat>) {
         )
         Spacer(Modifier.height(14.dp))
         rows.forEachIndexed { index, row ->
-            DifficultyRow(row)
+            DifficultyRow(row, animate)
             if (index != rows.lastIndex) Spacer(Modifier.height(16.dp))
         }
     }
 }
 
 @Composable
-private fun DifficultyRow(row: DifficultyStat) {
+private fun DifficultyRow(row: DifficultyStat, animate: Boolean) {
+    val animatedPercent by animateIntAsState(
+        targetValue = if (animate) row.accuracyPercent else 0,
+        animationSpec = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+        label = "diffPercent"
+    )
+
+    val animatedWidth by animateFloatAsState(
+        targetValue = if (animate) (row.accuracyPercent / 100f) else 0f,
+        animationSpec = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+        label = "diffWidth"
+    )
+
     Column {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(text = row.label, style = MaterialTheme.typography.bodyLarge, color = NazoTextPrimary, fontWeight = FontWeight.SemiBold)
@@ -401,7 +494,7 @@ private fun DifficultyRow(row: DifficultyStat) {
             ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(row.accuracyPercent / 100f)
+                        .fillMaxWidth(animatedWidth.coerceAtLeast(0.001f))
                         .height(6.dp)
                         .clip(RoundedCornerShape(50))
                         .background(NazoDarkCard)
@@ -409,7 +502,7 @@ private fun DifficultyRow(row: DifficultyStat) {
             }
             Spacer(Modifier.width(10.dp))
             Text(
-                text = "${row.accuracyPercent}%",
+                text = "${animatedPercent}%",
                 style = MaterialTheme.typography.bodyMedium,
                 color = NazoTextPrimary,
                 fontWeight = FontWeight.SemiBold,
@@ -419,12 +512,13 @@ private fun DifficultyRow(row: DifficultyStat) {
 }
 
 @Composable
-private fun TopAnimeCard(rows: List<MasteredAnimeStat>) {
+private fun TopAnimeCard(rows: List<MasteredAnimeStat>, animate: Boolean) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(NazoStatsCardBg)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
             .padding(16.dp)
     ) {
         Row(
@@ -447,14 +541,20 @@ private fun TopAnimeCard(rows: List<MasteredAnimeStat>) {
         }
         Spacer(Modifier.height(16.dp))
         rows.forEachIndexed { index, row ->
-            TopAnimeRow(row)
+            TopAnimeRow(row, animate)
             if (index != rows.lastIndex) Spacer(Modifier.height(16.dp))
         }
     }
 }
 
 @Composable
-private fun TopAnimeRow(row: MasteredAnimeStat) {
+private fun TopAnimeRow(row: MasteredAnimeStat, animate: Boolean) {
+    val animatedScore by animateIntAsState(
+        targetValue = if (animate) row.avgScore else 0,
+        animationSpec = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+        label = "animeScore"
+    )
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -500,7 +600,7 @@ private fun TopAnimeRow(row: MasteredAnimeStat) {
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "${row.avgScore}% Avg",
+                text = "${animatedScore}% Avg",
                 style = MaterialTheme.typography.bodyMedium,
                 color = NazoTextPrimary,
                 fontWeight = FontWeight.SemiBold
@@ -557,20 +657,19 @@ private fun ShareButton(data: StatsData) {
 
 private fun shareBitmap(data: StatsData, context: Context): File {
     val W = 1080
-    val H = 1440 // Increased canvas height to prevent overflow at the bottom
+    val H = 1440 
     val bitmap = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
 
-    // On-brand palette
     val bgTop = 0xFFF3FCF4.toInt()
     val bgBottom = 0xFFE6F6EA.toInt()
-    val card = 0xFF163A2A.toInt()        // dark forest green
-    val onCard = 0xFFFFFFFF.toInt()      // crisp white
-    val onMuted = 0xFFA9C9B6.toInt()     // translucent mint/white
-    val mint = 0xFFC5E5D4.toInt()        // muted mint accent for badge
-    val darkOnMint = card                // dark green text on mint
-    val innerCard = 0xFF214C39.toInt()   // lighter green for stat cards
-    val fabBg = 0xFF214C39.toInt()       // matching lighter green for FAB
+    val card = 0xFF163A2A.toInt()        
+    val onCard = 0xFFFFFFFF.toInt()      
+    val onMuted = 0xFFA9C9B6.toInt()     
+    val mint = 0xFFC5E5D4.toInt()        
+    val darkOnMint = card                
+    val innerCard = 0xFF214C39.toInt()   
+    val fabBg = 0xFF214C39.toInt()       
 
     val fontBold = ResourcesCompat.getFont(context, R.font.plus_jakarta_sans_bold)
     val fontReg = ResourcesCompat.getFont(context, R.font.plus_jakarta_sans_regular)
@@ -583,7 +682,6 @@ private fun shareBitmap(data: StatsData, context: Context): File {
         canvas.drawText(text, cx, baseline, paint)
     }
 
-    // Background gradient
     val bgPaint = Paint().apply { isAntiAlias = true }
     bgPaint.shader = LinearGradient(0f, 0f, 0f, H.toFloat(), bgTop, bgBottom, Shader.TileMode.CLAMP)
     canvas.drawPaint(bgPaint)
@@ -594,27 +692,23 @@ private fun shareBitmap(data: StatsData, context: Context): File {
     val cardBottom = (H - 48).toFloat()
     val radius = 72f
 
-    // Faux drop shadow
     canvas.drawRoundRect(
         cardLeft, cardTop + 30f, cardRight, cardBottom + 30f, radius, radius,
         Paint().apply { color = 0x35000000.toInt(); isAntiAlias = true }
     )
 
-    // Main dark green card
     canvas.drawRoundRect(
         cardLeft, cardTop, cardRight, cardBottom, radius, radius,
         Paint().apply { color = card; isAntiAlias = true }
     )
 
-    val pad = 64f // Slightly adjusted padding for perfect scaling
+    val pad = 64f 
 
-    // --- Clip inner content so accents don't bleed out ---
     canvas.save()
     val clip = Path()
     clip.addRoundRect(cardLeft, cardTop, cardRight, cardBottom, radius, radius, Path.Direction.CW)
     canvas.clipPath(clip)
 
-    // Corner accents: Thick, semi-transparent bands
     val accentPaint = Paint().apply {
         isAntiAlias = true
         color = 0x0FFFFFFF
@@ -628,7 +722,6 @@ private fun shareBitmap(data: StatsData, context: Context): File {
     cornerAccent(cardRight, cardTop)
     cornerAccent(cardLeft, cardBottom)
 
-    // Header
     canvas.drawText(
         "Nazo", cardLeft + pad, cardTop + pad + 16f,
         Paint().apply { color = onCard; textSize = 64f; typeface = fontBold; isAntiAlias = true }
@@ -638,13 +731,11 @@ private fun shareBitmap(data: StatsData, context: Context): File {
         Paint().apply { color = onMuted; textSize = 22f; typeface = fontSemi; isAntiAlias = true; letterSpacing = 0.15f }
     )
 
-    // Top-right circular FAB
     val fabCx = cardRight - pad - 20f
     val fabCy = cardTop + pad + 20f
     canvas.drawCircle(fabCx, fabCy, 46f, Paint().apply { color = fabBg; isAntiAlias = true })
     textCentered("✨", fabCx, fabCy, Paint().apply { textSize = 42f; isAntiAlias = true })
 
-    // Hero badge
     val badgeCx = W / 2f
     val badgeCy = cardTop + 300f
     val badgeR = 135f
@@ -661,7 +752,6 @@ private fun shareBitmap(data: StatsData, context: Context): File {
         Paint().apply { color = darkOnMint; textSize = 22f; typeface = fontSemi; isAntiAlias = true; letterSpacing = 0.2f }
     )
 
-    // Hero text
     textCentered(
         "Otaku in training", badgeCx, badgeCy + badgeR + 50f,
         Paint().apply { color = onCard; textSize = 44f; typeface = fontBold; isAntiAlias = true }
@@ -671,7 +761,6 @@ private fun shareBitmap(data: StatsData, context: Context): File {
         Paint().apply { color = onMuted; textSize = 26f; typeface = fontReg; isAntiAlias = true }
     )
 
-    // Stats grid
     val gridTop = badgeCy + badgeR + 135f
     val gridH = 140f
     val gap = 20f
@@ -697,7 +786,6 @@ private fun shareBitmap(data: StatsData, context: Context): File {
         )
     }
 
-    // Best topic + Pill
     val btY = gridTop + gridH + 65f
     canvas.drawText(
         "BEST TOPIC", cardLeft + pad, btY,
@@ -728,7 +816,6 @@ private fun shareBitmap(data: StatsData, context: Context): File {
         Paint().apply { color = darkOnMint; textSize = 26f; typeface = fontBold; isAntiAlias = true }
     )
 
-    // Top mastered list
     val taY = btY + 130f
     drawFlame(canvas, cardLeft + pad + 10f, taY - 8f, 18f, onMuted)
     canvas.drawText(
@@ -767,7 +854,6 @@ private fun shareBitmap(data: StatsData, context: Context): File {
 
     canvas.restore()
 
-    // Footer
     val footerY = cardBottom - 40f
     val footerPaint = Paint().apply {
         color = onMuted; textSize = 20f; typeface = fontReg; isAntiAlias = true; textAlign = Paint.Align.LEFT
@@ -782,7 +868,6 @@ private fun shareBitmap(data: StatsData, context: Context): File {
     bitmap.recycle()
     return file
 }
-
 
 private fun drawTrophy(c: Canvas, cx: Float, cy: Float, h: Float, color: Int) {
     val p = Paint().apply { isAntiAlias = true; this.color = color }
@@ -817,3 +902,4 @@ private fun drawFlame(c: Canvas, cx: Float, cy: Float, s: Float, color: Int) {
     }
     c.drawPath(path, p)
 }
+

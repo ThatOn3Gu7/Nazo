@@ -1356,3 +1356,402 @@ covered by `BUG_AUDIT.md` + this log).
 - Build in Termux: (a) fetch models → background/kill/relaunch app → the fetched list + selected
   model should still be there (no re-fetch needed); (b) re-fetch with a different list → selection
   stays if still present; (c) a long model list dropdown expands ~240dp max and scrolls in place.
+
+---
+
+## [2026-08-29 01:00] feat: custom inline-expanding model dropdown (themed, replaces Material overlay)
+
+- Owner: replace the Material3 `DropdownMenu` overlay (broke the app's color/layout aesthetic
+  and covered the screen for long lists) with a **custom inline-expanding dropdown** — the model
+  "pill" itself expands to reveal the options in place, using the app palette. This also seeds the
+  animated expand/collapse pattern the owner wants reused across the app.
+- `ModelDropdown` (AiProviderScreen) and `ModelPicker` (LoadingScreen error screen) rewritten:
+  - Trigger pill: `NazoSurfaceVariant` box, rounded 14dp, chevron rotates (`KeyboardArrowDown`/
+    `Up`) on toggle, tappable to expand/collapse.
+  - Options revealed via `AnimatedVisibility` (`expandVertically`+`fadeIn` / `shrinkVertically`+
+    `fadeOut`, tween 200).
+  - Options list: `NazoSurface` box with a 1dp `NazoTextSecondary`@0.2 border, `heightIn(max = 240.dp)`
+    + `verticalScroll` so long lists scroll in place (no screen takeover); each row `NazoTextPrimary`,
+    the selected one tinted `NazoPrimary` (SemiBold) with a `Check` icon; faint `HorizontalDivider`
+    between rows. Selecting calls `onSelect(m)` and collapses.
+- Imports: dropped `DropdownMenu`/`DropdownMenuItem`; added `AnimatedVisibility`/`expandVertically`/
+  `shrinkVertically`/`fadeIn`/`fadeOut`/`tween` + `Check`/`KeyboardArrowUp` (LoadingScreen) +
+  `border` (AiProviderScreen). `heightIn` already present in both.
+- This is the reference pattern for the other providers' model selectors (owner plans to configure
+  each provider one by one after animation/layout polish).
+- Files: `ui/screens/AiProviderScreen.kt`, `ui/screens/LoadingScreen.kt`, `handoff.md`.
+- Build in Termux: open a provider card → Model section expands inline with theme colors + animates;
+  long lists scroll within ~240dp; selecting updates + collapses. Same behaviour on the generation
+  error screen's "Pick a different model" picker.
+
+---
+
+## [2026-08-29 01:30] fix: don't repeat already-answered AI questions (session cache guard)
+
+- Owner: generate AI quiz (same topic/difficulty/count) → answer it → generate again → the
+  in-memory `QuizCache` returned the SAME questions. Wanted: once a set is answered, a repeat
+  generation should fetch a FRESH set from the API instead of replaying it.
+- `NazoApp.kt`: added `answeredKeys` (`Set<String>`, session-only `remember` state). Keyed by
+  the same `QuizCache.key(provider, model, topic, difficulty, count)`.
+  - In `answer()`, when a quiz finishes AND `aiGenerated` is true, the current request's key is
+    added to `answeredKeys`.
+  - In `launchGeneration`, the cache is only used when `cacheKey !in answeredKeys`; if it IS in
+    the set, we skip the cache and call `ApiClient.generateQuiz` for a fresh set (which then
+    replaces the cache entry). Local (offline) quizzes are unaffected (they don't use QuizCache
+    and `aiGenerated` is false there).
+- Scope is **session-based on purpose**: `answeredKeys` and `QuizCache` are both in-memory, so a
+  process restart clears them and the first generation after relaunch always hits the API → new
+  questions anyway. No persistence added (owner preferred this).
+- Files: `ui/NazoApp.kt`, `handoff.md`.
+- Build in Termux: generate same params → answer all → generate same params again → should now
+  produce a different question set (network call), not the answered one. Relaunch + same params →
+  also fresh (cache gone).
+
+---
+
+## [2026-08-29 02:00] visual: launch/home/loading polish (part 1 — popup, provider pill, logo)
+
+- Owner wanted visual improvements, done incrementally. This commit covers the unambiguous parts.
+- **Removed the "You're online" startup popup.** `NazoApp.kt` now sets `startupDialogMode = null`
+  when online (only `StartupMode.OFFLINE` still blocks). The offline popup is unchanged. (The
+  `StartupMode.ONLINE` branch in `OfflineWarningDialog` is now dead but left in place — harmless.)
+- **Home pill now shows the active AI provider name.** `HomeScreen.ApiKeyBadge` gained an
+  `activeProvider: String?` param; when a key is active it displays the friendly provider name
+  (e.g. "Google Gemini") via a new `PROVIDER_DISPLAY` map, falling back to the raw id. `NazoApp`
+  passes `activeProvider = apiKeyStore.getActiveProvider()`. Inactive still shows "API Key
+  inactive"; offline still shows "Offline mode".
+- **Loading card gets an app emblem.** `LoadingScreen.LoadingContent` now shows a 64dp circular
+  NazoPrimary badge with the "謎" mark (NazoOnPrimary) above the title.
+- PENDING (owner to clarify): replace the loading `CircularProgressIndicator` with the "bouncy
+  stretching" Play-Store-style spinner. Not done yet — awaiting which exact animation is wanted
+  (see open question to owner).
+- Files: `ui/NazoApp.kt`, `ui/screens/HomeScreen.kt`, `ui/screens/LoadingScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 02:15] visual: bouncy "stretching" loading spinner
+
+- Owner picked the "Bouncy scale" spinner for the Generate-AI-Quiz loading screen.
+- `LoadingScreen.LoadingContent`: replaced the static indeterminate `CircularProgressIndicator`
+  with the same arc wrapped in a `rememberInfiniteTransition` spring scale (0.82f↔1.18f,
+  `DampingRatioMediumBouncy`/`StiffnessMedium`, `RepeatMode.Reverse`) via `Modifier.scale(scale)`.
+  So it keeps spinning AND springy-stretches in size. Added imports
+  (`RepeatMode`, `Spring`, `infiniteRepeatable`, `rememberInfiniteTransition`, `spring`,
+  `scale`). Loading emblem (prior commit) stays above the title.
+- Files: `ui/screens/LoadingScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 02:30] fix: bouncy spinner build error (spring not allowed in infiniteRepeatable)
+
+- Termux build failed: `infiniteRepeatable` only accepts a `DurationBasedAnimationSpec`, not a
+  `spring` (`SpringSpec`), so `InfiniteTransition.animateFloat` couldn't resolve.
+- Rewrote the spinner drive in `LoadingScreen.LoadingContent` to use `Animatable(0.82f)` +
+  `LaunchedEffect(Unit) { while(true) animateTo(1.18f) / animateTo(0.82f) }` with a medium-bouncy
+  `spring` for each leg. This gives the same bouncy stretch but with a real spring. Removed the
+  now-unused `RepeatMode`/`infiniteRepeatable`/`rememberInfiniteTransition` imports; added
+  `Animatable` + `LaunchedEffect`.
+- Files: `ui/screens/LoadingScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 03:00] visual: swap spinner for Material3 Expressive CircularWavyProgressIndicator
+
+- Owner got a Compose-expert (Gemini) suggestion: replace the custom bouncy `Animatable` spinner
+  with `androidx.compose.material3.CircularWavyProgressIndicator` (the Material3 Expressive wavy
+  indeterminate indicator — "snake biting its tail" spin). Confirmed the project's Compose BOM
+  `2025.10.01` already ships Material3 1.4.x (Expressive), so no dependency bump was needed.
+- `LoadingScreen.kt`: added imports `CircularWavyProgressIndicator` + `ExperimentalMaterial3Api`;
+  added `@OptIn(ExperimentalMaterial3Api::class)` to `LoadingContent`; replaced the
+  `Animatable`+`LaunchedEffect`+`CircularProgressIndicator` block with
+  `CircularWavyProgressIndicator(color = NazoPrimary, trackColor = NazoTextSecondary@0.2, size 44)`.
+  Removed now-unused imports (`Animatable`, `Spring`, `spring`, `LaunchedEffect`, `scale`,
+  `CircularProgressIndicator`).
+- NOTE: if the build still errors with "Unresolved reference CircularWavyProgressIndicator", the
+  BOM's Material3 is older than expected — bump `composeBom` to a newer 2025.x BOM (or pin
+  `material3` to `1.4.0`+) and retry.
+- Files: `ui/screens/LoadingScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 03:30] fix: CircularWavyProgressIndicator unresolved — it's alpha-only, draw our own
+
+- Build FAILED: `Unresolved reference CircularWavyProgressIndicator`. Gemini assumed it was stable
+  in Material3 1.3.0+, but per Android docs it was **Added in Material3 1.5.0-alpha24** and there
+  is STILL no stable release (stable Material3 is 1.4.0 as of mid-2026). It also needs
+  `ExperimentalMaterial3ExpressiveApi`. Getting the real AOSP component would require jumping the
+  whole app to a 2026 **alpha** Compose BOM (risk of broad breakage) — not worth it for one spinner.
+- Decision: drop the AOSP dependency and draw an equivalent wavy "snake-biting-its-tail" spinner
+  ourselves on a `Canvas`, themed with `NazoPrimary` (44dp, 4dp stroke, 3dp amplitude, 5 waves,
+  phase travels via `infiniteRepeatable(tween 1400ms, LinearEasing)`). Added `WavySpinner`
+  composable in `LoadingScreen.kt`. Removed the alpha-only imports
+  (`CircularWavyProgressIndicator`, `ExperimentalMaterial3Api`) and the `@OptIn`; added
+  `Canvas`, `Path`, `Stroke`, `StrokeCap`, `RepeatMode`, `infiniteRepeatable`, `LinearEasing`,
+  `rememberInfiniteTransition`, and `kotlin.math.*`.
+- Net: builds on the existing STABLE Compose BOM (2025.10.01 / Material3 1.4.0), no new deps.
+- If owner later wants the exact AOSP component: switch `compose-bom` to a 2026 alpha BOM
+  (`androidx.compose:compose-bom-alpha:<date>`) and re-enable `CircularWavyProgressIndicator` +
+  `ExperimentalMaterial3ExpressiveApi`. Not recommended for now.
+- Files: `ui/screens/LoadingScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 03:45] fix: wavy spinner compile errors (Stroke package + animateFloat import)
+
+- Build FAILED again: `Stroke` unresolved and `animateFloat` unresolved (cascading Double mismatches
+  on the `sin/cos` math because `phase` had no type).
+- `Stroke` is in `androidx.compose.ui.graphics.drawscope.Stroke` (not `ui.graphics.Stroke`) — fixed
+  the import. `animateFloat` is a top-level **extension** on `InfiniteTransition` in
+  `androidx.compose.animation.core`, so it needed an explicit `import
+  androidx.compose.animation.core.animateFloat` (the earlier spring failure masked this). With it
+  imported, `phase: Float` is inferred and the `sin/cos` Double errors disappear.
+- Files: `ui/screens/LoadingScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 04:00] visual: big "!" emblem on the AI generation error screen
+
+- Owner wanted the error state to read clearly as an error zone, like the loading emblem but for
+  errors. Added an 88dp circular `NazoError` badge with a bold white "!" (headlineLarge) at the top
+  of `LoadingScreen.ErrorContent`, above the "Couldn't generate quiz" title (18dp spacer). Mirrors
+  the loading emblem's layout for consistency.
+- Files: `ui/screens/LoadingScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 04:15] bug: system back gesture now shows quiz quit confirmation
+
+- Owner reported: on the question screen, the X button opens the "Quit quiz?" confirmation, but the
+  system back gesture / back button silently went back without it.
+- `ActiveQuizScreen.kt`: added `BackHandler(enabled = true)` that toggles `showQuitDialog`
+  (first back opens the same confirmation; second back dismisses it), reusing the existing
+  `showQuitDialog` state the X button uses. Added `import androidx.activity.compose.BackHandler`.
+  Inner composable's BackHandler takes precedence over NazoApp's root BackHandler while on this
+  screen, so back no longer pops the stack silently. Quitting via the dialog still calls
+  `onCloseClick` and leaves the screen.
+- Files: `ui/screens/ActiveQuizScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 04:30] docs: add third-party service/library credits (About screen)
+
+- Owner wanted attribution in the About screen's license area for the external services/APIs the
+  app uses (mentioned profile pictures "use many APIs").
+- Investigation: `ProfileAvatar`/`SafeRemoteImage` load images via **Coil**
+  (`coil.compose.SubcomposeAsyncImage`) from user-provided URLs — there is NO hardcoded avatar API
+  in the app, so the correct credit is Coil (generic remote-image loading), not a specific avatar
+  service. AI question generation integrates Google Gemini, OpenAI (ChatGPT), Anthropic (Claude),
+  OpenRouter, DeepSeek, Mistral AI (ids in `ProviderConfig`). `UpdateChecker` uses the GitHub API;
+  `Connectivity` uses Google's `connectivitycheck.gstatic.com`.
+- `AboutScreen.kt`: added "Coil (image loading) — Apache-2.0" to the Open-source Licenses dialog;
+  expanded the Credits section with a "Third-party services" block listing the AI providers, Coil,
+  GitHub API, and Google connectivity check (with a "not affiliated/endorsed" disclaimer).
+- Files: `ui/screens/AboutScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 04:45] visual: animate quiz quit dialog + cap About-dev dialog height
+
+- Owner wanted two polish changes:
+  1) Quiz "Quit quiz?" warning currently appears/disappears instantly. Wrapped the custom overlay
+     in `ActiveQuizScreen` with `AnimatedVisibility(visible = showQuitDialog, enter = fadeIn(180),
+     exit = fadeOut(180))` instead of `if (showQuitDialog)` — so the scrim + card now fade in/out.
+     (AnimatedVisibility/fadeIn/fadeOut already imported.)
+  2) "About the Developer" dialog took over the whole screen. Its `text` is a `LazyColumn` with no
+     height limit, so the Material3 AlertDialog expanded to full height. Added
+     `.heightIn(max = 420.dp)` to the LazyColumn so the dialog stays a centered, scrollable card
+     (like the small crop-option popup) instead of filling the screen.
+- Files: `ui/screens/ActiveQuizScreen.kt`, `ui/screens/AboutScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 05:15] AI provider screen: slide expansion, no dummy models, outlined fetch-error pill
+
+- Owner requested 3 changes to `AiProviderScreen` / `ProviderConfig`:
+  1) Provider pill expansion was instant. Wrapped the expanded area (API key field + model
+     dropdown + fetch) in `AnimatedVisibility` with `slideInVertically(initialOffsetY = { it })`
+     (slides up from the bottom) on enter and `slideOutVertically(targetOffsetY = { -it })` (slides
+     up and away) on exit, tween 220ms. Also switched the nested `ModelDropdown`
+     `AnimatedVisibility` from `expandVertically+fadeIn`/`shrinkVertically+fadeOut` to the same
+     slide. Replaced the now-unused `expandVertically`/`shrinkVertically`/`fadeIn`/`fadeOut`
+     imports with `slideInVertically`/`slideOutVertically`.
+  2) Removed all hardcoded default model lists. `defaultProviders()` in `AiProviderScreen` no
+     longer sets `models` (falls back to `emptyList()` default). `ProviderConfig.PROVIDERS` now
+     uses `models = emptyList()` (required ctor param, so kept the arg but empty) — we don't know
+     which models a key can actually access, so the user must Fetch to populate. `initialProviders`
+     still prefers stored (fetched) models; `ApiKeyStore.getModels` fallback now yields empty.
+  3) Fetch error is now its own outlined pill: moved it out of the inline Fetch row into a full-width
+     `Box` with `NazoErrorBg` background + `border(1.dp, NazoError)` (RoundedCornerShape 12dp),
+     below the Fetch button, instead of plain red text.
+- Files: `ui/screens/AiProviderScreen.kt`, `data/remote/ProviderConfig.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 05:30] fix: provider expand uses pill expand/contract; fetch error inline (wraps)
+
+- Owner feedback after `89cbc51`:
+  1) The `slideIn/OutVertically` made the *content* translate on its own (looked like it was pushing
+     its way in / glitchy on close). They want the **pill itself** to expand/contract and the
+     content to stay put. Switched both the provider-card `AnimatedVisibility` and the nested
+     `ModelDropdown` back to `expandVertically`/`shrinkVertically` (height clip reveal, tween 220/200).
+     Replaced `slideIn/OutVertically` imports with `expandVertically`/`shrinkVertically`.
+  2) Fetch error pill was on its own line below the button. Moved it back **beside** "Fetch models"
+     using a `FlowRow` (so it sits next to the button, and if the message is too long it wraps to
+     the next line). Removed `fillMaxWidth` from the error pill so it sizes to content and can wrap.
+     Added `import androidx.compose.foundation.layout.FlowRow` + `Arrangement`.
+- Files: `ui/screens/AiProviderScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 05:45] fix: animate fetch error pill (applies to every provider)
+
+- Owner: clicking "Fetch models" → the outlined error pill appeared/disappeared instantly (no
+  transition between idle / fetching / error). Wrapped the error `Box` in `AnimatedVisibility`
+  (`expandVertically + fadeIn` / `shrinkVertically + fadeOut`, tween 160ms) inside `ProviderCard`.
+- **Applies to ALL providers automatically**: the error pill animation lives in the shared
+  `ProviderCard` composable (rendered per provider in a loop), and the earlier expand/contract
+  animation on the provider card + nested `ModelDropdown` also lives in those shared composables —
+  so every provider card already animates; nothing was single-provider. Re-added `fadeIn`/`fadeOut`
+  imports (used by the error pill only).
+- Files: `ui/screens/AiProviderScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 06:00] fix: fetch button crossfade + error pill plain fade (no glitchy slide)
+
+- Owner clarification: the error pill used `expandVertically`/`shrinkVertically` + fade and looked
+  glitchy ("slides in from somewhere"). They want it to simply **fade in/out in place**. Changed the
+  error `AnimatedVisibility` to `enter = fadeIn(160)` / `exit = fadeOut(160)` only.
+- The "Fetch models" ⇄ "Fetching…" label swap was instant (no transaction animation). Wrapped the
+  button's inner content in `AnimatedContent(targetState = isFetching)` with a `fadeIn togetherWith
+  fadeOut` (160ms) crossfade, and while fetching it now shows a small `CircularProgressIndicator`
+  (16dp, NazoOnPrimary) + "Fetching…" that fades in, then fades out back to "Fetch models". So the
+  fetch/fetching transaction animates instead of snapping.
+- Added imports: `AnimatedContent`, `togetherWith`, `material3.CircularProgressIndicator`.
+  `expandVertically`/`shrinkVertically` remain (used by the provider-card + ModelDropdown
+  expand/contract, which the owner is happy with).
+- Files: `ui/screens/AiProviderScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 06:12] fix: fetch error pill line-jump glitch + missing weight import
+
+- The fetch error pill lived inside a `FlowRow`, which re-laid-out the animated child during the
+  fade: it briefly measured the error as "needs next line" then reflowed it up beside the button —
+  an instant snap/glitch. Replaced the `FlowRow` with a plain `Row(verticalAlignment =
+  CenterVertically)`; the error `AnimatedVisibility` now uses `Modifier.weight(1f, fill = false)` so
+  it is always laid out BESIDE the Fetch button (wrapping its own text within that space) and never
+  jumps lines. Removed now-unused `FlowRow` + `Arrangement` imports.
+- Found the file was missing `import androidx.compose.foundation.layout.weight` despite `.weight()`
+  being used in ~6 places (provider card, ModelDropdown, etc.). Adding that simple-name import
+  broke the build (`Cannot access 'val RowColumnParentData?.weight: Float': it is internal in
+  file`) because the name `weight` also resolves to an internal property. Fix: do NOT import it —
+  `weight` is a `RowScope`/`ColumnScope` extension, so it already resolves inside `Row`/`Column`
+  lambdas without an import (exactly how the existing `.weight()` usages compile). Removed the
+  import; the new `AnimatedVisibility` `weight` usage resolves the same way.
+- Files: `ui/screens/AiProviderScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 07:00] feat: OpenRouter model fetching + search/filter in model dropdown
+
+- Added a shared `ModelInfo(id, name, description, isFree)` data class (`data/remote/ProviderConfig.kt`).
+  Previously models were just `List<String>` ids; now they carry display name + OpenRouter pricing
+  metadata so the UI can show names and surface free models.
+- `ProviderEndpoint.modelsUrl` is now provider-aware: Gemini keeps key-in-URL; OPENAI-kind returns
+  `https://$host/v1/models`, except `openrouter` -> `https://openrouter.ai/api/v1/models`; Anthropic
+  stays null (no public list). Added `ProviderEndpoint.parseModels(raw)` that handles each provider's
+  shape: Gemini `models[]` (filter generateContent), OpenAI `data[]` with `id`, and OpenRouter's
+  `data[]` with `id/name/description/pricing` (pricing prompt+completion == "0" => `isFree`).
+- `ApiClient.fetchModels` now returns `Result<List<ModelInfo>>`, always sends `endpoint.headers(apiKey)`
+  (so Bearer auth works for OpenAI-style providers), and delegates parsing to `parseModels`.
+- `ApiKeyStore.getModels/saveModels` now persist `List<ModelInfo>` as a JSON array; legacy `|`-separated
+  id lists are still parsed (mapped to `ModelInfo(id, id)`) for backwards compatibility.
+- `AiProviderScreen.ModelDropdown` gained a **filter (search) icon on the LEFT** of the trigger pill.
+  Tapping it toggles an inline search field; typing filters models live by id/name/description
+  (case-insensitive). The special query `free` shows only `isFree` models (OpenRouter). Each row shows
+  the model name (falls back to id) plus a green "Free" badge when free, and a 2-line description.
+  Selecting resets search/expanded. The LoadingScreen `ModelPicker`/`ErrorContent` were updated to the
+  same `List<ModelInfo>` type (show name, select by id).
+- Generation for OpenRouter works through the existing OPENAI-kind `requestBody` + Bearer headers
+  (model id stored verbatim, e.g. "openai/gpt-4o-mini"). Per-model `response_format` quirks are a
+  follow-up, not done here.
+- NOTE: owner mentioned a follow-up provider "OpenCode" after OpenRouter — not implemented yet.
+- Files: `data/remote/ProviderConfig.kt`, `data/remote/ApiClient.kt`, `data/settings/ApiKeyStore.kt`,
+  `ui/screens/AiProviderScreen.kt`, `ui/screens/LoadingScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 07:40] feat: home provider-switch + remove DeepSeek/Mistral placeholders
+
+- **Provider-switch on Home:** the active-API-key badge (`HomeScreen.ApiKeyBadge`) is now clickable
+  (shows a ▾ caret) when not offline. Tapping it opens a bottom-sheet popup listing every provider
+  that has BOTH an API key and a selected model (i.e. ready to generate). Picking one makes it the
+  active provider; there's also a "Manage keys in settings" / "Set up API keys" action that jumps to
+  the AI & Model Configuration screen. Offline mode keeps the badge non-interactive.
+- Added persistence for the user's choice in `ApiKeyStore`: `getSelectedProvider()` (validated
+  against still-configured providers), `saveSelectedProvider(id)`, and `getConfiguredProviders()`
+  (ids with key+model set). `NazoApp` now holds `selectedProvider` state; generation
+  (`startQuiz`) uses `getSelectedProvider() ?: getActiveProvider()`, and the Home pill + popup are
+  driven by `configuredProviders`/`onSelectProvider`/`onManageClick`.
+- **Removed the placeholder providers DeepSeek and Mistral** from everywhere they were stubbed:
+  `ProviderConfig.PROVIDERS`, `ApiKeyStore.PROVIDER_ORDER`, `AiProviderScreen.defaultProviders()`,
+  and `HomeScreen.PROVIDER_DISPLAY`. Remaining providers: Gemini, OpenAI ChatGPT, OpenRouter,
+  Anthropic Claude. (Kept Claude even though its model-list can't be fetched — it has a working
+  request body + headers; revisit if desired.)
+- Files: `data/settings/ApiKeyStore.kt`, `data/remote/ProviderConfig.kt`,
+  `ui/screens/AiProviderScreen.kt`, `ui/screens/HomeScreen.kt`, `ui/NazoApp.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 08:10] feat: per-provider "?" help popover + drop ChatGPT/Claude placeholders
+
+- **Removed ChatGPT (OpenAI) and Claude (Anthropic) as providers** — owner can't afford / can't test
+  those API keys, so they were unimplemented placeholders. Removed from `ProviderConfig.PROVIDERS`,
+  `ApiKeyStore.PROVIDER_ORDER`, `AiProviderScreen.defaultProviders()`, and `HomeScreen.PROVIDER_DISPLAY`.
+  Remaining providers: **Gemini** and **OpenRouter** only. (`ProviderKind.ANTHROPIC` enum value is now
+  unused but kept to avoid churning the exhaustive `when` branches in ProviderConfig.)
+- **Per-provider "?" help button:** each `ProviderCard` header now has an `Icons.Filled.Info` button
+  at the top-right (the expand arrow toggles the card; the "?" toggles help — separated so taps don't
+  collide). Tapping it shows a small help card with step-by-step setup instructions for that provider
+  (`providerSetupHelp(id)`: Gemini uses Google AI Studio; OpenRouter uses openrouter.ai + "free" search).
+  NOTE: implemented as a right-aligned inline help card inside the card for this first pass (no
+  floating popover yet) — owner said we'll refine the look after building.
+- Files: `data/remote/ProviderConfig.kt`, `data/settings/ApiKeyStore.kt`,
+  `ui/screens/AiProviderScreen.kt`, `ui/screens/HomeScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 09:15] perf + animation + layout tweaks (3 requests)
+
+- **Home provider-switch now animates:** the previously-instant `if (showProviderSheet)` overlay is now
+  wrapped in nested `AnimatedVisibility` — the scrim fades (`fadeIn`/`fadeOut`) and the panel slides
+  up from the bottom (`slideInVertically`/`slideOutVertically`). Tapping outside (scrim) or an item
+  sets `showProviderSheet=false`, which plays the exit animation. No API/behavior change.
+- **Model dropdown search icon moved to the RIGHT:** in `ModelDropdown` (AiProviderScreen) the
+  filter/search `IconButton` was on the left; reordered so the trigger pill comes first (weight 1f)
+  and the search icon sits on the right. Toggle/search behavior unchanged.
+- **OpenRouter scroll lag fixed:** the model list in `ModelDropdown` was a non-lazy
+  `Column(verticalScroll)` that composed EVERY model at once (hundreds for OpenRouter) → scroll jank.
+  Replaced with a `LazyColumn` + `itemsIndexed` so only visible rows are composed. Look, colors,
+  Free badge, 2-line description, selected check, dividers — all identical. Added `key = {_, m -> m.id}`.
+- Files: `ui/screens/HomeScreen.kt`, `ui/screens/AiProviderScreen.kt`, `handoff.md`.
+
+---
+
+## [2026-08-29 09:45] home sheet slide + provider help popover float + "i" before arrow
+
+- **Home provider sheet now slides in AND out (bug fix):** previously the dim overlay wrapped the
+  panel and faded, which masked the panel's slide so entry looked like a fade. Reworked into TWO
+  sibling `AnimatedVisibility`s: the scrim `fadeIn`/`fadeOut`, and the panel `slideInVertically`
+  /`slideOutVertically` (from/to the bottom). Tapping outside or an item dismisses and plays the
+  slide-out. No API/behavior change otherwise.
+- **ProviderCard help popover floats (bug fix):** the "?" info box was an inline child of the card
+  body, so it forced the whole card to expand to fit it (glitchy). Now the root `Box` no longer clips;
+  `clip`/`background` moved to the inner content `Column`, and the help is a `matchParentSize()`
+  overlay layer with the box `align(Alignment.TopEnd)` + `offset(y=52.dp, x=-12.dp)` so it floats
+  OVER the card (does not expand it and never gets clipped). Tap anywhere on the overlay/popover
+  dismisses. `matchParentSize` + `offset` imports added.
+- **"i" moved before the expand arrow (improvement):** in `ProviderCard` header the info `IconButton`
+  now sits to the LEFT of the expand/collapse `IconButton`.
+- Files: `ui/screens/HomeScreen.kt`, `ui/screens/AiProviderScreen.kt`, `handoff.md`.

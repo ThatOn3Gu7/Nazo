@@ -5,6 +5,7 @@ import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,43 +18,74 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.data.remote.ApiClient
+import quiz.thaton3app.nazo.data.remote.ModelInfo
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoErrorBg
@@ -81,7 +113,7 @@ private data class ProviderUiState(
     val status: KeyStatus,
     val apiKey: String = "",
     val model: String = "",
-    val models: List<String> = emptyList(),
+    val models: List<ModelInfo> = emptyList(),
 )
 
 // Clean initial empty state for all providers
@@ -91,42 +123,12 @@ private fun defaultProviders() = listOf(
         name = "Google Gemini",
         avatarLetter = "G",
         status = KeyStatus.NOT_CONFIGURED,
-        models = listOf("gemini-2.5-flash", "gemini-1.5-pro"),
-    ),
-    ProviderUiState(
-        id = "claude",
-        name = "Anthropic Claude",
-        avatarLetter = "A",
-        status = KeyStatus.NOT_CONFIGURED,
-        models = listOf("claude-3-5-sonnet", "claude-3-haiku"),
-    ),
-    ProviderUiState(
-        id = "chatgpt",
-        name = "OpenAI ChatGPT",
-        avatarLetter = "O",
-        status = KeyStatus.NOT_CONFIGURED,
-        models = listOf("gpt-4o", "gpt-4o-mini"),
     ),
     ProviderUiState(
         id = "openrouter",
         name = "OpenRouter",
         avatarLetter = "R",
         status = KeyStatus.NOT_CONFIGURED,
-        models = listOf("anthropic/claude-3.5-sonnet", "deepseek/deepseek-chat"),
-    ),
-    ProviderUiState(
-        id = "deepseek",
-        name = "DeepSeek",
-        avatarLetter = "D",
-        status = KeyStatus.NOT_CONFIGURED,
-        models = listOf("deepseek-chat", "deepseek-coder"),
-    ),
-    ProviderUiState(
-        id = "mistral",
-        name = "Mistral AI",
-        avatarLetter = "M",
-        status = KeyStatus.NOT_CONFIGURED,
-        models = listOf("mistral-large-latest", "mistral-small-latest"),
     ),
 )
 
@@ -138,7 +140,7 @@ private fun initialProviders(store: ApiKeyStore): List<ProviderUiState> =
         val storedKey = store.getKey(p.id).orEmpty()
         val storedModels = store.getModels(p.id)
         val models = if (storedModels.isNotEmpty()) storedModels else p.models
-        val storedModel = store.getModel(p.id) ?: models.firstOrNull().orEmpty()
+        val storedModel = store.getModel(p.id) ?: models.firstOrNull()?.id.orEmpty()
         val status = if (storedKey.isNotBlank()) KeyStatus.VALID else KeyStatus.NOT_CONFIGURED
         p.copy(apiKey = storedKey, model = storedModel, models = models, status = status)
     }
@@ -174,8 +176,8 @@ fun AiProviderScreen(
                     providers = providers.toMutableList().also { list ->
                         // Keep the user's current selection if it's still in the new list;
                         // only fall back to the first model when it isn't (or the list is empty).
-                        val next = if (provider.model in models) provider.model
-                        else models.firstOrNull() ?: provider.model
+                        val next = if (models.any { it.id == provider.model }) provider.model
+                        else models.firstOrNull()?.id ?: provider.model
                         list[index] = list[index].copy(models = models, model = next)
                     }
                     apiKeyStore.saveModels(provider.id, models)
@@ -268,90 +270,236 @@ private fun ProviderCard(
     isFetching: Boolean = false,
     fetchError: String? = null,
 ) {
-    Column(
+    var showHelp by remember { mutableStateOf(false) }
+    val alphaAnim = remember { Animatable(0f) }
+    var popupMounted by remember { mutableStateOf(false) }
+    
+    LaunchedEffect(showHelp) {
+        if (showHelp) {
+            popupMounted = true
+            alphaAnim.animateTo(1f, tween(160))
+        } else {
+            alphaAnim.animateTo(0f, tween(160))
+            popupMounted = false
+        }
+    }
+    
+    val density = LocalDensity.current
+    
+    Box(
         modifier = Modifier
+            .fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(NazoSurface)
-    ) {
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(20.dp)),
+        ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
+                // Moved clickable here so the ripple fills the whole header and is clipped by the parent's RoundedCornerShape
                 .clickable(onClick = onToggleExpand)
                 .padding(16.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(NazoPillUnselected),
-                contentAlignment = Alignment.Center,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f),
             ) {
-                Text(
-                    text = provider.avatarLetter,
-                    color = NazoTextPrimary,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-            }
-            Spacer(Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = provider.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = NazoTextPrimary,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.height(6.dp))
-                StatusBadge(provider.status)
-            }
-            Icon(
-                imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                contentDescription = null,
-                tint = NazoTextSecondary,
-            )
-        }
-        if (expanded) {
-            HorizontalDivider(color = NazoBackground, thickness = 1.dp)
-            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                Text("Model", style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
-                Spacer(Modifier.height(8.dp))
-                ModelDropdown(models = provider.models, selected = provider.model, onSelect = onModelChange)
-                Spacer(Modifier.height(16.dp))
-                Text("API Key", style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
-                Spacer(Modifier.height(8.dp))
-                ApiKeyField(value = provider.apiKey, onValueChange = onApiKeyChange)
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Lock, contentDescription = null, tint = NazoTextSecondary, modifier = Modifier.size(12.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Stored Securely on device", style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(NazoPillUnselected),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = provider.avatarLetter,
+                        color = NazoTextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
                 }
-                Spacer(Modifier.height(20.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .height(40.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(NazoPrimary)
-                            .clickable(enabled = !isFetching, onClick = onFetchModels)
-                            .padding(horizontal = 16.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = if (isFetching) "Fetching…" else "Fetch models",
-                            color = NazoOnPrimary,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
+                Spacer(Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = provider.name,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = NazoTextPrimary,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    StatusBadge(provider.status)
+                }
+            }
+            IconButton(
+                onClick = { showHelp = !showHelp },
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Info,
+                    contentDescription = "How to set up this provider",
+                    tint = NazoTextSecondary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Spacer(Modifier.width(4.dp))
+            val arrowRotation by animateFloatAsState(targetValue = if (expanded) 180f else 0f, label = "arrowRotation")
+            IconButton(
+                onClick = onToggleExpand,
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = NazoTextSecondary,
+                    modifier = Modifier.size(20.dp).rotate(arrowRotation),
+                )
+            }
+        }
+        AnimatedVisibility(
+            visible = expanded,
+            // Combined vertical expansion with a subtle fade for a smoother feeling
+            enter = expandVertically(animationSpec = tween(220)) + fadeIn(animationSpec = tween(220)),
+            exit = shrinkVertically(animationSpec = tween(220)) + fadeOut(animationSpec = tween(220)),
+        ) {
+            Column {
+                HorizontalDivider(color = NazoBackground, thickness = 1.dp)
+                Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                    Text("Model", style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
+                    Spacer(Modifier.height(8.dp))
+                    ModelDropdown(models = provider.models, selected = provider.model, onSelect = onModelChange)
+                    Spacer(Modifier.height(16.dp))
+                    Text("API Key", style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
+                    Spacer(Modifier.height(8.dp))
+                    ApiKeyField(value = provider.apiKey, onValueChange = onApiKeyChange)
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Lock, contentDescription = null, tint = NazoTextSecondary, modifier = Modifier.size(12.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Stored Securely on device", style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
                     }
-                    if (fetchError != null) {
-                        Spacer(Modifier.width(12.dp))
+                    Spacer(Modifier.height(20.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .height(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(NazoPrimary)
+                                .clickable(enabled = !isFetching, onClick = onFetchModels)
+                                .padding(horizontal = 16.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            AnimatedContent(
+                                targetState = isFetching,
+                                transitionSpec = {
+                                    fadeIn(animationSpec = tween(160)) togetherWith
+                                        fadeOut(animationSpec = tween(160))
+                                },
+                                label = "fetchLabel",
+                            ) { fetching ->
+                                if (fetching) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CircularProgressIndicator(
+                                            color = NazoOnPrimary,
+                                            strokeWidth = 2.dp,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            text = "Fetching…",
+                                            color = NazoOnPrimary,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                    }
+                                } else {
+                                    Text(
+                                        text = "Fetch models",
+                                        color = NazoOnPrimary,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                            }
+                        }
+                        AnimatedVisibility(
+                            visible = fetchError != null,
+                            enter = fadeIn(animationSpec = tween(160)),
+                            exit = fadeOut(animationSpec = tween(160)),
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .padding(start = 12.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(NazoErrorBg)
+                                    .border(1.dp, NazoError, RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                            ) {
+                                Text(
+                                    text = fetchError ?: "",
+                                    color = NazoError,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        }
+
+        if (popupMounted) {
+            Popup(
+                popupPositionProvider = remember(density) {
+                    object : PopupPositionProvider {
+                        override fun calculatePosition(
+                            anchorBounds: IntRect,
+                            windowSize: IntSize,
+                            layoutDirection: LayoutDirection,
+                            popupContentSize: IntSize,
+                        ): IntOffset {
+                            val margin = with(density) { 12.dp.roundToPx() }
+                            val drop = with(density) { 52.dp.roundToPx() }
+                            val x = (anchorBounds.right - popupContentSize.width - margin)
+                                .coerceAtLeast(0)
+                            val y = anchorBounds.top + drop
+                            return IntOffset(x, y)
+                        }
+                    }
+                },
+                onDismissRequest = { showHelp = false },
+            ) {
+                Box(
+                    modifier = Modifier
+                        .alpha(alphaAnim.value)
+                        .width(250.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(NazoSurface)
+                        .border(1.dp, NazoPrimary.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                        .clickable { showHelp = false }
+                        .padding(14.dp),
+                ) {
+                    Column {
                         Text(
-                            text = fetchError ?: "",
-                            color = NazoError,
+                            text = "Don't know where to get your API key?",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = NazoTextPrimary,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = providerSetupHelp(provider.id),
                             style = MaterialTheme.typography.bodySmall,
+                            color = NazoTextSecondary,
                         )
                     }
                 }
@@ -362,11 +510,21 @@ private fun ProviderCard(
 
 @Composable
 private fun StatusBadge(status: KeyStatus) {
-    val (bg, fg) = when (status) {
-        KeyStatus.VALID -> NazoSuccessBg to NazoSuccess
-        KeyStatus.NOT_CONFIGURED -> NazoPillUnselected to NazoTextPrimary
-        KeyStatus.ERROR -> NazoErrorBg to NazoError
+    val targetBg = when (status) {
+        KeyStatus.VALID -> NazoSuccessBg
+        KeyStatus.NOT_CONFIGURED -> NazoPillUnselected
+        KeyStatus.ERROR -> NazoErrorBg
     }
+    val targetFg = when (status) {
+        KeyStatus.VALID -> NazoSuccess
+        KeyStatus.NOT_CONFIGURED -> NazoTextPrimary
+        KeyStatus.ERROR -> NazoError
+    }
+    
+    // Animate color transitions smoothly when API key is entered
+    val bg by animateColorAsState(targetValue = targetBg, label = "statusBg")
+    val fg by animateColorAsState(targetValue = targetFg, label = "statusFg")
+    
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -380,37 +538,213 @@ private fun StatusBadge(status: KeyStatus) {
     }
 }
 
+private fun providerSetupHelp(id: String): String = when (id) {
+    "gemini" -> "1) Open Google AI Studio (aistudio.google.com) and create a free API key.\n" +
+        "2) Paste it into the API Key field below.\n" +
+        "3) Tap \"Fetch models\" to load the Gemini models you can use, pick one, then Save."
+    "openrouter" -> "1) Sign up at openrouter.ai and create an API key on the Keys page.\n" +
+        "2) Paste it below and tap \"Fetch models\".\n" +
+        "3) Tap the search icon and type \"free\" to list the \$0 models, pick one, then Save."
+    else -> "Enter your API key for this provider, tap Fetch models, choose a model, then Save."
+}
+
 @Composable
-private fun ModelDropdown(models: List<String>, selected: String, onSelect: (String) -> Unit) {
+private fun ModelDropdown(models: List<ModelInfo>, selected: String, onSelect: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    Box {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(NazoSurfaceVariant)
-                .clickable { expanded = true }
-                .padding(horizontal = 14.dp, vertical = 14.dp),
-        ) {
-            Text(
-                text = selected.ifEmpty { models.firstOrNull() ?: "Select a model" },
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (selected.isEmpty()) NazoTextPlaceholder else NazoTextPrimary,
-                modifier = Modifier.weight(1f),
-            )
-            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = NazoTextSecondary, modifier = Modifier.size(20.dp))
+    var searching by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    
+    val focusRequester = remember { FocusRequester() }
+
+    // Auto-focus the search field when search mode opens
+    LaunchedEffect(searching) {
+        if (searching) {
+            focusRequester.requestFocus()
         }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.heightIn(min = 50.dp, max = 240.dp),
-        ) {
-            models.forEach { m ->
-                DropdownMenuItem(
-                    text = { Text(m, color = NazoTextPrimary) },
-                    onClick = { onSelect(m); expanded = false },
+    }
+
+    val filtered = remember(models, query) {
+        if (query.isBlank()) {
+            models
+        } else if (query.trim().lowercase() == "free") {
+            models.filter { it.isFree }
+        } else {
+            val q = query.lowercase()
+            models.filter {
+                it.id.lowercase().contains(q) ||
+                    it.name.lowercase().contains(q) ||
+                    it.description.lowercase().contains(q)
+            }
+        }
+    }
+
+    val selectedInfo = models.firstOrNull { it.id == selected }
+    val triggerText = if (selected.isNotBlank()) {
+        selectedInfo?.name?.ifBlank { selected } ?: selected
+    } else {
+        models.firstOrNull()?.id ?: "Select a model"
+    }
+
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Trigger "pill" — tapping expands the list inline (no system/menu overlay).
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(NazoSurfaceVariant)
+                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
+                    .clickable { if (!searching) expanded = !expanded }
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+            ) {
+                if (searching) {
+                    BasicTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = NazoTextPrimary),
+                        cursorBrush = SolidColor(NazoPrimary),
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequester),
+                        decorationBox = { innerTextField ->
+                            Box {
+                                if (query.isEmpty()) {
+                                    Text(
+                                        text = "Search models…",
+                                        color = NazoTextPlaceholder,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        },
+                    )
+                } else {
+                    Text(
+                        text = triggerText,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (selected.isEmpty()) NazoTextPlaceholder else NazoTextPrimary,
+                        modifier = Modifier.weight(1f),
+                    )
+                    val rotation by animateFloatAsState(targetValue = if (expanded) 180f else 0f, label = "dropdownArrowRotation")
+                    Icon(
+                        Icons.Filled.KeyboardArrowDown,
+                        contentDescription = null,
+                        tint = NazoTextSecondary,
+                        modifier = Modifier.size(20.dp).rotate(rotation),
+                    )
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            // Filter icon on the RIGHT — toggles an inline keyword search (e.g. "free" -> free models).
+            IconButton(
+                onClick = {
+                    searching = !searching
+                    if (searching) {
+                        expanded = true
+                    } else {
+                        query = ""
+                        expanded = false
+                    }
+                },
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    if (searching) Icons.Filled.Close else Icons.Filled.Search,
+                    contentDescription = if (searching) "Close search" else "Search models",
+                    tint = if (searching) NazoPrimary else NazoTextSecondary,
+                    modifier = Modifier.size(20.dp),
                 )
+            }
+        }
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(200)),
+            exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(200)),
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 240.dp)
+                    .padding(top = 8.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(NazoSurface)
+                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.2f), RoundedCornerShape(14.dp)),
+            ) {
+                if (filtered.isEmpty()) {
+                    item {
+                        Text(
+                            text = "No models match.",
+                            color = NazoTextSecondary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+                        )
+                    }
+                } else {
+                    itemsIndexed(filtered, key = { _, m -> m.id }) { i, m ->
+                        val isSel = m.id == selected
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onSelect(m.id)
+                                    expanded = false
+                                    searching = false
+                                    query = ""
+                                }
+                                .padding(horizontal = 14.dp, vertical = 13.dp),
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = m.name.ifBlank { m.id },
+                                        color = if (isSel) NazoPrimary else NazoTextPrimary,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = if (isSel) FontWeight.SemiBold else FontWeight.Normal,
+                                    )
+                                    if (m.isFree) {
+                                        Spacer(Modifier.width(8.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(50))
+                                                .background(NazoSuccessBg)
+                                                .padding(horizontal = 8.dp, vertical = 2.dp),
+                                        ) {
+                                            Text(
+                                                text = "Free",
+                                                color = NazoSuccess,
+                                                style = MaterialTheme.typography.bodySmall,
+                                            )
+                                        }
+                                    }
+                                }
+                                if (m.description.isNotBlank()) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = m.description,
+                                        color = NazoTextSecondary,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 2,
+                                    )
+                                }
+                            }
+                            if (isSel) {
+                                Icon(
+                                    Icons.Filled.Check,
+                                    contentDescription = null,
+                                    tint = NazoPrimary,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                        if (i != filtered.lastIndex) {
+                            HorizontalDivider(color = NazoTextSecondary.copy(alpha = 0.12f))
+                        }
+                    }
+                }
             }
         }
     }
@@ -434,6 +768,7 @@ private fun ApiKeyField(value: String, onValueChange: (String) -> Unit) {
             onValueChange = onValueChange,
             visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
             textStyle = MaterialTheme.typography.bodyLarge.copy(color = NazoTextPrimary),
+            cursorBrush = SolidColor(NazoPrimary),
             singleLine = true,
             modifier = Modifier.weight(1f),
         )
@@ -467,3 +802,4 @@ private fun SaveButton(onClick: () -> Unit) {
         )
     }
 }
+

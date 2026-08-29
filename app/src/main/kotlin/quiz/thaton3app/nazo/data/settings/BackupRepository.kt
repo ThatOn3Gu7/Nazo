@@ -194,7 +194,10 @@ object BackupRepository {
                     "int" -> edit.putInt(k, v as Int)
                     "long" -> edit.putLong(k, v as Long)
                     "float" -> edit.putFloat(k, v as Float)
-                    "string_set" -> edit.putStringSet(k, v as Set<String>)
+                    "string_set" -> edit.putStringSet(
+                        k,
+                        (v as? Set<*>)?.mapNotNull { it as? String }?.toSet().orEmpty()
+                    )
                 }
             }
             edit.apply()

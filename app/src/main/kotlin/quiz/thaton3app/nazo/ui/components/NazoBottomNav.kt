@@ -1,6 +1,7 @@
 package quiz.thaton3app.nazo.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -55,6 +56,7 @@ fun NazoBottomNav(
                 .padding(bottom = 12.dp)
                 .shadow(elevation = 8.dp, shape = RoundedCornerShape(26.dp), clip = false)
                 .background(NazoNavBar.copy(alpha = 0.92f), RoundedCornerShape(26.dp))
+                .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(26.dp))
                 .padding(vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {

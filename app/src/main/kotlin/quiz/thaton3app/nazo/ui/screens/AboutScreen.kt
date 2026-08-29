@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import androidx.core.content.pm.PackageInfoCompat
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,6 +24,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -68,6 +70,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -155,11 +158,7 @@ fun AboutScreen(
     val versionName = remember(packageInfo) { packageInfo?.versionName ?: "3.0" }
     val versionCodeStr = remember(packageInfo) {
         packageInfo?.let { info ->
-            if (Build.VERSION.SDK_INT >= 28) {
-                info.longVersionCode.toString()
-            } else {
-                info.versionCode.toString()
-            }
+            PackageInfoCompat.getLongVersionCode(info).toString()
         } ?: "1"
     }
     val installDateStr = remember(packageInfo) {
@@ -353,6 +352,7 @@ fun AboutScreen(
                     "AndroidX Lifecycle — Apache-2.0",
                     "AndroidX WorkManager — Apache-2.0",
                     "Material Icons Extended — Apache-2.0",
+                    "Coil (image loading) — Apache-2.0",
                     "Kotlin stdlib — Apache-2.0",
                     "Local data stored via Android SharedPreferences (framework)",
                 )
@@ -615,7 +615,7 @@ private fun UpdateMenuContent(
                 readOnly = true,
                 label = { Text("Auto-check frequency") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showFrequencyDropdown) },
-                modifier = Modifier.menuAnchor().fillMaxWidth(),
+                modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = NazoTextPrimary,
                     unfocusedTextColor = NazoTextPrimary,
@@ -707,11 +707,7 @@ private fun sendFeedback(context: android.content.Context) {
         context.packageManager.getPackageInfo(context.packageName, 0)
     }.getOrNull()
     val versionName = pkgInfo?.versionName ?: "?"
-    val versionCode = if (Build.VERSION.SDK_INT >= 28) {
-        pkgInfo?.longVersionCode
-    } else {
-        pkgInfo?.versionCode?.toLong()
-    }
+    val versionCode = pkgInfo?.let { PackageInfoCompat.getLongVersionCode(it) }
 
     val info = buildString {
         appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
@@ -763,6 +759,7 @@ private fun HeroCard(versionName: String, versionCode: String) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
             .background(NazoSurface)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
             .padding(horizontal = 24.dp, vertical = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -795,6 +792,7 @@ private fun HeroCard(versionName: String, versionCode: String) {
             modifier = Modifier
                 .clip(RoundedCornerShape(50))
                 .background(NazoSurfaceVariant)
+                .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(50))
                 .padding(horizontal = 12.dp, vertical = 4.dp)
         ) {
             Text(
@@ -832,7 +830,8 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(NazoSurface),
+            .background(NazoSurface)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(20.dp)),
         content = content,
     )
 }
@@ -920,7 +919,11 @@ private fun AboutDevDialog(onDismiss: () -> Unit) {
         icon = { Icon(Icons.Filled.PersonOutline, contentDescription = null, tint = NazoPrimary) },
         title = { Text("About the Developer", color = NazoTextPrimary) },
         text = {
-            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp),
+            ) {
                 item {
                     Text("The Story", style = MaterialTheme.typography.titleMedium, color = NazoPrimary)
                     Spacer(Modifier.height(4.dp))
@@ -975,6 +978,23 @@ private fun AboutDevDialog(onDismiss: () -> Unit) {
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "Nazo is built with Jetpack Compose and Kotlin, with a local question bank and an optional AI provider for fresh questions. Thanks to the open-source community that makes projects like this possible.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = NazoTextSecondary,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Third-party services",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = NazoPrimary,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Optional AI question generation is powered by third-party providers — " +
+                            "Google Gemini, OpenAI (ChatGPT), Anthropic (Claude), OpenRouter, " +
+                            "DeepSeek, and Mistral AI. Remote images (e.g. profile pictures) are " +
+                            "loaded with Coil. Update checks use the GitHub API, and network " +
+                            "connectivity is verified via Google's service. These services are not " +
+                            "affiliated with or endorsed by Nazo.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = NazoTextSecondary,
                     )

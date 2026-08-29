@@ -106,7 +106,7 @@ fun ProfileScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Transparent
                 )
             )
@@ -284,7 +284,7 @@ fun ProfileScreen(
                         color = NazoTextSecondary
                     )
                     Spacer(Modifier.height(16.dp))
-                    ScrollableTabRow(
+                    PrimaryScrollableTabRow(
                         selectedTabIndex = safeTab,
                         containerColor = Color.Transparent,
                         edgePadding = 8.dp,
