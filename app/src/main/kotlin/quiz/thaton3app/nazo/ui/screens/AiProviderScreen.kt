@@ -335,7 +335,7 @@ private fun ProviderCard(
                     }
                     Spacer(Modifier.height(20.dp))
                     FlowRow(
-                        verticalAlignment = Alignment.CenterVertically,
+                        crossAxisAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
