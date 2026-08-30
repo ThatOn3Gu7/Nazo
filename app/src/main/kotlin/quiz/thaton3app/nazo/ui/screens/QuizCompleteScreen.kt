@@ -272,7 +272,8 @@ private fun ScoreCardContent(
                         colors = listOf(
                             NazoPrimary.copy(alpha = 0.4f),
                             NazoPrimary,
-                            NazoPrimary.copy(alpha = 0.8f)
+                            NazoPrimary.copy(alpha = 0.8f),
+                            NazoPrimary.copy(alpha = 0.4f) // FIXED: Re-added the start color at the end to make the gradient loop seamlessly at 3 o'clock!
                         )
                     ),
                     startAngle = -90f,
@@ -416,9 +417,12 @@ private fun ConfettiBurst(modifier: Modifier = Modifier) {
         }
     }
 
-    frame.value // observe so ConfettiBurst recomposes every frame and the Canvas redraws
-
     Canvas(modifier = modifier) {
+        // FIXED: By observing `frame.value` INSIDE the draw phase, Compose will correctly invalidate 
+        // the draw layer and render the explosion instead of a static un-updated dot.
+        @Suppress("UNUSED_VARIABLE")
+        val currentFrame = frame.value 
+        
         val centerX = size.width / 2
         val centerY = size.height / 3 // Erupt from upper middle
 
