@@ -25,6 +25,21 @@ android {
         buildConfig = true
     }
 
+    // Size pipeline for RELEASE builds only — the debug build is untouched.
+    // Behavior-neutral for this app: no reflection, no JNI, no dynamic
+    // resource lookups (verified by grep), so R8 full mode + resource
+    // shrinking only rename/tree-shape and strip unused drawables.
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
