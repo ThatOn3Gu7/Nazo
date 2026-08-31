@@ -2004,3 +2004,15 @@ covered by `BUG_AUDIT.md` + this log).
   tracking in NazoApp: cancelled on quit and before each new round, and
   both completion callbacks are guarded by `job.isActive`. Quiz mode's
   equivalent (also uncancelled) was left untouched — golden.
+
+## [2026-08-31 14:30] fix: particles hidden on the quiz loading screen
+
+- Owner spotted the floating-particle background missing on the QUIZ
+  loading screen (all other screens show it). Root cause: the app root
+  paints NazoBackground + FloatingParticlesBackground behind AnimatedContent
+  and screens render transparent on top — but LoadingScreen was the one
+  screen painting its own full-screen opaque .background(NazoBackground),
+  covering the shared layer. Fix: removed that modifier (and the now-unused
+  import); the base color comes from the app root anyway. No other screen
+  has this (grep confirms). AboutScreen's other NazoBackground hit is a
+  40dp icon chip, unrelated.

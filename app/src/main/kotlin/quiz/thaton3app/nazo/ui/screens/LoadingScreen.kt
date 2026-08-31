@@ -50,7 +50,6 @@ import androidx.compose.ui.unit.dp
 import quiz.thaton3app.nazo.ui.components.WavySpinner
 import quiz.thaton3app.nazo.ui.theme.NazoSurface
 import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
-import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
@@ -81,10 +80,12 @@ fun LoadingScreen(
     currentModel: String = "",
     onChangeModel: (String) -> Unit = {},
 ) {
+    // No background of our own here: the app root always paints NazoBackground
+    // plus the floating particles behind every screen, and screens render
+    // transparent on top — an opaque fill would hide the particles.
     Box(
         modifier = Modifier
-            .fillMaxSize()
-            .background(NazoBackground),
+            .fillMaxSize(),
     ) {
         Column(
             modifier = Modifier
