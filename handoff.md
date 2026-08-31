@@ -2612,3 +2612,30 @@ covered by `BUG_AUDIT.md` + this log).
 - Files: sound/Sounds.kt (new), ActiveQuizScreen.kt, GuessingPlayScreen.kt,
   QuizCompleteScreen.kt, GuessingResultsScreen.kt, records/Records.kt,
   SettingsScreen.kt, NazoApp.kt, BackupRepository.kt, handoff.md.
+
+## [2026-09-01 03:20] fix + audit: offline-quiz difficulty bug; full-app deep dive
+
+- BUG FIX (found in final audit): startQuiz's offline-mode early-return
+  skipped `quizDifficulty = difficulty` and `quizStartedAt = now`. Offline
+  quizzes therefore ran with the PREVIOUS game's difficulty — wrong
+  seconds-per-question, wrong hint type (50/50 vs letter), stats + personal
+  records filed under the wrong difficulty (even "Daily"), and a stale
+  elapsed time on the results screen. Both assignments now happen before
+  the offline branch. (runLocal's other caller, Loading→"Use local", was
+  always fine — startQuiz had already set both.)
+- Audit results recorded in the session report to the owner. Key open
+  opportunities (NOT implemented, awaiting owner pick):
+  1. FloatingParticlesBackground allocates ~20 objects/frame (Path +
+     cornerPathEffect + Stroke per particle, 7 particles) at 60fps behind
+     EVERY screen incl. gameplay → cache unit paths/effects, transform via
+     canvas — behavior-identical GC-churn fix.
+  2. Daily/streak epoch-day math uses UTC → daily flips at 05:45 local in
+     Nepal. Fixing daily alone would de-sync it from the streak day; fix
+     both together or not at all (schema-touching, owner call).
+  3. Feature gaps vs competitors (AniQuiz/AnimeQuiz.net/Trivia Star):
+     daily reminder notification (POST_NOTIFICATIONS + WorkManager already
+     in app), review-mistakes practice deck, endless/survival mode,
+     true-false round variety, app shortcuts (long-press icon → Daily),
+     home-screen widget, share cards for records/achievements. Multiplayer/
+     leaderboards/accounts remain OUT by owner decision.
+- Files: ui/NazoApp.kt, handoff.md.

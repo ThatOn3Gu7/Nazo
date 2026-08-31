@@ -310,14 +310,17 @@ fun NazoApp() {
     fun startQuiz(topic: String, difficulty: String, count: Int) {
         themePrefs.lastMode = NazoMode.QUIZ.name
         isDailyQuiz = false
+        // Set BEFORE the offline early-return: this branch used to skip both
+        // assignments, so offline quizzes inherited the PREVIOUS game's
+        // difficulty (wrong timer/hints/stats/records) and a stale start time.
+        quizDifficulty = difficulty
+        quizStartedAt = System.currentTimeMillis()
         // Offline mode: skip any API attempt and go straight to the local bank
         // (stats still record normally in `answer`).
         if (isOfflineMode) {
             runLocal(topic, difficulty, count)
             return
         }
-        quizDifficulty = difficulty
-        quizStartedAt = System.currentTimeMillis()
         val provider = apiKeyStore.getSelectedProvider() ?: apiKeyStore.getActiveProvider()
         val key = provider?.let { apiKeyStore.getKey(it) }
         val model = provider?.let { apiKeyStore.getModel(it) }.orEmpty()
