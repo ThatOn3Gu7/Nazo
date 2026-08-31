@@ -125,11 +125,11 @@ private fun sampleParticles(context: Context): List<IntroParticle> = try {
 /**
  * Branded cold-start intro, v2: the 謎 assembles itself out of ~700 particles.
  * Plays ONCE per cold start, layered over the already-composed app (nothing
- * underneath is delayed). Timeline (~2.4s total):
+ * underneath is delayed). Timeline (~2.9s total):
  *
  *   crisp glyph hold 100ms (seamless handoff from the system splash, which
  *   shows the same assembled glyph) → glyph dissolves & BURSTS into particles
- *   flying out across/off the screen (480ms) → beat at full scatter (80ms) →
+ *   flying out across/off the screen (800ms) → beat at full scatter (150ms) →
  *   particles fly home on curved, staggered paths and reassemble the kanji
  *   (950ms, FastOutSlowInEasing) → sharpen back into the crisp glyph + settle
  *   pop 0.965→1.0 (260ms) → hold 180ms → whole overlay fades out 380ms →
@@ -173,10 +173,10 @@ fun IntroOverlay(isDark: Boolean) {
             delay(100)
             // Dissolve the crisp glyph into the (still assembled) particles while
             // they start bursting outward — reads as the kanji shattering.
-            launch { imageAlpha.animateTo(0f, tween(durationMillis = 200)) }
-            assemble.animateTo(0f, tween(durationMillis = 480, easing = FastOutSlowInEasing))
+            launch { imageAlpha.animateTo(0f, tween(durationMillis = 260)) }
+            assemble.animateTo(0f, tween(durationMillis = 800, easing = FastOutSlowInEasing))
             // A short beat at full scatter so the burst is readable before the return.
-            delay(80)
+            delay(150)
             // Fly home: staggered, curved paths (see the Canvas below).
             assemble.animateTo(1f, tween(durationMillis = 950, easing = FastOutSlowInEasing))
             // Sharpen into the real glyph with a small settle pop.
