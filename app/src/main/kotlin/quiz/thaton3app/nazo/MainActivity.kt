@@ -22,7 +22,7 @@ class MainActivity : ComponentActivity() {
         // Schedule background update checks per the saved frequency preference.
         UpdateScheduler.apply(this, UpdatePrefs(this).updateFrequency)
         setContent {
-            NazoApp()
+            NazoApp(launchDailyChallenge = intent?.action == ACTION_DAILY)
         }
     }
 
@@ -45,5 +45,10 @@ class MainActivity : ComponentActivity() {
             LauncherIconSwitcher.apply(this, desiredNight)
             prefs.appliedLauncherNight = if (desiredNight) "dark" else "light"
         }
+    }
+
+    companion object {
+        /** Launcher long-press shortcut (res/xml/shortcuts.xml) → jump into the Daily Challenge. */
+        const val ACTION_DAILY = "quiz.thaton3app.nazo.action.DAILY"
     }
 }

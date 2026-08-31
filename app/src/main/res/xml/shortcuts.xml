@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="daily_challenge"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_daily_short"
+        android:shortcutLongLabel="@string/shortcut_daily_long">
+        <intent
+            android:action="quiz.thaton3app.nazo.action.DAILY"
+            android:targetPackage="quiz.thaton3app.nazo"
+            android:targetClass="quiz.thaton3app.nazo.MainActivity" />
+    </shortcut>
+</shortcuts>

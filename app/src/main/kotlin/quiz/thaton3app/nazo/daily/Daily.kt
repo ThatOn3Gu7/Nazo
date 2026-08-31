@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.data.Question
+import quiz.thaton3app.nazo.data.QuizStats
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoSuccess
@@ -70,8 +71,8 @@ object DailyChallenge {
 
     const val QUESTION_COUNT = 5
 
-    /** Same epoch-day arithmetic QuizStats uses — no java.time needed. */
-    fun todayEpochDay(): Long = System.currentTimeMillis() / 86_400_000L
+    /** Local-midnight day boundary — shared with streaks (QuizStats.localEpochDay). */
+    fun todayEpochDay(): Long = QuizStats.localEpochDay()
 
     /** Bonus XP: 20 for showing up + 10 per correct answer (max 70). */
     fun bonusXpFor(correct: Int): Int = 20 + 10 * correct

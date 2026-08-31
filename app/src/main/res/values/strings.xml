@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">Nazo</string>
+    <string name="widget_title">NAZO · DAILY</string>
+    <string name="widget_description">Your streak and today\'s Daily Challenge at a glance.</string>
+    <string name="shortcut_daily_short">Daily</string>
+    <string name="shortcut_daily_long">Play today\'s Daily Challenge</string>
 </resources>

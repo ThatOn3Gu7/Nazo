@@ -30,7 +30,7 @@ data class QuizStats(
         questions: List<Question>,
         userAnswers: List<String?>,
     ): QuizStats {
-        val today = System.currentTimeMillis() / DAY_MS
+        val today = localEpochDay()
 
         val newStreak = when {
             lastQuizEpochDay == today -> currentStreakDays          // already counted today
@@ -89,7 +89,7 @@ data class QuizStats(
         answered: Int,
         correct: Int,
     ): QuizStats {
-        val today = System.currentTimeMillis() / DAY_MS
+        val today = localEpochDay()
 
         val newStreak = when {
             lastQuizEpochDay == today -> currentStreakDays          // already counted today
@@ -127,5 +127,18 @@ data class QuizStats(
 
     companion object {
         private const val DAY_MS = 86_400_000L
+
+        /**
+         * Epoch-day in the DEVICE's timezone, so "a new day" starts at local
+         * midnight instead of UTC midnight (which was 05:45 in Nepal).
+         * Used by streaks AND the Daily Challenge — always in sync.
+         * One-time transition note: previously-stored UTC days differ by at
+         * most 1, so an existing streak survives (it may count one bonus day
+         * across the switch, never resets).
+         */
+        fun localEpochDay(): Long {
+            val now = System.currentTimeMillis()
+            return (now + java.util.TimeZone.getDefault().getOffset(now)) / DAY_MS
+        }
     }
 }
