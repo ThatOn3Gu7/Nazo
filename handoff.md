@@ -1872,3 +1872,36 @@ covered by `BUG_AUDIT.md` + this log).
 - Files: `modes/guessing_game/GuessingPlayScreen.kt`, `modes/guessing_game/GuessImageFetcher.kt`,
   `ui/components/WavySpinner.kt` (new), `ui/screens/LoadingScreen.kt`, `handoff.md`.
 - NOTE: no version bump — still the unreleased 5.0.
+
+## [2026-08-31 07:00] ci: PR Assemble workflow now verifies every push; feature compiles
+
+- New `.github/workflows/pr-assemble.yml` (owner-created, owner-owned — the agent's
+  GitHub credential lacks the `workflows` permission, so it cannot push workflow
+  files): assembles the debug APK on every push/PR to master/testBranch/arena/**
+  and on manual dispatch, uploads it as the `nazo-debug-apk` run artifact, and
+  (since the 07:00 update) auto-comments the compiler errors onto the PR when a
+  build fails. The agent reads those comments via the GitHub API, so compile
+  errors are found and fixed without a local build or the owner's device.
+- The first real build of the guessing game branch found 14 compile errors, fixed
+  over three rounds:
+  - FuzzyMatch: `compareByDescending<Float>` pinned the ELEMENT type to Float;
+    bare `compareByDescending {}` then failed inference (T only appears in the
+    contravariant expected type of `sortedWith`); final form pins
+    `compareByDescending<Pair<String, Float>>`.
+  - GuessImageFetcher: `20_000` was an Int where `withTimeout` needs a Long;
+    `org.json.JSONObject` is not a Kotlin Map (no destructuring — iterate
+    `keys()`); `x.optJSONObject(..)?.optString(..)` is `String?` (safe-call
+    propagates) and needed `?: ""`.
+  - GuessingPlayScreen: `coil.ImageRequest` / `coil.execute` do not resolve on
+    this classpath (whatever the reason, the workaround stands): the mystery
+    image is now pre-fetched as raw bytes over plain HTTP
+    (`GuessImageFetcher.fetchImageBytes`) and passed to `AsyncImage` as a
+    ByteArray model — zero dependency on Coil's request APIs.
+  - NazoApp: local functions can't be called before their declaration
+    (`prepareGuessRound` moved above `startGuessing`); a lost newline during that
+    reorder briefly glued two function declarations onto one line — desk-check
+    brace balance does NOT catch that.
+- First fully green build: run 33366082853 (assemble-debug pass, 1m40s,
+  20 MB `nazo-debug-apk` artifact). The feature branch is now provably
+  compilable; the owner can download the APK from the run's Artifacts instead
+  of building in Termux.
