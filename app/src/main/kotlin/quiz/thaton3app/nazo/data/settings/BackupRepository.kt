@@ -32,6 +32,7 @@ object BackupRepository {
         "nazo_provider_models",
         "nazo_secure",
         "nazo_records",
+        "nazo_daily",
     )
     private const val PROFILE_PICTURE_KEY = "profile_picture_uri"
 

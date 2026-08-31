@@ -32,6 +32,9 @@ import quiz.thaton3app.nazo.data.settings.BackupPrefs
 import quiz.thaton3app.nazo.data.settings.ProfilePreferences
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.records.RecordsStore
+import quiz.thaton3app.nazo.daily.DailyChallenge
+import quiz.thaton3app.nazo.daily.DailyStore
+import quiz.thaton3app.nazo.achievements.AchievementEngine
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.ui.components.OfflineWarningDialog
 import quiz.thaton3app.nazo.ui.components.FloatingParticlesBackground
@@ -94,6 +97,11 @@ fun NazoApp() {
     var quizNewRecord by remember { mutableStateOf(false) }
     var guessPrevBest by remember { mutableIntStateOf(-1) }
     var guessNewRecord by remember { mutableStateOf(false) }
+    // Daily challenge (Phase 5): flag marks the in-flight quiz as today's
+    // daily; the earned bonus is surfaced on the results screen.
+    val dailyStore = remember { DailyStore(context.applicationContext) }
+    var isDailyQuiz by remember { mutableStateOf(false) }
+    var lastDailyBonus by remember { mutableIntStateOf(0) }
     val profilePrefs = remember { ProfilePreferences(context) }
     var profileName by remember { mutableStateOf(profilePrefs.username) }
     var profilePictureUri by remember { mutableStateOf(profilePrefs.profilePictureUri) }
@@ -298,6 +306,7 @@ fun NazoApp() {
 
     fun startQuiz(topic: String, difficulty: String, count: Int) {
         themePrefs.lastMode = NazoMode.QUIZ.name
+        isDailyQuiz = false
         // Offline mode: skip any API attempt and go straight to the local bank
         // (stats still record normally in `answer`).
         if (isOfflineMode) {
@@ -317,6 +326,26 @@ fun NazoApp() {
         } else {
             runLocal(topic, difficulty, count)
         }
+    }
+
+    /**
+     * Daily Challenge (Phase 5): a fixed, date-seeded 5-question set from the
+     * local bank — bypasses AI generation entirely, so it works offline and
+     * with no provider. Runs through the normal quiz flow (timer, stats,
+     * streak, records under the "Daily" difficulty); completion is detected
+     * in [answer] and banks the bonus XP.
+     */
+    fun startDailyChallenge() {
+        questions = DailyChallenge.questionsForToday()
+        userAnswers = emptyList()
+        currentQuestionIndex = 0
+        score = 0
+        aiGenerated = false
+        generationState = GenerationState.Idle
+        quizDifficulty = "Daily"
+        isDailyQuiz = true
+        quizStartedAt = System.currentTimeMillis()
+        navigate(Screen.Quiz)
     }
 
     fun answer(isCorrect: Boolean, selected: String?) {
@@ -345,6 +374,12 @@ fun NazoApp() {
             // Personal best check (previous best captured first for the caption).
             quizPrevBest = recordsStore.quizBestPercent(finishedDifficulty)
             quizNewRecord = recordsStore.submitQuiz(finishedDifficulty, score, finishedQuestions.size)
+            // Daily challenge completion banks its bonus XP (0 for normal quizzes).
+            lastDailyBonus = if (isDailyQuiz) {
+                dailyStore.recordCompletion(score, finishedQuestions.size)
+            } else {
+                0
+            }
             navigate(Screen.Results)
         }
     }
@@ -512,6 +547,10 @@ fun NazoApp() {
                         guessingRounds = guessRounds,
                         onGuessingRoundsChange = { guessRounds = it },
                         onStartGuessing = { topic, difficulty, rounds -> startGuessing(topic, difficulty, rounds) },
+                        dailyCompleted = dailyStore.isCompletedToday(),
+                        dailyScore = dailyStore.lastScore(),
+                        dailyBonus = dailyStore.lastBonus(),
+                        onPlayDaily = { startDailyChallenge() },
                     )
 
                     Screen.Settings -> SettingsScreen(
@@ -552,6 +591,13 @@ fun NazoApp() {
 
                     Screen.Statistics -> StatisticsScreen(
                         stats = quizStats,
+                        bonusXp = dailyStore.totalBonusXp(),
+                        achievements = AchievementEngine.compute(
+                            stats = quizStats,
+                            hasPerfectQuiz = listOf("Easy", "Medium", "Hard", "Otaku Master", "Daily")
+                                .any { recordsStore.quizBestPercent(it) >= 100 },
+                            dailiesCompleted = dailyStore.completedCount(),
+                        ),
                         onBackClick = { goBack() },
                         onHomeClick = { goHome() },
                     )
@@ -608,6 +654,7 @@ fun NazoApp() {
                         difficulty = quizDifficulty,
                         bestPercent = quizPrevBest,
                         isNewRecord = quizNewRecord,
+                        dailyBonusXp = lastDailyBonus,
                         onPlayAnother = { goHome() },
                         onReviewAnswers = { navigate(Screen.Review) },
                         onSettingsClick = { navigate(Screen.Settings) },
