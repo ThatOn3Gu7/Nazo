@@ -11,11 +11,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.BlurOn
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.DesktopMac
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.ModeNight
+import androidx.compose.material.icons.outlined.Pixelate
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -58,6 +60,8 @@ fun AppearanceScreen(
     onIconFollowsOsThemeChange: (Boolean) -> Unit = {},
     floatingNavBar: Boolean = false,
     onFloatingNavBarChange: (Boolean) -> Unit = {},
+    revealStyle: String = "pixel",
+    onRevealStyleChange: (String) -> Unit = {},
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
 ) {
@@ -242,6 +246,27 @@ fun AppearanceScreen(
                     }
                 )
             }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // --- GUESSING REVEAL SECTION ---
+            SectionHeader("GUESSING REVEAL")
+
+            ThemeModeRow(
+                icon = Icons.Outlined.BlurOn,
+                title = "Blur",
+                subtitle = "The mystery image starts foggy and sharpens as time runs out",
+                isSelected = revealStyle == "blur",
+                onClick = { Haptics.soft(context); onRevealStyleChange("blur") }
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            ThemeModeRow(
+                icon = Icons.Outlined.Pixelate,
+                title = "Pixelate",
+                subtitle = "Starts as a blocky mosaic and resolves into the image",
+                isSelected = revealStyle == "pixel",
+                onClick = { Haptics.soft(context); onRevealStyleChange("pixel") }
+            )
 
             Spacer(modifier = Modifier.height(32.dp))
 

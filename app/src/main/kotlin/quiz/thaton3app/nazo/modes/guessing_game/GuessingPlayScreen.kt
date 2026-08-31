@@ -1,5 +1,6 @@
 package quiz.thaton3app.nazo.modes.guessing_game
 
+import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -11,6 +12,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -85,6 +87,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.ImageLoader
 import coil.compose.AsyncImage
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -96,18 +99,22 @@ import quiz.thaton3app.nazo.ui.theme.*
 private const val MAX_BLUR = 28f
 
 /**
- * The active guessing-game screen: a mystery image with an on-device linear
- * un-blur reveal running alongside the per-difficulty countdown, plus the
- * difficulty's input mode (4 choices on Easy/Medium, fuzzy auto-complete on
- * Hard/Otaku Master). One shot per round — a correct answer scores with a
- * time bonus, a wrong answer or a timer at 0 reveals the answer; all
+ * The active guessing-game screen: a mystery image with an on-device reveal
+ * running alongside the per-difficulty countdown (Easy 25s, Medium 20s,
+ * Hard 15s, Otaku Master 10s), plus the difficulty's input mode (4 choices
+ * on Easy/Medium, fuzzy auto-complete on Hard/Otaku Master). The image
+ * starts partially obscured — the starting strength scales with difficulty
+ * (50% / 60% / 80% / 100%) — and sharpens as the timer runs out. The
+ * obscuration is a blur by default, or a pixelated mosaic when the
+ * Appearance settings say so. One shot per round — a correct answer scores
+ * with a time bonus, a wrong answer or a timer at 0 reveals the answer; all
  * rounds are always played, then the results screen.
  *
  * All game state lives in the host (NazoApp); this screen is purely reactive
  * to [GuessPhase]:
  *  - [GuessPhase.Preparing] → spinner card while the round payload / image load
  *  - [GuessPhase.Error]     → error card (retry / settings / quit)
- *  - [GuessPhase.Playing]   → the game itself (timer, blur, input, reveal)
+ *  - [GuessPhase.Playing]   → the game itself (timer, reveal, input, answer)
  */
 @Composable
 fun GuessingPlayScreen(
@@ -118,6 +125,7 @@ fun GuessingPlayScreen(
     score: Int,
     phase: GuessPhase,
     roundResult: GuessRoundResult?,
+    revealStyle: String = "pixel",
     onRetryRound: () -> Unit,
     onOpenSettings: () -> Unit,
     onQuit: () -> Unit,
@@ -126,6 +134,9 @@ fun GuessingPlayScreen(
 ) {
     val context = LocalContext.current
     val durationMs = GuessScoring.durationMsFor(difficultyLabel)
+    // How obscured the image is at the start of the round (fraction of the
+    // maximum effect) — the reveal eases from there down to fully sharp.
+    val startFraction = GuessScoring.specFor(difficultyLabel).startEffectFraction
     val imageLoader = remember { ImageLoader(context) }
 
     val payload: GuessPayload? = (phase as? GuessPhase.Playing)?.payload
@@ -136,6 +147,9 @@ fun GuessingPlayScreen(
     var timedOut by remember { mutableStateOf(false) }
     var imageReady by remember { mutableStateOf(false) }
     var imageFetchFailed by remember { mutableStateOf(false) }
+    // Pre-scaled pixel levels for the pixelated reveal (null while building
+    // or when the decode failed — the card then falls back to the blur).
+    var pixelLevels by remember { mutableStateOf<List<Bitmap>?>(null) }
     var remainingMs by remember { mutableLongStateOf(durationMs) }
     var showQuitDialog by remember { mutableStateOf(false) }
 
@@ -152,6 +166,7 @@ fun GuessingPlayScreen(
         timedOut = false
         remainingMs = durationMs
         imageFetchFailed = false
+        pixelLevels = null
         imageReady = imageUrl == null // no URL at all → straight to the placeholder
         if (imageUrl == null) return@LaunchedEffect
         // Pre-fetch the image BYTES over plain HTTP so the countdown only ever
@@ -165,6 +180,12 @@ fun GuessingPlayScreen(
         }
         imageFetchFailed = bytes == null
         fetchedImage = bytes
+        // For the pixelated reveal, pre-scale one bitmap per pixel level so
+        // the un-pixelating is a cheap draw per frame. A decode failure just
+        // leaves this null → the card falls back to the blur reveal.
+        if (!imageFetchFailed && revealStyle == "pixel") {
+            pixelLevels = withContext(Dispatchers.IO) { buildPixelLevels(bytes) }
+        }
         imageReady = true
     }
 
@@ -343,6 +364,9 @@ fun GuessingPlayScreen(
                         round = round,
                         progress = timerFrac,
                         revealed = revealed,
+                        revealStyle = revealStyle,
+                        startFraction = startFraction,
+                        pixelLevels = pixelLevels,
                         imageLoader = imageLoader,
                     )
                     Spacer(Modifier.height(20.dp))
@@ -438,19 +462,35 @@ private fun MysteryImageCard(
     round: Int,
     progress: Float,
     revealed: Boolean,
+    revealStyle: String,
+    startFraction: Float,
+    pixelLevels: List<Bitmap>?,
     imageLoader: ImageLoader,
 ) {
-    // While the timer runs the blur tracks [progress] frame-for-frame (the
-    // linear un-blur). Once the round is revealed — a correct OR a wrong
-    // answer, or the timer at 0 — it eases to fully sharp, so the player
-    // actually sees who it was instead of just reading the name.
+    // The reveal eases frame-for-frame with [progress]: a blur radius, or a
+    // pixelation fraction (0..startFraction) for the pixel style. Once the
+    // round is revealed — a correct OR a wrong answer, or the timer at 0 —
+    // either one eases to fully sharp, so the player actually sees who it
+    // was instead of just reading the name. A decode failure in pixel mode
+    // (pixelLevels == null) silently falls back to the blur.
+    val usePixels = revealStyle == "pixel" && pixelLevels != null
     val blurRadiusDp by animateIntAsState(
-        targetValue = if (revealed) 0 else (progress * MAX_BLUR).toInt(),
+        targetValue = if (usePixels) 0 else if (revealed) 0 else (progress * MAX_BLUR * startFraction).toInt(),
         animationSpec = tween(350, easing = FastOutSlowInEasing),
         label = "mysteryBlur"
     )
+    val pixelEffect by animateFloatAsState(
+        targetValue = if (usePixels) if (revealed) 0f else progress * startFraction else 0f,
+        animationSpec = tween(350, easing = FastOutSlowInEasing),
+        label = "mysteryPixel"
+    )
     val blurRadius = blurRadiusDp.dp
-    val revealScale = 1f + 0.12f * blurRadiusDp / MAX_BLUR
+    val revealScale = if (usePixels) {
+        1f + 0.12f * (pixelEffect / startFraction)
+    } else {
+        1f + 0.12f * blurRadiusDp / MAX_BLUR
+    }
+    val levelIndex = (pixelEffect * (PIXEL_LEVELS.size - 1)).roundToInt()
 
     Box(
         modifier = Modifier
@@ -460,11 +500,15 @@ private fun MysteryImageCard(
             .background(NazoSurfaceVariant)
     ) {
         if (imageReady) {
-            Box(modifier = Modifier.fillMaxSize().scale(revealScale).blur(blurRadius)) {
-                if (imageFetchFailed || imageUrl == null) {
-                    GuessImagePlaceholder(query = query.ifBlank { "Mystery image" })
-                } else {
-                    AsyncImage(
+            Box(modifier = Modifier.fillMaxSize().scale(revealScale).then(
+                if (usePixels) Modifier else Modifier.blur(blurRadius)
+            )) {
+                when {
+                    imageFetchFailed || imageUrl == null ->
+                        GuessImagePlaceholder(query = query.ifBlank { "Mystery image" })
+                    usePixels ->
+                        PixelatedImage(levels = pixelLevels!!, levelIndex = levelIndex, modifier = Modifier.fillMaxSize())
+                    else -> AsyncImage(
                         // Pre-fetched bytes decode instantly; the raw URL is a
                         // last-ditch fallback if the byte fetch was skipped.
                         model = imageBytes ?: imageUrl,
@@ -954,7 +998,8 @@ private fun PreparingCard(round: Int, totalRounds: Int, topic: String, onCancel:
     }
 }
 
-/** Flat full-width text button — same look as the quiz loading screen's. */
+/** Flat full-width text button — same look as the quiz loading screen's,
+ *  with a full-width outline so it reads as a button at a glance. */
 @Composable
 private fun CancelTextButton(label: String, onClick: () -> Unit) {
     Box(
@@ -963,6 +1008,7 @@ private fun CancelTextButton(label: String, onClick: () -> Unit) {
             .height(44.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(Color.Transparent)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,

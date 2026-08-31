@@ -2031,3 +2031,30 @@ covered by `BUG_AUDIT.md` + this log).
   untouched) below the WavySpinner. Wired to onQuit (cancels guessJob,
   phase Idle, goHome) — same action the X's confirmation performs, direct
   like the quiz's cancel.
+
+## [2026-08-31 15:10] feat: outlined cancel, sticky game mode, per-difficulty
+## timing + start strength, pixelated reveal with settings switch
+
+- (1) CancelTextButton on the guessing loading card now has a full-width
+  outline (1dp rounded-14 border, same style as the card border) so it
+  reads as a button.
+- (2) Last game mode is sticky: ThemePreferences.lastMode ("QUIZ" |
+  "GUESSING") is written when the user selects a mode on Home AND when a
+  game starts (startQuiz — before the offline branch — and startGuessing);
+  homeMode now initializes from it (validated against NazoMode.entries).
+- (3) Per-difficulty guessing rules moved OUT of QuizEngine (quiz keeps
+  40/30/20/10 untouched): GuessScoring specs now carry secondsPerRound
+  (Easy 25, Medium 20, Hard 15, Otaku 10) + startEffectFraction
+  (0.5 / 0.6 / 0.8 / 1.0) = how obscured the image is at round start;
+  the reveal eases from that fraction to fully sharp. MysteryImageCard
+  scales the blur (or pixel) effect and the zoom by it.
+- (4) PIXELATED reveal (owner's optional idea) — new PixelReveal.kt in the
+  guessing package: buildPixelLevels decodes the pre-fetched bytes (IO,
+  before the timer starts) into 14 pre-scaled bitmaps (nearest-neighbour
+  downscale, cell sizes 1..128px); PixelatedImage draws the level matching
+  the animated effect fraction, upscaled centre-cropped with
+  FilterQuality.None (crisp pixels, no per-frame scaling work). Settings:
+  Appearance → "GUESSING REVEAL" (Blur / Pixelate rows, ThemeModeRow
+  style), persisted in ThemePreferences.guessRevealStyle, DEFAULT "pixel"
+  (owner preference), with silent per-round fallback to blur if a decode
+  fails. Quiz/Offline modes untouched.

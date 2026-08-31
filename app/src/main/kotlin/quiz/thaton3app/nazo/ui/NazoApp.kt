@@ -188,11 +188,20 @@ fun NazoApp() {
     // ---- Guessing Game (modes/guessing_game) ----
     // Home-screen mode preset is hoisted here too (like the quiz presets) so the
     // user's last selection survives navigating away and back.
-    var homeMode by rememberSaveable { mutableStateOf(NazoMode.QUIZ.name) }
+    // Last game mode played/selected is pre-selected on launch (falls back
+    // to Quiz for anything stored that isn't a valid mode name).
+    var homeMode by rememberSaveable {
+        mutableStateOf(
+            NazoMode.entries.firstOrNull { it.name == themePrefs.lastMode }?.name
+                ?: NazoMode.QUIZ.name
+        )
+    }
     var guessRounds by rememberSaveable { mutableIntStateOf(3) }
     var guessTopic by remember { mutableStateOf("") }
     var guessDifficulty by remember { mutableStateOf("Medium") }
     var guessPhase by remember { mutableStateOf<GuessPhase>(GuessPhase.Idle) }
+    // "blur" | "pixel" — the guessing game's image reveal style (Appearance).
+    var guessRevealStyle by remember { mutableStateOf(themePrefs.guessRevealStyle) }
     var guessRound by remember { mutableIntStateOf(1) }
     var guessTotalRounds by remember { mutableIntStateOf(3) }
     var guessScore by remember { mutableIntStateOf(0) }
@@ -271,6 +280,7 @@ fun NazoApp() {
     }
 
     fun startQuiz(topic: String, difficulty: String, count: Int) {
+        themePrefs.lastMode = NazoMode.QUIZ.name
         // Offline mode: skip any API attempt and go straight to the local bank
         // (stats still record normally in `answer`).
         if (isOfflineMode) {
@@ -369,6 +379,7 @@ fun NazoApp() {
     }
 
     fun startGuessing(topic: String, difficulty: String, rounds: Int) {
+        themePrefs.lastMode = NazoMode.GUESSING.name
         guessTopic = topic
         guessDifficulty = difficulty
         guessTotalRounds = rounds.coerceIn(1, 15)
@@ -464,7 +475,7 @@ fun NazoApp() {
                         onDifficultyChange = { homeDifficultyName = it },
                         onQuestionCountChange = { homeQuestionCount = it },
                         mode = homeMode,
-                        onModeChange = { homeMode = it },
+                        onModeChange = { homeMode = it; themePrefs.lastMode = it },
                         guessingRounds = guessRounds,
                         onGuessingRoundsChange = { guessRounds = it },
                         onStartGuessing = { topic, difficulty, rounds -> startGuessing(topic, difficulty, rounds) },
@@ -521,6 +532,11 @@ fun NazoApp() {
                         onFloatingNavBarChange = {
                             navBarFloating = it
                             themePrefs.floatingNavBar = it
+                        },
+                        revealStyle = guessRevealStyle,
+                        onRevealStyleChange = {
+                            guessRevealStyle = it
+                            themePrefs.guessRevealStyle = it
                         },
                         iconFollowsOsTheme = themePrefs.iconFollowsOsTheme,
                         onIconFollowsOsThemeChange = { enabled ->
@@ -599,6 +615,7 @@ fun NazoApp() {
                         score = guessScore,
                         phase = guessPhase,
                         roundResult = guessRoundResult,
+                        revealStyle = guessRevealStyle,
                         onRetryRound = { prepareGuessRound() },
                         onOpenSettings = { navigate(Screen.Settings) },
                         onQuit = {
