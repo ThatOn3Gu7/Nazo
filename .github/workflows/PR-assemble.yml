@@ -1,0 +1,49 @@
+name: PR Assemble (compile check)
+
+# Runs on every push / pull request so compile errors are caught in CI
+# instead of on the owner's device. A successful run also uploads the
+# debug APK as a downloadable artifact (Actions -> Run -> Artifacts).
+on:
+  push:
+    branches:
+      - 'master'
+      - 'testBranch'
+      - 'arena/**'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  assemble-debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # Caches the Gradle distribution + dependency cache between runs,
+      # so follow-up builds are fast.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      # --stacktrace keeps the full compiler output in the log when
+      # something breaks (Kotlin compile errors, resource errors, ...).
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: nazo-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: ignore
