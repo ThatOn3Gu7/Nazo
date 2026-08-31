@@ -97,8 +97,9 @@ private const val MAX_BLUR = 28f
  * The active guessing-game screen: a mystery image with an on-device linear
  * un-blur reveal running alongside the per-difficulty countdown, plus the
  * difficulty's input mode (4 choices on Easy/Medium, fuzzy auto-complete on
- * Hard/Otaku Master). One shot per round — a correct answer advances, a wrong
- * answer or a timer at 0 eliminates the player and reveals the answer.
+ * Hard/Otaku Master). One shot per round — a correct answer scores with a
+ * time bonus, a wrong answer or a timer at 0 reveals the answer; all
+ * rounds are always played, then the results screen.
  *
  * All game state lives in the host (NazoApp); this screen is purely reactive
  * to [GuessPhase]:
@@ -808,7 +809,7 @@ private fun RevealCard(
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text(
-                        text = if (isSuccess) "Correct!" else "Eliminated!",
+                        text = if (isSuccess) "Correct!" else "Missed!",
                         style = MaterialTheme.typography.titleLarge,
                         color = if (isSuccess) NazoSuccess else NazoError,
                         fontWeight = FontWeight.Bold
@@ -862,7 +863,7 @@ private fun RevealCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (isSuccess && result.round < totalRounds) "Next Round" else "See Results",
+                    text = if (result.round < totalRounds) "Next Round" else "See Results",
                     color = NazoOnPrimary,
                     fontWeight = FontWeight.Bold
                 )

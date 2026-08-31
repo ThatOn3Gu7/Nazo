@@ -80,7 +80,7 @@ fun GuessingResultsScreen(
     val context = LocalContext.current
     val total = results.size
     val solved = results.count { it.correct }
-    val eliminated = total > 0 && !results.last().correct
+    val allMissed = total > 0 && solved == 0
     val cleared = total > 0 && solved == total
     val accuracy = if (total > 0) solved.toFloat() / total * 100f else 0f
 
@@ -113,12 +113,12 @@ fun GuessingResultsScreen(
 
     val heading = when {
         cleared -> "All rounds cleared!"
-        eliminated -> "Eliminated!"
-        else -> "Game over"
+        allMissed -> "Outmatched!"
+        else -> "Game complete"
     }
     val headingColor = when {
         cleared -> NazoSuccess
-        eliminated -> NazoError
+        allMissed -> NazoError
         else -> NazoTextPrimary
     }
 
@@ -169,7 +169,7 @@ fun GuessingResultsScreen(
                         progressAnim = progressAnim,
                         solved = solved,
                         total = total,
-                        eliminated = eliminated,
+                        allMissed = allMissed,
                         cleared = cleared,
                     )
                 }
@@ -305,12 +305,12 @@ private fun ScoreCard(
     progressAnim: Float,
     solved: Int,
     total: Int,
-    eliminated: Boolean,
+    allMissed: Boolean,
     cleared: Boolean,
 ) {
     val message = when {
         cleared -> "Flawless — every image un-blurred in time."
-        eliminated -> "The timer caught you out. The next image will be kinder."
+        allMissed -> "The images were sharper this time — study them better next go."
         else -> "Good run — the next image is waiting."
     }
 
@@ -366,15 +366,15 @@ private fun ScoreCard(
                     .background(
                         Brush.radialGradient(
                             colors = listOf(
-                                if (eliminated) NazoError else NazoPrimary,
-                                (if (eliminated) NazoError else NazoPrimary).copy(alpha = 0.7f)
+                                if (allMissed) NazoError else NazoPrimary,
+                                (if (allMissed) NazoError else NazoPrimary).copy(alpha = 0.7f)
                             )
                         )
                     ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = if (eliminated) Icons.Outlined.FitnessCenter else Icons.Outlined.EmojiEvents,
+                    imageVector = if (allMissed) Icons.Outlined.FitnessCenter else Icons.Outlined.EmojiEvents,
                     contentDescription = null,
                     tint = NazoOnPrimary,
                     modifier = Modifier.size(38.dp)

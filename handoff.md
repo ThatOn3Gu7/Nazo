@@ -1959,3 +1959,27 @@ covered by `BUG_AUDIT.md` + this log).
   same first hit); per-entity phrase search + gate makes that structurally
   unlikely — each stage logs to tag NazoGuessImage, so any repeat/miss is
   traceable in logcat.
+
+## [2026-08-31 13:30] fix: anime DB leads the image pipeline; game no longer eliminates
+
+- Owner's fourth test: Porco Galliard got a paper sketch, Ymir Fritz got a
+  generic ATTACK ON TITAN cosplay photo (a Commons file named after the
+  character). Title-matching guarantees TOPIC relevance, not art quality —
+  Commons/Wikipedia are full of named cosplay/fan files, and they were
+  stages 1-2, ahead of the anime database.
+- Fix (owner's own suggestion, which was the right one): AniList now LEADS
+  the per-variant loop — anime character portraits from the anime database
+  first, Commons + Wikipedia as fallback (they still cover items/places/
+  abilities AniList doesn't know about). Order per name variant:
+  AniList -> Commons -> Wikipedia, then Openverse, then DuckDuckGo.
+  Note: the app already did exactly the "AI gives a search query, we search
+  a database, take that image" flow the owner described — the AI supplies
+  target_entity/aliases/image_query and the fetcher searches the keyless
+  APIs; no new API keys involved.
+- Game flow (owner request): NO MORE ELIMINATION. All rounds are always
+  played — a wrong answer or timeout reveals the answer and the button
+  says "Next Round" (it said "See Results" before, which ended the game on
+  round 1 of 3/5). Results screen: "Eliminated!" -> "Outmatched!" (only
+  when every round was missed), "Game over" -> "Game complete",
+  RevealCard "Eliminated!" -> "Missed!". Scoring unchanged (0 pts on a
+  miss). Quiz mode's own elimination concept untouched.

@@ -398,9 +398,9 @@ fun NazoApp() {
 
     fun guessNext() {
         val last = guessResults.lastOrNull() ?: return
-        // A missed round eliminates the player (game over); otherwise the game
-        // ends once the last round is solved.
-        val finished = !last.correct || last.round >= guessTotalRounds
+        // All rounds are always played — a miss reveals the answer and moves
+        // on; the game ends once the last round is finished.
+        val finished = last.round >= guessTotalRounds
         if (finished) {
             guessPhase = GuessPhase.Idle
             replace(Screen.GuessingResults)

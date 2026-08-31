@@ -16,14 +16,16 @@ import java.nio.charset.StandardCharsets
  * Resolves a direct image URL of the round's TARGET ENTITY using keyless
  * public sources, in order:
  *
- *   1. Wikimedia Commons — exact-phrase file search (bitmaps, top 10)
- *   2. English Wikipedia — exact-phrase article search, summary image
- *   3. AniList — character search (keyless GraphQL; anime character
- *      portraits — this is an anime game, so this is a strong source)
+ *   1. AniList — anime character search (keyless GraphQL; official
+ *      character portraits — this is an anime game, so the anime database
+ *      leads; it also keeps cosplay photos / random sketches out of
+ *      character rounds)
+ *   2. Wikimedia Commons — exact-phrase file search (bitmaps, top 10)
+ *   3. English Wikipedia — exact-phrase article search, summary image
  *   4. Openverse — keyless Creative-Commons image search (WordPress index)
  *   5. DuckDuckGo — image endpoint (i.js + vqd token) as last resort
  *
- * Stages 1-2 are tried for every name variant: the target name, its
+ * Stages 1-3 are tried for every name variant: the target name, its
  * honorific-stripped form ("Dr. Vegapunk" -> "Vegapunk") and any AI alias
  * that shares a content word with the target. EVERY result is relevance-
  * gated: the file/article/character title must score >= 2 against a name
@@ -66,13 +68,11 @@ object GuessImageFetcher {
                     var found: String? = null
                     for (v in variants) {
                         if (budgetLeftMs(deadline) < MIN_STAGE_BUDGET_MS) break
-                        found = fromCommonsPhrase(v, variants) ?: fromWikipediaPhrase(v, variants)
-                        Log.i(TAG, "commons+wiki('$v') -> ${found ?: "miss"}")
+                        found = fromAniList(v, variants)
+                            ?: fromCommonsPhrase(v, variants)
+                            ?: fromWikipediaPhrase(v, variants)
+                        Log.i(TAG, "anilist+commons+wiki('$v') -> ${found ?: "miss"}")
                         if (found != null) break
-                    }
-                    if (found == null && budgetLeftMs(deadline) >= MIN_STAGE_BUDGET_MS) {
-                        found = fromAniList(variants)
-                        Log.i(TAG, "anilist -> ${found ?: "miss"}")
                     }
                     if (found == null && budgetLeftMs(deadline) >= MIN_STAGE_BUDGET_MS) {
                         found = fromOpenverse(targetName, variants)
@@ -201,32 +201,29 @@ object GuessImageFetcher {
      * live on its CDN, so this is the best source for characters the wikis
      * don't cover well (and it keeps cosplay photos out of major rounds).
      */
-    private fun fromAniList(variants: List<String>): String? {
+    private fun fromAniList(variant: String, variants: List<String>): String? {
         val query = "query (\$search: String) { Character(search: \$search, perPage: 5) " +
             "{ nodes { id name { full } image { large medium } } } }"
-        for (v in variants) {
-            val body = JSONObject()
-                .put("query", query)
-                .put("variables", JSONObject().put("search", v))
-            val json = postJson("https://graphql.anilist.co", body.toString()) ?: continue
-            val nodes = json.optJSONObject("data")?.optJSONObject("Character")?.optJSONArray("nodes")
-                ?: continue
-            var bestUrl: String? = null
-            var bestScore = 0
-            for (i in 0 until nodes.length()) {
-                val node = nodes.getJSONObject(i)
-                val name = node.optJSONObject("name")?.optString("full", "") ?: ""
-                val score = titleRelevanceAny(name, variants)
-                if (score < bestScore) continue
-                val img = node.optJSONObject("image") ?: continue
-                val url = img.optString("large", "").ifBlank { img.optString("medium", "") }
-                if (!isUsableImage(url)) continue
-                bestScore = score
-                bestUrl = url
-            }
-            if (bestScore >= MIN_RELEVANCE && bestUrl != null) return bestUrl
+        val body = JSONObject()
+            .put("query", query)
+            .put("variables", JSONObject().put("search", variant))
+        val json = postJson("https://graphql.anilist.co", body.toString()) ?: return null
+        val nodes = json.optJSONObject("data")?.optJSONObject("Character")?.optJSONArray("nodes")
+            ?: return null
+        var bestUrl: String? = null
+        var bestScore = 0
+        for (i in 0 until nodes.length()) {
+            val node = nodes.getJSONObject(i)
+            val name = node.optJSONObject("name")?.optString("full", "") ?: ""
+            val score = titleRelevanceAny(name, variants)
+            if (score < bestScore) continue
+            val img = node.optJSONObject("image") ?: continue
+            val url = img.optString("large", "").ifBlank { img.optString("medium", "") }
+            if (!isUsableImage(url)) continue
+            bestScore = score
+            bestUrl = url
         }
-        return null
+        return if (bestScore >= MIN_RELEVANCE) bestUrl else null
     }
 
     /**
