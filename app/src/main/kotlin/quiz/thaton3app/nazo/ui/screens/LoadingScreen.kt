@@ -21,7 +21,6 @@ import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
@@ -48,15 +47,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.StrokeCap
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.PI
+import quiz.thaton3app.nazo.ui.components.WavySpinner
 import quiz.thaton3app.nazo.ui.theme.NazoSurface
 import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
-import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
@@ -87,10 +80,12 @@ fun LoadingScreen(
     currentModel: String = "",
     onChangeModel: (String) -> Unit = {},
 ) {
+    // No background of our own here: the app root always paints NazoBackground
+    // plus the floating particles behind every screen, and screens render
+    // transparent on top — an opaque fill would hide the particles.
     Box(
         modifier = Modifier
-            .fillMaxSize()
-            .background(NazoBackground),
+            .fillMaxSize(),
     ) {
         Column(
             modifier = Modifier
@@ -236,46 +231,6 @@ private fun LoadingContent(providerModel: String, onCancel: () -> Unit) {
     WavySpinner(color = NazoPrimary, modifier = Modifier.size(44.dp))
     Spacer(Modifier.height(24.dp))
     TextButton(label = "Cancel", onClick = onCancel)
-}
-
-/**
- * Custom wavy progress indicator: a stroked ring whose radius oscillates with a traveling sine
- * wave, so the wave appears to chase its own tail.
- */
-@Composable
-private fun WavySpinner(color: Color, modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "wavySpinner")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 2f * PI.toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1400, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "wavyPhase",
-    )
-    Canvas(modifier = modifier) {
-        val strokeWidth = 4.dp.toPx()
-        val baseR = (size.minDimension / 2f) - strokeWidth / 2f
-        val amp = 3.dp.toPx()
-        val waves = 5
-        val steps = 160
-        val path = Path()
-        for (i in 0..steps) {
-            val t = i.toFloat() / steps
-            val angle = t * 2f * PI.toFloat()
-            val r = baseR + amp * sin(waves * angle + phase)
-            val x = size.width / 2f + r * cos(angle)
-            val y = size.height / 2f + r * sin(angle)
-            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-        }
-        path.close()
-        drawPath(
-            path = path,
-            color = color,
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
-        )
-    }
 }
 
 @Composable

@@ -76,6 +76,55 @@ data class QuizStats(
         )
     }
 
+    /**
+     * Folds in a COMPLETED guessing game. Rounds count as answered
+     * questions, correct rounds as correct, and the game's topic is
+     * credited as an anime — so guessing games feed the level/XP, streak,
+     * difficulty breakdown and top-mastered list exactly like quizzes do
+     * (one game = +1 play, +10 XP per correct round, +5 XP for the game).
+     */
+    fun recordGuessing(
+        difficulty: String,
+        topic: String,
+        answered: Int,
+        correct: Int,
+    ): QuizStats {
+        val today = System.currentTimeMillis() / DAY_MS
+
+        val newStreak = when {
+            lastQuizEpochDay == today -> currentStreakDays          // already counted today
+            lastQuizEpochDay == today - 1 -> currentStreakDays + 1  // consecutive day
+            else -> 1                                               // streak reset / first ever
+        }
+
+        val dPlays = difficultyPlays.toMutableMap()
+        val dCorrect = difficultyCorrect.toMutableMap()
+        val dAnswered = difficultyAnswered.toMutableMap()
+        val aAnswered = animeAnswered.toMutableMap()
+        val aCorrect = animeCorrect.toMutableMap()
+
+        dPlays[difficulty] = dPlays.getOrDefault(difficulty, 0) + 1
+        dAnswered[difficulty] = dAnswered.getOrDefault(difficulty, 0) + answered
+        dCorrect[difficulty] = dCorrect.getOrDefault(difficulty, 0) + correct
+        val anime = topic.ifBlank { "Unknown" }
+        aAnswered[anime] = aAnswered.getOrDefault(anime, 0) + answered
+        aCorrect[anime] = aCorrect.getOrDefault(anime, 0) + correct
+
+        return copy(
+            totalQuizzes = totalQuizzes + 1,
+            totalQuestionsAnswered = totalQuestionsAnswered + answered,
+            totalCorrect = totalCorrect + correct,
+            currentStreakDays = newStreak,
+            bestStreakDays = maxOf(bestStreakDays, newStreak),
+            lastQuizEpochDay = today,
+            difficultyPlays = dPlays,
+            difficultyCorrect = dCorrect,
+            difficultyAnswered = dAnswered,
+            animeAnswered = aAnswered,
+            animeCorrect = aCorrect,
+        )
+    }
+
     companion object {
         private const val DAY_MS = 86_400_000L
     }

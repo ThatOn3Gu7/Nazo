@@ -1,21 +1,14 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
+# Nazo — R8/ProGuard rules for the minified release build.
 #
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
-
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
-
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# This app needs no extra keep rules:
+#   * no reflection (no Class.forName / getDeclaredConstructor / newInstance)
+#   * no JNI (no System.loadLibrary)
+#   * no serialization framework — JSON is parsed explicitly against org.json
+#     at named call sites (org.json ships with the platform)
+#   * no string-based resource lookups (no getResources().getIdentifier), so
+#     resource shrinking cannot remove anything the app reaches
+#   * Compose, Material3, WorkManager and Coil all ship their own
+#     consumer ProGuard rules
+#
+# If a future dependency or feature starts using reflection, add keep rules
+# HERE — do not weaken isMinifyEnabled to fix a missing-class error.
