@@ -2093,3 +2093,55 @@ covered by `BUG_AUDIT.md` + this log).
   "QUIZZES" chip→"GAMES" and "N quizzes"→"N answers". ProfileScreen's
   totalQuizzes>0 "has played" check now also counts guessing (fine).
   MasteredAnimeStat.quizzes field renamed to answers (display-only).
+## [2026-08-31 16:30] build: release APK minified (R8 + resource shrinking), Room/KSP removed
+
+- Phase 1 of the size roadmap. Owner's hard constraint: ZERO behavior /
+  layout / logic change — "if we can't have that while reducing the size,
+  then we would rather not". Safety case verified by grep before touching
+  anything: no reflection (Class.forName / newInstance), no JNI
+  (loadLibrary), no string-based resource lookups (getIdentifier) — so
+  R8 full mode + shrinkResources are behavior-neutral. JSON is parsed at
+  named org.json call sites (platform lib); Compose/M3/WorkManager/Coil
+  ship their own consumer rules.
+- app/build.gradle.kts: NEW buildTypes.release { isMinifyEnabled = true;
+  isShrinkResources = true; proguardFiles(proguard-android-optimize.txt
+  + app/proguard-rules.pro) }. DEBUG builds untouched — the CI artifact
+  and every debug install are bit-identical pipeline to before.
+- app/proguard-rules.pro: the old file was the dead AS template (all
+  comments, never referenced); replaced with the safety-case note. Zero
+  keep rules — none needed.
+- Room (room-runtime/room-ktx + KSP room-compiler) and the KSP plugin
+  removed: zero androidx.room imports anywhere (grep-verified) — pure
+  dead dependency; also drops the KSP compile step. Versions were inline
+  in app/build.gradle.kts, nothing to clean in the catalog.
+- release-check.yml (push: arena/**) — INTENDED so the minified release
+  build is verified in CI (runs `./gradlew assembleRelease`, unsigned,
+  prints the APK size). BLOCKED AT PUSH: the agent's GitHub App lacks the
+  `workflows` permission — the remote refuses pushes that create/modify
+  .github/workflows/*. (Almost certainly why the lowercase pr-assemble.yml
+  was never committed on any ref in earlier sessions.) Left on disk as
+  .github/workflows/release-check.yml.draft: the owner can `mv` it to
+  release-check.yml (owner pushes have the permission) to arm CI release
+  coverage. Meanwhile CI (master's PR-assemble) still verifies the build
+  config + debug compile on every push; R8 itself first runs in the
+  owner's release build. R8 failure risk assessed very low: the rules
+  file is comments-only (zero keep rules) and the app has no
+  reflection/JNI/dynamic resources (grep-verified).
+- DISCOVERY (why the new workflow): the CI that has been running on every
+  push is "PR Assemble (compile check)" = PR-assemble.yml on MASTER
+  (capital P, capital A). pull_request events read workflows from the
+  BASE branch — the head tree (f64bff9) contains only build-release.yml.
+  The untracked lowercase local copy `.github/workflows/pr-assemble.yml`
+  was NEVER committed on any ref (git log --all empty) — it is a stale
+  scratch file; staging it would add a second, conflicting case-variant
+  next to master's on a case-insensitive checkout. Still: NEVER stage it.
+- build-release.yml (tag releases) intentionally untouched: its
+  assembleRelease now runs R8 automatically, so the next tag ships a
+  minified release APK + unchanged debug APK. Injected-keystore signing
+  props are unaffected by minification.
+- Version NOT bumped (consistent with follow-ups 7/8; owner tags at
+  release, build-release.yml reads versionName).
+- Owner's own build numbers: release (unminified) 15-17 MB, debug
+  20-21 MB. Expectation after minify: ~8-11 MB release. The real number
+  comes from the owner's release build (or the release-check workflow
+  once the owner arms it).
