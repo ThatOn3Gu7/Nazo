@@ -5,7 +5,9 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateFloatAsState
 import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -46,6 +48,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
@@ -294,18 +297,46 @@ fun GuessingPlayScreen(
             // in it (same layout pattern as the quiz's LoadingScreen), and the
             // Playing content scrolls when it outgrows the screen.
             when (phase) {
-                is GuessPhase.Preparing -> Box(
+                is GuessPhase.Preparing -> Column(
                     modifier = Modifier
                         .weight(1f)
                         .padding(horizontal = 20.dp)
                         .navigationBarsPadding(),
-                    contentAlignment = Alignment.Center,
                 ) {
-                    PreparingCard(
-                        round = phase.round,
-                        totalRounds = totalRounds,
-                        topic = topic,
-                    )
+                    // Cancel button — the quiz's loading screen has one too:
+                    // opens the same "quit game?" confirmation as the X.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconButton(
+                            onClick = {
+                                Haptics.light(context)
+                                showQuitDialog = true
+                            },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(NazoSurface),
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Cancel",
+                                tint = NazoTextSecondary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        PreparingCard(
+                            round = phase.round,
+                            totalRounds = totalRounds,
+                            topic = topic,
+                        )
+                    }
                 }
 
                 is GuessPhase.Error -> Box(
@@ -339,6 +370,7 @@ fun GuessingPlayScreen(
                         query = phase.payload.imageQuery.ifBlank { topic },
                         round = round,
                         progress = timerFrac,
+                        revealed = revealed,
                         imageLoader = imageLoader,
                     )
                     Spacer(Modifier.height(20.dp))
@@ -433,10 +465,20 @@ private fun MysteryImageCard(
     query: String,
     round: Int,
     progress: Float,
+    revealed: Boolean,
     imageLoader: ImageLoader,
 ) {
-    val blurRadius = (progress * MAX_BLUR).dp
-    val revealScale = 1f + 0.12f * progress
+    // While the timer runs the blur tracks [progress] frame-for-frame (the
+    // linear un-blur). Once the round is revealed — a correct OR a wrong
+    // answer, or the timer at 0 — it eases to fully sharp, so the player
+    // actually sees who it was instead of just reading the name.
+    val blurFactor by animateFloatAsState(
+        targetValue = if (revealed) 0f else progress,
+        animationSpec = tween(350, easing = FastOutSlowInEasing),
+        label = "mysteryBlur"
+    )
+    val blurRadius = (blurFactor * MAX_BLUR).dp
+    val revealScale = 1f + 0.12f * blurFactor
 
     Box(
         modifier = Modifier

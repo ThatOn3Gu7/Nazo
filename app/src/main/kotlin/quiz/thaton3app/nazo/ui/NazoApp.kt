@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
@@ -201,6 +202,9 @@ fun NazoApp() {
     var guessRoundResult by remember { mutableStateOf<GuessRoundResult?>(null) }
     // Targets already played this game, so the AI keeps picking something new.
     var guessAvoidTargets by remember { mutableStateOf<List<String>>(emptyList()) }
+    // In-flight round generation (AI call + image fetch) — cancelled on quit
+    // so a stale round can never write into a newer game's state.
+    var guessJob by remember { mutableStateOf<Job?>(null) }
 
     val scope = rememberCoroutineScope()
     var generationState by remember { mutableStateOf<GenerationState>(GenerationState.Idle) }
@@ -337,11 +341,13 @@ fun NazoApp() {
         }
         guessRoundResult = null
         guessPhase = GuessPhase.Preparing(guessRound)
-        scope.launch {
+        guessJob?.cancel()
+        val job = scope.launch {
             GuessApiClient.generateGuessRound(
                 provider, key, model, guessTopic, guessDifficulty, guessAvoidTargets,
             )
                 .onSuccess { payload ->
+                    if (!job.isActive) return@onSuccess
                     // Image URL is best-effort: null just means the play screen
                     // shows its drawn placeholder instead of a fetched image.
                     val url = GuessImageFetcher.fetchImageUrl(
@@ -352,10 +358,12 @@ fun NazoApp() {
                     guessPhase = GuessPhase.Playing(payload, url)
                 }
                 .onFailure { e ->
+                    if (!job.isActive) return@onFailure
                     val msg = e.message ?: "Something went wrong."
                     guessPhase = GuessPhase.Error(msg, isOffline = false)
                 }
         }
+        guessJob = job
     }
 
     fun startGuessing(topic: String, difficulty: String, rounds: Int) {
@@ -592,6 +600,7 @@ fun NazoApp() {
                         onRetryRound = { prepareGuessRound() },
                         onOpenSettings = { navigate(Screen.Settings) },
                         onQuit = {
+                            guessJob?.cancel()
                             guessPhase = GuessPhase.Idle
                             goHome()
                         },

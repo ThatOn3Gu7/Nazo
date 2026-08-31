@@ -1983,3 +1983,24 @@ covered by `BUG_AUDIT.md` + this log).
   when every round was missed), "Game over" -> "Game complete",
   RevealCard "Eliminated!" -> "Missed!". Scoring unchanged (0 pts on a
   miss). Quiz mode's own elimination concept untouched.
+
+## [2026-08-31 14:00] fix: reveal un-blurs on wrong answer too; loading screen gets a cancel button
+
+- Owner decision: IMAGE FETCHING IS FROZEN for now — the 5-stage pipeline
+  stays as-is (still mixing in cosplay photos / wrong humans), owner will
+  research a better source themselves. Do not touch GuessImageFetcher
+  pipeline logic unless asked again.
+- Fix 1: the mystery image used to stay frozen at whatever blur the timer
+  had reached when the player answered wrong (screenshot showed Eren round
+  fully blurred behind the reveal card). Now the blur eases to fully sharp
+  on ANY reveal (correct, wrong, timeout) — 350ms FastOutSlowInEasing
+  animateFloatAsState inside MysteryImageCard (new `revealed` param).
+- Fix 2: the guessing loading screen (GuessPhase.Preparing card) had no
+  cancel — now a back-arrow button above the card, same style as the quiz
+  LoadingScreen, opens the same "quit game?" confirmation as the X.
+- Hardening behind fix 2: round generation (AI + image fetch) ran in an
+  app-scope job that was never cancelled — quitting mid-generation let a
+  stale job write Playing/Error into a NEW game's state. Added `guessJob`
+  tracking in NazoApp: cancelled on quit and before each new round, and
+  both completion callbacks are guarded by `job.isActive`. Quiz mode's
+  equivalent (also uncancelled) was left untouched — golden.
