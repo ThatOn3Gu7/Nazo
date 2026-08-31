@@ -23,6 +23,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -483,7 +484,9 @@ private fun slideTint(index: Int): Color = when (index) {
 @Composable
 private fun SlideCardFrame(
     index: Int,
-    content: @Composable () -> Unit,
+    // ColumnScope receiver so children can use weight(1f) — a plain
+    // `() -> Unit` lambda breaks `weight` resolution (CI-caught).
+    content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
         modifier = Modifier
