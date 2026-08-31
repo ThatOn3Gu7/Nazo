@@ -2278,3 +2278,57 @@ covered by `BUG_AUDIT.md` + this log).
   is GPU/CPU-bound and trivial). Owner's rule going forward: if it looks
   good on their phone, it ships.
 - Files: ui/launch/IntroOverlay.kt, handoff.md.
+
+## [2026-08-31 19:40] tweak: intro burst slowed further (owner: "cap it slower")
+
+- Owner approved intro v2 overall but the breaking-apart still read too
+  fast/instant. IntroOverlay.kt timings only: dissolve 200→260ms, burst
+  480→800ms, scatter beat 80→150ms (assembly stays 950ms). Total ~2.4s →
+  ~2.9s — the ceiling per the owner's "not so long the opening feels slow"
+  constraint; don't push past ~3s without asking.
+- Files: ui/launch/IntroOverlay.kt, handoff.md.
+
+## [2026-08-31 19:45] feat: Phase 3 — first-launch onboarding tour (ui/onboarding)
+
+- Owner approved Phase 2 (splash+intro) as done; requested Phase 3 with a
+  concrete spec: 3 slides — the two GAME MODES (Quiz, Guessing) + the
+  STATS/leveling system; a Next button spanning the entire bottom; a SMALL
+  back-arrow button in the bottom-left beside it (returns to the previous
+  slide); rest left to the agent (research conventions from the roadmap
+  applied: one purpose per slide, <140-char copy, always-visible Skip,
+  progress dots, no auto-rotate, first-launch-only persisted flag, lead
+  with value — final CTA "Start Playing").
+- NEW package ui/onboarding (fully self-contained):
+  - OnboardingPrefs.kt — SharedPreferences "nazo_onboarding", `completed`
+    flag. Deliberately NOT added to ThemePreferences and NOT in
+    BackupRepository's known-stores list (a restore should not suppress
+    onboarding on a genuinely fresh install).
+  - OnboardingScreen.kt — opaque overlay (NazoBackground) above the app:
+    top bar = 謎 brand mark + Skip (TextButton, hidden on last slide via
+    AnimatedVisibility fade); HorizontalPager (foundation.pager, stable in
+    our BOM) with 3 slides (hero tile 168dp rounded-32 NazoPrimary@0.14 +
+    0.25-alpha border, icon 76dp: Quiz / ImageSearch / EmojiEvents; kicker
+    label, title 28sp, body ≤140 chars); animated progress dots (active
+    stretches 8→26dp pill, animateDpAsState — animation.core import);
+    bottom bar = fixed 56dp slot with the circular back arrow (fades in
+    from slide 2; fixed slot so the big button never jumps) + Next button
+    weight(1f) height 56dp rounded-18 NazoPrimary (label crossfades
+    Next↔"Start Playing" via AnimatedContent). Haptics: light on Next,
+    soft on back/Skip. BackHandler(enabled = page>0) steps one slide back
+    (falls through to the app's handler on slide 1). Root pointerInput
+    consume-loop barrier so touches on empty areas can't leak to the app
+    below (Main-pass parent consumption — pager/buttons unaffected).
+- NazoApp.kt wiring (additive): OnboardingPrefs/OnboardingScreen imports,
+  showOnboarding state (= !completed), overlay rendered ABOVE content +
+  startup dialogs but BELOW IntroOverlay — on a true first launch the 謎
+  intro plays over the tour and fades out to reveal slide 1. onFinish
+  persists the flag + hides. Existing screens/logic untouched.
+- Z-order note (hazard for future overlays): root Box order is now
+  [particles background] < AnimatedContent < startup dialogs < Onboarding
+  < IntroOverlay. Keep IntroOverlay LAST.
+- Owner test: fresh install (or clear data) → intro → 3-slide tour (swipe
+  + buttons + Skip + system back), "Start Playing" lands on Home; force
+  stop + relaunch → tour must NOT reappear; existing installs see it once
+  (flag is new). Verify in light + dark + a non-mint accent.
+- Files: ui/onboarding/OnboardingPrefs.kt (new), ui/onboarding/
+  OnboardingScreen.kt (new), ui/NazoApp.kt, handoff.md.
