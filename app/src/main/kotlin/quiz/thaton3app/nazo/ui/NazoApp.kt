@@ -341,13 +341,16 @@ fun NazoApp() {
         }
         guessRoundResult = null
         guessPhase = GuessPhase.Preparing(guessRound)
+        val startedRound = guessRound
         guessJob?.cancel()
-        val job = scope.launch {
+        guessJob = scope.launch {
             GuessApiClient.generateGuessRound(
                 provider, key, model, guessTopic, guessDifficulty, guessAvoidTargets,
             )
                 .onSuccess { payload ->
-                    if (!job.isActive) return@onSuccess
+                    // A cancelled / stale job (quit, or a newer round started)
+                    // must not write into a different round's state.
+                    if (guessRound != startedRound) return@onSuccess
                     // Image URL is best-effort: null just means the play screen
                     // shows its drawn placeholder instead of a fetched image.
                     val url = GuessImageFetcher.fetchImageUrl(
@@ -358,12 +361,11 @@ fun NazoApp() {
                     guessPhase = GuessPhase.Playing(payload, url)
                 }
                 .onFailure { e ->
-                    if (!job.isActive) return@onFailure
+                    if (guessRound != startedRound) return@onFailure
                     val msg = e.message ?: "Something went wrong."
                     guessPhase = GuessPhase.Error(msg, isOffline = false)
                 }
         }
-        guessJob = job
     }
 
     fun startGuessing(topic: String, difficulty: String, rounds: Int) {

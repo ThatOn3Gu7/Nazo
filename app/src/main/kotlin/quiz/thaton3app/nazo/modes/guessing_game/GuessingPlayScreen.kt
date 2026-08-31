@@ -5,7 +5,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateFloatAsState
+import androidx.compose.animation.animateIntAsState
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -472,13 +472,13 @@ private fun MysteryImageCard(
     // linear un-blur). Once the round is revealed — a correct OR a wrong
     // answer, or the timer at 0 — it eases to fully sharp, so the player
     // actually sees who it was instead of just reading the name.
-    val blurFactor by animateFloatAsState(
-        targetValue = if (revealed) 0f else progress,
+    val blurRadiusDp by animateIntAsState(
+        targetValue = if (revealed) 0 else (progress * MAX_BLUR).toInt(),
         animationSpec = tween(350, easing = FastOutSlowInEasing),
         label = "mysteryBlur"
     )
-    val blurRadius = (blurFactor * MAX_BLUR).dp
-    val revealScale = 1f + 0.12f * blurFactor
+    val blurRadius = blurRadiusDp.dp
+    val revealScale = 1f + 0.12f * blurRadiusDp / MAX_BLUR
 
     Box(
         modifier = Modifier
