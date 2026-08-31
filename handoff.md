@@ -2220,3 +2220,43 @@ covered by `BUG_AUDIT.md` + this log).
   AND dark). Phase 3 (onboarding/welcome screens) starts only after approval.
   DO NOT merge PR #2 until all phases are declared done — merging closes the
   Arena session (that is exactly how the last session died).
+
+## [2026-08-31 18:20] feat: intro v2 — 謎 assembles from ~700 particles (Canvas), logo 210dp
+
+- Owner approved Phase 2 on device, then asked: can the intro kanji be built up
+  from small dots/lines flying in from all over the screen (Netflix/YouTube-style
+  ident)? Feasibility was confirmed BEFORE building (owner's condition):
+  (a) the glyph is a readable bitmap (drawable-nodpi/ic_launcher_foreground.png,
+  512×512) so per-pixel sampling gives exact particle targets — no hand-traced
+  stroke paths needed; (b) rendering is one Canvas + ~700 drawCircle calls per
+  frame with zero per-particle allocations (Offset is a value class) — lighter
+  than the always-on FloatingParticlesBackground; (c) a guaranteed fallback
+  keeps it from ever looking broken.
+- Implementation (ALL inside ui/launch/IntroOverlay.kt — no other file touched):
+  - `sampleParticles(context)`: decodes the glyph at inSampleSize=8 (→64×64),
+    collects cells with alpha>96, thins evenly to ≤750 particles. Each particle:
+    target = cell center as fraction of the logo box; scatter start = random
+    direction + 0.55–1.05 × canvas max-dimension from center (flies in from
+    across/off screen on any device); random radius/stagger/bow; color sampled
+    from the pixel. Seeded Random(0x5A50) → identical choreography every launch.
+    Runs on Dispatchers.Default; returns emptyList() on ANY failure.
+  - Timeline (~1.8s): crisp glyph hold 100ms (seamless handoff — the SYSTEM
+    splash shows the same assembled glyph, so the intro CANNOT start scattered
+    or the kanji would teleport; instead it shatters first) → glyph dissolves
+    (110ms, overlapped) while particles BURST outward (280ms) → fly home on
+    curved staggered paths (660ms FastOutSlowInEasing; per-particle smoothstep
+    + stagger 0–0.35; sin-bowed flight, zero bow at endpoints so landings are
+    exact) → crossfade to crisp glyph (180ms, overlapped) + settle pop
+    0.965→1.0 (240ms) → hold 160ms → overlay fade 380ms → removed from tree.
+  - FALLBACK: if sampling returns empty, the original Phase 2 pop (0.9→1.0,
+    ~1.5s) plays instead — the intro can never appear broken. While sampling
+    (~10–30ms) the crisp glyph shows, identical to the splash, so there is no
+    start-up flash.
+  - Logo box 200dp → 210dp (owner: "+~10px"). The ≤5% size step at the
+    splash→intro handoff frame is imperceptible (same asset, same center).
+  - Unchanged: one play per cold start, warm-start no-replay, input barrier,
+    app composes underneath, additive-only contract, no reflection.
+- If the owner dislikes the particle look on device: revert THIS commit only —
+  that restores the approved v1 pop exactly (v1 also still lives on as the
+  fallback branch inside this file).
+- Files: ui/launch/IntroOverlay.kt, handoff.md.
