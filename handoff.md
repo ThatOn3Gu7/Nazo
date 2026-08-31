@@ -2260,3 +2260,21 @@ covered by `BUG_AUDIT.md` + this log).
   that restores the approved v1 pop exactly (v1 also still lives on as the
   fallback branch inside this file).
 - Files: ui/launch/IntroOverlay.kt, handoff.md.
+
+## [2026-08-31 19:00] tweak: intro v2 — slower/smoother burst+assembly, logo 220dp
+
+- Owner device-tested intro v2 (liked it) with two asks before closing the
+  splash work: (1) the break-apart + reassembly read too fast/instant —
+  slower and smoother; (2) logo another ~10px bigger.
+- Timings (IntroOverlay.kt only): dissolve 110→200ms, burst 280→480ms, NEW
+  80ms beat at full scatter (makes the burst readable before the return),
+  assembly 660→950ms, sharpen 180→220ms, settle 240→260ms, end hold
+  160→180ms. Total ~1.8s → ~2.4s. Easings unchanged (FastOutSlowIn + the
+  per-particle smoothstep/stagger already provide the smooth feel; only
+  pacing changed).
+- LOGO_SIZE 210dp → 220dp (two cumulative +10 bumps over the original 200dp).
+- Owner hardware note: their test device is 4GB RAM — RAM is irrelevant to
+  this animation (one Canvas, ~700 points, zero allocations per frame; cost
+  is GPU/CPU-bound and trivial). Owner's rule going forward: if it looks
+  good on their phone, it ships.
+- Files: ui/launch/IntroOverlay.kt, handoff.md.
