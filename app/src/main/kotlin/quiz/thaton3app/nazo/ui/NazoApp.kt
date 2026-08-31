@@ -674,9 +674,38 @@ fun NazoApp() {
 
             // Onboarding sits above the app content/dialogs but BELOW the
             // cold-start intro, so the 謎 animation plays over it and fades
-            // out to reveal the tour on a true first launch.
+            // out to reveal the tour on a true first launch. The tour is also
+            // a setup wizard: theme/accent/reveal changes apply LIVE (same
+            // state + persistence as AppearanceScreen), a verified provider
+            // key refreshes `selectedProvider`, and "Play Now" launches the
+            // user's very first game straight from the tour.
             if (showOnboarding) {
                 OnboardingScreen(
+                    isDark = isDark,
+                    themeMode = themeMode,
+                    onThemeModeChange = { themeMode = it; themePrefs.mode = it },
+                    accentId = accentName,
+                    onAccentChange = { accentName = it; themePrefs.accent = it },
+                    revealStyle = guessRevealStyle,
+                    onRevealStyleChange = {
+                        guessRevealStyle = it
+                        themePrefs.guessRevealStyle = it
+                    },
+                    onProvidersChanged = {
+                        selectedProvider = apiKeyStore.getSelectedProvider()
+                    },
+                    onPlayNow = { mode, topic ->
+                        onboardingPrefs.completed = true
+                        showOnboarding = false
+                        homeTopic = topic
+                        if (mode == "GUESSING") {
+                            homeMode = NazoMode.GUESSING.name
+                            startGuessing(topic, "Medium", 3)
+                        } else {
+                            homeMode = NazoMode.QUIZ.name
+                            startQuiz(topic, "Medium", 5)
+                        }
+                    },
                     onFinish = {
                         onboardingPrefs.completed = true
                         showOnboarding = false
