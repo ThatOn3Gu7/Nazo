@@ -90,7 +90,7 @@ import kotlinx.coroutines.withContext
 
 private data class DifficultyStat(val label: String, val played: Int, val accuracyPercent: Int)
 
-private data class MasteredAnimeStat(val rank: Int, val title: String, val quizzes: Int, val avgScore: Int)
+private data class MasteredAnimeStat(val rank: Int, val title: String, val answers: Int, val avgScore: Int)
 
 private data class StatsData(
     val level: Int,
@@ -206,10 +206,10 @@ fun StatisticsScreen(
                 ) {
                     NumberStatTile(
                         icon = Icons.Filled.DoneAll,
-                        label = "Total Quizzes",
+                        label = "Total Games",
                         targetValue = data.totalQuizzes,
                         valueFormatter = { it.toString() },
-                        subtitle = "Completed",
+                        subtitle = "Quizzes + guessing",
                         modifier = Modifier.weight(1f),
                         animate = playAnimations,
                     )
@@ -244,7 +244,7 @@ fun StatisticsScreen(
                         icon = Icons.Filled.TrackChanges,
                         label = "Best Topic",
                         value = data.bestTopic ?: "—",
-                        subtitle = if (data.bestTopic == null) "No quizzes yet" else "Top mastered anime",
+                        subtitle = if (data.bestTopic == null) "No games yet" else "Top mastered anime",
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -451,7 +451,7 @@ private fun DifficultyCard(rows: List<DifficultyStat>, animate: Boolean) {
             .padding(16.dp)
     ) {
         Text(
-            text = "Quizzes by Difficulty",
+            text = "Games by Difficulty",
             style = MaterialTheme.typography.titleMedium,
             color = NazoTextPrimary,
             fontWeight = FontWeight.Bold,
@@ -584,7 +584,7 @@ private fun TopAnimeRow(row: MasteredAnimeStat, animate: Boolean) {
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "${row.quizzes} Quizzes",
+                text = "${row.answers} Answers",
                 style = MaterialTheme.typography.bodyMedium,
                 color = NazoTextSecondary
             )
@@ -766,7 +766,7 @@ private fun shareBitmap(data: StatsData, context: Context): File {
     val gap = 20f
     val gridW = (cardRight - cardLeft - 2 * pad - 2 * gap) / 3f
     val chips = listOf(
-        Pair(data.totalQuizzes.toString(), "QUIZZES"),
+        Pair(data.totalQuizzes.toString(), "GAMES"),
         Pair("${data.overallAccuracyPercent}%", "ACCURACY"),
         Pair("${data.currentStreakDays}", "DAY STREAK")
     )
@@ -847,7 +847,7 @@ private fun shareBitmap(data: StatsData, context: Context): File {
         
         canvas.drawText(rowTitle, cardLeft + pad + 90f, ry - 4f, rowTitlePaint)
         canvas.drawText(
-            "${row.quizzes} quizzes · ${row.avgScore}% avg", cardLeft + pad + 90f, ry + 32f,
+            "${row.answers} answers · ${row.avgScore}% avg", cardLeft + pad + 90f, ry + 32f,
             Paint().apply { color = onMuted; textSize = 22f; typeface = fontReg; isAntiAlias = true }
         )
     }

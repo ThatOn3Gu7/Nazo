@@ -3,7 +3,6 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    id("com.google.devtools.ksp") version "2.1.0-1.0.29"
 }
 
 android {
@@ -14,8 +13,8 @@ android {
         applicationId = "quiz.thaton3app.nazo"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "4.0"
+        versionCode = 5
+        versionName = "5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -23,6 +22,21 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    // Size pipeline for RELEASE builds only — the debug build is untouched.
+    // Behavior-neutral for this app: no reflection, no JNI, no dynamic
+    // resource lookups (verified by grep), so R8 full mode + resource
+    // shrinking only rename/tree-shape and strip unused drawables.
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
     }
 
     compileOptions {
@@ -47,11 +61,6 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.coil)
-    // Room Database components
-    val roomVersion = "2.6.1" // Use the latest stable version
-    implementation("androidx.room:room-runtime:$roomVersion")
-    implementation("androidx.room:room-ktx:$roomVersion") // For Coroutines support
-    ksp("androidx.room:room-compiler:$roomVersion")
     // WorkManager for background update checks + notifications
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     debugImplementation(libs.androidx.ui.tooling)

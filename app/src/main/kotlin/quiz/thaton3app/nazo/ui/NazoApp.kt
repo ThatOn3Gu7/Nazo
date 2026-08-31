@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
@@ -38,6 +39,13 @@ import quiz.thaton3app.nazo.ui.screens.*
 import quiz.thaton3app.nazo.ui.theme.NazoTheme
 import quiz.thaton3app.nazo.data.remote.QuizCache
 import quiz.thaton3app.nazo.ui.screens.GenerationState
+import quiz.thaton3app.nazo.modes.guessing_game.GuessApiClient
+import quiz.thaton3app.nazo.modes.guessing_game.GuessImageFetcher
+import quiz.thaton3app.nazo.modes.guessing_game.GuessPhase
+import quiz.thaton3app.nazo.modes.guessing_game.GuessRoundResult
+import quiz.thaton3app.nazo.modes.guessing_game.GuessScoring
+import quiz.thaton3app.nazo.modes.guessing_game.GuessingPlayScreen
+import quiz.thaton3app.nazo.modes.guessing_game.GuessingResultsScreen
 
 // Every destination in the app. Wrapping this in AnimatedContent gives us a single,
 // uniform fade-in / fade-out transition between ALL screens (Roadmap #2).
@@ -54,6 +62,8 @@ sealed interface Screen {
     data object Results : Screen
     data object Loading : Screen
     data object Review : Screen
+    data object GuessingGame : Screen
+    data object GuessingResults : Screen
 }
 
 private data class GenerationRequest(
@@ -175,6 +185,36 @@ fun NazoApp() {
     var quizDifficulty by remember { mutableStateOf("Medium") }
     var quizStartedAt by remember { mutableStateOf(0L) }
 
+    // ---- Guessing Game (modes/guessing_game) ----
+    // Home-screen mode preset is hoisted here too (like the quiz presets) so the
+    // user's last selection survives navigating away and back.
+    // Last game mode played/selected is pre-selected on launch (falls back
+    // to Quiz for anything stored that isn't a valid mode name).
+    var homeMode by rememberSaveable {
+        mutableStateOf(
+            NazoMode.entries.firstOrNull { it.name == themePrefs.lastMode }?.name
+                ?: NazoMode.QUIZ.name
+        )
+    }
+    var guessRounds by rememberSaveable { mutableIntStateOf(3) }
+    var guessTopic by remember { mutableStateOf("") }
+    var guessDifficulty by remember { mutableStateOf("Medium") }
+    var guessPhase by remember { mutableStateOf<GuessPhase>(GuessPhase.Idle) }
+    // "blur" | "pixel" — the guessing game's image reveal style (Appearance).
+    var guessRevealStyle by remember { mutableStateOf(themePrefs.guessRevealStyle) }
+    var guessRound by remember { mutableIntStateOf(1) }
+    var guessTotalRounds by remember { mutableIntStateOf(3) }
+    var guessScore by remember { mutableIntStateOf(0) }
+    var guessResults by remember { mutableStateOf<List<GuessRoundResult>>(emptyList()) }
+    // Outcome of the CURRENT round (null until the player answers or time runs
+    // out) — drives the in-place reveal on the play screen.
+    var guessRoundResult by remember { mutableStateOf<GuessRoundResult?>(null) }
+    // Targets already played this game, so the AI keeps picking something new.
+    var guessAvoidTargets by remember { mutableStateOf<List<String>>(emptyList()) }
+    // In-flight round generation (AI call + image fetch) — cancelled on quit
+    // so a stale round can never write into a newer game's state.
+    var guessJob by remember { mutableStateOf<Job?>(null) }
+
     val scope = rememberCoroutineScope()
     var generationState by remember { mutableStateOf<GenerationState>(GenerationState.Idle) }
     var generationRequest by remember { mutableStateOf<GenerationRequest?>(null) }
@@ -240,6 +280,7 @@ fun NazoApp() {
     }
 
     fun startQuiz(topic: String, difficulty: String, count: Int) {
+        themePrefs.lastMode = NazoMode.QUIZ.name
         // Offline mode: skip any API attempt and go straight to the local bank
         // (stats still record normally in `answer`).
         if (isOfflineMode) {
@@ -288,6 +329,118 @@ fun NazoApp() {
         }
     }
 
+    // ---- Guessing Game orchestration (all UI lives in modes/guessing_game) ----
+
+    fun prepareGuessRound() {
+        if (isOfflineMode) {
+            guessPhase = GuessPhase.Error(
+                "Guessing Game needs an internet connection to fetch the answer set and the mystery image.",
+                isOffline = true,
+            )
+            return
+        }
+        val provider = apiKeyStore.getSelectedProvider() ?: apiKeyStore.getActiveProvider()
+        val key = provider?.let { apiKeyStore.getKey(it) }
+        val model = provider?.let { apiKeyStore.getModel(it) }.orEmpty()
+        if (provider == null || key.isNullOrBlank() || model.isBlank()) {
+            guessPhase = GuessPhase.Error(
+                "Set up an AI provider key and model first (Settings → AI & Model Configuration), then start a guessing game.",
+                isOffline = false,
+            )
+            return
+        }
+        guessRoundResult = null
+        guessPhase = GuessPhase.Preparing(guessRound)
+        val startedRound = guessRound
+        guessJob?.cancel()
+        guessJob = scope.launch {
+            GuessApiClient.generateGuessRound(
+                provider, key, model, guessTopic, guessDifficulty, guessAvoidTargets,
+            )
+                .onSuccess { payload ->
+                    // A cancelled / stale job (quit, or a newer round started)
+                    // must not write into a different round's state.
+                    if (guessRound != startedRound) return@onSuccess
+                    // Image URL is best-effort: null just means the play screen
+                    // shows its drawn placeholder instead of a fetched image.
+                    val url = GuessImageFetcher.fetchImageUrl(
+                        payload.targetEntity, payload.aliases, payload.imageQuery,
+                    )
+                    // Teach the next round not to repeat this round's target/aliases.
+                    guessAvoidTargets = guessAvoidTargets + payload.displayAnswer() + payload.aliases
+                    guessPhase = GuessPhase.Playing(payload, url)
+                }
+                .onFailure { e ->
+                    if (guessRound != startedRound) return@onFailure
+                    val msg = e.message ?: "Something went wrong."
+                    guessPhase = GuessPhase.Error(msg, isOffline = false)
+                }
+        }
+    }
+
+    fun startGuessing(topic: String, difficulty: String, rounds: Int) {
+        themePrefs.lastMode = NazoMode.GUESSING.name
+        guessTopic = topic
+        guessDifficulty = difficulty
+        guessTotalRounds = rounds.coerceIn(1, 15)
+        guessRound = 1
+        guessScore = 0
+        guessResults = emptyList()
+        guessRoundResult = null
+        guessAvoidTargets = emptyList()
+        if (navigationStack.last() != Screen.GuessingGame) navigate(Screen.GuessingGame)
+        prepareGuessRound()
+    }
+
+    fun guessRoundComplete(correct: Boolean, answerText: String?, remainingMs: Long) {
+        val payload = (guessPhase as? GuessPhase.Playing)?.payload ?: return
+        if (guessRoundResult != null) return // one shot per round
+        val durationMs = GuessScoring.durationMsFor(guessDifficulty)
+        val frac = if (durationMs > 0) (remainingMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
+        val points = if (correct) {
+            GuessScoring.pointsFor(GuessScoring.specFor(guessDifficulty).basePoints, frac)
+        } else {
+            0
+        }
+        val result = GuessRoundResult(
+            round = guessRound,
+            target = payload.displayAnswer(),
+            aliases = payload.aliases,
+            imageQuery = payload.imageQuery,
+            correct = correct,
+            answerText = answerText,
+            points = points,
+            remainingFraction = frac,
+        )
+        guessRoundResult = result
+        guessScore += points
+        guessResults = guessResults + result
+    }
+
+    fun guessNext() {
+        val last = guessResults.lastOrNull() ?: return
+        // All rounds are always played — a miss reveals the answer and moves
+        // on; the game ends once the last round is finished.
+        val finished = last.round >= guessTotalRounds
+        if (finished) {
+            // Game complete — fold the result into the shared stats, exactly
+            // like a finished quiz (level/XP, streak, difficulty, topics).
+            val finishedDifficulty = guessDifficulty
+            val finishedTopic = guessTopic
+            val finishedAnswered = guessResults.size
+            val finishedCorrect = guessResults.count { it.correct }
+            scope.launch {
+                statsStore.recordGuessing(finishedDifficulty, finishedTopic, finishedAnswered, finishedCorrect)
+                quizStats = statsStore.get()
+            }
+            guessPhase = GuessPhase.Idle
+            replace(Screen.GuessingResults)
+        } else {
+            guessRound++
+            prepareGuessRound()
+        }
+    }
+
     var selectedProvider by remember { mutableStateOf(apiKeyStore.getSelectedProvider()) }
     val activeProvider = selectedProvider ?: apiKeyStore.getActiveProvider()
     val configuredProviders = apiKeyStore.getConfiguredProviders()
@@ -331,6 +484,11 @@ fun NazoApp() {
                         onTopicChange = { homeTopic = it },
                         onDifficultyChange = { homeDifficultyName = it },
                         onQuestionCountChange = { homeQuestionCount = it },
+                        mode = homeMode,
+                        onModeChange = { homeMode = it; themePrefs.lastMode = it },
+                        guessingRounds = guessRounds,
+                        onGuessingRoundsChange = { guessRounds = it },
+                        onStartGuessing = { topic, difficulty, rounds -> startGuessing(topic, difficulty, rounds) },
                     )
 
                     Screen.Settings -> SettingsScreen(
@@ -384,6 +542,11 @@ fun NazoApp() {
                         onFloatingNavBarChange = {
                             navBarFloating = it
                             themePrefs.floatingNavBar = it
+                        },
+                        revealStyle = guessRevealStyle,
+                        onRevealStyleChange = {
+                            guessRevealStyle = it
+                            themePrefs.guessRevealStyle = it
                         },
                         iconFollowsOsTheme = themePrefs.iconFollowsOsTheme,
                         onIconFollowsOsThemeChange = { enabled ->
@@ -451,6 +614,40 @@ fun NazoApp() {
                         questions = questions,
                         userAnswers = userAnswers,
                         onBackClick = { goBack() },
+                        onHomeClick = { goHome() },
+                    )
+
+                    Screen.GuessingGame -> GuessingPlayScreen(
+                        topic = guessTopic,
+                        difficultyLabel = guessDifficulty,
+                        round = guessRound,
+                        totalRounds = guessTotalRounds,
+                        score = guessScore,
+                        phase = guessPhase,
+                        roundResult = guessRoundResult,
+                        revealStyle = guessRevealStyle,
+                        onRetryRound = { prepareGuessRound() },
+                        onOpenSettings = { navigate(Screen.Settings) },
+                        onQuit = {
+                            guessJob?.cancel()
+                            guessPhase = GuessPhase.Idle
+                            goHome()
+                        },
+                        onRoundComplete = { correct, answerText, remainingMs ->
+                            guessRoundComplete(correct, answerText, remainingMs)
+                        },
+                        onNextRound = { guessNext() },
+                    )
+
+                    Screen.GuessingResults -> GuessingResultsScreen(
+                        score = guessScore,
+                        results = guessResults,
+                        topic = guessTopic,
+                        difficulty = guessDifficulty,
+                        onPlayAgain = {
+                            goBack()
+                            startGuessing(guessTopic, guessDifficulty, guessTotalRounds)
+                        },
                         onHomeClick = { goHome() },
                     )
                 }

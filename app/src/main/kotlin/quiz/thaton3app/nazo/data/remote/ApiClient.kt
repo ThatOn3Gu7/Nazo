@@ -94,7 +94,9 @@ Hard rules:
         }.onFailure { e -> Log.e(TAG, "generateQuiz failed", e) }
     }
 
-    private fun extractContent(kind: ProviderKind, raw: String): String = when (kind) {
+    // internal (not private) so other modes (e.g. modes/guessing_game) can reuse
+    // the same response-shape handling instead of duplicating it.
+    internal fun extractContent(kind: ProviderKind, raw: String): String = when (kind) {
         ProviderKind.GEMINI -> JSONObject(raw)
             .getJSONArray("candidates")
             .getJSONObject(0)
@@ -199,7 +201,8 @@ Hard rules:
         }.onFailure { e -> Log.e(TAG, "fetchModels failed", e) }
     }
 
-    private fun friendlyHttpError(code: Int, kind: ProviderKind): String = when (code) {
+    // internal — shared with other modes' API clients (see extractContent above).
+    internal fun friendlyHttpError(code: Int, kind: ProviderKind): String = when (code) {
         400 -> "Request error (check the selected model)."
         401, 403 -> "The API key was rejected. Check it in AI & Model Configuration."
         404 -> "That model wasn't found. Re-fetch models or pick another from the list."

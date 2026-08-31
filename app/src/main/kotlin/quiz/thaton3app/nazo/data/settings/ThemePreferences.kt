@@ -36,11 +36,24 @@ class ThemePreferences(context: Context) {
         get() = prefs.getBoolean(KEY_FLOATING_NAV, false)
         set(value) = prefs.edit().putBoolean(KEY_FLOATING_NAV, value).apply()
 
+    /** Which game mode ("QUIZ" | "GUESSING") was last played/selected — pre-selected
+     *  on the Home screen when the app launches. */
+    var lastMode: String
+        get() = prefs.getString(KEY_LAST_MODE, "QUIZ") ?: "QUIZ"
+        set(value) = prefs.edit().putString(KEY_LAST_MODE, value).apply()
+
+    /** Guessing-game image reveal style: "blur" or "pixel". */
+    var guessRevealStyle: String
+        get() = prefs.getString(KEY_GUESS_REVEAL_STYLE, "pixel") ?: "pixel"
+        set(value) = prefs.edit().putString(KEY_GUESS_REVEAL_STYLE, value).apply()
+
     private companion object {
         const val KEY_MODE = "theme_mode"
         const val KEY_ACCENT = "theme_accent"
         const val KEY_LAUNCHER_NIGHT = "launcher_night"
         const val KEY_ICON_FOLLOWS_OS = "icon_follows_os"
         const val KEY_FLOATING_NAV = "floating_nav"
+        const val KEY_LAST_MODE = "last_game_mode"
+        const val KEY_GUESS_REVEAL_STYLE = "guess_reveal_style"
     }
 }

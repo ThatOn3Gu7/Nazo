@@ -1755,3 +1755,393 @@ covered by `BUG_AUDIT.md` + this log).
 - **"i" moved before the expand arrow (improvement):** in `ProviderCard` header the info `IconButton`
   now sits to the LEFT of the expand/collapse `IconButton`.
 - Files: `ui/screens/HomeScreen.kt`, `ui/screens/AiProviderScreen.kt`, `handoff.md`.
+
+## [2026-08-31 05:24] feat: new "Guessing Game" mode — image un-blur reveal, countdown, choice/fuzzy input, time-decay scoring
+
+- Owner requested a second game mode alongside Quiz: enter a topic, an image is fetched, an
+  on-device linear un-blur runs while a countdown ticks, and the player names the target
+  (4-choice on Easy/Medium, fuzzy auto-complete on Hard/Otaku Master) with points decaying by
+  remaining time; timer at 0 eliminates the player and reveals the answer.
+- **New self-contained module `modes/guessing_game/`** (package
+  `quiz.thaton3app.nazo.modes.guessing_game` — the "separate folder" rule, kept out of
+  `ui/`+`data/` so the mode is portable):
+  - `GuessPayload.kt` — the AI payload data class (target_entity / aliases / image_query /
+    easy_medium_options / hard_autocomplete_pool), `GuessRoundResult`, the `GuessPhase`
+    sealed state (Idle/Preparing/Playing/Error), `normalizeName` (answer comparison key) and
+    `parseGuessPayload` (lenient parser that throws on a structurally broken response).
+    `choiceOptions` guarantees the target is one of the 4 buttons (injects it if the model
+    forgot) and never uses an alias as a decoy; `suggestionPool` = target+aliases+pool deduped.
+  - `GuessApiClient.kt` — the standard prompt wrapper (`GUESS_SYSTEM_PROMPT` +
+    `buildGuessPrompt(topic, difficulty, avoidTargets)`; avoidTargets = targets already
+    played this game, so the AI keeps varying) plus a Gemini `responseSchema` OBJECT for
+    exactly the 5 JSON keys. HTTP reuses `data/remote` (providerById, buildUrl, headers,
+    requestBody, and now-internal `ApiClient.extractContent`/`friendlyHttpError`) so auth,
+    error mapping and provider support (Gemini + OpenRouter) behave exactly like quiz gen.
+  - `GuessImageFetcher.kt` — keyless image-URL resolution: Wikimedia Commons file search
+    first (1024px thumb), then en.wikipedia REST summary `originalimage` (2x thumbnail) as
+    fallback. Returns null on ANY failure → the UI shows the drawn placeholder instead.
+  - `GuessScoring.kt` — per-difficulty base points (Easy 100 / Medium 150 / Hard 200 /
+    Otaku Master 300) + input mode (CHOICE vs AUTOCOMPLETE). Countdown DURATION is shared
+    with `QuizEngine` (40/30/20/10s) so both modes agree. Decay formula:
+    `points = round(base × remainingFraction)`, floor 1 (a last-second correct answer still
+    scores 1; timeout scores 0).
+  - `FuzzyMatch.kt` — dependency-free fuzzy matcher (exact / prefix / in-order
+    subsequence / word-prefix / Levenshtein on whole name and single word), top-k for the
+    auto-complete list.
+  - `GuessingPlayScreen.kt` — the game screen: header (round x of y, score pill, rolling
+    timer circle in the quiz's style + shrinking LinearProgressIndicator), the mystery image
+    card, the input area, and the in-place reveal card. Blur engine: image bytes are
+    pre-fetched with Coil (`ImageLoader.execute`) BEFORE the timer starts, then a
+    frame-clock loop (`withFrameNanos`, monotonic, drift-free — unlike the quiz's
+    delay(1000) loop because the reveal must be smooth) drives both the countdown and the
+    `Modifier.blur(radius = 28dp × remainingFraction)` layer — strictly LINEAR over the
+    timer — plus a 1.12→1.0 zoom-out. Final-5s haptic ramp + time-up buzz reused from
+    `Haptics`. Timer at 0 → `timedOut` + reveal (one shot per round: wrong answer OR
+    timeout = eliminated, correct = next round / game over). Fetched-image failure →
+    themed drawn placeholder (dark card + 謎 + query). Quit dialog + BackHandler follow
+    the ActiveQuizScreen pattern.
+  - `GuessingResultsScreen.kt` — game-over summary in the QuizCompleteScreen visual
+    language (staggered entrances, animated score + sweep ring): total points, solved x/y,
+    per-round breakdown, Play Again / Home.
+- **API module edits (additive only):** `ProviderEndpoint.requestBody` gained an optional
+  `responseSchema: JSONObject? = null` 4th param (null → the existing quiz schema, so quiz
+  generation is byte-identical); `ApiClient.extractContent` + `friendlyHttpError` went
+  private → internal for reuse. No quiz/offline behavior touched.
+- **Navigation (NazoApp):** new `Screen.GuessingGame` + `Screen.GuessingResults`; hoisted
+  state (`homeMode`/`guessRounds` are rememberSaveable like the quiz presets; round,
+  score, results, avoid-targets are session state); orchestration fns `startGuessing` /
+  `prepareGuessRound` (offline or no provider/model → Error phase with a helpful message +
+  Retry/Settings/Quit, never a silent fallback) / `guessRoundComplete` (computes the
+  decay points, one-shot guard) / `guessNext` (missed round → results; last round solved
+  → results via `replace()` so system back lands on Home).
+- **HomeScreen entry point:** a new MODE section (Quiz | Guessing Game pill toggle, the
+  requested "navigation entry/toggle"); guessing mode swaps the headline, shows ROUNDS
+  (1/3/5) instead of QUESTIONS (5/10/15), and the CTA becomes "Start Guessing Game". Quiz
+  mode renders exactly as before (mode defaults to QUIZ; quiz branch code untouched).
+- Scoring is NOT recorded into `QuizStats`/Room — the guess game's points aren't
+  question stats and mixing them would distort quiz accuracy (possible follow-up).
+- Note: agent cannot compile (no JDK/SDK/network in this sandbox — same as previous
+  entries); owner to build in Termux. Watch items: `coil.execute` import (Coil 2
+  ImageLoader pre-fetch), `Icons.Filled.Quiz` / `Icons.Filled.ImageSearch` from
+  material-icons-extended, and per-frame `Modifier.blur` performance on low-end devices.
+- Files: new `modes/guessing_game/GuessPayload.kt`, `GuessApiClient.kt`,
+  `GuessImageFetcher.kt`, `GuessScoring.kt`, `FuzzyMatch.kt`, `GuessingPlayScreen.kt`,
+  `GuessingResultsScreen.kt`; edited `data/remote/ApiClient.kt`,
+  `data/remote/ProviderConfig.kt`, `ui/screens/HomeScreen.kt`, `ui/NazoApp.kt`,
+  `README.md`, `app/build.gradle.kts` (version bump), `handoff.md`.
+
+## [2026-08-31 11:50] fix: guessing game — centered preparing card, wavy spinner, better image fetching
+
+- Owner tested the first build and flagged three things from screenshots:
+  1. the "Summoning your mystery image…" card sat at the TOP of the screen (the quiz's
+     LoadingScreen centers its card); 2. it used a plain CircularProgressIndicator instead
+     of the cool wavy star spinner; 3. the image fetch missed (placeholder "謎 + topic"
+     shown) on an Otaku Master target ("Ryusa Bakuryu" — the wikis don't carry every jutsu).
+- **Centering:** restructured `GuessingPlayScreen`'s layout: the header row + shrinking
+  timer bar are now a FIXED block (not inside the scroll column — also better UX for the
+  Playing phase), and the phase content below it takes `weight(1f)`. Preparing/Error cards
+  live in a centered `Box(contentAlignment = Center)` in that remaining space (exact
+  LoadingScreen pattern), and the Playing content is the only scrolling part. NOTE:
+  `fillMaxSize` inside a `verticalScroll` column is unbounded height — the centering Box
+  must be a weighted sibling of the scroll column, not a child of it.
+- **WavySpinner shared:** moved the private `WavySpinner` out of `LoadingScreen.kt` into
+  `ui/components/WavySpinner.kt` (public, identical body — the quiz loading screen is
+  visually unchanged; its now-unused Canvas/Path/Stroke/PI/cos/sin imports were dropped).
+  `GuessingPlayScreen`'s preparing card AND the in-image "Fetching image…" indicator now
+  use the same wavy spinner (44dp) as the quiz. (Caught two mistakes while doing this:
+  the removal edit initially DUPLICATED the private block — removed both copies; and the
+  shared file initially missed `import androidx.compose.runtime.getValue` for the
+  `by transition.animateFloat` delegation.)
+- **Image fetching overhauled (`GuessImageFetcher`):**
+  - Query variants: full `image_query` first, then trailing-qualifier-dropped prefixes
+    (max 3), each tried against Commons + Wikipedia.
+  - Commons search now adds `filetype:bitmap` (skips SVGs/PDFs at search time).
+  - New last-resort source: **DuckDuckGo's image endpoint, keyless** — GET the
+    image-search HTML (browser UA) to extract the per-session `vqd` token (4 regex
+    variants), then `i.js?q=…&vqd=…` for JSON results; accepts any http(s) URL (DDG
+    serves Bing-hosted thumbnails without extensions). This is what makes obscure
+    Otaku-Master targets findable.
+  - Whole search wrapped in `withTimeout(20s)` (TimeoutCancellationException handled
+    separately) so a slow network can never stall a round; per-stage logs added so
+    `logcat` (tag `NazoGuessImage`) shows exactly what was tried and why it missed.
+  - (Caught while writing: three of the `vqd` raw-string regexes had FOUR trailing
+    quotes — the 4th starts a stray string literal and breaks compilation. Fixed to
+    three; this is why "I can't compile here" needs a careful desk-check pass.)
+- **Placeholder now shows the actual `image_query` the fetch tried** (was the raw topic),
+  so the owner can see what was searched when it misses.
+- Files: `modes/guessing_game/GuessingPlayScreen.kt`, `modes/guessing_game/GuessImageFetcher.kt`,
+  `ui/components/WavySpinner.kt` (new), `ui/screens/LoadingScreen.kt`, `handoff.md`.
+- NOTE: no version bump — still the unreleased 5.0.
+
+## [2026-08-31 07:00] ci: PR Assemble workflow now verifies every push; feature compiles
+
+- New `.github/workflows/pr-assemble.yml` (owner-created, owner-owned — the agent's
+  GitHub credential lacks the `workflows` permission, so it cannot push workflow
+  files): assembles the debug APK on every push/PR to master/testBranch/arena/**
+  and on manual dispatch, uploads it as the `nazo-debug-apk` run artifact, and
+  (since the 07:00 update) auto-comments the compiler errors onto the PR when a
+  build fails. The agent reads those comments via the GitHub API, so compile
+  errors are found and fixed without a local build or the owner's device.
+- The first real build of the guessing game branch found 14 compile errors, fixed
+  over three rounds:
+  - FuzzyMatch: `compareByDescending<Float>` pinned the ELEMENT type to Float;
+    bare `compareByDescending {}` then failed inference (T only appears in the
+    contravariant expected type of `sortedWith`); final form pins
+    `compareByDescending<Pair<String, Float>>`.
+  - GuessImageFetcher: `20_000` was an Int where `withTimeout` needs a Long;
+    `org.json.JSONObject` is not a Kotlin Map (no destructuring — iterate
+    `keys()`); `x.optJSONObject(..)?.optString(..)` is `String?` (safe-call
+    propagates) and needed `?: ""`.
+  - GuessingPlayScreen: `coil.ImageRequest` / `coil.execute` do not resolve on
+    this classpath (whatever the reason, the workaround stands): the mystery
+    image is now pre-fetched as raw bytes over plain HTTP
+    (`GuessImageFetcher.fetchImageBytes`) and passed to `AsyncImage` as a
+    ByteArray model — zero dependency on Coil's request APIs.
+  - NazoApp: local functions can't be called before their declaration
+    (`prepareGuessRound` moved above `startGuessing`); a lost newline during that
+    reorder briefly glued two function declarations onto one line — desk-check
+    brace balance does NOT catch that.
+- First fully green build: run 33366082853 (assemble-debug pass, 1m40s,
+  20 MB `nazo-debug-apk` artifact). The feature branch is now provably
+  compilable; the owner can download the APK from the run's Artifacts instead
+  of building in Termux.
+
+## [2026-08-31 12:55] fix: image relevance — the fetcher must depict the TARGET, not the topic
+
+- Owner's second real-device test: correct layout/spinner/flow, but the mystery
+  image was wrong — a Roronoa Zoro round showed the "Tokyo One Piece Tower"
+  logo, a Trafalgar Law round showed an unrelated news collage. Root cause:
+  the fetcher took the FIRST hit of a plain keyword search, which matches
+  topic words ("One Piece", "Trafalgar") instead of the entity.
+- New design in `GuessImageFetcher.fetchImageUrl(query, target)` (NazoApp now
+  passes `payload.targetEntity`):
+  - all sources searched by EXACT PHRASE (`"Roronoa Zoro"`);
+  - every result is relevance-gated: file/article titles scored against the
+    target name (all content words = 3, at least half = 2, longest word only
+    = 1); score < 2 is dropped. Topic-branded logos score 0.
+  - Commons = one `generator=search` call (phrase + `filetype:bitmap` +
+    imageinfo, top 10) — was up to 11 round-trips;
+  - Wikipedia gates on the article TITLE before any summary fetch (target
+    "Trafalgar Law" can no longer land on "Trafalgar" or "One Piece");
+  - the AI's image_query is a second search phrase (same gate);
+  - DuckDuckGo last resort, queried with the TARGET NAME, opaque image hosts
+    (YouTube thumbs, Bing proxies) trusted, slugs must mention the target.
+- System prompt hardened: `image_query` must START with the target's own full
+  name + franchise; never a landmark/studio/product/the franchise alone.
+- If nothing relevant is found the round shows the placeholder (with the
+  query) — a wrong image is treated as a miss by design now.
+- Tradeoff to watch: obscure targets (Otaku Master) may now more often get
+  the placeholder instead of a wrong-but-impressive image; if that bites,
+  the next step is having the AI pick from the top-N candidate file titles
+  (one extra cheap AI call per round).
+
+## [2026-08-31 13:15] feat: 5-stage image pipeline after deep-dive on real-device misses
+
+- Owner's third test (fresh APK): Toji Fushiguro got a cosplay PHOTO (last-resort
+  source, loose gate), while Kokichi Muta / Zommari Rureaux / Dr. Vegapunk got
+  the placeholder — including Vegapunk, a major character with a wiki article.
+- Diagnosis: (a) "Dr. Vegapunk" phrase never matches files/articles titled
+  "Vegapunk" and no name variants were tried; (b) obscure characters miss the
+  wikis and the DDG fallback is flaky (vqd token format changes + WAF 403s —
+  researched, it's the community's #1 reported failure); (c) the 20s total
+  budget could be exhausted by early stages before DDG even started.
+- Research: AniList = keyless GraphQL (graphql.anilist.co, ~90 req/min) with
+  Character(search:) -> official character portraits; Openverse = keyless JSON
+  CC image search (api.openverse.org/v1/images, ~100 req/day anonymous).
+  Both added. (Sources: freeapihub.com/apis/anilist, docs.openverse.org.)
+- New pipeline (all keyless, all title-gated >= 2 against any name variant):
+  Commons phrase -> Wikipedia phrase (each tried per variant: target,
+  honorific-stripped, word-sharing AI aliases, max 3) -> AniList -> Openverse
+  -> DuckDuckGo (vqd extraction now tries numeric AND generic token shapes,
+  i.js gets o=json; the AI image_query enriches the query when it starts
+  with the target name). Per-stage budget checks (min 2s left to start).
+- "Images sometimes repeat" was the topic-keyword artifact (same topic ->
+  same first hit); per-entity phrase search + gate makes that structurally
+  unlikely — each stage logs to tag NazoGuessImage, so any repeat/miss is
+  traceable in logcat.
+
+## [2026-08-31 13:30] fix: anime DB leads the image pipeline; game no longer eliminates
+
+- Owner's fourth test: Porco Galliard got a paper sketch, Ymir Fritz got a
+  generic ATTACK ON TITAN cosplay photo (a Commons file named after the
+  character). Title-matching guarantees TOPIC relevance, not art quality —
+  Commons/Wikipedia are full of named cosplay/fan files, and they were
+  stages 1-2, ahead of the anime database.
+- Fix (owner's own suggestion, which was the right one): AniList now LEADS
+  the per-variant loop — anime character portraits from the anime database
+  first, Commons + Wikipedia as fallback (they still cover items/places/
+  abilities AniList doesn't know about). Order per name variant:
+  AniList -> Commons -> Wikipedia, then Openverse, then DuckDuckGo.
+  Note: the app already did exactly the "AI gives a search query, we search
+  a database, take that image" flow the owner described — the AI supplies
+  target_entity/aliases/image_query and the fetcher searches the keyless
+  APIs; no new API keys involved.
+- Game flow (owner request): NO MORE ELIMINATION. All rounds are always
+  played — a wrong answer or timeout reveals the answer and the button
+  says "Next Round" (it said "See Results" before, which ended the game on
+  round 1 of 3/5). Results screen: "Eliminated!" -> "Outmatched!" (only
+  when every round was missed), "Game over" -> "Game complete",
+  RevealCard "Eliminated!" -> "Missed!". Scoring unchanged (0 pts on a
+  miss). Quiz mode's own elimination concept untouched.
+
+## [2026-08-31 14:00] fix: reveal un-blurs on wrong answer too; loading screen gets a cancel button
+
+- Owner decision: IMAGE FETCHING IS FROZEN for now — the 5-stage pipeline
+  stays as-is (still mixing in cosplay photos / wrong humans), owner will
+  research a better source themselves. Do not touch GuessImageFetcher
+  pipeline logic unless asked again.
+- Fix 1: the mystery image used to stay frozen at whatever blur the timer
+  had reached when the player answered wrong (screenshot showed Eren round
+  fully blurred behind the reveal card). Now the blur eases to fully sharp
+  on ANY reveal (correct, wrong, timeout) — 350ms FastOutSlowInEasing
+  animateFloatAsState inside MysteryImageCard (new `revealed` param).
+- Fix 2: the guessing loading screen (GuessPhase.Preparing card) had no
+  cancel — now a back-arrow button above the card, same style as the quiz
+  LoadingScreen, opens the same "quit game?" confirmation as the X.
+- Hardening behind fix 2: round generation (AI + image fetch) ran in an
+  app-scope job that was never cancelled — quitting mid-generation let a
+  stale job write Playing/Error into a NEW game's state. Added `guessJob`
+  tracking in NazoApp: cancelled on quit and before each new round, and
+  both completion callbacks are guarded by `job.isActive`. Quiz mode's
+  equivalent (also uncancelled) was left untouched — golden.
+
+## [2026-08-31 14:30] fix: particles hidden on the quiz loading screen
+
+- Owner spotted the floating-particle background missing on the QUIZ
+  loading screen (all other screens show it). Root cause: the app root
+  paints NazoBackground + FloatingParticlesBackground behind AnimatedContent
+  and screens render transparent on top — but LoadingScreen was the one
+  screen painting its own full-screen opaque .background(NazoBackground),
+  covering the shared layer. Fix: removed that modifier (and the now-unused
+  import); the base color comes from the app root anyway. No other screen
+  has this (grep confirms). AboutScreen's other NazoBackground hit is a
+  40dp icon chip, unrelated.
+
+## [2026-08-31 14:45] fix: guessing loading cancel — real "Cancel" button, not a back arrow
+
+- Owner correction: the back-arrow button I added above the guessing
+  loading card was wrong — the X at the top already cancels. They wanted a
+  PHYSICAL "Cancel" button below the wavy spinner inside the card, like
+  the quiz generation loading screen's (LoadingContent ends with
+  TextButton(label = "Cancel")).
+- Fixed: reverted the arrow row (Preparing branch is the original centered
+  Box again, ArrowBack import removed); PreparingCard takes onCancel and
+  renders a CancelTextButton (full-width 44dp flat text button, same look
+  as the quiz's private TextButton — replicated in-package, quiz file left
+  untouched) below the WavySpinner. Wired to onQuit (cancels guessJob,
+  phase Idle, goHome) — same action the X's confirmation performs, direct
+  like the quiz's cancel.
+
+## [2026-08-31 15:10] feat: outlined cancel, sticky game mode, per-difficulty
+## timing + start strength, pixelated reveal with settings switch
+
+- (1) CancelTextButton on the guessing loading card now has a full-width
+  outline (1dp rounded-14 border, same style as the card border) so it
+  reads as a button.
+- (2) Last game mode is sticky: ThemePreferences.lastMode ("QUIZ" |
+  "GUESSING") is written when the user selects a mode on Home AND when a
+  game starts (startQuiz — before the offline branch — and startGuessing);
+  homeMode now initializes from it (validated against NazoMode.entries).
+- (3) Per-difficulty guessing rules moved OUT of QuizEngine (quiz keeps
+  40/30/20/10 untouched): GuessScoring specs now carry secondsPerRound
+  (Easy 25, Medium 20, Hard 15, Otaku 10) + startEffectFraction
+  (0.5 / 0.6 / 0.8 / 1.0) = how obscured the image is at round start;
+  the reveal eases from that fraction to fully sharp. MysteryImageCard
+  scales the blur (or pixel) effect and the zoom by it.
+- (4) PIXELATED reveal (owner's optional idea) — new PixelReveal.kt in the
+  guessing package: buildPixelLevels decodes the pre-fetched bytes (IO,
+  before the timer starts) into 14 pre-scaled bitmaps (nearest-neighbour
+  downscale, cell sizes 1..128px); PixelatedImage draws the level matching
+  the animated effect fraction, upscaled centre-cropped with
+  FilterQuality.None (crisp pixels, no per-frame scaling work). Settings:
+  Appearance → "GUESSING REVEAL" (Blur / Pixelate rows, ThemeModeRow
+  style), persisted in ThemePreferences.guessRevealStyle, DEFAULT "pixel"
+  (owner preference), with silent per-round fallback to blur if a decode
+  fails. Quiz/Offline modes untouched.
+
+## [2026-08-31 15:50] fix: pixel reveal no longer ramps up from sharp
+
+- Owner report: with the pixel reveal, the image first appeared SHARP
+  (unpixelated) after the fetch spinner, then slowly became pixelated
+  (~1-2s), and only then un-pixelated with the timer.
+- Root cause: MysteryImageCard is first composed DURING the fetch (spinner
+  showing), when pixelLevels is still null → usePixels false → the
+  pixelEffect animateFloatAsState target was 0f → its INITIAL value
+  (captured at first composition) = 0 = sharp. When the levels arrived the
+  target jumped to progress*startFraction and the effect eased UP.
+- Fix: the pixel target is no longer gated on usePixels — it is always
+  `if (revealed) 0f else progress * startFraction`. During the fetch
+  progress ≈ 1.0, so by the time the pixels render the effect is already
+  at full starting strength (50-100% per difficulty) and only lifts as
+  the timer runs, dropping to 0 on reveal. Blur path was never affected
+  (its target is the full-blur value even when usePixels is false).
+## [2026-08-31 16:10] feat: guessing games count toward stats + level (full merge)
+
+- Owner picked "full merge": each COMPLETED guessing game records into the
+  shared QuizStats exactly like a finished quiz. QuizStats.recordGuessing(
+  difficulty, topic, answered, correct) — rounds = answered questions,
+  correct rounds = correct, the game's topic credited as the mastered
+  anime; +1 play, same streak logic, JSON schema unchanged (new data
+  flows through existing keys). QuizStatsStore.recordGuessing mirrors
+  record(). NazoApp.guessNext finished-branch calls it (scope.launch,
+  same pattern as the quiz's answer()) before showing results. Quits
+  mid-game record nothing (same as quiz). Level/XP now fed by both games
+  (10 XP per correct round + 5 per game, 200 XP/level). Labels renamed
+  to stay honest: "Total Quizzes"→"Total Games" (subtitle "Quizzes +
+  guessing"), "Quizzes by Difficulty"→"Games by Difficulty", "No quizzes
+  yet"→"No games yet", top-anime "N Quizzes"→"N Answers", share card
+  "QUIZZES" chip→"GAMES" and "N quizzes"→"N answers". ProfileScreen's
+  totalQuizzes>0 "has played" check now also counts guessing (fine).
+  MasteredAnimeStat.quizzes field renamed to answers (display-only).
+## [2026-08-31 16:30] build: release APK minified (R8 + resource shrinking), Room/KSP removed
+
+- Phase 1 of the size roadmap. Owner's hard constraint: ZERO behavior /
+  layout / logic change — "if we can't have that while reducing the size,
+  then we would rather not". Safety case verified by grep before touching
+  anything: no reflection (Class.forName / newInstance), no JNI
+  (loadLibrary), no string-based resource lookups (getIdentifier) — so
+  R8 full mode + shrinkResources are behavior-neutral. JSON is parsed at
+  named org.json call sites (platform lib); Compose/M3/WorkManager/Coil
+  ship their own consumer rules.
+- app/build.gradle.kts: NEW buildTypes.release { isMinifyEnabled = true;
+  isShrinkResources = true; proguardFiles(proguard-android-optimize.txt
+  + app/proguard-rules.pro) }. DEBUG builds untouched — the CI artifact
+  and every debug install are bit-identical pipeline to before.
+- app/proguard-rules.pro: the old file was the dead AS template (all
+  comments, never referenced); replaced with the safety-case note. Zero
+  keep rules — none needed.
+- Room (room-runtime/room-ktx + KSP room-compiler) and the KSP plugin
+  removed: zero androidx.room imports anywhere (grep-verified) — pure
+  dead dependency; also drops the KSP compile step. Versions were inline
+  in app/build.gradle.kts, nothing to clean in the catalog.
+- release-check.yml (push: arena/**) — INTENDED so the minified release
+  build is verified in CI (runs `./gradlew assembleRelease`, unsigned,
+  prints the APK size). BLOCKED AT PUSH: the agent's GitHub App lacks the
+  `workflows` permission — the remote refuses pushes that create/modify
+  .github/workflows/*. (Almost certainly why the lowercase pr-assemble.yml
+  was never committed on any ref in earlier sessions.) Left on disk as
+  .github/workflows/release-check.yml.draft: the owner can `mv` it to
+  release-check.yml (owner pushes have the permission) to arm CI release
+  coverage. Meanwhile CI (master's PR-assemble) still verifies the build
+  config + debug compile on every push; R8 itself first runs in the
+  owner's release build. R8 failure risk assessed very low: the rules
+  file is comments-only (zero keep rules) and the app has no
+  reflection/JNI/dynamic resources (grep-verified).
+- DISCOVERY (why the new workflow): the CI that has been running on every
+  push is "PR Assemble (compile check)" = PR-assemble.yml on MASTER
+  (capital P, capital A). pull_request events read workflows from the
+  BASE branch — the head tree (f64bff9) contains only build-release.yml.
+  The untracked lowercase local copy `.github/workflows/pr-assemble.yml`
+  was NEVER committed on any ref (git log --all empty) — it is a stale
+  scratch file; staging it would add a second, conflicting case-variant
+  next to master's on a case-insensitive checkout. Still: NEVER stage it.
+- build-release.yml (tag releases) intentionally untouched: its
+  assembleRelease now runs R8 automatically, so the next tag ships a
+  minified release APK + unchanged debug APK. Injected-keystore signing
+  props are unaffected by minification.
+- Version NOT bumped (consistent with follow-ups 7/8; owner tags at
+  release, build-release.yml reads versionName).
+- Owner's own build numbers: release (unminified) 15-17 MB, debug
+  20-21 MB. Expectation after minify: ~8-11 MB release. The real number
+  comes from the owner's release build (or the release-check workflow
+  once the owner arms it).

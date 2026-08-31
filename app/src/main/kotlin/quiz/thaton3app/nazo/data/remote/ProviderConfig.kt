@@ -47,7 +47,13 @@ data class ProviderEndpoint(
         return map
     }
 
-    fun requestBody(prompt: String, model: String, systemPrompt: String = ""): String = when (kind) {
+    /**
+     * Builds the provider-specific request body. [responseSchema] is a
+     * caller-supplied Gemini structured-output schema; when null (the default,
+     * used by quiz generation) the quiz [questionSchema] is used. Other
+     * provider kinds ignore it (they already force JSON output).
+     */
+    fun requestBody(prompt: String, model: String, systemPrompt: String = "", responseSchema: JSONObject? = null): String = when (kind) {
         ProviderKind.GEMINI -> JSONObject().apply {
             if (systemPrompt.isNotBlank()) {
                 put(
@@ -70,7 +76,7 @@ data class ProviderEndpoint(
                     put("temperature", 0.9)
                     put("maxOutputTokens", 8192)
                     put("responseMimeType", "application/json")
-                    put("responseSchema", questionSchema())
+                    put("responseSchema", responseSchema ?: questionSchema())
                 },
             )
         }.toString()
