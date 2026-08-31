@@ -47,6 +47,12 @@ enum class Difficulty(val label: String) {
     OTAKU_MASTER("Otaku Master"),
 }
 
+/** Which game mode the Home screen is configured to start. */
+enum class NazoMode(val label: String) {
+    QUIZ("Quiz"),
+    GUESSING("Guessing Game"),
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -64,11 +70,17 @@ fun HomeScreen(
     onTopicChange: (String) -> Unit = {},
     onDifficultyChange: (String) -> Unit = {},
     onQuestionCountChange: (Int) -> Unit = {},
+    mode: String = NazoMode.QUIZ.name,
+    onModeChange: (String) -> Unit = {},
+    guessingRounds: Int = 3,
+    onGuessingRoundsChange: (Int) -> Unit = {},
+    onStartGuessing: (topic: String, difficulty: String, rounds: Int) -> Unit = { _, _, _ -> },
     configuredProviders: List<String> = emptyList(),
     onSelectProvider: (String) -> Unit = {},
     onManageClick: () -> Unit = {},
 ) {
     val difficulty = Difficulty.valueOf(difficultyName)
+    val isGuessing = mode == NazoMode.GUESSING.name
     val context = LocalContext.current
     var showProviderSheet by remember { mutableStateOf(false) }
     
@@ -117,11 +129,38 @@ fun HomeScreen(
                 offline = offline,
                 onClick = if (offline) null else ({ showProviderSheet = true }),
             )
-            
+
             Spacer(Modifier.height(22.dp))
-            
+
+            SectionLabel("MODE")
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PillButton(
+                    text = NazoMode.QUIZ.label,
+                    selected = !isGuessing,
+                    icon = Icons.Filled.Quiz,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        if (isGuessing) Haptics.light(context)
+                        onModeChange(NazoMode.QUIZ.name)
+                    },
+                )
+                PillButton(
+                    text = NazoMode.GUESSING.label,
+                    selected = isGuessing,
+                    icon = Icons.Filled.ImageSearch,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        if (!isGuessing) Haptics.light(context)
+                        onModeChange(NazoMode.GUESSING.name)
+                    },
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+
             Text(
-                text = "Ready to test your\nanime knowledge?",
+                text = if (isGuessing) "Can you spot the\nmystery image?" else "Ready to test your\nanime knowledge?",
                 style = MaterialTheme.typography.headlineMedium.copy(
                     fontWeight = FontWeight.Bold,
                     fontSize = 28.sp,
@@ -130,9 +169,9 @@ fun HomeScreen(
                 ),
                 color = NazoTextPrimary,
             )
-            
+
             Spacer(Modifier.height(24.dp))
-            
+
             TopicInputCard(topic = topic, onTopicChange = onTopicChange)
             
             Spacer(Modifier.height(24.dp))
@@ -164,28 +203,49 @@ fun HomeScreen(
             )
             
             Spacer(Modifier.height(24.dp))
-            
-            SectionLabel("QUESTIONS")
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf(5, 10, 15).forEach { count ->
-                    PillButton(
-                        text = "$count Questions",
-                        selected = questionCount == count,
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            if (questionCount != count) Haptics.light(context)
-                            onQuestionCountChange(count)
-                        },
-                    )
+
+            if (isGuessing) {
+                SectionLabel("ROUNDS")
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    listOf(1, 3, 5).forEach { count ->
+                        PillButton(
+                            text = if (count == 1) "1 Round" else "$count Rounds",
+                            selected = guessingRounds == count,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                if (guessingRounds != count) Haptics.light(context)
+                                onGuessingRoundsChange(count)
+                            },
+                        )
+                    }
+                }
+            } else {
+                SectionLabel("QUESTIONS")
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    listOf(5, 10, 15).forEach { count ->
+                        PillButton(
+                            text = "$count Questions",
+                            selected = questionCount == count,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                if (questionCount != count) Haptics.light(context)
+                                onQuestionCountChange(count)
+                            },
+                        )
+                    }
                 }
             }
-            
+
             Spacer(Modifier.height(28.dp))
-            
+
             GenerateButton(
-                offline = offline,
-                onClick = { onStartQuiz(topic, difficulty.label, questionCount) },
+                label = if (isGuessing) "Start Guessing Game" else if (offline) "Generate Quiz" else "Generate AI Quiz",
+                onClick = {
+                    if (isGuessing) onStartGuessing(topic, difficulty.label, guessingRounds)
+                    else onStartQuiz(topic, difficulty.label, questionCount)
+                },
             )
             Spacer(Modifier.height(16.dp))
         }
@@ -659,9 +719,9 @@ private fun PillButton(
 }
 
 @Composable
-private fun GenerateButton(offline: Boolean, onClick: () -> Unit) {
+private fun GenerateButton(label: String, onClick: () -> Unit) {
     val context = LocalContext.current
-    
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
@@ -676,14 +736,14 @@ private fun GenerateButton(offline: Boolean, onClick: () -> Unit) {
             },
     ) {
         Icon(
-            imageVector = Icons.Filled.AutoAwesome,
+            imageVector = if (label.startsWith("Start")) Icons.Filled.ImageSearch else Icons.Filled.AutoAwesome,
             contentDescription = null,
             tint = NazoOnPrimary,
             modifier = Modifier.size(20.dp),
         )
         Spacer(Modifier.width(10.dp))
         Text(
-            text = if (offline) "Generate Quiz" else "Generate AI Quiz",
+            text = label,
             style = MaterialTheme.typography.titleMedium,
             color = NazoOnPrimary,
             fontWeight = FontWeight.Bold,
