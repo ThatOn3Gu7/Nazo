@@ -35,7 +35,9 @@ Hard rules:
 - The object has exactly these keys:
   "target_entity" : the name of the single thing the player must guess (one character, item, place, or ability).
   "aliases"       : 0-3 widely-used alternative names / romanizations of the SAME entity (empty array if none).
-  "image_query"   : a clean English image-search string for that entity (e.g. "Satoru Gojo Jujutsu Kaisen anime character portrait").
+  "image_query"   : a clean English image-search string that STARTS with the target entity's own full name,
+                    followed by the franchise/show name (e.g. "Satoru Gojo Jujutsu Kaisen anime character").
+                    It must identify the target itself — never a landmark, studio, product, or the franchise alone.
   "easy_medium_options" : an array of EXACTLY 4 distinct names from the same topic. The FIRST entry must be
                     "target_entity" itself, word for word. The other 3 are plausible decoys — never the target,
                     never any of its aliases, never blank.

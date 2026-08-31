@@ -344,7 +344,7 @@ fun NazoApp() {
                 .onSuccess { payload ->
                     // Image URL is best-effort: null just means the play screen
                     // shows its drawn placeholder instead of a fetched image.
-                    val url = GuessImageFetcher.fetchImageUrl(payload.imageQuery)
+                    val url = GuessImageFetcher.fetchImageUrl(payload.imageQuery, payload.targetEntity)
                     // Teach the next round not to repeat this round's target/aliases.
                     guessAvoidTargets = guessAvoidTargets + payload.displayAnswer() + payload.aliases
                     guessPhase = GuessPhase.Playing(payload, url)

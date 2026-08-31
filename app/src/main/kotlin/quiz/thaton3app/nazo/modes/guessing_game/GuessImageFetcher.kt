@@ -13,19 +13,20 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
 /**
- * Resolves a direct image URL for a search query using keyless public sources,
- * in order:
- *   1. Wikimedia Commons file search (best anime-art source, bitmaps only),
- *   2. English Wikipedia page images (2x-size summary thumbnail),
- *   3. DuckDuckGo's image endpoint as a last resort (finds obscure targets the
- *      wikis don't carry, e.g. niche jutsu or side characters).
- *
- * The query is tried as-is and then with trailing qualifiers dropped, so
- * "Satoru Gojo Jujutsu Kaisen character portrait" also tries
- * "Satoru Gojo Jujutsu Kaisen character". The whole search is capped by a
- * total time budget so a slow network can never stall a round.
- *
- * Returns null on ANY failure; the UI falls back to its drawn placeholder.
+ * Resolves a direct image URL of the round's TARGET ENTITY using keyless
+ * public sources. Relevance is the whole game here: the first hit of a plain
+ * keyword search is often a topic-branded logo or an unrelated article image
+ * (a "Tokyo One Piece Tower" logo for a Roronoa Zoro round), so every source
+ * is searched by EXACT PHRASE and its results are gated by how closely the
+ * file/article title mentions the target name:
+ *   1. Wikimedia Commons phrase search (bitmap files, title must match),
+ *   2. English Wikipedia phrase search (article title must match),
+ *   3. the same two stages with the AI's image_query as search phrase,
+ *   4. DuckDuckGo's image endpoint (query = target name, loose URL check).
+ * The whole search is capped by a total time budget so a slow network can
+ * never stall a round. Returns null on ANY failure or when nothing relevant
+ * is found; the UI then shows its drawn placeholder (with the query) instead
+ * of a wrong image.
  */
 object GuessImageFetcher {
 
@@ -35,29 +36,33 @@ object GuessImageFetcher {
         "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
     private const val TOTAL_BUDGET_MS = 20_000L
 
-    suspend fun fetchImageUrl(query: String): String? {
-        if (query.isBlank()) return null
+    /** Minimum title/article relevance for a hit to be considered (see [titleRelevance]). */
+    private const val MIN_RELEVANCE = 2
+
+    suspend fun fetchImageUrl(query: String, target: String): String? {
+        if (target.isBlank()) return null
+        val targetName = target.trim()
         return withContext(Dispatchers.IO) {
-            val variants = queryVariants(query)
-            val primary = variants.first()
             val url: String? = try {
                 withTimeout(TOTAL_BUDGET_MS) {
-                    fromCommons(primary)
-                        ?: fromWikipedia(primary)
-                        ?: variants.getOrNull(1)?.let { fromCommons(it) ?: fromWikipedia(it) }
-                        ?: fromDuckDuckGo(primary)
+                    val byTarget = fromCommons(targetName, targetName)
+                        ?: fromWikipedia(targetName, targetName)
+                    val byQuery = if (query.isNotBlank() && query.trim().lowercase() != targetName.lowercase())
+                        fromCommons(query.trim(), targetName) ?: fromWikipedia(query.trim(), targetName)
+                    else null
+                    byTarget ?: byQuery ?: fromDuckDuckGo(targetName)
                 }
             } catch (e: TimeoutCancellationException) {
-                Log.w(TAG, "image search timed out for \"$query\"")
+                Log.w(TAG, "image search timed out for \"$targetName\"")
                 null
             } catch (e: Exception) {
-                Log.w(TAG, "image search failed for \"$query\"", e)
+                Log.w(TAG, "image search failed for \"$targetName\"", e)
                 null
             }
             if (url == null) {
-                Log.w(TAG, "no image found for \"$query\" (tried $variants, +DuckDuckGo)")
+                Log.w(TAG, "no relevant image for \"$targetName\" (query: \"$query\")")
             } else {
-                Log.i(TAG, "image for \"$query\" -> $url")
+                Log.i(TAG, "image for \"$targetName\" -> $url")
             }
             url
         }
@@ -87,58 +92,50 @@ object GuessImageFetcher {
         }
     }
 
-    /** Full query first, then progressively shorter prefixes (drop trailing qualifiers). */
-    private fun queryVariants(query: String): List<String> {
-        val out = mutableListOf<String>()
-        val words = query.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
-        for (n in words.size downTo 2) {
-            val v = words.take(n).joinToString(" ")
-            if (v.isNotBlank() && v !in out) out.add(v)
-            if (out.size >= 3) break
-        }
-        if (out.isEmpty()) out.add(query.trim())
-        return out
-    }
-
-    /** Commons search returns actual files (bitmaps only), so it's the best anime-art source. */
-    private fun fromCommons(query: String): String? {
-        val titles = getJson(
-            "https://commons.wikimedia.org/w/api.php?action=query&format=json" +
-                "&list=search&srsearch=${enc(query)}+filetype:bitmap&srnamespace=6&srlimit=5",
+    /**
+     * Commons: one generator=search call (phrase, bitmaps, top 10) returns
+     * the file URLs directly; the best title match wins.
+     */
+    private fun fromCommons(searchPhrase: String, targetName: String): String? {
+        val json = getJson(
+            "https://commons.wikimedia.org/w/api.php?action=query&format=json&redirects=1" +
+                "&generator=search&gsrnamespace=6&gsrlimit=10&prop=imageinfo&iiprop=url&iiurlwidth=1024" +
+                "&gsrsearch=${enc("\"$searchPhrase\" filetype:bitmap")}",
         ) ?: return null
-        val results = titles.optJSONObject("query")?.optJSONArray("search") ?: return null
-        for (i in 0 until results.length()) {
-            val title = results.getJSONObject(i).optString("title", "")
-            if (title.isBlank()) continue
-            val json = getJson(
-                "https://commons.wikimedia.org/w/api.php?action=query&format=json&redirects=1" +
-                    "&titles=${enc(title)}&prop=imageinfo&iiprop=url&iiurlwidth=1024",
-            ) ?: continue
-            val pages = json.optJSONObject("query")?.optJSONObject("pages") ?: continue
-            for (key in pages.keys()) {
-                val p = pages.optJSONObject(key) ?: continue
-                val info = p.optJSONArray("imageinfo")?.optJSONObject(0) ?: continue
-                val url = info.optString("thumburl", "").ifBlank { info.optString("url", "") }
-                if (isUsableImage(url)) return url
-            }
+        val pages = json.optJSONObject("query")?.optJSONObject("pages") ?: return null
+        var bestUrl: String? = null
+        var bestScore = 0
+        for (key in pages.keys()) {
+            val page = pages.optJSONObject(key) ?: continue
+            val title = page.optString("title", "")
+            val score = titleRelevance(title, targetName)
+            if (score < bestScore) continue
+            val info = page.optJSONArray("imageinfo")?.optJSONObject(0) ?: continue
+            val url = info.optString("thumburl", "").ifBlank { info.optString("url", "") }
+            if (!isUsableImage(url)) continue
+            bestScore = score
+            bestUrl = url
         }
-        return null
+        return if (bestScore >= MIN_RELEVANCE) bestUrl else null
     }
 
-    /** Wikipedia fallback: the REST summary's `originalimage` is a 2x-size
-     *  thumbnail — far lighter than the full-resolution original. */
-    private fun fromWikipedia(query: String): String? {
+    /**
+     * Wikipedia: phrase search, then the ARTICLE TITLE is gated before any
+     * summary fetch — for target "Trafalgar Law" the articles "Trafalgar"
+     * or "One Piece" fail the gate, "Trafalgar Law (One Piece)" passes.
+     */
+    private fun fromWikipedia(searchPhrase: String, targetName: String): String? {
         val titles = getJson(
             "https://en.wikipedia.org/w/api.php?action=query&format=json" +
-                "&list=search&srsearch=${enc(query)}&srlimit=3",
+                "&list=search&srsearch=${enc("\"$searchPhrase\"")}&srlimit=5",
         ) ?: return null
         val results = titles.optJSONObject("query")?.optJSONArray("search") ?: return null
         for (i in 0 until results.length()) {
             val title = results.getJSONObject(i).optString("title", "")
-            if (title.isBlank()) continue
-            val json = getJson("https://en.wikipedia.org/api/rest_v1/page/summary/${enc(title)}") ?: continue
-            val original = json.optJSONObject("originalimage")?.optString("source", "") ?: ""
-            val thumb = json.optJSONObject("thumbnail")?.optString("source", "") ?: ""
+            if (title.isBlank() || titleRelevance(title, targetName) < MIN_RELEVANCE) continue
+            val summary = getJson("https://en.wikipedia.org/api/rest_v1/page/summary/${enc(title)}") ?: continue
+            val original = summary.optJSONObject("originalimage")?.optString("source", "") ?: ""
+            val thumb = summary.optJSONObject("thumbnail")?.optString("source", "") ?: ""
             val url = original.ifBlank { thumb }
             if (isUsableImage(url)) return url
         }
@@ -146,33 +143,77 @@ object GuessImageFetcher {
     }
 
     /**
-     * Last resort: DuckDuckGo's image endpoint. GET the image-search HTML page
-     * (which embeds a per-session `vqd` token), then hit the JSON i.js API with
-     * it. URL shape is checked loosely — DDG often serves Bing-hosted
-     * thumbnails without a file extension, which Coil still decodes fine.
+     * Last resort: DuckDuckGo's image endpoint, queried with the target name
+     * itself. GET the image-search HTML (browser UA) for the per-session
+     * `vqd` token, then the JSON i.js API. Bing often serves thumbnails
+     * without file extensions, so URL shape is checked loosely; opaque
+     * hosts (YouTube thumbs) are trusted, slugs must mention the target.
      */
-    private fun fromDuckDuckGo(query: String): String? {
+    private fun fromDuckDuckGo(targetName: String): String? {
         val html = getText(
-            "https://duckduckgo.com/?q=${enc(query)}&iax=1&ia=images",
+            "https://duckduckgo.com/?q=${enc(targetName)}&iax=1&ia=images",
             userAgent = BROWSER_USER_AGENT,
         ) ?: return null
         val vqd = listOf(
-            Regex("""vqd="(-?\d+)"""),
-            Regex("""data-vqd="(-?\d+)"""),
-            Regex("""vqd-0" value="(-?\d+)"""),
+            Regex("""vqd="(-?\d+)""""),
+            Regex("""data-vqd="(-?\d+)""""),
+            Regex("""vqd-0" value="(-?\d+)""""),
             Regex("""vqd=(-?\d+)"""),
         ).firstNotNullOfOrNull { it.find(html)?.groupValues?.get(1) } ?: return null
         val json = getJson(
-            "https://duckduckgo.com/i.js?q=${enc(query)}&vqd=$vqd&p=1",
+            "https://duckduckgo.com/i.js?q=${enc(targetName)}&vqd=$vqd&p=1",
             userAgent = BROWSER_USER_AGENT,
         ) ?: return null
         val results = json.optJSONArray("results") ?: return null
+        var first: String? = null
         for (i in 0 until results.length()) {
             val r = results.getJSONObject(i)
             val url = r.optString("image", "").ifBlank { r.optString("thumbnail", "") }
-            if (url.startsWith("https://") || url.startsWith("http://")) return url
+            if (!(url.startsWith("https://") || url.startsWith("http://"))) continue
+            if (first == null) first = url
+            if (urlMatchesTarget(url, targetName)) return url
         }
-        return null
+        // Last resort of last resorts: the top ranked hit for the exact
+        // target name — better than a placeholder, never a topic keyword.
+        return first
+    }
+
+    /** Normalized content words (letters/digits, length >= 3) of the target name. */
+    private fun targetWords(targetName: String): List<String> =
+        targetName.lowercase()
+            .split(Regex("[^\\p{L}\\p{N}]+"))
+            .filter { it.length >= 3 }
+
+    /**
+     * 3 = every content word present, 2 = at least half present,
+     * 1 = only the longest word present, 0 = nothing. "Zoro (One Piece)"
+     * scores 2 for target "Roronoa Zoro" (kept); a "Tokyo One Piece Tower"
+     * logo scores 0 (dropped).
+     */
+    private fun titleRelevance(title: String, targetName: String): Int {
+        val words = targetWords(targetName)
+        if (words.isEmpty()) return 0
+        val t = title.lowercase()
+        val present = words.count { t.contains(it) }
+        return when {
+            present == words.size -> 3
+            present * 2 >= words.size -> 2
+            t.contains(words.maxByOrNull { it.length }!!) -> 1
+            else -> 0
+        }
+    }
+
+    /**
+     * DDG/Bing URLs are loose: opaque image hosts (no slug to inspect) are
+     * trusted, anything with a readable path must mention the target.
+     */
+    private fun urlMatchesTarget(url: String, targetName: String): Boolean {
+        val words = targetWords(targetName)
+        if (words.isEmpty()) return true
+        val u = url.lowercase()
+        if (u.contains(words.joinToString(" "))) return true
+        if (u.contains("ytimg.com") || u.contains("bing.net/th")) return true
+        return u.contains(words.maxByOrNull { it.length }!!) || words.count { u.contains(it) } * 2 >= words.size
     }
 
     /** HTTPS only, and a format Coil can decode (no SVG — the svg module isn't included). */
