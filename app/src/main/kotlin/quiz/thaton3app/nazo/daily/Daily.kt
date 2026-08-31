@@ -194,19 +194,24 @@ fun DailyChallengeCard(
         Box(
             modifier = Modifier
                 .size(46.dp)
-                .graphicsLayer {
-                    scaleX = iconScale
-                    scaleY = iconScale
-                }
                 .clip(CircleShape)
                 .background(if (completed) NazoSuccess else NazoPrimary),
             contentAlignment = Alignment.Center,
         ) {
+            // Only the ICON pulses — the circle stays put, so the scale can
+            // never visually overflow the card's padding (graphicsLayer scale
+            // doesn't affect layout, so a pulsing container would bleed
+            // toward the card edge).
             Icon(
                 imageVector = if (completed) Icons.Filled.TaskAlt else Icons.Filled.Bolt,
                 contentDescription = null,
                 tint = NazoOnPrimary,
-                modifier = Modifier.size(24.dp),
+                modifier = Modifier
+                    .size(24.dp)
+                    .graphicsLayer {
+                        scaleX = iconScale
+                        scaleY = iconScale
+                    },
             )
         }
         Spacer(Modifier.width(14.dp))

@@ -743,33 +743,38 @@ private fun SetupSlide(
                     }
 
                     SectionLabel("ACCENT")
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Accents.forEach { accent ->
-                            val selected = accent.id == accentId
-                            val ringAlpha by animateFloatAsState(
-                                targetValue = if (selected) 1f else 0f,
-                                animationSpec = tween(200),
-                                label = "accentRing",
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .border(
-                                        2.5.dp,
-                                        NazoTextPrimary.copy(alpha = ringAlpha),
-                                        CircleShape,
+                    // Static two-row wrap instead of a horizontalScroll row: a
+                    // horizontal scroller here claimed any slightly-angled drag,
+                    // which intermittently blocked the slide's vertical scroll
+                    // when both sections were expanded.
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Accents.chunked(5).forEach { accentRow ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                accentRow.forEach { accent ->
+                                    val selected = accent.id == accentId
+                                    val ringAlpha by animateFloatAsState(
+                                        targetValue = if (selected) 1f else 0f,
+                                        animationSpec = tween(200),
+                                        label = "accentRing",
                                     )
-                                    .padding(5.dp)
-                                    .clip(CircleShape)
-                                    .background(resolveAccent(accent.id, isDark).primary)
-                                    .clickable {
-                                        Haptics.soft(context)
-                                        onAccentChange(accent.id)
-                                    },
-                            )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(34.dp)
+                                            .border(
+                                                2.5.dp,
+                                                NazoTextPrimary.copy(alpha = ringAlpha),
+                                                CircleShape,
+                                            )
+                                            .padding(5.dp)
+                                            .clip(CircleShape)
+                                            .background(resolveAccent(accent.id, isDark).primary)
+                                            .clickable {
+                                                Haptics.soft(context)
+                                                onAccentChange(accent.id)
+                                            },
+                                    )
+                                }
+                            }
                         }
                     }
 
