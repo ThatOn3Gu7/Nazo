@@ -33,7 +33,7 @@ object GuessImageFetcher {
     private const val USER_AGENT = "NazoQuizApp/4.0 (Android quiz app; https://github.com/ThatOn3Gu7/Nazo)"
     private const val BROWSER_USER_AGENT =
         "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-    private const val TOTAL_BUDGET_MS = 20_000
+    private const val TOTAL_BUDGET_MS = 20_000L
 
     suspend fun fetchImageUrl(query: String): String? {
         if (query.isBlank()) return null
@@ -60,6 +60,30 @@ object GuessImageFetcher {
                 Log.i(TAG, "image for \"$query\" -> $url")
             }
             url
+        }
+    }
+
+    /**
+     * Plain-HTTP download of the image bytes. Used by the play screen to
+     * pre-warm the mystery image BEFORE the countdown starts, so the timer
+     * only ever runs against pixels Coil can decode instantly (passed to
+     * AsyncImage as a ByteArray model — no ImageRequest needed).
+     */
+    fun fetchImageBytes(url: String): ByteArray? {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 6_000
+            readTimeout = 15_000
+            setRequestProperty("User-Agent", USER_AGENT)
+        }
+        return try {
+            if (connection.responseCode !in 200..299) return null
+            connection.inputStream.use { it.readBytes() }
+        } catch (e: Exception) {
+            Log.w(TAG, "image byte fetch failed: $url", e)
+            null
+        } finally {
+            connection.disconnect()
         }
     }
 
@@ -91,8 +115,8 @@ object GuessImageFetcher {
                     "&titles=${enc(title)}&prop=imageinfo&iiprop=url&iiurlwidth=1024",
             ) ?: continue
             val pages = json.optJSONObject("query")?.optJSONObject("pages") ?: continue
-            for ((_, page) in pages) {
-                val p = page as? JSONObject ?: continue
+            for (key in pages.keys()) {
+                val p = pages.optJSONObject(key) ?: continue
                 val info = p.optJSONArray("imageinfo")?.optJSONObject(0) ?: continue
                 val url = info.optString("thumburl", "").ifBlank { info.optString("url", "") }
                 if (isUsableImage(url)) return url
@@ -113,8 +137,8 @@ object GuessImageFetcher {
             val title = results.getJSONObject(i).optString("title", "")
             if (title.isBlank()) continue
             val json = getJson("https://en.wikipedia.org/api/rest_v1/page/summary/${enc(title)}") ?: continue
-            val original = json.optJSONObject("originalimage")?.optString("source", "")
-            val thumb = json.optJSONObject("thumbnail")?.optString("source", "")
+            val original = json.optJSONObject("originalimage")?.optString("source", "") ?: ""
+            val thumb = json.optJSONObject("thumbnail")?.optString("source", "") ?: ""
             val url = original.ifBlank { thumb }
             if (isUsableImage(url)) return url
         }

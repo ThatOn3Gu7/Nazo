@@ -82,9 +82,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.ImageLoader
-import coil.ImageRequest
 import coil.compose.AsyncImage
-import coil.execute
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -131,6 +129,7 @@ fun GuessingPlayScreen(
     val imageUrl: String? = (phase as? GuessPhase.Playing)?.imageUrl
 
     var submitted by remember { mutableStateOf<String?>(null) }
+    var fetchedImage by remember { mutableStateOf<ByteArray?>(null) }
     var timedOut by remember { mutableStateOf(false) }
     var imageReady by remember { mutableStateOf(false) }
     var imageFetchFailed by remember { mutableStateOf(false) }
@@ -152,15 +151,17 @@ fun GuessingPlayScreen(
         imageFetchFailed = false
         imageReady = imageUrl == null // no URL at all → straight to the placeholder
         if (imageUrl == null) return@LaunchedEffect
-        val request = ImageRequest.Builder(context)
-            .data(imageUrl)
-            .crossfade(true)
-            .build()
-        val ok = withContext(Dispatchers.IO) {
-            runCatching { withTimeout(20_000) { imageLoader.execute(request) } }
-                .getOrNull()?.isSuccess ?: false
+        // Pre-fetch the image BYTES over plain HTTP so the countdown only ever
+        // runs against pixels Coil can decode instantly (ByteArray model).
+        // A failed / timed-out fetch falls back to the drawn placeholder.
+        fetchedImage = null
+        val bytes = withContext(Dispatchers.IO) {
+            runCatching {
+                withTimeout(20_000L) { GuessImageFetcher.fetchImageBytes(imageUrl) }
+            }.getOrNull()
         }
-        imageFetchFailed = !ok
+        imageFetchFailed = bytes == null
+        fetchedImage = bytes
         imageReady = true
     }
 
@@ -333,6 +334,7 @@ fun GuessingPlayScreen(
                         imageUrl = phase.imageUrl,
                         imageReady = imageReady,
                         imageFetchFailed = imageFetchFailed,
+                        imageBytes = fetchedImage,
                         query = phase.payload.imageQuery.ifBlank { topic },
                         round = round,
                         progress = timerFrac,
@@ -426,6 +428,7 @@ private fun MysteryImageCard(
     imageUrl: String?,
     imageReady: Boolean,
     imageFetchFailed: Boolean,
+    imageBytes: ByteArray?,
     query: String,
     round: Int,
     progress: Float,
@@ -447,9 +450,10 @@ private fun MysteryImageCard(
                     GuessImagePlaceholder(query = query.ifBlank { "Mystery image" })
                 } else {
                     AsyncImage(
-                        model = imageUrl,
+                        // Pre-fetched bytes decode instantly; the raw URL is a
+                        // last-ditch fallback if the byte fetch was skipped.
+                        model = imageBytes ?: imageUrl,
                         imageLoader = imageLoader,
-                        transform = { it.crossfade(true) },
                         contentScale = ContentScale.Crop,
                         contentDescription = "Mystery image, round $round",
                         modifier = Modifier.fillMaxSize(),

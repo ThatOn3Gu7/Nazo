@@ -317,19 +317,6 @@ fun NazoApp() {
 
     // ---- Guessing Game orchestration (all UI lives in modes/guessing_game) ----
 
-    fun startGuessing(topic: String, difficulty: String, rounds: Int) {
-        guessTopic = topic
-        guessDifficulty = difficulty
-        guessTotalRounds = rounds.coerceIn(1, 15)
-        guessRound = 1
-        guessScore = 0
-        guessResults = emptyList()
-        guessRoundResult = null
-        guessAvoidTargets = emptyList()
-        if (navigationStack.last() != Screen.GuessingGame) navigate(Screen.GuessingGame)
-        prepareGuessRound()
-    }
-
     fun prepareGuessRound() {
         if (isOfflineMode) {
             guessPhase = GuessPhase.Error(
@@ -369,7 +356,18 @@ fun NazoApp() {
         }
     }
 
-    fun guessRoundComplete(correct: Boolean, answerText: String?, remainingMs: Long) {
+    fun startGuessing(topic: String, difficulty: String, rounds: Int) {
+        guessTopic = topic
+        guessDifficulty = difficulty
+        guessTotalRounds = rounds.coerceIn(1, 15)
+        guessRound = 1
+        guessScore = 0
+        guessResults = emptyList()
+        guessRoundResult = null
+        guessAvoidTargets = emptyList()
+        if (navigationStack.last() != Screen.GuessingGame) navigate(Screen.GuessingGame)
+        prepareGuessRound()
+    }    fun guessRoundComplete(correct: Boolean, answerText: String?, remainingMs: Long) {
         val payload = (guessPhase as? GuessPhase.Playing)?.payload ?: return
         if (guessRoundResult != null) return // one shot per round
         val durationMs = GuessScoring.durationMsFor(guessDifficulty)
