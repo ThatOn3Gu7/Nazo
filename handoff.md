@@ -2584,3 +2584,31 @@ covered by `BUG_AUDIT.md` + this log).
   reset onto FETCH_HEAD and recommit the diff.
 - Files: modes/guessing_game/GuessingPlayScreen.kt,
   modes/guessing_game/PixelReveal.kt, handoff.md.
+
+## [2026-09-01 02:30] feat: Phase 7 — opt-in sound effects (synthesized, no assets)
+
+- NEW package `sound/` (Sounds.kt): Haptics-shaped API — correct / wrong /
+  complete / record. OPT-IN: prefs "nazo_sound" key "enabled", DEFAULT FALSE;
+  every call no-ops unless enabled. NO audio assets and no libraries: each
+  effect is a soft-synth chime (sine + 0.35× 2nd harmonic, 4ms attack,
+  exponential decay, 22050Hz mono 16-bit) rendered once, cached in a
+  ConcurrentHashMap, played via short-lived STATIC AudioTrack (USAGE_GAME /
+  SONIFICATION) on a single daemon worker thread — zero UI-thread work.
+  minSdk 26 → AudioTrack.Builder fine.
+- Hooks (all one-line additive, right beside the existing Haptics calls):
+  quiz option tap (correct/wrong), quiz time-up (wrong), guessing
+  submitAnswer (correct/wrong), guessing time-up (wrong), both results
+  screens' entrance LaunchedEffect (complete), NewRecordBadge pop (record —
+  fires at the 700ms badge moment, after the 0ms complete arpeggio).
+- Settings: new FEEDBACK section between MODE and GENERAL with a
+  SettingsSwitchRow ("Sound effects", AutoMirrored VolumeUp icon — the
+  automirrored.filled import is REQUIRED, it's an extension property).
+  NazoApp holds soundEnabled state; enabling plays Sounds.correct as an
+  instant preview.
+- BackupRepository: + "nazo_sound".
+- Phase 6 note: CI for a47d837 confirmed GREEN (run 33409301005) at the
+  start of this session. Owner confirmed the pulse + scroll fixes on device;
+  pulse is intentionally subtler now (icon-only) and owner is fine with it.
+- Files: sound/Sounds.kt (new), ActiveQuizScreen.kt, GuessingPlayScreen.kt,
+  QuizCompleteScreen.kt, GuessingResultsScreen.kt, records/Records.kt,
+  SettingsScreen.kt, NazoApp.kt, BackupRepository.kt, handoff.md.

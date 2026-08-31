@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import quiz.thaton3app.nazo.records.NewRecordBadge
+import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.theme.*
 
@@ -104,6 +105,7 @@ fun GuessingResultsScreen(
     )
 
     LaunchedEffect(Unit) {
+        Sounds.complete(context) // opt-in, no-op when sounds are disabled
         delay(100)
         showHeader = true
         delay(150)

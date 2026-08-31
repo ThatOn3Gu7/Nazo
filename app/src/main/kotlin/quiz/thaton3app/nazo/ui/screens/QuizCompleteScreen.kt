@@ -36,6 +36,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import quiz.thaton3app.nazo.records.NewRecordBadge
 import quiz.thaton3app.nazo.daily.DailyBonusChip
+import quiz.thaton3app.nazo.sound.Sounds
+import androidx.compose.ui.platform.LocalContext
 import quiz.thaton3app.nazo.ui.theme.*
 import kotlin.random.Random
 
@@ -83,7 +85,9 @@ fun QuizCompleteScreen(
     )
 
     // Orchestrate entrances
+    val context = LocalContext.current
     LaunchedEffect(Unit) {
+        Sounds.complete(context) // opt-in, no-op when sounds are disabled
         delay(100)
         showHeader = true
         delay(150)

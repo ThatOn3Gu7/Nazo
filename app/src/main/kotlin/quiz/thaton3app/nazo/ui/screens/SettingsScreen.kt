@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -40,6 +41,8 @@ fun SettingsScreen(
     onOpenAbout: () -> Unit = {},
     forceOffline: Boolean = false,
     onForceOfflineChange: (Boolean) -> Unit = {},
+    soundEnabled: Boolean = false,
+    onSoundEnabledChange: (Boolean) -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -84,6 +87,20 @@ fun SettingsScreen(
                     subtitle = "Use the local question library only — no API calls",
                     checked = forceOffline,
                     onCheckedChange = onForceOfflineChange,
+                )
+            }
+            
+            Spacer(Modifier.height(24.dp))
+            
+            SectionLabel("FEEDBACK")
+            Spacer(Modifier.height(8.dp))
+            SettingsCard {
+                SettingsSwitchRow(
+                    icon = Icons.AutoMirrored.Filled.VolumeUp,
+                    title = "Sound effects",
+                    subtitle = "Soft chimes for answers, results and new records",
+                    checked = soundEnabled,
+                    onCheckedChange = onSoundEnabledChange,
                 )
             }
             

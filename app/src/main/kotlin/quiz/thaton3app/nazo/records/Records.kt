@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
@@ -87,6 +88,7 @@ fun NewRecordBadge(modifier: Modifier = Modifier) {
         delay(700)
         shown = true
         Haptics.light(context)
+        Sounds.record(context) // opt-in fanfare, no-op when sounds are disabled
     }
     AnimatedVisibility(
         visible = shown,
