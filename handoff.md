@@ -2434,3 +2434,13 @@ covered by `BUG_AUDIT.md` + this log).
   + onProvidersChanged + onPlayNow); NazoApp passes the same lambdas
   AppearanceScreen gets. OnboardingPrefs untouched.
 - Files: ui/onboarding/OnboardingScreen.kt, ui/NazoApp.kt, handoff.md.
+
+## [2026-08-31 22:15] fix: onboarding v3 compile — SlideCardFrame needs a ColumnScope receiver
+
+- CI: 3× "Unresolved reference 'weight'" — all inside SlideCardFrame content
+  lambdas. `weight` is a ColumnScope extension; a plain `@Composable () ->
+  Unit` slot lambda has no receiver, so it can't resolve. Fix: `content:
+  @Composable ColumnScope.() -> Unit` + ColumnScope import. NEW-TRAP note
+  for this log: any slot-lambda whose children use weight()/align() must
+  expose the right scope receiver.
+- Files: ui/onboarding/OnboardingScreen.kt, handoff.md.
