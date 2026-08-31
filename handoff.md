@@ -2016,3 +2016,18 @@ covered by `BUG_AUDIT.md` + this log).
   import); the base color comes from the app root anyway. No other screen
   has this (grep confirms). AboutScreen's other NazoBackground hit is a
   40dp icon chip, unrelated.
+
+## [2026-08-31 14:45] fix: guessing loading cancel — real "Cancel" button, not a back arrow
+
+- Owner correction: the back-arrow button I added above the guessing
+  loading card was wrong — the X at the top already cancels. They wanted a
+  PHYSICAL "Cancel" button below the wavy spinner inside the card, like
+  the quiz generation loading screen's (LoadingContent ends with
+  TextButton(label = "Cancel")).
+- Fixed: reverted the arrow row (Preparing branch is the original centered
+  Box again, ArrowBack import removed); PreparingCard takes onCancel and
+  renders a CancelTextButton (full-width 44dp flat text button, same look
+  as the quiz's private TextButton — replicated in-package, quiz file left
+  untouched) below the WavySpinner. Wired to onQuit (cancels guessJob,
+  phase Idle, goHome) — same action the X's confirmation performs, direct
+  like the quiz's cancel.

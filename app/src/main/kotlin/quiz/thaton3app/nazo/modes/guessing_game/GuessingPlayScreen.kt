@@ -48,7 +48,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
@@ -297,46 +296,19 @@ fun GuessingPlayScreen(
             // in it (same layout pattern as the quiz's LoadingScreen), and the
             // Playing content scrolls when it outgrows the screen.
             when (phase) {
-                is GuessPhase.Preparing -> Column(
+                is GuessPhase.Preparing -> Box(
                     modifier = Modifier
                         .weight(1f)
                         .padding(horizontal = 20.dp)
                         .navigationBarsPadding(),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    // Cancel button — the quiz's loading screen has one too:
-                    // opens the same "quit game?" confirmation as the X.
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        IconButton(
-                            onClick = {
-                                Haptics.light(context)
-                                showQuitDialog = true
-                            },
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(NazoSurface),
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Cancel",
-                                tint = NazoTextSecondary,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
-                    }
-                    Box(
-                        modifier = Modifier.weight(1f),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        PreparingCard(
-                            round = phase.round,
-                            totalRounds = totalRounds,
-                            topic = topic,
-                        )
-                    }
+                    PreparingCard(
+                        round = phase.round,
+                        totalRounds = totalRounds,
+                        topic = topic,
+                        onCancel = onQuit,
+                    )
                 }
 
                 is GuessPhase.Error -> Box(
@@ -923,7 +895,7 @@ private fun RevealCard(
 
 /** Spinner card while the round payload and image URL are being fetched. */
 @Composable
-private fun PreparingCard(round: Int, totalRounds: Int, topic: String) {
+private fun PreparingCard(round: Int, totalRounds: Int, topic: String, onCancel: () -> Unit) {
     val infiniteTransition = rememberInfiniteTransition(label = "guessPreparing")
     val scale by infiniteTransition.animateFloat(
         initialValue = 1f,
@@ -975,7 +947,32 @@ private fun PreparingCard(round: Int, totalRounds: Int, topic: String) {
             )
             Spacer(Modifier.height(20.dp))
             WavySpinner(color = NazoPrimary, modifier = Modifier.size(44.dp))
+            Spacer(Modifier.height(24.dp))
+            // Same physical "Cancel" button the quiz's loading screen has.
+            CancelTextButton(label = "Cancel", onClick = onCancel)
         }
+    }
+}
+
+/** Flat full-width text button — same look as the quiz loading screen's. */
+@Composable
+private fun CancelTextButton(label: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = NazoTextSecondary,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+        )
     }
 }
 
