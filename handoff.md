@@ -2554,3 +2554,33 @@ covered by `BUG_AUDIT.md` + this log).
      content — the FirstGame slide's suggestion row still has one (owner
      hasn't reported issues there; left untouched).
 - Files: daily/Daily.kt, ui/onboarding/OnboardingScreen.kt, handoff.md.
+
+## [2026-09-01 01:40] perf: Phase 6 — guessing-game recomposition isolation + bitmap cap
+
+- Timer recomposition: the frame-clock loop writes remainingMs ~60×/s and it
+  was read at screen scope (timerFrac/displaySeconds vals) → the ENTIRE
+  GuessingPlayScreen recomposed every frame, all round long. Now:
+  - timerFrac is a remembered LAMBDA; LinearProgressIndicator invokes it in
+    its own draw phase → zero recompositions from the bar.
+  - displaySeconds is derivedStateOf → screen recomposes once per SECOND.
+  - MysteryImageCard takes progress: () -> Float; blur target (whole dp Int)
+    and pixel target (quantized to the PIXEL_LEVELS grid) are derivedStateOf
+    → card recomposes only when a visible step changes (~dozens per round,
+    not 60/s). The 350ms tweens still glide between steps, and the un-gated
+    pixel-target initial-value trick (see in-code NOTE) is preserved.
+- buildPixelLevels (PixelReveal.kt): bounds-only decode + power-of-two
+  inSampleSize capping the longest edge at 1600px (card renders ~300dp).
+  A 4000px fetch drops ~48MB→~10MB ARGB. Level 0 (scale 1) now reuses the
+  decoded bitmap instead of createScaledBitmap-copying it. Fetcher untouched
+  (image pipeline is FROZEN — this is decode-side only).
+- DisposableEffect on GuessingPlayScreen recycles the pixel-level bitmaps on
+  dispose (guarded with isRecycled) — no recycling mid-game, so no
+  "recycled bitmap" draw risk.
+- Behavior identical by design: same visuals, same timing, same scoring.
+- ALSO this session: local git metadata had been reset to branch base while
+  the workspace kept all files — a commit rebuilt from that base was rejected
+  by the remote. Fixed via fetch + `git reset --soft FETCH_HEAD` + mixed
+  reset, then recommitted only the real delta. If it recurs: NEVER force-push;
+  reset onto FETCH_HEAD and recommit the diff.
+- Files: modes/guessing_game/GuessingPlayScreen.kt,
+  modes/guessing_game/PixelReveal.kt, handoff.md.

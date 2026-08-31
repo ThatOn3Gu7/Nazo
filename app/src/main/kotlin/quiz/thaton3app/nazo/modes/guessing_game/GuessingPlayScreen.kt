@@ -63,7 +63,9 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -165,8 +167,26 @@ fun GuessingPlayScreen(
     var hintLetters by remember(round) { mutableStateOf(0) }
 
     val revealed = submitted != null || timedOut || roundResult != null
-    val timerFrac = if (durationMs > 0) (remainingMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
-    val displaySeconds = ((remainingMs + 999) / 1000).toInt()
+    // Recomposition isolation (Phase 6): the frame-clock loop below writes
+    // [remainingMs] ~60×/s. Nothing at screen scope reads it directly anymore:
+    //  - the progress bar gets a LAMBDA it invokes in its own draw phase
+    //    (zero recompositions), and the image card derives quantized values;
+    //  - the seconds readout derives a once-per-second Int via derivedStateOf,
+    //    so this whole screen recomposes once a second instead of every frame.
+    val timerFrac = remember(durationMs) {
+        { if (durationMs > 0) (remainingMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f }
+    }
+    val displaySeconds by remember(durationMs) {
+        derivedStateOf { ((remainingMs + 999) / 1000).toInt() }
+    }
+
+    // Free the pixel-level bitmaps (up to ~14 per round) as soon as the player
+    // leaves this screen, instead of waiting for the GC on low-RAM devices.
+    DisposableEffect(Unit) {
+        onDispose {
+            pixelLevels?.forEach { if (!it.isRecycled) it.recycle() }
+        }
+    }
 
     // Reset per round, then pre-fetch the image BYTES before the timer may start,
     // so the countdown (and the linear un-blur) only ever runs against pixels
@@ -313,7 +333,7 @@ fun GuessingPlayScreen(
                     Spacer(Modifier.height(16.dp))
                     // The shrinking bar makes the linear time decay visible.
                     LinearProgressIndicator(
-                        progress = { timerFrac },
+                        progress = timerFrac,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(6.dp)
@@ -501,7 +521,7 @@ private fun MysteryImageCard(
     imageBytes: ByteArray?,
     query: String,
     round: Int,
-    progress: Float,
+    progress: () -> Float,
     revealed: Boolean,
     revealStyle: String,
     startFraction: Float,
@@ -515,8 +535,17 @@ private fun MysteryImageCard(
     // was instead of just reading the name. A decode failure in pixel mode
     // (pixelLevels == null) silently falls back to the blur.
     val usePixels = revealStyle == "pixel" && pixelLevels != null
+    // [progress] is a deferred read of the per-frame timer. Both animation
+    // targets below are QUANTIZED derivedStateOf values (whole blur dp / pixel
+    // level steps), so this card recomposes only when a visible step actually
+    // changes (~a few dozen times per round) — never on every timer frame.
+    val blurTarget by remember(usePixels, revealed, startFraction, progress) {
+        derivedStateOf {
+            if (usePixels || revealed) 0 else (progress() * MAX_BLUR * startFraction).toInt()
+        }
+    }
     val blurRadiusDp by animateIntAsState(
-        targetValue = if (usePixels) 0 else if (revealed) 0 else (progress * MAX_BLUR * startFraction).toInt(),
+        targetValue = blurTarget,
         animationSpec = tween(350, easing = FastOutSlowInEasing),
         label = "mysteryBlur"
     )
@@ -528,8 +557,18 @@ private fun MysteryImageCard(
     // pixelation. Without the gate the effect is already at full starting
     // strength (progress ≈ 1.0 during the fetch) the moment the pixels render,
     // then lifts as the timer runs — and drops to 0 on reveal.
+    // The target is quantized to the pixel-level grid: its only consumer with
+    // that precision is [levelIndex], so finer values just caused per-frame
+    // recompositions (the 350ms tween still glides between steps).
+    val pixelSteps = (PIXEL_LEVELS.size - 1).toFloat()
+    val pixelTarget by remember(revealed, startFraction, progress) {
+        derivedStateOf {
+            val raw = if (revealed) 0f else progress() * startFraction
+            (raw * pixelSteps).roundToInt() / pixelSteps
+        }
+    }
     val pixelEffect by animateFloatAsState(
-        targetValue = if (revealed) 0f else progress * startFraction,
+        targetValue = pixelTarget,
         animationSpec = tween(350, easing = FastOutSlowInEasing),
         label = "mysteryPixel"
     )
