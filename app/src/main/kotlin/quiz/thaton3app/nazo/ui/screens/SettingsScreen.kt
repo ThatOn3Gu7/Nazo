@@ -5,6 +5,11 @@ import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.theme.*
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 
 // No backend wiring yet — the on*Click callbacks are no-ops until each destination
 // screen exists, per the incremental build plan.
@@ -43,6 +49,8 @@ fun SettingsScreen(
     onForceOfflineChange: (Boolean) -> Unit = {},
     soundEnabled: Boolean = false,
     onSoundEnabledChange: (Boolean) -> Unit = {},
+    remindersEnabled: Boolean = false,
+    onRemindersEnabledChange: (Boolean) -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -94,6 +102,13 @@ fun SettingsScreen(
             
             SectionLabel("FEEDBACK")
             Spacer(Modifier.height(8.dp))
+            // Enabling the daily reminder needs POST_NOTIFICATIONS on Android 13+.
+            // The toggle turns on either way; the worker independently re-checks the
+            // permission before posting, so a later grant/revoke just works.
+            val context = LocalContext.current
+            val notifPermissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission()
+            ) { /* result handled implicitly — the worker checks before posting */ }
             SettingsCard {
                 SettingsSwitchRow(
                     icon = Icons.AutoMirrored.Filled.VolumeUp,
@@ -101,6 +116,23 @@ fun SettingsScreen(
                     subtitle = "Soft chimes for answers, results and new records",
                     checked = soundEnabled,
                     onCheckedChange = onSoundEnabledChange,
+                )
+                RowDivider()
+                SettingsSwitchRow(
+                    icon = Icons.Filled.Notifications,
+                    title = "Daily reminder",
+                    subtitle = "One evening nudge when today's challenge is unplayed",
+                    checked = remindersEnabled,
+                    onCheckedChange = { v ->
+                        if (v && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            ContextCompat.checkSelfPermission(
+                                context, Manifest.permission.POST_NOTIFICATIONS
+                            ) != PackageManager.PERMISSION_GRANTED
+                        ) {
+                            notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                        onRemindersEnabledChange(v)
+                    },
                 )
             }
             

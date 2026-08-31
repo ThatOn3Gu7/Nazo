@@ -54,6 +54,8 @@ import quiz.thaton3app.nazo.modes.guessing_game.GuessRoundResult
 import quiz.thaton3app.nazo.modes.guessing_game.GuessScoring
 import quiz.thaton3app.nazo.modes.guessing_game.GuessingPlayScreen
 import quiz.thaton3app.nazo.modes.guessing_game.GuessingResultsScreen
+import quiz.thaton3app.nazo.reminders.ReminderScheduler
+import quiz.thaton3app.nazo.widget.NazoWidgetProvider
 
 // Every destination in the app. Wrapping this in AnimatedContent gives us a single,
 // uniform fade-in / fade-out transition between ALL screens (Roadmap #2).
@@ -84,7 +86,7 @@ private data class GenerationRequest(
 )
 
 @Composable
-fun NazoApp() {
+fun NazoApp(launchDailyChallenge: Boolean = false) {
     val context = LocalContext.current
     val apiKeyStore = remember { ApiKeyStore(context) }
     val themePrefs = remember { ThemePreferences(context) }
@@ -105,6 +107,8 @@ fun NazoApp() {
     var lastDailyBonus by remember { mutableIntStateOf(0) }
     // Sound effects (Phase 7): opt-in, persisted in the Sounds store.
     var soundEnabled by remember { mutableStateOf(Sounds.isEnabled(context)) }
+    // Daily reminder notification (final polish pack): opt-in, evening-only.
+    var remindersEnabled by remember { mutableStateOf(ReminderScheduler.isEnabled(context)) }
     val profilePrefs = remember { ProfilePreferences(context) }
     var profileName by remember { mutableStateOf(profilePrefs.username) }
     var profilePictureUri by remember { mutableStateOf(profilePrefs.profilePictureUri) }
@@ -117,6 +121,9 @@ fun NazoApp() {
 
     LaunchedEffect(Unit) {
         BackupScheduler.apply(context, backupPrefs.autoBackupFrequency)
+        // Re-arm the reminder worker if the pref survived a backup/restore
+        // onto a device where the WorkManager job was never scheduled.
+        ReminderScheduler.syncSchedule(context.applicationContext)
     }
 
     // Offline / online mode. `forceOffline` is the manual Settings switch and is
@@ -354,6 +361,16 @@ fun NazoApp() {
         navigate(Screen.Quiz)
     }
 
+    // Launcher-shortcut deep link ("Daily" on app-icon long-press): jump straight
+    // into today's challenge once on launch — but never over the first-run
+    // onboarding, and not when today's daily is already cleared (Home then shows
+    // the completed card as usual).
+    LaunchedEffect(Unit) {
+        if (launchDailyChallenge && !showOnboarding && !dailyStore.isCompletedToday()) {
+            startDailyChallenge()
+        }
+    }
+
     fun answer(isCorrect: Boolean, selected: String?) {
         userAnswers = userAnswers + selected
         if (isCorrect) score++
@@ -376,6 +393,8 @@ fun NazoApp() {
             scope.launch {
                 statsStore.record(finishedDifficulty, finishedQuestions, finishedAnswers)
                 quizStats = statsStore.get()
+                // Home-screen widget shows streak + daily status — keep it live.
+                NazoWidgetProvider.refreshAll(context.applicationContext)
             }
             // Personal best check (previous best captured first for the caption).
             quizPrevBest = recordsStore.quizBestPercent(finishedDifficulty)
@@ -493,6 +512,8 @@ fun NazoApp() {
             scope.launch {
                 statsStore.recordGuessing(finishedDifficulty, finishedTopic, finishedAnswered, finishedCorrect)
                 quizStats = statsStore.get()
+                // Home-screen widget shows streak + daily status — keep it live.
+                NazoWidgetProvider.refreshAll(context.applicationContext)
             }
             // Personal best check (previous best captured first for the caption).
             guessPrevBest = recordsStore.guessBestPoints(finishedDifficulty, guessTotalRounds)
@@ -574,6 +595,11 @@ fun NazoApp() {
                         soundEnabled = v
                         Sounds.setEnabled(context, v)
                         if (v) Sounds.correct(context) // instant preview of the new setting
+                    },
+                    remindersEnabled = remindersEnabled,
+                    onRemindersEnabledChange = { v ->
+                        remindersEnabled = v
+                        ReminderScheduler.setEnabled(context.applicationContext, v)
                     },
                 )
 
