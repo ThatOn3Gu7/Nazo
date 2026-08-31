@@ -2444,3 +2444,23 @@ covered by `BUG_AUDIT.md` + this log).
   for this log: any slot-lambda whose children use weight()/align() must
   expose the right scope receiver.
 - Files: ui/onboarding/OnboardingScreen.kt, handoff.md.
+
+## [2026-08-31 22:45] feat: gemini-3.1-flash-lite is the app-wide default model
+
+- Owner (device-tested): Gemini 2.5-era model ids don't work with their key
+  (404 on generateContent even when listed — matches the 2026-08-28 23:30
+  finding), but 3.1 works; they want gemini-3.1-flash-lite auto-selected by
+  default EVERYWHERE a default is picked, not just onboarding.
+- NEW shared helper `preferredDefaultModel(providerId, models)` in
+  data/remote/ProviderConfig.kt — single source of truth. Gemini chain:
+  id contains "3.1-flash-lite" → "flash-lite" → ("3.1" AND "flash") →
+  "flash" → first (substring match, so exact ids like
+  "gemini-3.1-flash-lite-preview" also hit). OpenRouter: first free → first.
+- Call sites switched (all three places a default was picked):
+  1. Onboarding verify (`pickDefaultModel` now delegates);
+  2. AiProviderScreen `fetchModelsFor` fallback (still NEVER overrides a
+     user's still-valid selection — only the fallback changed);
+  3. AiProviderScreen `initialProviders` (no stored model → preferred).
+  The error-screen ModelPicker only lists models (no auto-pick) — untouched.
+- Files: data/remote/ProviderConfig.kt, ui/onboarding/OnboardingScreen.kt,
+  ui/screens/AiProviderScreen.kt, handoff.md.

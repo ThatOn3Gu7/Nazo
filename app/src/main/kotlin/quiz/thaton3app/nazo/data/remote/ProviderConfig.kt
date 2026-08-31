@@ -229,3 +229,21 @@ val PROVIDERS: List<ProviderEndpoint> = listOf(
 )
 
 fun providerById(id: String): ProviderEndpoint? = PROVIDERS.firstOrNull { it.id == id }
+
+/**
+ * The model to auto-select when the user hasn't explicitly picked one.
+ * Owner-tested (2026-08-31): on Gemini, "gemini-3.1-flash-lite" is the model
+ * that reliably works with generateContent (several 2.5-era ids 404 even when
+ * listed), so it is the app-wide default; fall back flash-lite → 3.1 flash →
+ * any flash → first. OpenRouter: first free model, else first.
+ */
+fun preferredDefaultModel(providerId: String, models: List<ModelInfo>): ModelInfo? = when (providerId) {
+    "gemini" ->
+        models.firstOrNull { it.id.contains("3.1-flash-lite", ignoreCase = true) }
+            ?: models.firstOrNull { it.id.contains("flash-lite", ignoreCase = true) }
+            ?: models.firstOrNull { it.id.contains("3.1", ignoreCase = true) && it.id.contains("flash", ignoreCase = true) }
+            ?: models.firstOrNull { it.id.contains("flash", ignoreCase = true) }
+            ?: models.firstOrNull()
+    "openrouter" -> models.firstOrNull { it.isFree } ?: models.firstOrNull()
+    else -> models.firstOrNull()
+}
