@@ -1829,3 +1829,46 @@ covered by `BUG_AUDIT.md` + this log).
   `GuessingResultsScreen.kt`; edited `data/remote/ApiClient.kt`,
   `data/remote/ProviderConfig.kt`, `ui/screens/HomeScreen.kt`, `ui/NazoApp.kt`,
   `README.md`, `app/build.gradle.kts` (version bump), `handoff.md`.
+
+## [2026-08-31 11:50] fix: guessing game — centered preparing card, wavy spinner, better image fetching
+
+- Owner tested the first build and flagged three things from screenshots:
+  1. the "Summoning your mystery image…" card sat at the TOP of the screen (the quiz's
+     LoadingScreen centers its card); 2. it used a plain CircularProgressIndicator instead
+     of the cool wavy star spinner; 3. the image fetch missed (placeholder "謎 + topic"
+     shown) on an Otaku Master target ("Ryusa Bakuryu" — the wikis don't carry every jutsu).
+- **Centering:** restructured `GuessingPlayScreen`'s layout: the header row + shrinking
+  timer bar are now a FIXED block (not inside the scroll column — also better UX for the
+  Playing phase), and the phase content below it takes `weight(1f)`. Preparing/Error cards
+  live in a centered `Box(contentAlignment = Center)` in that remaining space (exact
+  LoadingScreen pattern), and the Playing content is the only scrolling part. NOTE:
+  `fillMaxSize` inside a `verticalScroll` column is unbounded height — the centering Box
+  must be a weighted sibling of the scroll column, not a child of it.
+- **WavySpinner shared:** moved the private `WavySpinner` out of `LoadingScreen.kt` into
+  `ui/components/WavySpinner.kt` (public, identical body — the quiz loading screen is
+  visually unchanged; its now-unused Canvas/Path/Stroke/PI/cos/sin imports were dropped).
+  `GuessingPlayScreen`'s preparing card AND the in-image "Fetching image…" indicator now
+  use the same wavy spinner (44dp) as the quiz. (Caught two mistakes while doing this:
+  the removal edit initially DUPLICATED the private block — removed both copies; and the
+  shared file initially missed `import androidx.compose.runtime.getValue` for the
+  `by transition.animateFloat` delegation.)
+- **Image fetching overhauled (`GuessImageFetcher`):**
+  - Query variants: full `image_query` first, then trailing-qualifier-dropped prefixes
+    (max 3), each tried against Commons + Wikipedia.
+  - Commons search now adds `filetype:bitmap` (skips SVGs/PDFs at search time).
+  - New last-resort source: **DuckDuckGo's image endpoint, keyless** — GET the
+    image-search HTML (browser UA) to extract the per-session `vqd` token (4 regex
+    variants), then `i.js?q=…&vqd=…` for JSON results; accepts any http(s) URL (DDG
+    serves Bing-hosted thumbnails without extensions). This is what makes obscure
+    Otaku-Master targets findable.
+  - Whole search wrapped in `withTimeout(20s)` (TimeoutCancellationException handled
+    separately) so a slow network can never stall a round; per-stage logs added so
+    `logcat` (tag `NazoGuessImage`) shows exactly what was tried and why it missed.
+  - (Caught while writing: three of the `vqd` raw-string regexes had FOUR trailing
+    quotes — the 4th starts a stray string literal and breaks compilation. Fixed to
+    three; this is why "I can't compile here" needs a careful desk-check pass.)
+- **Placeholder now shows the actual `image_query` the fetch tried** (was the raw topic),
+  so the owner can see what was searched when it misses.
+- Files: `modes/guessing_game/GuessingPlayScreen.kt`, `modes/guessing_game/GuessImageFetcher.kt`,
+  `ui/components/WavySpinner.kt` (new), `ui/screens/LoadingScreen.kt`, `handoff.md`.
+- NOTE: no version bump — still the unreleased 5.0.
