@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Splash background = the launcher icon's DARK background green
+         (ic_launcher_background_dark.xml). Sampled exactly — do not adjust. -->
+    <color name="nazo_splash_background">#FF246D4C</color>
+</resources>

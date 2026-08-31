@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Splash background = the launcher icon's LIGHT background green
+         (ic_launcher_background.xml), so the icon tile and the splash are
+         one seamless surface. Sampled exactly — do not adjust. -->
+    <color name="nazo_splash_background">#FF36A06F</color>
+</resources>

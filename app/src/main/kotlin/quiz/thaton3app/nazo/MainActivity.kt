@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import quiz.thaton3app.nazo.data.UpdatePrefs
 import quiz.thaton3app.nazo.data.UpdateScheduler
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
@@ -13,6 +14,9 @@ import quiz.thaton3app.nazo.ui.NazoApp
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        // MUST be the first statement (before super.onCreate) so the system splash
+        // window is installed and handed off before any content is drawn.
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         // Schedule background update checks per the saved frequency preference.

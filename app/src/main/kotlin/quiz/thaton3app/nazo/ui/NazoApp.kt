@@ -35,6 +35,7 @@ import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.ui.components.OfflineWarningDialog
 import quiz.thaton3app.nazo.ui.components.FloatingParticlesBackground
 import quiz.thaton3app.nazo.ui.components.StartupMode
+import quiz.thaton3app.nazo.ui.launch.IntroOverlay
 import quiz.thaton3app.nazo.ui.screens.*
 import quiz.thaton3app.nazo.ui.theme.NazoTheme
 import quiz.thaton3app.nazo.data.remote.QuizCache
@@ -663,6 +664,8 @@ fun NazoApp() {
                     onContinue = { startupDialogMode = null },
                 )
             }
+
+            IntroOverlay(isDark = isDark)
         }
     }
 }
