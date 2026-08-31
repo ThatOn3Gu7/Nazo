@@ -57,6 +57,7 @@ import quiz.thaton3app.nazo.data.QuizEngine
 import quiz.thaton3app.nazo.hints.HintEngine
 import quiz.thaton3app.nazo.hints.HintPill
 import quiz.thaton3app.nazo.hints.HintRevealPill
+import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.theme.*
 
@@ -111,7 +112,10 @@ fun ActiveQuizScreen(
                 3 -> Haptics.tick(context, 47)   // ~30% stronger than the previous
                 2 -> Haptics.tick(context, 66)   // ~40% stronger than the previous
                 1 -> Haptics.tick(context, 85)   // last second before zero
-                0 -> Haptics.timeUp(context)     // time's up — full-strength buzz
+                0 -> {
+                    Haptics.timeUp(context)      // time's up — full-strength buzz
+                    Sounds.wrong(context)        // opt-in sound, no-op when disabled
+                }
             }
         }
         if (remainingSeconds == 0 && selectedAnswer == null) {
@@ -352,8 +356,13 @@ fun ActiveQuizScreen(
                             .background(bgColor)
                             .border(1.dp, borderColor, RoundedCornerShape(50))
                             .clickable(enabled = !reveal && !isHiddenByHint) {
-                                if (optionText == q.correctAnswer) Haptics.light(context)
-                                else Haptics.doubleLight(context)
+                                if (optionText == q.correctAnswer) {
+                                    Haptics.light(context)
+                                    Sounds.correct(context)
+                                } else {
+                                    Haptics.doubleLight(context)
+                                    Sounds.wrong(context)
+                                }
                                 selectedAnswer = optionText
                             }
                             .padding(horizontal = 20.dp, vertical = 16.dp),

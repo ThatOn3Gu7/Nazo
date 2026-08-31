@@ -35,6 +35,7 @@ import quiz.thaton3app.nazo.records.RecordsStore
 import quiz.thaton3app.nazo.daily.DailyChallenge
 import quiz.thaton3app.nazo.daily.DailyStore
 import quiz.thaton3app.nazo.achievements.AchievementEngine
+import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.ui.components.OfflineWarningDialog
 import quiz.thaton3app.nazo.ui.components.FloatingParticlesBackground
@@ -102,6 +103,8 @@ fun NazoApp() {
     val dailyStore = remember { DailyStore(context.applicationContext) }
     var isDailyQuiz by remember { mutableStateOf(false) }
     var lastDailyBonus by remember { mutableIntStateOf(0) }
+    // Sound effects (Phase 7): opt-in, persisted in the Sounds store.
+    var soundEnabled by remember { mutableStateOf(Sounds.isEnabled(context)) }
     val profilePrefs = remember { ProfilePreferences(context) }
     var profileName by remember { mutableStateOf(profilePrefs.username) }
     var profilePictureUri by remember { mutableStateOf(profilePrefs.profilePictureUri) }
@@ -563,6 +566,12 @@ fun NazoApp() {
                         onOpenAbout = { navigate(Screen.About) },
                     forceOffline = forceOffline,
                     onForceOfflineChange = { v -> forceOffline = v },
+                    soundEnabled = soundEnabled,
+                    onSoundEnabledChange = { v ->
+                        soundEnabled = v
+                        Sounds.setEnabled(context, v)
+                        if (v) Sounds.correct(context) // instant preview of the new setting
+                    },
                 )
 
                     Screen.Profile -> ProfileScreen(

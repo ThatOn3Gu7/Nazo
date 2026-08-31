@@ -98,6 +98,7 @@ import kotlinx.coroutines.withTimeout
 import quiz.thaton3app.nazo.hints.HintEngine
 import quiz.thaton3app.nazo.hints.HintPill
 import quiz.thaton3app.nazo.hints.HintRevealPill
+import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.WavySpinner
 import quiz.thaton3app.nazo.ui.theme.*
@@ -253,6 +254,7 @@ fun GuessingPlayScreen(
                 }
                 if (remaining <= 0L) {
                     Haptics.timeUp(context)
+                    Sounds.wrong(context)
                     timedOut = true
                     onRoundComplete(false, null, 0L)
                     done = true
@@ -264,7 +266,13 @@ fun GuessingPlayScreen(
     fun submitAnswer(answer: String) {
         if (payload == null || revealed) return
         val correct = payload.isCorrect(answer)
-        if (correct) Haptics.light(context) else Haptics.doubleLight(context)
+        if (correct) {
+            Haptics.light(context)
+            Sounds.correct(context)
+        } else {
+            Haptics.doubleLight(context)
+            Sounds.wrong(context)
+        }
         submitted = answer
         onRoundComplete(correct, answer, remainingMs)
     }
