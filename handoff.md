@@ -1905,3 +1905,32 @@ covered by `BUG_AUDIT.md` + this log).
   20 MB `nazo-debug-apk` artifact). The feature branch is now provably
   compilable; the owner can download the APK from the run's Artifacts instead
   of building in Termux.
+
+## [2026-08-31 12:55] fix: image relevance — the fetcher must depict the TARGET, not the topic
+
+- Owner's second real-device test: correct layout/spinner/flow, but the mystery
+  image was wrong — a Roronoa Zoro round showed the "Tokyo One Piece Tower"
+  logo, a Trafalgar Law round showed an unrelated news collage. Root cause:
+  the fetcher took the FIRST hit of a plain keyword search, which matches
+  topic words ("One Piece", "Trafalgar") instead of the entity.
+- New design in `GuessImageFetcher.fetchImageUrl(query, target)` (NazoApp now
+  passes `payload.targetEntity`):
+  - all sources searched by EXACT PHRASE (`"Roronoa Zoro"`);
+  - every result is relevance-gated: file/article titles scored against the
+    target name (all content words = 3, at least half = 2, longest word only
+    = 1); score < 2 is dropped. Topic-branded logos score 0.
+  - Commons = one `generator=search` call (phrase + `filetype:bitmap` +
+    imageinfo, top 10) — was up to 11 round-trips;
+  - Wikipedia gates on the article TITLE before any summary fetch (target
+    "Trafalgar Law" can no longer land on "Trafalgar" or "One Piece");
+  - the AI's image_query is a second search phrase (same gate);
+  - DuckDuckGo last resort, queried with the TARGET NAME, opaque image hosts
+    (YouTube thumbs, Bing proxies) trusted, slugs must mention the target.
+- System prompt hardened: `image_query` must START with the target's own full
+  name + franchise; never a landmark/studio/product/the franchise alone.
+- If nothing relevant is found the round shows the placeholder (with the
+  query) — a wrong image is treated as a miss by design now.
+- Tradeoff to watch: obscure targets (Otaku Master) may now more often get
+  the placeholder instead of a wrong-but-impressive image; if that bites,
+  the next step is having the AI pick from the top-N candidate file titles
+  (one extra cheap AI call per round).
