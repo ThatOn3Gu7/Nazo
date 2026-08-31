@@ -2386,3 +2386,51 @@ covered by `BUG_AUDIT.md` + this log).
     extension is the CORRECT overload here — unlike the previous nested-Box
     placement that broke the build.)
 - Files: ui/onboarding/OnboardingScreen.kt, handoff.md.
+
+## [2026-08-31 21:50] feat: onboarding v3 — setup wizard (provider + appearance) + instant first game
+
+- Owner's "crazy idea", approved on the spot: keep the reference layout/design
+  but make onboarding a real setup wizard, and let the user launch their FIRST
+  GAME straight from the tour (skippable). Explicit constraint: every
+  expandable/collapsible element and input must be carefully animated —
+  "animations are all the app has to boast about besides API integration".
+- Now 5 slides (PAGE_COUNT=5): 0-2 the pastel doodle feature slides
+  (unchanged), 3 = SETUP, 4 = FIRST GAME. Same card frame/tints language
+  (setup mint@0.09, first-game green@0.10). Dash progress handles 5.
+- SETUP slide — two ExpandableSection cards (NazoSurface, rounded-20,
+  animateContentSize(260) + chevron animateFloatAsState rotate + content
+  expandVertically/shrinkVertically+fade — the exact animation vocabulary the
+  owner approved on AiProviderScreen):
+  1. AI PROVIDER: provider pills (Gemini/OpenRouter from
+     ApiKeyStore.PROVIDER_ORDER), themed OutlinedTextField for the key,
+     "Verify & Save" button whose content CROSSFADES Idle→"Checking…"
+     (16dp spinner)→"Saved & ready" (check) via AnimatedContent; on success it
+     does the real thing: saveKey + fetchModels (ApiClient) + saveModels +
+     auto-pick model (gemini→first "flash", openrouter→first free) via
+     saveModel + saveSelectedProvider, then onProvidersChanged() so NazoApp's
+     selectedProvider state refreshes Home's badge. Success caption expands in
+     (NazoSuccess); failure shows the outlined NazoErrorBg pill (plain fade,
+     per the provider-screen convention). Key edits reset to Idle.
+  2. APPEARANCE: THEME pills (system/light/dark), ACCENT dot row (all 9
+     Accents, resolveAccent(id, isDark).primary fill, animated selection
+     ring), GUESSING REVEAL pills (pixel/blur). All wired to the SAME NazoApp
+     state + ThemePreferences persistence AppearanceScreen uses, so changes
+     apply LIVE — the whole tour recolors as you tap (great demo moment).
+- FIRST GAME slide: MODE pills (Quiz / "Guessing Game 🔒" until a provider is
+  ready — tapping locked shows an animated hint that auto-hides after 2.6s),
+  TOPIC field + suggestion chips (curated intersect of
+  LocalQuestionBank.suggestions(), 8 chips, horizontal scroll), a crossfading
+  note of what launches (Quiz: 5 questions Medium / Guessing: 3 rounds
+  Medium). The BOTTOM bar button label animates contextually: "Next" →
+  "Start Playing" (topic empty = skip to Home) → "Play Now · Quiz"/"Play Now ·
+  Guessing". onPlayNow: NazoApp persists the flag, hides the tour, seeds
+  homeTopic/homeMode and calls startQuiz(topic,"Medium",5) or
+  startGuessing(topic,"Medium",3) — the exact same entry points Home uses,
+  so offline quiz / AI quiz / error screens all behave identically.
+- State is HOISTED to OnboardingScreen level (pager disposes far pages —
+  slide-local remember would lose the typed key/topic on swipes).
+  Root Column got imePadding() for the text fields.
+- OnboardingScreen signature grew (isDark/themeMode/accent/reveal + callbacks
+  + onProvidersChanged + onPlayNow); NazoApp passes the same lambdas
+  AppearanceScreen gets. OnboardingPrefs untouched.
+- Files: ui/onboarding/OnboardingScreen.kt, ui/NazoApp.kt, handoff.md.
