@@ -51,7 +51,6 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -90,6 +89,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.WavySpinner
 import quiz.thaton3app.nazo.ui.theme.*
 
 /** Fully-blurred at the start of the timer; 0 = fully sharp at the end. */
@@ -217,17 +217,14 @@ fun GuessingPlayScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+            // Fixed header: stays put while the game content scrolls below it.
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp)
-                    .navigationBarsPadding()
-                    .padding(bottom = 24.dp)
             ) {
                 Spacer(Modifier.height(20.dp))
 
-                // Header
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
                         onClick = {
@@ -286,59 +283,86 @@ fun GuessingPlayScreen(
                         color = if (displaySeconds <= 5) NazoError else NazoPrimary,
                         trackColor = NazoSurface
                     )
-                    Spacer(Modifier.height(20.dp))
                 }
+            }
 
-                when (phase) {
-                    is GuessPhase.Preparing -> PreparingCard(
+            Spacer(Modifier.height(20.dp))
+
+            // Content area gets the remaining height: Preparing/Error cards center
+            // in it (same layout pattern as the quiz's LoadingScreen), and the
+            // Playing content scrolls when it outgrows the screen.
+            when (phase) {
+                is GuessPhase.Preparing -> Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 20.dp)
+                        .navigationBarsPadding(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    PreparingCard(
                         round = phase.round,
                         totalRounds = totalRounds,
                         topic = topic,
                     )
+                }
 
-                    is GuessPhase.Error -> ErrorCard(
+                is GuessPhase.Error -> Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 20.dp)
+                        .navigationBarsPadding(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    ErrorCard(
                         message = phase.message,
                         onRetry = onRetryRound,
                         onOpenSettings = onOpenSettings,
                         onQuit = onQuit,
                     )
-
-                    is GuessPhase.Playing -> {
-                        MysteryImageCard(
-                            imageUrl = phase.imageUrl,
-                            imageReady = imageReady,
-                            imageFetchFailed = imageFetchFailed,
-                            topic = topic,
-                            round = round,
-                            progress = timerFrac,
-                            imageLoader = imageLoader,
-                        )
-                        Spacer(Modifier.height(20.dp))
-                        when (GuessScoring.specFor(difficultyLabel).inputMode) {
-                            GuessInputMode.CHOICE -> ChoiceInput(
-                                payload = phase.payload,
-                                revealed = revealed,
-                                submitted = submitted,
-                                onSubmit = { answer -> submitAnswer(answer) },
-                            )
-                            GuessInputMode.AUTOCOMPLETE -> AutocompleteInput(
-                                payload = phase.payload,
-                                revealed = revealed,
-                                onSubmit = { answer -> submitAnswer(answer) },
-                            )
-                        }
-                        if (roundResult != null) {
-                            Spacer(Modifier.height(16.dp))
-                            RevealCard(
-                                result = roundResult,
-                                totalRounds = totalRounds,
-                                onNext = onNextRound,
-                            )
-                        }
-                    }
-
-                    GuessPhase.Idle -> Unit
                 }
+
+                is GuessPhase.Playing -> Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp)
+                        .navigationBarsPadding()
+                        .padding(bottom = 24.dp),
+                ) {
+                    MysteryImageCard(
+                        imageUrl = phase.imageUrl,
+                        imageReady = imageReady,
+                        imageFetchFailed = imageFetchFailed,
+                        query = phase.payload.imageQuery.ifBlank { topic },
+                        round = round,
+                        progress = timerFrac,
+                        imageLoader = imageLoader,
+                    )
+                    Spacer(Modifier.height(20.dp))
+                    when (GuessScoring.specFor(difficultyLabel).inputMode) {
+                        GuessInputMode.CHOICE -> ChoiceInput(
+                            payload = phase.payload,
+                            revealed = revealed,
+                            submitted = submitted,
+                            onSubmit = { answer -> submitAnswer(answer) },
+                        )
+                        GuessInputMode.AUTOCOMPLETE -> AutocompleteInput(
+                            payload = phase.payload,
+                            revealed = revealed,
+                            onSubmit = { answer -> submitAnswer(answer) },
+                        )
+                    }
+                    if (roundResult != null) {
+                        Spacer(Modifier.height(16.dp))
+                        RevealCard(
+                            result = roundResult,
+                            totalRounds = totalRounds,
+                            onNext = onNextRound,
+                        )
+                    }
+                }
+
+                GuessPhase.Idle -> Box(Modifier.weight(1f))
             }
         }
 
@@ -402,7 +426,7 @@ private fun MysteryImageCard(
     imageUrl: String?,
     imageReady: Boolean,
     imageFetchFailed: Boolean,
-    topic: String,
+    query: String,
     round: Int,
     progress: Float,
     imageLoader: ImageLoader,
@@ -420,7 +444,7 @@ private fun MysteryImageCard(
         if (imageReady) {
             Box(modifier = Modifier.fillMaxSize().scale(revealScale).blur(blurRadius)) {
                 if (imageFetchFailed || imageUrl == null) {
-                    GuessImagePlaceholder(query = topic.ifBlank { "Mystery image" })
+                    GuessImagePlaceholder(query = query.ifBlank { "Mystery image" })
                 } else {
                     AsyncImage(
                         model = imageUrl,
@@ -461,11 +485,7 @@ private fun ImageFetchingIndicator() {
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(
-                color = NazoPrimary,
-                modifier = Modifier.size(36.dp),
-                strokeWidth = 3.dp,
-            )
+            WavySpinner(color = NazoPrimary, modifier = Modifier.size(44.dp))
             Spacer(Modifier.height(12.dp))
             Text(
                 text = "Fetching image…",
@@ -907,11 +927,7 @@ private fun PreparingCard(round: Int, totalRounds: Int, topic: String) {
                 textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(20.dp))
-            CircularProgressIndicator(
-                color = NazoPrimary,
-                modifier = Modifier.size(40.dp),
-                strokeWidth = 3.dp,
-            )
+            WavySpinner(color = NazoPrimary, modifier = Modifier.size(44.dp))
         }
     }
 }
