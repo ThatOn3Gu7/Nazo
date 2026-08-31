@@ -2537,3 +2537,20 @@ covered by `BUG_AUDIT.md` + this log).
 - Files: daily/Daily.kt (new), achievements/Achievements.kt (new),
   HomeScreen.kt, StatisticsScreen.kt, QuizCompleteScreen.kt, NazoApp.kt,
   BackupRepository.kt, handoff.md.
+
+## [2026-09-01 01:00] fix: daily-card pulse overflow + Make It Yours scroll conflict
+
+- Owner device feedback on Phase 5:
+  1. Daily card: pulsing 46dp circle used graphicsLayer scale, which doesn't
+     affect layout — the grown circle bled toward the card's left padding and
+     read as "sliding into the left side". Fix: circle static, only the 24dp
+     bolt icon pulses.
+  2. Onboarding "Make It Yours": the ACCENT swatches were a horizontalScroll
+     Row (9 swatches ≈ 386dp). With both sections expanded it covered the
+     mid-viewport and claimed slightly-angled drags → vertical scrolling
+     intermittently dead. Fix: static 5+4 two-row wrap (fits the card, no
+     gesture conflict, all accents visible at once). NOTE for future slides:
+     avoid horizontalScroll rows inside vertically-scrolling onboarding
+     content — the FirstGame slide's suggestion row still has one (owner
+     hasn't reported issues there; left untouched).
+- Files: daily/Daily.kt, ui/onboarding/OnboardingScreen.kt, handoff.md.
