@@ -367,7 +367,9 @@ fun NazoApp() {
         guessAvoidTargets = emptyList()
         if (navigationStack.last() != Screen.GuessingGame) navigate(Screen.GuessingGame)
         prepareGuessRound()
-    }    fun guessRoundComplete(correct: Boolean, answerText: String?, remainingMs: Long) {
+    }
+
+    fun guessRoundComplete(correct: Boolean, answerText: String?, remainingMs: Long) {
         val payload = (guessPhase as? GuessPhase.Playing)?.payload ?: return
         if (guessRoundResult != null) return // one shot per round
         val durationMs = GuessScoring.durationMsFor(guessDifficulty)
