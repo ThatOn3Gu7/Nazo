@@ -423,6 +423,16 @@ fun NazoApp() {
         // on; the game ends once the last round is finished.
         val finished = last.round >= guessTotalRounds
         if (finished) {
+            // Game complete — fold the result into the shared stats, exactly
+            // like a finished quiz (level/XP, streak, difficulty, topics).
+            val finishedDifficulty = guessDifficulty
+            val finishedTopic = guessTopic
+            val finishedAnswered = guessResults.size
+            val finishedCorrect = guessResults.count { it.correct }
+            scope.launch {
+                statsStore.recordGuessing(finishedDifficulty, finishedTopic, finishedAnswered, finishedCorrect)
+                quizStats = statsStore.get()
+            }
             guessPhase = GuessPhase.Idle
             replace(Screen.GuessingResults)
         } else {

@@ -30,6 +30,16 @@ class QuizStatsStore(context: Context) {
         save(get().record(difficulty, questions, userAnswers))
     }
 
+    /** Folds a completed guessing game into the same stats (see [QuizStats.recordGuessing]). */
+    suspend fun recordGuessing(
+        difficulty: String,
+        topic: String,
+        answered: Int,
+        correct: Int,
+    ) {
+        save(get().recordGuessing(difficulty, topic, answered, correct))
+    }
+
     private companion object {
         const val KEY = "quiz_stats_v1"
     }

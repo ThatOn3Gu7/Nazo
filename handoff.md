@@ -2075,3 +2075,21 @@ covered by `BUG_AUDIT.md` + this log).
   at full starting strength (50-100% per difficulty) and only lifts as
   the timer runs, dropping to 0 on reveal. Blur path was never affected
   (its target is the full-blur value even when usePixels is false).
+## [2026-08-31 16:10] feat: guessing games count toward stats + level (full merge)
+
+- Owner picked "full merge": each COMPLETED guessing game records into the
+  shared QuizStats exactly like a finished quiz. QuizStats.recordGuessing(
+  difficulty, topic, answered, correct) — rounds = answered questions,
+  correct rounds = correct, the game's topic credited as the mastered
+  anime; +1 play, same streak logic, JSON schema unchanged (new data
+  flows through existing keys). QuizStatsStore.recordGuessing mirrors
+  record(). NazoApp.guessNext finished-branch calls it (scope.launch,
+  same pattern as the quiz's answer()) before showing results. Quits
+  mid-game record nothing (same as quiz). Level/XP now fed by both games
+  (10 XP per correct round + 5 per game, 200 XP/level). Labels renamed
+  to stay honest: "Total Quizzes"→"Total Games" (subtitle "Quizzes +
+  guessing"), "Quizzes by Difficulty"→"Games by Difficulty", "No quizzes
+  yet"→"No games yet", top-anime "N Quizzes"→"N Answers", share card
+  "QUIZZES" chip→"GAMES" and "N quizzes"→"N answers". ProfileScreen's
+  totalQuizzes>0 "has played" check now also counts guessing (fine).
+  MasteredAnimeStat.quizzes field renamed to answers (display-only).
