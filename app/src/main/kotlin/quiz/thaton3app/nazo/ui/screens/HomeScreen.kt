@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.data.LocalQuestionBank
+import quiz.thaton3app.nazo.daily.DailyChallengeCard
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoTab
@@ -78,6 +79,10 @@ fun HomeScreen(
     configuredProviders: List<String> = emptyList(),
     onSelectProvider: (String) -> Unit = {},
     onManageClick: () -> Unit = {},
+    dailyCompleted: Boolean = false,
+    dailyScore: Int = 0,
+    dailyBonus: Int = 0,
+    onPlayDaily: () -> Unit = {},
 ) {
     val difficulty = Difficulty.valueOf(difficultyName)
     val isGuessing = mode == NazoMode.GUESSING.name
@@ -128,6 +133,17 @@ fun HomeScreen(
                 activeProvider = activeProvider,
                 offline = offline,
                 onClick = if (offline) null else ({ showProviderSheet = true }),
+            )
+
+            Spacer(Modifier.height(22.dp))
+
+            // Daily Challenge (Phase 5): date-seeded from the local bank, so it
+            // is always available — even offline and with no provider set up.
+            DailyChallengeCard(
+                completed = dailyCompleted,
+                lastScore = dailyScore,
+                lastBonus = dailyBonus,
+                onPlay = onPlayDaily,
             )
 
             Spacer(Modifier.height(22.dp))

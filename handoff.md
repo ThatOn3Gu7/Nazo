@@ -2501,3 +2501,39 @@ covered by `BUG_AUDIT.md` + this log).
 - Files: hints/Hints.kt (new), records/Records.kt (new), ActiveQuizScreen.kt,
   GuessingPlayScreen.kt, QuizCompleteScreen.kt, GuessingResultsScreen.kt,
   NazoApp.kt, data/settings/BackupRepository.kt, handoff.md.
+
+## [2026-09-01 00:20] feat: Phase 5 — Daily Challenge + Achievements
+
+- NEW package `daily/` (Daily.kt):
+  - DailyChallenge: date-seeded (epochDay) 5-question set from the LOCAL bank
+    only — fully offline, no provider needed. Bank's getQuestions() shuffles,
+    so the universe is re-sorted by question text before seeded picks
+    (2 Easy, 2 Medium, 1 Hard/Otaku; option order re-shuffled with a
+    per-question seed → mid-day restart shows the identical quiz).
+    Bonus XP = 20 + 10*correct (max 70).
+  - DailyStore prefs "nazo_daily": last_day/last_score/last_total/last_bonus/
+    completed_count/bonus_xp_total. recordCompletion guards double-count.
+  - DailyChallengeCard (home): gradient accent card, pulsing bolt
+    (infiniteTransition), play chip; completed → green check + result, tap
+    disabled. DailyBonusChip (results): green "+XX XP · Daily Bonus", pops at
+    1s — sequenced AFTER NewRecordBadge (700ms).
+- NEW package `achievements/` (Achievements.kt): AchievementEngine.compute is
+  PURE from QuizStats + records bests + daily count (nothing new persisted).
+  12 badges (games 1/10/50, 100 answers, 80% accuracy, perfect quiz via
+  records, streak 3/7, Hard/Otaku play, dailies 1/7, 5 topics).
+  AchievementsCard on Statistics: staggered overshoot pop-in (gated on the
+  screen's one-shot `animate` flag), tap badge → expandVertically detail
+  panel with AnimatedContent morph + animated progress bar.
+- Daily runs through the NORMAL quiz flow with quizDifficulty="Daily":
+  streak/stats feed automatically; records land under quiz_best_Daily
+  ("Personal best on Daily: X%"). "Daily" does NOT appear in the difficulty
+  breakdown (fixed 4-row list) but counts toward totals/XP — intentional.
+- XP: StatisticsScreen.toStatsData(bonusXp = dailyStore.totalBonusXp())
+  adds bonus on top of derived XP (default 0 → behavior identical).
+- NazoApp: startDailyChallenge() (bypasses generation), isDailyQuiz flag
+  (reset in startQuiz), answer() finish banks bonus, call sites pass
+  daily/achievement params. startQuiz's offline path note: untouched.
+- BackupRepository: + "nazo_daily".
+- Files: daily/Daily.kt (new), achievements/Achievements.kt (new),
+  HomeScreen.kt, StatisticsScreen.kt, QuizCompleteScreen.kt, NazoApp.kt,
+  BackupRepository.kt, handoff.md.

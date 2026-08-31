@@ -54,6 +54,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import quiz.thaton3app.nazo.data.QuizStats
+import quiz.thaton3app.nazo.achievements.Achievement
+import quiz.thaton3app.nazo.achievements.AchievementsCard
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoDarkCard
 import quiz.thaton3app.nazo.ui.theme.NazoDarkCardAccent
@@ -105,7 +107,7 @@ private data class StatsData(
     val topAnime: List<MasteredAnimeStat>,
 )
 
-private fun QuizStats.toStatsData(): StatsData {
+private fun QuizStats.toStatsData(bonusXp: Int = 0): StatsData {
     val overallAccuracyPercent = if (totalQuestionsAnswered > 0) {
         totalCorrect * 100 / totalQuestionsAnswered
     } else {
@@ -133,7 +135,9 @@ private fun QuizStats.toStatsData(): StatsData {
     }
     val bestTopic = topAnime.firstOrNull()?.title
 
-    val xp = totalCorrect * 10 + totalQuizzes * 5
+    // Daily-challenge bonus XP is added on top of the stats-derived XP, so
+    // dailies push the level forward without distorting any recorded stat.
+    val xp = totalCorrect * 10 + totalQuizzes * 5 + bonusXp
     val xpForNextLevel = 200
     val level = (xp / xpForNextLevel) + 1
     val currentXp = xp % xpForNextLevel
@@ -165,10 +169,12 @@ private data class AnimeAcc(val anime: String, val answered: Int, val avgScore: 
 @Composable
 fun StatisticsScreen(
     stats: QuizStats = QuizStats(),
+    bonusXp: Int = 0,
+    achievements: List<Achievement> = emptyList(),
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
 ) {
-    val data = remember(stats) { stats.toStatsData() }
+    val data = remember(stats, bonusXp) { stats.toStatsData(bonusXp) }
     
     // Hoist the animation state to the screen level so it only plays once per visit
     var playAnimations by remember { mutableStateOf(false) }
@@ -256,7 +262,17 @@ fun StatisticsScreen(
             }
             item {
                 TopAnimeCard(data.topAnime, animate = playAnimations)
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(16.dp))
+            }
+            // Achievements (Phase 5): badge wall computed from already-persisted
+            // data; hidden entirely when the caller passes no achievements.
+            if (achievements.isNotEmpty()) {
+                item {
+                    AchievementsCard(achievements, animate = playAnimations)
+                    Spacer(Modifier.height(24.dp))
+                }
+            } else {
+                item { Spacer(Modifier.height(8.dp)) }
             }
             item {
                 ShareButton(data)

@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import quiz.thaton3app.nazo.records.NewRecordBadge
+import quiz.thaton3app.nazo.daily.DailyBonusChip
 import quiz.thaton3app.nazo.ui.theme.*
 import kotlin.random.Random
 
@@ -46,6 +47,7 @@ fun QuizCompleteScreen(
     difficulty: String,
     bestPercent: Int = -1,
     isNewRecord: Boolean = false,
+    dailyBonusXp: Int = 0,
     onPlayAnother: () -> Unit,
     onReviewAnswers: () -> Unit,
     onSettingsClick: () -> Unit
@@ -156,6 +158,15 @@ fun QuizCompleteScreen(
                                 color = NazoTextSecondary
                             )
                         }
+                    }
+                }
+
+                // Daily-challenge bonus (Phase 5): pops in a beat after the
+                // record badge so the celebrations read as a sequence.
+                if (dailyBonusXp > 0) {
+                    Spacer(Modifier.height(10.dp))
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        DailyBonusChip(bonusXp = dailyBonusXp)
                     }
                 }
 
