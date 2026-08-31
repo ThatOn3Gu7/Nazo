@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import quiz.thaton3app.nazo.records.NewRecordBadge
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.theme.*
 
@@ -74,6 +75,8 @@ fun GuessingResultsScreen(
     results: List<GuessRoundResult>,
     topic: String,
     difficulty: String,
+    bestPoints: Int = -1,
+    isNewRecord: Boolean = false,
     onPlayAgain: () -> Unit,
     onHomeClick: () -> Unit,
 ) {
@@ -172,6 +175,23 @@ fun GuessingResultsScreen(
                         allMissed = allMissed,
                         cleared = cleared,
                     )
+                }
+
+                // Personal best (Phase 4): bouncy record badge after the card lands,
+                // or a quiet caption with the standing best for this setup.
+                if (isNewRecord || bestPoints >= 0) {
+                    Spacer(Modifier.height(14.dp))
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        if (isNewRecord) {
+                            NewRecordBadge()
+                        } else {
+                            Text(
+                                text = "Personal best on $difficulty: $bestPoints pts",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NazoTextSecondary
+                            )
+                        }
+                    }
                 }
 
                 Spacer(Modifier.height(24.dp))
