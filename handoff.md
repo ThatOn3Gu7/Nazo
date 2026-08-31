@@ -1934,3 +1934,28 @@ covered by `BUG_AUDIT.md` + this log).
   the placeholder instead of a wrong-but-impressive image; if that bites,
   the next step is having the AI pick from the top-N candidate file titles
   (one extra cheap AI call per round).
+
+## [2026-08-31 13:15] feat: 5-stage image pipeline after deep-dive on real-device misses
+
+- Owner's third test (fresh APK): Toji Fushiguro got a cosplay PHOTO (last-resort
+  source, loose gate), while Kokichi Muta / Zommari Rureaux / Dr. Vegapunk got
+  the placeholder — including Vegapunk, a major character with a wiki article.
+- Diagnosis: (a) "Dr. Vegapunk" phrase never matches files/articles titled
+  "Vegapunk" and no name variants were tried; (b) obscure characters miss the
+  wikis and the DDG fallback is flaky (vqd token format changes + WAF 403s —
+  researched, it's the community's #1 reported failure); (c) the 20s total
+  budget could be exhausted by early stages before DDG even started.
+- Research: AniList = keyless GraphQL (graphql.anilist.co, ~90 req/min) with
+  Character(search:) -> official character portraits; Openverse = keyless JSON
+  CC image search (api.openverse.org/v1/images, ~100 req/day anonymous).
+  Both added. (Sources: freeapihub.com/apis/anilist, docs.openverse.org.)
+- New pipeline (all keyless, all title-gated >= 2 against any name variant):
+  Commons phrase -> Wikipedia phrase (each tried per variant: target,
+  honorific-stripped, word-sharing AI aliases, max 3) -> AniList -> Openverse
+  -> DuckDuckGo (vqd extraction now tries numeric AND generic token shapes,
+  i.js gets o=json; the AI image_query enriches the query when it starts
+  with the target name). Per-stage budget checks (min 2s left to start).
+- "Images sometimes repeat" was the topic-keyword artifact (same topic ->
+  same first hit); per-entity phrase search + gate makes that structurally
+  unlikely — each stage logs to tag NazoGuessImage, so any repeat/miss is
+  traceable in logcat.
