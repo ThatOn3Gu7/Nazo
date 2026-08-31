@@ -91,6 +91,7 @@ import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.data.remote.ModelInfo
+import quiz.thaton3app.nazo.data.remote.preferredDefaultModel
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.theme.Accents
@@ -462,11 +463,9 @@ fun OnboardingScreen(
     }
 }
 
-private fun pickDefaultModel(providerId: String, models: List<ModelInfo>): ModelInfo = when (providerId) {
-    "gemini" -> models.firstOrNull { it.id.contains("flash", ignoreCase = true) } ?: models.first()
-    "openrouter" -> models.firstOrNull { it.isFree } ?: models.first()
-    else -> models.first()
-}
+private fun pickDefaultModel(providerId: String, models: List<ModelInfo>): ModelInfo =
+    // Shared app-wide preference (gemini-3.1-flash-lite first — owner-tested).
+    preferredDefaultModel(providerId, models) ?: models.first()
 
 // ---------------------------------------------------------------------------
 // Slide scaffolding

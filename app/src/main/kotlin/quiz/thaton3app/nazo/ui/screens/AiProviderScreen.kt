@@ -86,6 +86,7 @@ import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.data.remote.ModelInfo
+import quiz.thaton3app.nazo.data.remote.preferredDefaultModel
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoErrorBg
@@ -140,7 +141,7 @@ private fun initialProviders(store: ApiKeyStore): List<ProviderUiState> =
         val storedKey = store.getKey(p.id).orEmpty()
         val storedModels = store.getModels(p.id)
         val models = if (storedModels.isNotEmpty()) storedModels else p.models
-        val storedModel = store.getModel(p.id) ?: models.firstOrNull()?.id.orEmpty()
+        val storedModel = store.getModel(p.id) ?: preferredDefaultModel(p.id, models)?.id.orEmpty()
         val status = if (storedKey.isNotBlank()) KeyStatus.VALID else KeyStatus.NOT_CONFIGURED
         p.copy(apiKey = storedKey, model = storedModel, models = models, status = status)
     }
@@ -175,9 +176,10 @@ fun AiProviderScreen(
                     fetchingId = null
                     providers = providers.toMutableList().also { list ->
                         // Keep the user's current selection if it's still in the new list;
-                        // only fall back to the first model when it isn't (or the list is empty).
+                        // otherwise fall back to the app-wide preferred default
+                        // (gemini-3.1-flash-lite first — owner-tested as the one that works).
                         val next = if (models.any { it.id == provider.model }) provider.model
-                        else models.firstOrNull()?.id ?: provider.model
+                        else preferredDefaultModel(provider.id, models)?.id ?: provider.model
                         list[index] = list[index].copy(models = models, model = next)
                     }
                     apiKeyStore.saveModels(provider.id, models)
