@@ -40,6 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -209,7 +210,9 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                 // Fixed-size slot so the Next button never jumps when the
                 // arrow appears/disappears.
                 Box(modifier = Modifier.size(56.dp), contentAlignment = Alignment.Center) {
-                    AnimatedVisibility(
+                    // Fully-qualified: inside this Box the plain name resolves to the
+                    // RowScope extension (known clash — see 2026-08-27 04:00 entry).
+                    androidx.compose.animation.AnimatedVisibility(
                         visible = page > 0,
                         enter = fadeIn(tween(180)),
                         exit = fadeOut(tween(180)),
