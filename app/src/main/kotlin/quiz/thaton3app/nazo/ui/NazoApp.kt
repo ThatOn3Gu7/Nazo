@@ -36,6 +36,8 @@ import quiz.thaton3app.nazo.ui.components.OfflineWarningDialog
 import quiz.thaton3app.nazo.ui.components.FloatingParticlesBackground
 import quiz.thaton3app.nazo.ui.components.StartupMode
 import quiz.thaton3app.nazo.ui.launch.IntroOverlay
+import quiz.thaton3app.nazo.ui.onboarding.OnboardingPrefs
+import quiz.thaton3app.nazo.ui.onboarding.OnboardingScreen
 import quiz.thaton3app.nazo.ui.screens.*
 import quiz.thaton3app.nazo.ui.theme.NazoTheme
 import quiz.thaton3app.nazo.data.remote.QuizCache
@@ -87,6 +89,11 @@ fun NazoApp() {
     var profileName by remember { mutableStateOf(profilePrefs.username) }
     var profilePictureUri by remember { mutableStateOf(profilePrefs.profilePictureUri) }
     val backupPrefs = remember { BackupPrefs(context) }
+
+    // First-launch onboarding tour (ui/onboarding). Shown as an overlay above
+    // the app until completed/skipped, then never again (persisted flag).
+    val onboardingPrefs = remember { OnboardingPrefs(context) }
+    var showOnboarding by remember { mutableStateOf(!onboardingPrefs.completed) }
 
     LaunchedEffect(Unit) {
         BackupScheduler.apply(context, backupPrefs.autoBackupFrequency)
@@ -662,6 +669,18 @@ fun NazoApp() {
                         startupDialogMode = null
                     },
                     onContinue = { startupDialogMode = null },
+                )
+            }
+
+            // Onboarding sits above the app content/dialogs but BELOW the
+            // cold-start intro, so the 謎 animation plays over it and fades
+            // out to reveal the tour on a true first launch.
+            if (showOnboarding) {
+                OnboardingScreen(
+                    onFinish = {
+                        onboardingPrefs.completed = true
+                        showOnboarding = false
+                    },
                 )
             }
 
