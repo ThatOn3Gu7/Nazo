@@ -481,8 +481,16 @@ private fun MysteryImageCard(
         animationSpec = tween(350, easing = FastOutSlowInEasing),
         label = "mysteryBlur"
     )
+    // NOTE: the pixel target is deliberately NOT gated on [usePixels]. The card
+    // is composed during the fetch — before [pixelLevels] exist — and
+    // animateFloatAsState captures its INITIAL value from the first
+    // composition's target. Gating on usePixels made that initial value 0
+    // (sharp), so the image would appear un-pixelated and ease UP into the
+    // pixelation. Without the gate the effect is already at full starting
+    // strength (progress ≈ 1.0 during the fetch) the moment the pixels render,
+    // then lifts as the timer runs — and drops to 0 on reveal.
     val pixelEffect by animateFloatAsState(
-        targetValue = if (usePixels) if (revealed) 0f else progress * startFraction else 0f,
+        targetValue = if (revealed) 0f else progress * startFraction,
         animationSpec = tween(350, easing = FastOutSlowInEasing),
         label = "mysteryPixel"
     )

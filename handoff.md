@@ -2058,3 +2058,20 @@ covered by `BUG_AUDIT.md` + this log).
   style), persisted in ThemePreferences.guessRevealStyle, DEFAULT "pixel"
   (owner preference), with silent per-round fallback to blur if a decode
   fails. Quiz/Offline modes untouched.
+
+## [2026-08-31 15:50] fix: pixel reveal no longer ramps up from sharp
+
+- Owner report: with the pixel reveal, the image first appeared SHARP
+  (unpixelated) after the fetch spinner, then slowly became pixelated
+  (~1-2s), and only then un-pixelated with the timer.
+- Root cause: MysteryImageCard is first composed DURING the fetch (spinner
+  showing), when pixelLevels is still null → usePixels false → the
+  pixelEffect animateFloatAsState target was 0f → its INITIAL value
+  (captured at first composition) = 0 = sharp. When the levels arrived the
+  target jumped to progress*startFraction and the effect eased UP.
+- Fix: the pixel target is no longer gated on usePixels — it is always
+  `if (revealed) 0f else progress * startFraction`. During the fetch
+  progress ≈ 1.0, so by the time the pixels render the effect is already
+  at full starting strength (50-100% per difficulty) and only lifts as
+  the timer runs, dropping to 0 on reveal. Blur path was never affected
+  (its target is the full-blur value even when usePixels is false).
