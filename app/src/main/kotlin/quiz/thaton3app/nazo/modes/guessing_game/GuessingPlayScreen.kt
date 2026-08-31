@@ -18,6 +18,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -91,6 +93,9 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import quiz.thaton3app.nazo.hints.HintEngine
+import quiz.thaton3app.nazo.hints.HintPill
+import quiz.thaton3app.nazo.hints.HintRevealPill
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.WavySpinner
 import quiz.thaton3app.nazo.ui.theme.*
@@ -152,6 +157,12 @@ fun GuessingPlayScreen(
     var pixelLevels by remember { mutableStateOf<List<Bitmap>?>(null) }
     var remainingMs by remember { mutableLongStateOf(durationMs) }
     var showQuitDialog by remember { mutableStateOf(false) }
+
+    // Lifelines (Phase 4): supply is shared across the whole game (this screen
+    // stays composed for every round); the revealed letters reset each round.
+    // Each use uncovers 2 more leading letters of the target's name.
+    var hintsLeft by remember { mutableStateOf(HintEngine.guessSupply(totalRounds)) }
+    var hintLetters by remember(round) { mutableStateOf(0) }
 
     val revealed = submitted != null || timedOut || roundResult != null
     val timerFrac = if (durationMs > 0) (remainingMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
@@ -372,6 +383,34 @@ fun GuessingPlayScreen(
                         imageLoader = imageLoader,
                     )
                     Spacer(Modifier.height(20.dp))
+                    // Lifeline row (Phase 4): masked name grows in from the left as
+                    // letters get revealed; hint button on the right, greyed once spent
+                    // or after the round is decided.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AnimatedVisibility(
+                            visible = hintLetters > 0,
+                            enter = expandHorizontally(tween(280)) + fadeIn(tween(280)),
+                            exit = shrinkHorizontally(tween(200)) + fadeOut(tween(160)),
+                        ) {
+                            HintRevealPill(
+                                text = HintEngine.maskedReveal(phase.payload.targetEntity, hintLetters),
+                            )
+                        }
+                        Spacer(Modifier.weight(1f))
+                        HintPill(
+                            remaining = hintsLeft,
+                            enabled = hintsLeft > 0 && !revealed,
+                            onClick = {
+                                Haptics.light(context)
+                                hintsLeft--
+                                hintLetters += HintEngine.GUESS_LETTERS_PER_HINT
+                            },
+                        )
+                    }
+                    Spacer(Modifier.height(14.dp))
                     when (GuessScoring.specFor(difficultyLabel).inputMode) {
                         GuessInputMode.CHOICE -> ChoiceInput(
                             payload = phase.payload,

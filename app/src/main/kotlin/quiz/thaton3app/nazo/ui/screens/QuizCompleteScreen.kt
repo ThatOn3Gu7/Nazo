@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import quiz.thaton3app.nazo.records.NewRecordBadge
 import quiz.thaton3app.nazo.ui.theme.*
 import kotlin.random.Random
 
@@ -43,6 +44,8 @@ fun QuizCompleteScreen(
     totalQuestions: Int,
     timeSpent: String,
     difficulty: String,
+    bestPercent: Int = -1,
+    isNewRecord: Boolean = false,
     onPlayAnother: () -> Unit,
     onReviewAnswers: () -> Unit,
     onSettingsClick: () -> Unit
@@ -136,6 +139,24 @@ fun QuizCompleteScreen(
                         progressAnim = progressAnim,
                         isSuccess = isSuccess
                     )
+                }
+
+                // Personal best (Phase 4): the record badge pops in with a bouncy
+                // scale once the card has landed; otherwise a quiet caption shows
+                // the standing best for this difficulty.
+                if (isNewRecord || bestPercent >= 0) {
+                    Spacer(Modifier.height(14.dp))
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        if (isNewRecord) {
+                            NewRecordBadge()
+                        } else {
+                            Text(
+                                text = "Personal best on $difficulty: $bestPercent%",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NazoTextSecondary
+                            )
+                        }
+                    }
                 }
 
                 Spacer(Modifier.height(24.dp))

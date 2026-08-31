@@ -31,6 +31,7 @@ import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.data.settings.BackupPrefs
 import quiz.thaton3app.nazo.data.settings.ProfilePreferences
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
+import quiz.thaton3app.nazo.records.RecordsStore
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.ui.components.OfflineWarningDialog
 import quiz.thaton3app.nazo.ui.components.FloatingParticlesBackground
@@ -85,6 +86,14 @@ fun NazoApp() {
     val themePrefs = remember { ThemePreferences(context) }
     val statsStore = remember { QuizStatsStore(context.applicationContext) }
     var quizStats by remember { mutableStateOf(statsStore.get()) }
+    // Personal bests (Phase 4): separate tiny store; previous best is captured
+    // right before a finished run is submitted so the results screens can show
+    // either the "New Record!" badge or the standing best as a caption.
+    val recordsStore = remember { RecordsStore(context.applicationContext) }
+    var quizPrevBest by remember { mutableIntStateOf(-1) }
+    var quizNewRecord by remember { mutableStateOf(false) }
+    var guessPrevBest by remember { mutableIntStateOf(-1) }
+    var guessNewRecord by remember { mutableStateOf(false) }
     val profilePrefs = remember { ProfilePreferences(context) }
     var profileName by remember { mutableStateOf(profilePrefs.username) }
     var profilePictureUri by remember { mutableStateOf(profilePrefs.profilePictureUri) }
@@ -333,6 +342,9 @@ fun NazoApp() {
                 statsStore.record(finishedDifficulty, finishedQuestions, finishedAnswers)
                 quizStats = statsStore.get()
             }
+            // Personal best check (previous best captured first for the caption).
+            quizPrevBest = recordsStore.quizBestPercent(finishedDifficulty)
+            quizNewRecord = recordsStore.submitQuiz(finishedDifficulty, score, finishedQuestions.size)
             navigate(Screen.Results)
         }
     }
@@ -441,6 +453,9 @@ fun NazoApp() {
                 statsStore.recordGuessing(finishedDifficulty, finishedTopic, finishedAnswered, finishedCorrect)
                 quizStats = statsStore.get()
             }
+            // Personal best check (previous best captured first for the caption).
+            guessPrevBest = recordsStore.guessBestPoints(finishedDifficulty, guessTotalRounds)
+            guessNewRecord = recordsStore.submitGuess(finishedDifficulty, guessTotalRounds, guessScore)
             guessPhase = GuessPhase.Idle
             replace(Screen.GuessingResults)
         } else {
@@ -591,6 +606,8 @@ fun NazoApp() {
                         totalQuestions = questions.size,
                         timeSpent = formatElapsed(quizStartedAt),
                         difficulty = quizDifficulty,
+                        bestPercent = quizPrevBest,
+                        isNewRecord = quizNewRecord,
                         onPlayAnother = { goHome() },
                         onReviewAnswers = { navigate(Screen.Review) },
                         onSettingsClick = { navigate(Screen.Settings) },
@@ -652,6 +669,8 @@ fun NazoApp() {
                         results = guessResults,
                         topic = guessTopic,
                         difficulty = guessDifficulty,
+                        bestPoints = guessPrevBest,
+                        isNewRecord = guessNewRecord,
                         onPlayAgain = {
                             goBack()
                             startGuessing(guessTopic, guessDifficulty, guessTotalRounds)

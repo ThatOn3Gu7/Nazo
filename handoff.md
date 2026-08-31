@@ -2464,3 +2464,40 @@ covered by `BUG_AUDIT.md` + this log).
   The error-screen ModelPicker only lists models (no auto-pick) — untouched.
 - Files: data/remote/ProviderConfig.kt, ui/onboarding/OnboardingScreen.kt,
   ui/screens/AiProviderScreen.kt, handoff.md.
+
+## [2026-08-31 23:30] feat: Phase 4 — hints/lifelines + personal bests ("New Record!")
+
+- NEW package `hints/` (Hints.kt): HintEngine rules + shared HintPill /
+  HintRevealPill UI. Rules: quiz Easy/Med = 50/50 (fade 2 wrong options to
+  0.22 alpha + untappable — layout NEVER shifts), quiz Hard/Otaku = "Starts
+  with 'X'" pill, guessing (all tiers) = masked-name pill revealing 2 more
+  leading letters per use ("NA•••O", spaces kept). Supply per game: quiz
+  1/2/3 for 5/10/15 questions, guessing 1/2/3 for 1/3/5+ rounds; one use per
+  quiz question. 50/50 picks are seeded by question index (Random(seed)) so
+  recomposition never reshuffles them.
+- NEW package `records/` (Records.kt): RecordsStore on prefs "nazo_records"
+  — quiz_best_<difficulty> = accuracy %, guess_best_<difficulty>_<rounds> =
+  points. Strictly-greater persists; badge only when also > 0 (no "New
+  Record!" for a 0% first run). NewRecordBadge = 700ms delay (lets the score
+  card land) then bouncy spring scale-in + light haptic.
+- ActiveQuizScreen (additive): supply state lives at screen level (composable
+  spans the whole quiz); hidden/letter state resets inside the existing
+  LaunchedEffect(currentQuestionIndex). Lifeline row sits BETWEEN the
+  progress bar and the question AnimatedContent so it never slides with the
+  question: letter pill expandHorizontally-in on the left, HintPill on the
+  right (colors crossfade to grey when unusable).
+- GuessingPlayScreen (additive): same row between image card and input;
+  hintsLeft plain remember (screen persists across rounds; Play Again = new
+  composition = fresh supply), hintLetters keyed remember(round). No scoring
+  penalty (spec is silent). Disabled once the round is revealed.
+- NazoApp: recordsStore + quiz/guess prevBest+newRecord state; captured in
+  answer()/guessNext() finish branches BEFORE submit (prev best feeds the
+  caption); passed to both results screens as new default-valued params
+  (bestPercent/bestPoints, isNewRecord) — call sites elsewhere unaffected.
+- Results screens: badge or "Personal best on <difficulty>: X% / X pts"
+  caption centered under the score card, after its entrance.
+- BackupRepository: "nazo_records" added to STORES so bests survive
+  backup/restore (type-tagged round-trip handles ints).
+- Files: hints/Hints.kt (new), records/Records.kt (new), ActiveQuizScreen.kt,
+  GuessingPlayScreen.kt, QuizCompleteScreen.kt, GuessingResultsScreen.kt,
+  NazoApp.kt, data/settings/BackupRepository.kt, handoff.md.

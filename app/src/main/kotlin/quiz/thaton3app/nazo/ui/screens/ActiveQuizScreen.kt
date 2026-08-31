@@ -16,6 +16,8 @@ import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.fadeIn
@@ -41,6 +43,7 @@ import androidx.compose.runtime.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -51,6 +54,9 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.QuizEngine
+import quiz.thaton3app.nazo.hints.HintEngine
+import quiz.thaton3app.nazo.hints.HintPill
+import quiz.thaton3app.nazo.hints.HintRevealPill
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.theme.*
 
@@ -71,6 +77,13 @@ fun ActiveQuizScreen(
     val context = LocalContext.current
     var showQuitDialog by remember { mutableStateOf(false) }
 
+    // Lifelines (Phase 4): a small supply shared across the whole quiz (this
+    // composable stays alive for all questions), one use per question.
+    // Easy/Medium: fades out 2 wrong options. Hard/Otaku: first-letter hint.
+    var hintsLeft by remember { mutableStateOf(HintEngine.quizSupply(totalQuestions)) }
+    var hiddenOptions by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var letterHint by remember { mutableStateOf<String?>(null) }
+
     // Intercept the system back gesture/button too, so leaving via gesture shows the same
     // "quit quiz?" confirmation as the X button (instead of silently going back).
     BackHandler(enabled = true) {
@@ -84,6 +97,8 @@ fun ActiveQuizScreen(
     LaunchedEffect(currentQuestionIndex) {
         selectedAnswer = null
         isTimeUp = false
+        hiddenOptions = emptySet()
+        letterHint = null
         remainingSeconds = secondsPerQuestion
         while (remainingSeconds > 0 && selectedAnswer == null) {
             delay(1000)
@@ -221,6 +236,41 @@ fun ActiveQuizScreen(
                 trackColor = NazoSurface
             )
 
+            // Lifeline row (Phase 4): lives OUTSIDE the question AnimatedContent so it
+            // never slides with the question. Revealed letter hint grows in from the
+            // left; the hint button sits on the right and greys out once unusable.
+            Spacer(Modifier.height(14.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AnimatedVisibility(
+                    visible = letterHint != null,
+                    enter = expandHorizontally(tween(280)) + fadeIn(tween(280)),
+                    exit = shrinkHorizontally(tween(200)) + fadeOut(tween(160))
+                ) {
+                    HintRevealPill(text = "Starts with \u201C${letterHint ?: ""}\u201D")
+                }
+                Spacer(Modifier.weight(1f))
+                HintPill(
+                    remaining = hintsLeft,
+                    enabled = hintsLeft > 0 && !reveal && hiddenOptions.isEmpty() && letterHint == null,
+                    onClick = {
+                        Haptics.light(context)
+                        hintsLeft--
+                        if (HintEngine.usesLetterHint(difficulty)) {
+                            letterHint = HintEngine.firstLetter(question.correctAnswer)
+                        } else {
+                            hiddenOptions = HintEngine.optionsToHide(
+                                options = question.options,
+                                correctAnswer = question.correctAnswer,
+                                seed = currentQuestionIndex
+                            )
+                        }
+                    }
+                )
+            }
+
             Spacer(Modifier.height(24.dp))
 
             // Smooth sliding transition between questions
@@ -263,6 +313,14 @@ fun ActiveQuizScreen(
                 q.options.forEachIndexed { index, optionText ->
                     val isThisSelected = selectedAnswer == optionText
                     val isThisCorrectAnswer = optionText == q.correctAnswer
+                    // 50/50 lifeline: eliminated options fade to a ghost and stop
+                    // accepting taps — the layout itself never shifts.
+                    val isHiddenByHint = hiddenOptions.contains(optionText) && !reveal
+                    val hintAlpha by animateFloatAsState(
+                        targetValue = if (isHiddenByHint) 0.22f else 1f,
+                        animationSpec = tween(320),
+                        label = "hintAlpha"
+                    )
 
                     val bgColor by animateColorAsState(
                         targetValue = when {
@@ -289,10 +347,11 @@ fun ActiveQuizScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(bottom = 12.dp)
+                            .alpha(hintAlpha)
                             .clip(RoundedCornerShape(50))
                             .background(bgColor)
                             .border(1.dp, borderColor, RoundedCornerShape(50))
-                            .clickable(enabled = !reveal) {
+                            .clickable(enabled = !reveal && !isHiddenByHint) {
                                 if (optionText == q.correctAnswer) Haptics.light(context)
                                 else Haptics.doubleLight(context)
                                 selectedAnswer = optionText
