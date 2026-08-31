@@ -2345,3 +2345,44 @@ covered by `BUG_AUDIT.md` + this log).
      fully-qualified `androidx.compose.animation.AnimatedVisibility(...)`.
      (The Skip one directly in the top Row compiles as the extension — fine.)
 - Files: ui/onboarding/OnboardingScreen.kt, handoff.md.
+
+## [2026-08-31 21:00] redesign: onboarding — reference-inspired pastel cards + hand-drawn doodles
+
+- Owner supplied a reference mockup (Dribbble-style: three pastel rounded
+  phone cards — pink/green/peach — with small top dashes, HUGE left-aligned
+  two-line titles, playful black hand-drawn doodle illustrations, left-aligned
+  body with BOLD key phrases, dark pill button at the bottom). Instruction:
+  take the layout/placement/art *idea*, NOT a copy — our palette, our own
+  vector-drawn art. Also: slide 1's Next button must span the ENTIRE bottom
+  (no back arrow on slide 1; the arrow appears only on slides 2-3).
+- OnboardingScreen.kt rewritten (same public API/wiring; OnboardingPrefs +
+  NazoApp untouched):
+  - Each pager page is a full-bleed rounded-36 pastel card; tint from OUR
+    palette so accents + dark mode recolor automatically: slide 1
+    NazoPrimary@0.14 (mint), slide 2 NazoError@0.10 (soft rose), slide 3
+    NazoSuccess@0.13 (soft green) over NazoSurface. contentPadding 14dp +
+    pageSpacing 10dp so the neighboring card edge peeks in mid-swipe like
+    the mockup.
+  - Titles: two-line 40sp/46 line-height, left-aligned ("Quiz Your Way" /
+    "Guess the Image" / "Level Up & Track It"). Body: buildAnnotatedString
+    segments — (text, isBold) pairs in the page model — bold spans in
+    NazoTextPrimary over NazoTextSecondary copy.
+  - Progress dots → dash-style progress lines top-left (active stretches
+    16→30dp), doubling as the reference's decorative dashes. Skip unchanged.
+  - Hand-drawn doodle art per slide, 100% Compose-drawn (no assets):
+    QuizDoodle = inked-border "?" card + dark answer-sheet card (NazoPrimary
+    highlighted option) + curly arrow + sparkles; GuessDoodle = dark card
+    with a Canvas pixel mosaic (nod to our pixel reveal) + magnifier lens
+    revealing a crisp 謎 (NazoPrimary) + inked handle; StatsDoodle = chart
+    card with rising rounded bars (top bar NazoPrimary) + dark XP badge +
+    arrow + sparkles. Shared helpers DoodleSparkle (4-point asterisk) and
+    DoodleArrow (quadratic path + head). Ink = NazoTextPrimary, paper =
+    NazoSurface → adapts to dark mode by construction; slight rotate()s give
+    the sketchy feel.
+  - Bottom bar: back-arrow wrapped in RowScope AnimatedVisibility with
+    expandHorizontally/shrinkHorizontally — on slide 1 it collapses to zero
+    width so the Next button truly spans the entire bottom (owner ask);
+    it slides in on slides 2-3. (Direct child of Row, so the RowScope
+    extension is the CORRECT overload here — unlike the previous nested-Box
+    placement that broke the build.)
+- Files: ui/onboarding/OnboardingScreen.kt, handoff.md.
