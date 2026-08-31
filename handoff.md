@@ -2145,3 +2145,47 @@ covered by `BUG_AUDIT.md` + this log).
   20-21 MB. Expectation after minify: ~8-11 MB release. The real number
   comes from the owner's release build (or the release-check workflow
   once the owner arms it).
+
+## [2026-08-31 17:05] feat: branded cold start — splash screen + animated 謎 intro (Phase 2)
+
+- Phase 2 of the roadmap (after minify/R8): a branded app-opening animation.
+  Two layers that hand off seamlessly:
+  1. SYSTEM SPLASH (androidx.core:core-splashscreen 1.2.0, works back to our
+     minSdk 26): green brand tile + the 謎 launcher foreground while the
+     process cold-starts. Colors are EXACTLY the launcher icon backgrounds
+     (sampled, not adjusted): light #FF36A06F / dark #FF246D4C via NEW
+     res/values/colors.xml + res/values-night/colors.xml
+     (nazo_splash_background). NEW style Theme.Nazo.Splash in themes.xml,
+     parent="Theme.SplashScreen" — the BARE library name; a package-qualified
+     parent is a known AAPT link bug. postSplashScreenTheme returns
+     Theme.ComposeEmptyActivity, so post-splash the window theme is exactly
+     what it was before this feature. Manifest: ONLY the MainActivity tag's
+     theme changed to @style/Theme.Nazo.Splash (application tag + launcher
+     aliases untouched). MainActivity: installSplashScreen() is the FIRST
+     statement of onCreate (before super.onCreate / enableEdgeToEdge), import
+     androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen.
+  2. IN-APP INTRO (NEW package ui/launch, IntroOverlay.kt): a full-screen
+     brand tile (same greens, chosen by the APP's themeMode isDark passed
+     from NazoApp — not the OS) with a 200.dp ic_launcher_foreground Image
+     centered (200dp = the splash icon box, so the handoff is seamless).
+     Animation via Animatable (androidx.compose.animation.core — the known
+     BOM import trap): 250ms hold → logo scale 0.9→1.0 over 450ms
+     FastOutSlowInEasing → 450ms hold → whole-overlay alpha 1→0 over 400ms →
+     removed from the tree via a mutableStateOf "dismissed" flag. ~1.5s
+     total, one play per cold start (warm starts don't replay — the
+     composition survives). While shown it is an input barrier (pointerInput
+     + awaitPointerEventScope loop consuming changes; self-cancelling on
+     disposal). NazoApp.kt got exactly ONE import + ONE line: IntroOverlay(
+     isDark = isDark) as the LAST child of the root Box (top z-order, above
+     nav/dialogs).
+- Behavior contract honored (owner's ironclad rule): additive only — zero
+  changes to existing layout/logic; the app composes underneath the entire
+  time (nothing is delayed); post-splash theme == the app's current theme;
+  no reflection (minify-safe with our zero-keep-rules R8 setup).
+- Files: gradle/libs.versions.toml, app/build.gradle.kts,
+  res/values/colors.xml (new), res/values-night/colors.xml (new),
+  res/values/themes.xml, AndroidManifest.xml, MainActivity.kt,
+  ui/launch/IntroOverlay.kt (new), ui/NazoApp.kt, handoff.md.
+- Owner test: force-stop the app and relaunch in light AND dark mode —
+  splash tile → 謎 pop → fade into Home, ~1.5s; reopening from recents
+  (warm) must NOT replay the intro.
