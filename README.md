@@ -28,6 +28,9 @@ answer, and even generate fresh quizzes with an AI provider of your choice.
 - 🎨 **Fully themable** — 9 whole-app color accents (Mint, Rose, Pink, Orange, Bronze, Indigo, Slate, Violet, Mono) that recolor background, cards, toggles and text.
 - 🌗 **Material You aware** with a light/dark palette for every accent.
 - 📴 **Offline mode** so you can keep quizzing without a connection.
+- 🖼️ **Guessing Game** mode — name a topic, then race the countdown to un-blur a mystery
+  image: 4-choice answers (Easy/Medium) or fuzzy auto-complete (Hard/Otaku Master), with
+  time-decay scoring and elimination when the timer hits zero.
 - 🤖 **AI Provider** screen to wire up an external AI for generating new question sets.
 - 💾 **Backup & restore** of your local progress and stats.
 - 🔔 **In-app updates** — background update checks (WorkManager) download new APKs with a notification.
@@ -39,16 +42,23 @@ answer, and even generate fresh quizzes with an AI provider of your choice.
 1. **Quiz flow** — `HomeScreen` → pick a difficulty → `ActiveQuizScreen` runs the timed
    round → `ReviewAnswersScreen` shows what you got right/wrong → `QuizCompleteScreen`
    summarizes, and `StatisticsScreen` tracks long-term performance.
-2. **Quiz engine** — `data/QuizEngine.kt` + `LocalQuestionBank.kt` own the difficulty→behavior
+2. **Guessing Game flow** — `HomeScreen` → MODE → Guessing Game → topic + rounds →
+   `modes/guessing_game/GuessingPlayScreen`: the AI picks a target for the topic, an image
+   is fetched keylessly (Wikimedia Commons → Wikipedia, placeholder fallback), and the
+   image un-blurs linearly as the per-difficulty timer runs. Easy/Medium show
+   4-choice buttons; Hard/Otaku Master show a fuzzy auto-complete (tap a suggestion to
+   answer). One shot per round — points decay with the remaining time and a timeout
+   eliminates you. `GuessingResultsScreen` summarizes the run.
+3. **Quiz engine** — `data/QuizEngine.kt` + `LocalQuestionBank.kt` own the difficulty→behavior
    rules and serve questions; `QuizStats.kt` records results in a **Room** database.
-3. **Theming** — a single `NazoColors` palette drives the whole UI. `ui/theme/Color.kt`
+4. **Theming** — a single `NazoColors` palette drives the whole UI. `ui/theme/Color.kt`
    defines the palette plus an `Accents` registry; `NazoTheme` resolves the selected
    accent into a full light+dark palette and every screen reads colors through the
    `NazoXxx` accessors, so changing the accent re-themes the app instantly.
-4. **Updates** — `data/UpdateScheduler` + `UpdateCheckWorker` (WorkManager) periodically
+5. **Updates** — `data/UpdateScheduler` + `UpdateCheckWorker` (WorkManager) periodically
    check for a newer build; `UpdateDownloader` + `DownloadReceiver` fetch and prompt to
    install it (`REQUEST_INSTALL_PACKAGES`).
-5. **App icon theming** — `LauncherLight` / `LauncherDark` activity-aliases are toggled
+6. **App icon theming** — `LauncherLight` / `LauncherDark` activity-aliases are toggled
    based on the device theme so the home-screen icon matches.
 
 ## Development

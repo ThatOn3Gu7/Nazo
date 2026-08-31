@@ -1755,3 +1755,77 @@ covered by `BUG_AUDIT.md` + this log).
 - **"i" moved before the expand arrow (improvement):** in `ProviderCard` header the info `IconButton`
   now sits to the LEFT of the expand/collapse `IconButton`.
 - Files: `ui/screens/HomeScreen.kt`, `ui/screens/AiProviderScreen.kt`, `handoff.md`.
+
+## [2026-08-31 05:24] feat: new "Guessing Game" mode — image un-blur reveal, countdown, choice/fuzzy input, time-decay scoring
+
+- Owner requested a second game mode alongside Quiz: enter a topic, an image is fetched, an
+  on-device linear un-blur runs while a countdown ticks, and the player names the target
+  (4-choice on Easy/Medium, fuzzy auto-complete on Hard/Otaku Master) with points decaying by
+  remaining time; timer at 0 eliminates the player and reveals the answer.
+- **New self-contained module `modes/guessing_game/`** (package
+  `quiz.thaton3app.nazo.modes.guessing_game` — the "separate folder" rule, kept out of
+  `ui/`+`data/` so the mode is portable):
+  - `GuessPayload.kt` — the AI payload data class (target_entity / aliases / image_query /
+    easy_medium_options / hard_autocomplete_pool), `GuessRoundResult`, the `GuessPhase`
+    sealed state (Idle/Preparing/Playing/Error), `normalizeName` (answer comparison key) and
+    `parseGuessPayload` (lenient parser that throws on a structurally broken response).
+    `choiceOptions` guarantees the target is one of the 4 buttons (injects it if the model
+    forgot) and never uses an alias as a decoy; `suggestionPool` = target+aliases+pool deduped.
+  - `GuessApiClient.kt` — the standard prompt wrapper (`GUESS_SYSTEM_PROMPT` +
+    `buildGuessPrompt(topic, difficulty, avoidTargets)`; avoidTargets = targets already
+    played this game, so the AI keeps varying) plus a Gemini `responseSchema` OBJECT for
+    exactly the 5 JSON keys. HTTP reuses `data/remote` (providerById, buildUrl, headers,
+    requestBody, and now-internal `ApiClient.extractContent`/`friendlyHttpError`) so auth,
+    error mapping and provider support (Gemini + OpenRouter) behave exactly like quiz gen.
+  - `GuessImageFetcher.kt` — keyless image-URL resolution: Wikimedia Commons file search
+    first (1024px thumb), then en.wikipedia REST summary `originalimage` (2x thumbnail) as
+    fallback. Returns null on ANY failure → the UI shows the drawn placeholder instead.
+  - `GuessScoring.kt` — per-difficulty base points (Easy 100 / Medium 150 / Hard 200 /
+    Otaku Master 300) + input mode (CHOICE vs AUTOCOMPLETE). Countdown DURATION is shared
+    with `QuizEngine` (40/30/20/10s) so both modes agree. Decay formula:
+    `points = round(base × remainingFraction)`, floor 1 (a last-second correct answer still
+    scores 1; timeout scores 0).
+  - `FuzzyMatch.kt` — dependency-free fuzzy matcher (exact / prefix / in-order
+    subsequence / word-prefix / Levenshtein on whole name and single word), top-k for the
+    auto-complete list.
+  - `GuessingPlayScreen.kt` — the game screen: header (round x of y, score pill, rolling
+    timer circle in the quiz's style + shrinking LinearProgressIndicator), the mystery image
+    card, the input area, and the in-place reveal card. Blur engine: image bytes are
+    pre-fetched with Coil (`ImageLoader.execute`) BEFORE the timer starts, then a
+    frame-clock loop (`withFrameNanos`, monotonic, drift-free — unlike the quiz's
+    delay(1000) loop because the reveal must be smooth) drives both the countdown and the
+    `Modifier.blur(radius = 28dp × remainingFraction)` layer — strictly LINEAR over the
+    timer — plus a 1.12→1.0 zoom-out. Final-5s haptic ramp + time-up buzz reused from
+    `Haptics`. Timer at 0 → `timedOut` + reveal (one shot per round: wrong answer OR
+    timeout = eliminated, correct = next round / game over). Fetched-image failure →
+    themed drawn placeholder (dark card + 謎 + query). Quit dialog + BackHandler follow
+    the ActiveQuizScreen pattern.
+  - `GuessingResultsScreen.kt` — game-over summary in the QuizCompleteScreen visual
+    language (staggered entrances, animated score + sweep ring): total points, solved x/y,
+    per-round breakdown, Play Again / Home.
+- **API module edits (additive only):** `ProviderEndpoint.requestBody` gained an optional
+  `responseSchema: JSONObject? = null` 4th param (null → the existing quiz schema, so quiz
+  generation is byte-identical); `ApiClient.extractContent` + `friendlyHttpError` went
+  private → internal for reuse. No quiz/offline behavior touched.
+- **Navigation (NazoApp):** new `Screen.GuessingGame` + `Screen.GuessingResults`; hoisted
+  state (`homeMode`/`guessRounds` are rememberSaveable like the quiz presets; round,
+  score, results, avoid-targets are session state); orchestration fns `startGuessing` /
+  `prepareGuessRound` (offline or no provider/model → Error phase with a helpful message +
+  Retry/Settings/Quit, never a silent fallback) / `guessRoundComplete` (computes the
+  decay points, one-shot guard) / `guessNext` (missed round → results; last round solved
+  → results via `replace()` so system back lands on Home).
+- **HomeScreen entry point:** a new MODE section (Quiz | Guessing Game pill toggle, the
+  requested "navigation entry/toggle"); guessing mode swaps the headline, shows ROUNDS
+  (1/3/5) instead of QUESTIONS (5/10/15), and the CTA becomes "Start Guessing Game". Quiz
+  mode renders exactly as before (mode defaults to QUIZ; quiz branch code untouched).
+- Scoring is NOT recorded into `QuizStats`/Room — the guess game's points aren't
+  question stats and mixing them would distort quiz accuracy (possible follow-up).
+- Note: agent cannot compile (no JDK/SDK/network in this sandbox — same as previous
+  entries); owner to build in Termux. Watch items: `coil.execute` import (Coil 2
+  ImageLoader pre-fetch), `Icons.Filled.Quiz` / `Icons.Filled.ImageSearch` from
+  material-icons-extended, and per-frame `Modifier.blur` performance on low-end devices.
+- Files: new `modes/guessing_game/GuessPayload.kt`, `GuessApiClient.kt`,
+  `GuessImageFetcher.kt`, `GuessScoring.kt`, `FuzzyMatch.kt`, `GuessingPlayScreen.kt`,
+  `GuessingResultsScreen.kt`; edited `data/remote/ApiClient.kt`,
+  `data/remote/ProviderConfig.kt`, `ui/screens/HomeScreen.kt`, `ui/NazoApp.kt`,
+  `README.md`, `app/build.gradle.kts` (version bump), `handoff.md`.
