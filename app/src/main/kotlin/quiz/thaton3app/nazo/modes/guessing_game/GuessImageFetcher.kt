@@ -14,19 +14,27 @@ import java.nio.charset.StandardCharsets
 
 /**
  * Resolves a direct image URL of the round's TARGET ENTITY using keyless
- * public sources. Relevance is the whole game here: the first hit of a plain
- * keyword search is often a topic-branded logo or an unrelated article image
- * (a "Tokyo One Piece Tower" logo for a Roronoa Zoro round), so every source
- * is searched by EXACT PHRASE and its results are gated by how closely the
- * file/article title mentions the target name:
- *   1. Wikimedia Commons phrase search (bitmap files, title must match),
- *   2. English Wikipedia phrase search (article title must match),
- *   3. the same two stages with the AI's image_query as search phrase,
- *   4. DuckDuckGo's image endpoint (query = target name, loose URL check).
- * The whole search is capped by a total time budget so a slow network can
- * never stall a round. Returns null on ANY failure or when nothing relevant
- * is found; the UI then shows its drawn placeholder (with the query) instead
- * of a wrong image.
+ * public sources, in order:
+ *
+ *   1. Wikimedia Commons — exact-phrase file search (bitmaps, top 10)
+ *   2. English Wikipedia — exact-phrase article search, summary image
+ *   3. AniList — character search (keyless GraphQL; anime character
+ *      portraits — this is an anime game, so this is a strong source)
+ *   4. Openverse — keyless Creative-Commons image search (WordPress index)
+ *   5. DuckDuckGo — image endpoint (i.js + vqd token) as last resort
+ *
+ * Stages 1-2 are tried for every name variant: the target name, its
+ * honorific-stripped form ("Dr. Vegapunk" -> "Vegapunk") and any AI alias
+ * that shares a content word with the target. EVERY result is relevance-
+ * gated: the file/article/character title must score >= 2 against a name
+ * variant (all words = 3, half+ = 2, longest word only = 1). A topic-
+ * branded logo or an unrelated first hit scores 0 and is dropped — a wrong
+ * image is treated as a miss.
+ *
+ * The whole search runs under a total time budget AND each stage re-checks
+ * the remaining budget, so a slow network burns the early stages but the
+ * later ones still get a fair shot. Returns null on ANY failure; the UI
+ * then shows its drawn placeholder (with the image_query) instead.
  */
 object GuessImageFetcher {
 
@@ -36,21 +44,45 @@ object GuessImageFetcher {
         "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
     private const val TOTAL_BUDGET_MS = 20_000L
 
-    /** Minimum title/article relevance for a hit to be considered (see [titleRelevance]). */
+    /** Minimum title relevance for a hit to be considered (see [titleRelevance]). */
     private const val MIN_RELEVANCE = 2
 
-    suspend fun fetchImageUrl(query: String, target: String): String? {
+    /** A stage only starts when at least this much budget remains. */
+    private const val MIN_STAGE_BUDGET_MS = 2_000L
+
+    /**
+     * [target] is the round's target_entity; [aliases] are the AI's
+     * alternative names for the same entity; [imageQuery] is only used to
+     * enrich the DuckDuckGo query when it starts with the target name.
+     */
+    suspend fun fetchImageUrl(target: String, aliases: List<String>, imageQuery: String = ""): String? {
         if (target.isBlank()) return null
         val targetName = target.trim()
+        val variants = nameVariants(targetName, aliases)
         return withContext(Dispatchers.IO) {
+            val deadline = System.currentTimeMillis() + TOTAL_BUDGET_MS
             val url: String? = try {
                 withTimeout(TOTAL_BUDGET_MS) {
-                    val byTarget = fromCommons(targetName, targetName)
-                        ?: fromWikipedia(targetName, targetName)
-                    val byQuery = if (query.isNotBlank() && query.trim().lowercase() != targetName.lowercase())
-                        fromCommons(query.trim(), targetName) ?: fromWikipedia(query.trim(), targetName)
-                    else null
-                    byTarget ?: byQuery ?: fromDuckDuckGo(targetName)
+                    var found: String? = null
+                    for (v in variants) {
+                        if (budgetLeftMs(deadline) < MIN_STAGE_BUDGET_MS) break
+                        found = fromCommonsPhrase(v, variants) ?: fromWikipediaPhrase(v, variants)
+                        Log.i(TAG, "commons+wiki('$v') -> ${found ?: "miss"}")
+                        if (found != null) break
+                    }
+                    if (found == null && budgetLeftMs(deadline) >= MIN_STAGE_BUDGET_MS) {
+                        found = fromAniList(variants)
+                        Log.i(TAG, "anilist -> ${found ?: "miss"}")
+                    }
+                    if (found == null && budgetLeftMs(deadline) >= MIN_STAGE_BUDGET_MS) {
+                        found = fromOpenverse(targetName, variants)
+                        Log.i(TAG, "openverse -> ${found ?: "miss"}")
+                    }
+                    if (found == null && budgetLeftMs(deadline) >= MIN_STAGE_BUDGET_MS) {
+                        found = fromDuckDuckGo(targetName, imageQuery)
+                        Log.i(TAG, "duckduckgo -> ${found ?: "miss"}")
+                    }
+                    found
                 }
             } catch (e: TimeoutCancellationException) {
                 Log.w(TAG, "image search timed out for \"$targetName\"")
@@ -60,13 +92,15 @@ object GuessImageFetcher {
                 null
             }
             if (url == null) {
-                Log.w(TAG, "no relevant image for \"$targetName\" (query: \"$query\")")
+                Log.w(TAG, "no relevant image for \"$targetName\" (variants: $variants)")
             } else {
                 Log.i(TAG, "image for \"$targetName\" -> $url")
             }
             url
         }
     }
+
+    private fun budgetLeftMs(deadline: Long): Long = deadline - System.currentTimeMillis()
 
     /**
      * Plain-HTTP download of the image bytes. Used by the play screen to
@@ -93,46 +127,66 @@ object GuessImageFetcher {
     }
 
     /**
-     * Commons: one generator=search call (phrase, bitmaps, top 10) returns
-     * the file URLs directly; the best title match wins.
+     * Search phrases: the target, its honorific-stripped form, then AI
+     * aliases that share a content word with the target (a shared word is
+     * what makes an alias safe to search by). Max 3.
      */
-    private fun fromCommons(searchPhrase: String, targetName: String): String? {
-        val json = getJson(
-            "https://commons.wikimedia.org/w/api.php?action=query&format=json&redirects=1" +
-                "&generator=search&gsrnamespace=6&gsrlimit=10&prop=imageinfo&iiprop=url&iiurlwidth=1024" +
-                "&gsrsearch=${enc("\"$searchPhrase\" filetype:bitmap")}",
-        ) ?: return null
-        val pages = json.optJSONObject("query")?.optJSONObject("pages") ?: return null
-        var bestUrl: String? = null
-        var bestScore = 0
-        for (key in pages.keys()) {
-            val page = pages.optJSONObject(key) ?: continue
-            val title = page.optString("title", "")
-            val score = titleRelevance(title, targetName)
-            if (score < bestScore) continue
-            val info = page.optJSONArray("imageinfo")?.optJSONObject(0) ?: continue
-            val url = info.optString("thumburl", "").ifBlank { info.optString("url", "") }
-            if (!isUsableImage(url)) continue
-            bestScore = score
-            bestUrl = url
+    private fun nameVariants(target: String, aliases: List<String>): List<String> {
+        val out = mutableListOf(target.trim())
+        stripHonorific(target)?.let { if (it !in out) out.add(it) }
+        val targetWords = targetWords(target).toSet()
+        for (a in aliases) {
+            if (out.size >= 3) break
+            val av = a.trim()
+            if (av.length < 3 || av in out) continue
+            if (targetWords.intersect(targetWords(av)).isEmpty()) continue
+            out.add(av)
         }
-        return if (bestScore >= MIN_RELEVANCE) bestUrl else null
+        return out
+    }
+
+    /** "Dr. Vegapunk" -> "Vegapunk"; null when the name has no honorific. */
+    private fun stripHonorific(name: String): String? {
+        val m = Regex(
+            "^(?:dr|mr|mrs|ms|the|lord|lady|king|queen|princess|captain|professor)\\.?\\s+",
+            RegexOption.IGNORE_CASE,
+        ).find(name) ?: return null
+        val rest = name.substring(m.value.length).trim()
+        return if (rest.length >= 3) rest else null
     }
 
     /**
-     * Wikipedia: phrase search, then the ARTICLE TITLE is gated before any
-     * summary fetch — for target "Trafalgar Law" the articles "Trafalgar"
-     * or "One Piece" fail the gate, "Trafalgar Law (One Piece)" passes.
+     * Commons: one generator=search call (exact phrase, bitmaps, top 10)
+     * returns the file URLs directly; the best title match wins.
      */
-    private fun fromWikipedia(searchPhrase: String, targetName: String): String? {
+    private fun fromCommonsPhrase(phrase: String, variants: List<String>): String? {
+        val json = getJson(
+            "https://commons.wikimedia.org/w/api.php?action=query&format=json&redirects=1" +
+                "&generator=search&gsrnamespace=6&gsrlimit=10&prop=imageinfo&iiprop=url&iiurlwidth=1024" +
+                "&gsrsearch=${enc("\"$phrase\" filetype:bitmap")}",
+        ) ?: return null
+        val pages = json.optJSONObject("query")?.optJSONObject("pages") ?: return null
+        return bestByTitle(pages, variants) { page ->
+            val info = page.optJSONArray("imageinfo")?.optJSONObject(0) ?: return@bestByTitle null
+            info.optString("thumburl", "").ifBlank { info.optString("url", "") }
+        }
+    }
+
+    /**
+     * Wikipedia: exact-phrase search, then the ARTICLE TITLE is gated before
+     * any summary fetch — for target "Trafalgar Law" the articles
+     * "Trafalgar" or "One Piece" fail the gate, "Trafalgar Law (One Piece)"
+     * passes.
+     */
+    private fun fromWikipediaPhrase(phrase: String, variants: List<String>): String? {
         val titles = getJson(
             "https://en.wikipedia.org/w/api.php?action=query&format=json" +
-                "&list=search&srsearch=${enc("\"$searchPhrase\"")}&srlimit=5",
+                "&list=search&srsearch=${enc("\"$phrase\"")}&srlimit=5",
         ) ?: return null
         val results = titles.optJSONObject("query")?.optJSONArray("search") ?: return null
         for (i in 0 until results.length()) {
             val title = results.getJSONObject(i).optString("title", "")
-            if (title.isBlank() || titleRelevance(title, targetName) < MIN_RELEVANCE) continue
+            if (title.isBlank() || titleRelevanceAny(title, variants) < MIN_RELEVANCE) continue
             val summary = getJson("https://en.wikipedia.org/api/rest_v1/page/summary/${enc(title)}") ?: continue
             val original = summary.optJSONObject("originalimage")?.optString("source", "") ?: ""
             val thumb = summary.optJSONObject("thumbnail")?.optString("source", "") ?: ""
@@ -143,25 +197,87 @@ object GuessImageFetcher {
     }
 
     /**
-     * Last resort: DuckDuckGo's image endpoint, queried with the target name
-     * itself. GET the image-search HTML (browser UA) for the per-session
-     * `vqd` token, then the JSON i.js API. Bing often serves thumbnails
+     * AniList: keyless GraphQL character search. Anime character portraits
+     * live on its CDN, so this is the best source for characters the wikis
+     * don't cover well (and it keeps cosplay photos out of major rounds).
+     */
+    private fun fromAniList(variants: List<String>): String? {
+        val query = "query (\$search: String) { Character(search: \$search, perPage: 5) " +
+            "{ nodes { id name { full } image { large medium } } } }"
+        for (v in variants) {
+            val body = JSONObject()
+                .put("query", query)
+                .put("variables", JSONObject().put("search", v))
+            val json = postJson("https://graphql.anilist.co", body.toString()) ?: continue
+            val nodes = json.optJSONObject("data")?.optJSONObject("Character")?.optJSONArray("nodes")
+                ?: continue
+            var bestUrl: String? = null
+            var bestScore = 0
+            for (i in 0 until nodes.length()) {
+                val node = nodes.getJSONObject(i)
+                val name = node.optJSONObject("name")?.optString("full", "") ?: ""
+                val score = titleRelevanceAny(name, variants)
+                if (score < bestScore) continue
+                val img = node.optJSONObject("image") ?: continue
+                val url = img.optString("large", "").ifBlank { img.optString("medium", "") }
+                if (!isUsableImage(url)) continue
+                bestScore = score
+                bestUrl = url
+            }
+            if (bestScore >= MIN_RELEVANCE && bestUrl != null) return bestUrl
+        }
+        return null
+    }
+
+    /**
+     * Openverse: keyless Creative-Commons image search (WordPress index of
+     * Flickr/Wikimedia/etc.). Results carry a title, so the same relevance
+     * gate applies.
+     */
+    private fun fromOpenverse(targetName: String, variants: List<String>): String? {
+        val json = getJson(
+            "https://api.openverse.org/v1/images/?q=${enc(targetName)}&page_size=10",
+        ) ?: return null
+        val results = json.optJSONArray("results") ?: return null
+        var bestUrl: String? = null
+        var bestScore = 0
+        for (i in 0 until results.length()) {
+            val r = results.getJSONObject(i)
+            val score = titleRelevanceAny(r.optString("title", ""), variants)
+            if (score < bestScore) continue
+            val url = r.optString("url", "")
+            if (!isUsableImage(url)) continue
+            bestScore = score
+            bestUrl = url
+        }
+        return if (bestScore >= MIN_RELEVANCE) bestUrl else null
+    }
+
+    /**
+     * Last resort: DuckDuckGo's image endpoint. GET the image-search HTML
+     * (browser UA) for the per-session `vqd` token, then the JSON i.js API.
+     * The token format has changed over time, so several extraction shapes
+     * are tried (numeric, then any token). Bing often serves thumbnails
      * without file extensions, so URL shape is checked loosely; opaque
      * hosts (YouTube thumbs) are trusted, slugs must mention the target.
      */
-    private fun fromDuckDuckGo(targetName: String): String? {
+    private fun fromDuckDuckGo(targetName: String, imageQuery: String): String? {
+        val query = if (imageQuery.isNotBlank() &&
+            imageQuery.trim().lowercase().startsWith(targetName.lowercase())
+        ) imageQuery.trim() else targetName
         val html = getText(
-            "https://duckduckgo.com/?q=${enc(targetName)}&iax=1&ia=images",
+            "https://duckduckgo.com/?q=${enc(query)}&iax=1&ia=images",
             userAgent = BROWSER_USER_AGENT,
         ) ?: return null
         val vqd = listOf(
             Regex("""vqd="(-?\d+)""""),
-            Regex("""data-vqd="(-?\d+)""""),
             Regex("""vqd-0" value="(-?\d+)""""),
-            Regex("""vqd=(-?\d+)"""),
+            Regex("""vqd="([^"\s]+)""""),
+            Regex("""vqd-0" value="([^"\s]+)""""),
+            Regex("""vqd=([\w-]+)"""),
         ).firstNotNullOfOrNull { it.find(html)?.groupValues?.get(1) } ?: return null
         val json = getJson(
-            "https://duckduckgo.com/i.js?q=${enc(targetName)}&vqd=$vqd&p=1",
+            "https://duckduckgo.com/i.js?q=${enc(query)}&vqd=$vqd&o=json&p=1&l=wt-wt",
             userAgent = BROWSER_USER_AGENT,
         ) ?: return null
         val results = json.optJSONArray("results") ?: return null
@@ -173,14 +289,36 @@ object GuessImageFetcher {
             if (first == null) first = url
             if (urlMatchesTarget(url, targetName)) return url
         }
-        // Last resort of last resorts: the top ranked hit for the exact
-        // target name — better than a placeholder, never a topic keyword.
+        // Last resort of last resorts: the top ranked hit for the target.
         return first
     }
 
-    /** Normalized content words (letters/digits, length >= 3) of the target name. */
-    private fun targetWords(targetName: String): List<String> =
-        targetName.lowercase()
+    /**
+     * Scans a Commons `pages` object, picks the highest-scoring usable
+     * image, requires >= [MIN_RELEVANCE].
+     */
+    private fun bestByTitle(
+        pages: JSONObject,
+        variants: List<String>,
+        urlFor: (JSONObject) -> String?,
+    ): String? {
+        var bestUrl: String? = null
+        var bestScore = 0
+        for (key in pages.keys()) {
+            val page = pages.optJSONObject(key) ?: continue
+            val score = titleRelevanceAny(page.optString("title", ""), variants)
+            if (score < bestScore) continue
+            val url = urlFor(page) ?: continue
+            if (!isUsableImage(url)) continue
+            bestScore = score
+            bestUrl = url
+        }
+        return if (bestScore >= MIN_RELEVANCE) bestUrl else null
+    }
+
+    /** Normalized content words (letters/digits, length >= 3) of a name. */
+    private fun targetWords(name: String): List<String> =
+        name.lowercase()
             .split(Regex("[^\\p{L}\\p{N}]+"))
             .filter { it.length >= 3 }
 
@@ -190,8 +328,8 @@ object GuessImageFetcher {
      * scores 2 for target "Roronoa Zoro" (kept); a "Tokyo One Piece Tower"
      * logo scores 0 (dropped).
      */
-    private fun titleRelevance(title: String, targetName: String): Int {
-        val words = targetWords(targetName)
+    private fun titleRelevance(title: String, name: String): Int {
+        val words = targetWords(name)
         if (words.isEmpty()) return 0
         val t = title.lowercase()
         val present = words.count { t.contains(it) }
@@ -202,6 +340,10 @@ object GuessImageFetcher {
             else -> 0
         }
     }
+
+    /** Best relevance of [title] against ANY name variant (target or alias). */
+    private fun titleRelevanceAny(title: String, variants: List<String>): Int =
+        variants.maxOfOrNull { titleRelevance(title, it) } ?: 0
 
     /**
      * DDG/Bing URLs are loose: opaque image hosts (no slug to inspect) are
@@ -255,6 +397,30 @@ object GuessImageFetcher {
             connection.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
         } catch (e: Exception) {
             Log.w(TAG, "GET failed: $url", e)
+            null
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun postJson(url: String, body: String): JSONObject? {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            doOutput = true
+            connectTimeout = 6_000
+            readTimeout = 8_000
+            setRequestProperty("User-Agent", USER_AGENT)
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Accept", "application/json")
+        }
+        return try {
+            connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
+            if (connection.responseCode !in 200..299) return null
+            connection.inputStream.bufferedReader(StandardCharsets.UTF_8).use {
+                JSONObject(it.readText())
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "POST failed: $url", e)
             null
         } finally {
             connection.disconnect()
