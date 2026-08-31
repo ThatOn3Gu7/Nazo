@@ -2189,3 +2189,34 @@ covered by `BUG_AUDIT.md` + this log).
 - Owner test: force-stop the app and relaunch in light AND dark mode —
   splash tile → 謎 pop → fade into Home, ~1.5s; reopening from recents
   (warm) must NOT replay the intro.
+
+## [2026-08-31 17:40] session: Phase 2 re-shipped from spec; CI green; loose-end status
+
+- NEW SESSION (the prior one auto-closed when its PR merged). This workspace is a
+  FRESH clone of master (551b9ef): the old Phase 2 commits (0b0ca8a/b7f20c5) and
+  nazo-phase2-cold-start.patch did NOT survive — Phase 2 was reimplemented from
+  the handoff spec, byte-equivalent in behavior (verified against the spec point
+  by point). Shipped as PR #2 (branch arena/01a057a2-nazo, commits 6176880 feat +
+  286aacb docs). CI "PR Assemble (compile check)" GREEN on first run for both the
+  push and pull_request events (runs 33388577380 / 33388597356).
+- One deliberate deviation from the spec's literal text: the splash import is
+  `androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen` — the
+  library defines installSplashScreen as a companion extension; a bare
+  `androidx.core.splashscreen.installSplashScreen` import does not resolve.
+  CI confirms it compiles.
+- Loose ends (owner-side), status as of this session:
+  1. PR-assemble.yml on master STILL runs on every push (`push: master/
+     testBranch/arena/**` + pull_request + workflow_dispatch) — the owner has
+     not yet applied the "PR-only" trigger change. Reminder: that edit must be
+     owner-made (agent's GitHub App lacks the workflows permission). Suggested
+     `on:` block: `pull_request: types: [opened, synchronize]` +
+     `workflow_dispatch`.
+  2. .github/workflows/release-check.yml.draft was UNTRACKED in the old
+     workspace and is GONE with it. If the owner still wants CI release-build
+     coverage, it must be recreated (owner-side push).
+- The stale lowercase pr-assemble.yml scratch file also did not carry over —
+  nothing to avoid staging in this clone (rule stays in force regardless).
+- NEXT: PAUSED for owner device test of Phase 2 (force-stop + relaunch, light
+  AND dark). Phase 3 (onboarding/welcome screens) starts only after approval.
+  DO NOT merge PR #2 until all phases are declared done — merging closes the
+  Arena session (that is exactly how the last session died).
