@@ -16,8 +16,8 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.DesktopMac
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.ModeNight
-import androidx.compose.material.icons.outlined.Pixelate
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -261,7 +261,7 @@ fun AppearanceScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
             ThemeModeRow(
-                icon = Icons.Outlined.Pixelate,
+                icon = Icons.Outlined.GridView,
                 title = "Pixelate",
                 subtitle = "Starts as a blocky mosaic and resolves into the image",
                 isSelected = revealStyle == "pixel",

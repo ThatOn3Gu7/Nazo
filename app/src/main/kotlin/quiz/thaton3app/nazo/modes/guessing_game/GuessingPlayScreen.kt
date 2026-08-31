@@ -181,10 +181,12 @@ fun GuessingPlayScreen(
         imageFetchFailed = bytes == null
         fetchedImage = bytes
         // For the pixelated reveal, pre-scale one bitmap per pixel level so
-        // the un-pixelating is a cheap draw per frame. A decode failure just
-        // leaves this null → the card falls back to the blur reveal.
-        if (!imageFetchFailed && revealStyle == "pixel") {
-            pixelLevels = withContext(Dispatchers.IO) { buildPixelLevels(bytes) }
+        // the un-pixelating is a cheap draw per frame. A fetch or decode
+        // failure leaves this null → the card falls back to the blur reveal.
+        if (revealStyle == "pixel") {
+            pixelLevels = bytes?.let { b ->
+                withContext(Dispatchers.IO) { buildPixelLevels(b) }
+            }
         }
         imageReady = true
     }

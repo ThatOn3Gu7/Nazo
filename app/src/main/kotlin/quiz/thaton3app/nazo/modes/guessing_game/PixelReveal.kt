@@ -5,10 +5,10 @@ import android.graphics.BitmapFactory
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.IntOffset
-import androidx.compose.ui.geometry.IntSize
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import kotlin.math.roundToInt
 
 /**
@@ -31,7 +31,7 @@ internal fun buildPixelLevels(bytes: ByteArray): List<Bitmap>? {
             original,
             (original.width / scale).coerceAtLeast(1),
             (original.height / scale).coerceAtLeast(1),
-            filter = false,
+            false, // nearest neighbour — crisp pixel edges
         )
     }
 }
