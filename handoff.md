@@ -2332,3 +2332,16 @@ covered by `BUG_AUDIT.md` + this log).
   (flag is new). Verify in light + dark + a non-mint accent.
 - Files: ui/onboarding/OnboardingPrefs.kt (new), ui/onboarding/
   OnboardingScreen.kt (new), ui/NazoApp.kt, handoff.md.
+
+## [2026-08-31 20:05] fix: onboarding compile errors (getValue import + RowScope AnimatedVisibility)
+
+- CI run 33391869663 failed with the two KNOWN traps (both already documented
+  in this log, hit anyway — check them EVERY time):
+  1. `val width by animateDpAsState(...)` needs `import
+     androidx.compose.runtime.getValue` for the State delegate.
+  2. The back-arrow `AnimatedVisibility` sits in a Box nested in a Row — the
+     plain name resolves to the RowScope EXTENSION, which can't be called
+     with an implicit receiver there. Fix per the 2026-08-27 04:00 entry:
+     fully-qualified `androidx.compose.animation.AnimatedVisibility(...)`.
+     (The Skip one directly in the top Row compiles as the extension — fine.)
+- Files: ui/onboarding/OnboardingScreen.kt, handoff.md.
