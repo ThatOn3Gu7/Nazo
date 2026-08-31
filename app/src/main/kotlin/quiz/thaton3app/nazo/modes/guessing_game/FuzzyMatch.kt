@@ -17,7 +17,7 @@ object FuzzyMatch {
         return candidates
             .map { it to score(q, it) }
             .filter { it.second > 0.35f }
-            .sortedWith(compareByDescending { it.second }.thenBy { it.first.length })
+            .sortedWith(compareByDescending<Pair<String, Float>> { it.second }.thenBy { it.first.length })
             .take(limit)
             .map { it.first }
     }
