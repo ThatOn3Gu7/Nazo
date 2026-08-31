@@ -18,21 +18,40 @@ import kotlin.math.roundToInt
  */
 internal val PIXEL_LEVELS = intArrayOf(1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128)
 
+/** Longest edge the source image is decoded at (Phase 6, low-RAM cap). The
+ * card renders at ~300dp, so ~1600px keeps it visually lossless while a
+ * 4000px camera-grade fetch drops from ~48MB of ARGB to ~10MB. */
+private const val MAX_DECODE_DIM = 1600
+
 /**
  * Decodes [bytes] into one pre-scaled bitmap per pixel level (nearest-neighbour
  * downscale, so drawing the small bitmap back up keeps crisp pixel edges —
  * no re-scaling work per frame). Returns null when the bytes don't decode, in
  * which case the caller falls back to the blur reveal.
+ *
+ * Memory-hardened for 4GB devices: a bounds-only first pass computes a
+ * power-of-two inSampleSize so the full-resolution image is NEVER held in
+ * memory, and the sharp level-0 bitmap reuses the decoded bitmap directly.
  */
 internal fun buildPixelLevels(bytes: ByteArray): List<Bitmap>? {
-    val original = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sample = 1
+    while (maxOf(bounds.outWidth, bounds.outHeight) / sample > MAX_DECODE_DIM) sample *= 2
+    val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+    val original = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
     return PIXEL_LEVELS.map { scale ->
-        Bitmap.createScaledBitmap(
-            original,
-            (original.width / scale).coerceAtLeast(1),
-            (original.height / scale).coerceAtLeast(1),
-            false, // nearest neighbour — crisp pixel edges
-        )
+        if (scale == 1) {
+            original
+        } else {
+            Bitmap.createScaledBitmap(
+                original,
+                (original.width / scale).coerceAtLeast(1),
+                (original.height / scale).coerceAtLeast(1),
+                false, // nearest neighbour — crisp pixel edges
+            )
+        }
     }
 }
 
