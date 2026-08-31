@@ -1,3 +1,12 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.ComposeEmptyActivity" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Branded cold start. Parent MUST be the bare library name "Theme.SplashScreen"
+         (a package-qualified parent is a known AAPT link bug). postSplashScreenTheme
+         hands the window back to the app's normal theme the moment content draws. -->
+    <style name="Theme.Nazo.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/nazo_splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.ComposeEmptyActivity</item>
+    </style>
 </resources>

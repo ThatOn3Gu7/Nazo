@@ -17,7 +17,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.ComposeEmptyActivity" />
+            android:theme="@style/Theme.Nazo.Splash" />
 
         <!-- Launcher entries (the real activity is never disabled). Exactly one is
              enabled at a time, chosen by the device's OS dark/light mode. -->

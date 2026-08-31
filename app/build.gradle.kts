@@ -52,6 +52,8 @@ android {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
+    // Branded cold start: system splash screen (backward-compatible to API 26)
+    implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
