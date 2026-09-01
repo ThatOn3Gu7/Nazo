@@ -62,6 +62,10 @@ fun AppearanceScreen(
     onFloatingNavBarChange: (Boolean) -> Unit = {},
     revealStyle: String = "pixel",
     onRevealStyleChange: (String) -> Unit = {},
+    backgroundStyle: String = "shapes",
+    onBackgroundStyleChange: (String) -> Unit = {},
+    touchRipples: Boolean = true,
+    onTouchRipplesChange: (Boolean) -> Unit = {},
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
 ) {
@@ -75,6 +79,7 @@ fun AppearanceScreen(
 
     var iconFollowsOsThemeChecked by remember { mutableStateOf(iconFollowsOsTheme) }
     var floatingNavBarChecked by remember { mutableStateOf(floatingNavBar) }
+    var touchRipplesChecked by remember { mutableStateOf(touchRipples) }
 
     Column(
         modifier = Modifier
@@ -224,6 +229,63 @@ fun AppearanceScreen(
 
 
             
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // --- AMBIENT BACKGROUND ---
+            SectionHeader("AMBIENT BACKGROUND")
+
+            ThemeModeRow(
+                icon = Icons.Outlined.BubbleChart,
+                title = "Floating Shapes",
+                subtitle = "Drifting geometric particles across the backdrop",
+                isSelected = backgroundStyle == "shapes",
+                onClick = { Haptics.soft(context); onBackgroundStyleChange("shapes") }
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            ThemeModeRow(
+                icon = Icons.Outlined.Grain,
+                title = "Constellation Web",
+                subtitle = "Twinkling star nodes connected by glowing proximity web lines",
+                isSelected = backgroundStyle == "constellation",
+                onClick = { Haptics.soft(context); onBackgroundStyleChange("constellation") }
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            ThemeModeRow(
+                icon = Icons.Outlined.WaterDrop,
+                title = "Digital Rain",
+                subtitle = "Subtle vertical falling streams of glowing drops",
+                isSelected = backgroundStyle == "rain",
+                onClick = { Haptics.soft(context); onBackgroundStyleChange("rain") }
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            ThemeModeRow(
+                icon = Icons.Outlined.Flare,
+                title = "Glowing Orbs",
+                subtitle = "Soft wandering radial gradient orbs that pulse and drift",
+                isSelected = backgroundStyle == "orbs",
+                onClick = { Haptics.soft(context); onBackgroundStyleChange("orbs") }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(NazoSurface)
+                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
+            ) {
+                LayoutToggleRow(
+                    title = "Interactive touch bursts",
+                    subtitle = "Spawn glowing ripple rings and sparkle bursts wherever you tap",
+                    isChecked = touchRipplesChecked,
+                    onCheckedChange = {
+                        touchRipplesChecked = it
+                        onTouchRipplesChange(it)
+                    }
+                )
+            }
+
             Spacer(modifier = Modifier.height(32.dp))
 
             // --- LAYOUT SECTION ---
