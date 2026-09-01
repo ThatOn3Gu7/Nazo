@@ -286,21 +286,23 @@ object PortraitCrop {
     // ---- framing ---------------------------------------------------------
 
     /**
-     * Builds the 3:4 passport frame around [face]: the face fills roughly
-     * half the frame height with a little headroom, clamped to the image.
-     * Null when the face is too small to trust (< 8% of image height) or the
-     * frame would be ≈ the whole image anyway (nothing to gain from a crop).
+     * Builds the 3:4 passport frame around [face]: the face fills a bit
+     * under half the frame height with comfortable headroom (owner feedback:
+     * the original 1.9x frame was "a bit too cropped"), clamped to the
+     * image. Null when the face is too small to trust (< 8% of image
+     * height) or the frame would be ≈ the whole image anyway (nothing to
+     * gain from a crop).
      */
     private fun passportFrame(face: RectF, w: Int, h: Int): Rect? {
         val faceH = face.height()
         if (faceH < h * 0.08f) return null
-        var frameH = faceH * 1.9f
+        var frameH = faceH * 2.25f
         var frameW = frameH * ASPECT
         val fit = min(1f, min(w / frameW, h / frameH))
         frameW *= fit
         frameH *= fit
         val left = (face.centerX() - frameW / 2f).coerceIn(0f, max(0f, w - frameW))
-        val top = (face.top - 0.10f * frameH).coerceIn(0f, max(0f, h - frameH))
+        val top = (face.top - 0.12f * frameH).coerceIn(0f, max(0f, h - frameH))
         val r = Rect(
             left.toInt(),
             top.toInt(),
