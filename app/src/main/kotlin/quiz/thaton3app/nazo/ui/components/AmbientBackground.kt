@@ -64,20 +64,6 @@ private data class GlowingOrb(
     val color: Color,
 )
 
-data class TouchRipple(
-    val id: Long,
-    val x: Float,
-    val y: Float,
-    val animatable: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
-    val sparkles: List<TouchSparkle>,
-)
-
-data class TouchSparkle(
-    val angle: Float,
-    val speed: Float,
-    val size: Float,
-)
-
 private class ParticleDrawCache {
     var builtForMinDimension = -1f
         private set
@@ -147,7 +133,6 @@ private class ParticleDrawCache {
 fun AmbientBackground(
     modifier: Modifier = Modifier,
     style: String = "shapes", // "shapes" | "constellation" | "rain" | "orbs"
-    ripples: List<TouchRipple> = emptyList(),
 ) {
     val shapeParticles = remember { buildShapeParticles() }
     val constellationStars = remember { buildConstellationStars() }
@@ -302,34 +287,6 @@ fun AmbientBackground(
                         canvas.restore()
                     }
                 }
-            }
-        }
-
-        // --- INTERACTIVE TOUCH RIPPLES & SPARKLES ---
-        for (ripple in ripples) {
-            val progressVal = ripple.animatable.value
-            val ringRadius = progressVal * minDimension * 0.45f
-            val ringAlpha = (1f - progressVal) * 0.6f
-
-            // Expanding ring
-            drawCircle(
-                color = NazoPrimary.copy(alpha = ringAlpha),
-                radius = ringRadius,
-                center = Offset(ripple.x, ripple.y),
-                style = Stroke(width = 4.5f * (1f - progressVal * 0.5f)),
-            )
-
-            // Burst sparkles
-            for (sparkle in ripple.sparkles) {
-                val dist = sparkle.speed * progressVal
-                val sx = ripple.x + cos(sparkle.angle) * dist
-                val sy = ripple.y + sin(sparkle.angle) * dist
-                val sparkAlpha = (1f - progressVal) * 0.75f
-                drawCircle(
-                    color = NazoSuccess.copy(alpha = sparkAlpha),
-                    radius = sparkle.size * (1f - progressVal * 0.3f),
-                    center = Offset(sx, sy),
-                )
             }
         }
     }
