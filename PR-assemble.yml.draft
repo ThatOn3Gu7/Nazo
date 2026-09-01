@@ -1,0 +1,94 @@
+# ============================================================================
+# OWNER ACTION REQUIRED — the Arena agent cannot push workflow files.
+# Replace the CONTENTS of .github/workflows/PR-assemble.yml with everything
+# below this header block, then delete this draft file.
+#
+# What changed vs the current workflow:
+#   * Triggers ONLY on pushes to arena/** branches — i.e. only when the
+#     Arena agent pushes. No more runs on master/testBranch pushes or on
+#     pull_request events (your own pushes won't burn Actions minutes;
+#     you test locally in Termux or just tag a release).
+#   * workflow_dispatch is kept: it NEVER fires automatically — it's only
+#     the manual "Run workflow" button in the Actions tab, as an escape
+#     hatch. Delete those two lines if you don't want even that.
+#   * The failure->PR-comment step is rewritten: it used to rely on
+#     pull_request event context (now gone), so it now looks up the open
+#     PR for the pushed arena branch itself. This keeps the agent's
+#     CI-error feedback loop working.
+# ============================================================================
+name: PR Assemble (compile check)
+
+# Compile check for the Arena agent's pushes ONLY: the agent cannot build
+# locally, so every push to an arena/** branch is assembled here and compile
+# errors are reported back onto the branch's open PR. Nothing else triggers
+# this workflow. A successful run also uploads the debug APK as a
+# downloadable artifact (Actions -> Run -> Artifacts).
+on:
+  push:
+    branches:
+      - 'arena/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  assemble-debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Assemble debug APK
+        run: |
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee gradle-build.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: nazo-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: ignore
+
+      # Posts the compiler errors as a comment on the arena branch's open PR
+      # so they're readable via the API even when the raw run log isn't
+      # downloadable. Push events carry no PR context, so the PR is looked
+      # up from the branch name.
+      - name: Report failure to PR
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUMBER=$(gh pr list --repo "${{ github.repository }}" \
+            --head "${GITHUB_REF_NAME}" --state open \
+            --json number --jq '.[0].number' 2>/dev/null)
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No open PR for ${GITHUB_REF_NAME}; skipping comment."
+            exit 0
+          fi
+          ERRORS=$( { grep -E '^e: ' gradle-build.log | head -60; \
+                      grep -A 12 'What went wrong' gradle-build.log | head -30; \
+                      grep -E 'FAILED$|FAILURE:' gradle-build.log | head -20; } 2>/dev/null | head -100)
+          if [ -n "$ERRORS" ]; then
+            gh pr comment "$PR_NUMBER" \
+              --repo "${{ github.repository }}" \
+              --body "### :x: Debug build failed (auto-report)
+          \`\`\`
+          $ERRORS
+          \`\`\`
+          Full log: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" || true
+          fi
