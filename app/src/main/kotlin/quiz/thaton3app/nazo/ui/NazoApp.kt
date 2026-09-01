@@ -44,8 +44,7 @@ import quiz.thaton3app.nazo.ui.components.AiMissingDialog
 import quiz.thaton3app.nazo.ui.components.AmbientBackground
 import quiz.thaton3app.nazo.ui.components.FloatingParticlesBackground
 import quiz.thaton3app.nazo.ui.components.StartupMode
-import quiz.thaton3app.nazo.ui.components.TouchRipple
-import quiz.thaton3app.nazo.ui.components.TouchSparkle
+
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.PointerEventPass
