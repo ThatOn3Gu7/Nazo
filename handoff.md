@@ -20,7 +20,14 @@ Conventions:
 
 ---
 
-## [2026-09-02 01:00] feat: blocking AI-missing guard dialog for online users without API key
+## [2026-09-02 01:30] feat: settings scroll persistence + NewRecordBadge bounce reduction
+
+- Owner feedback (2 items):
+  1. **NewRecordBadge too bouncy / clipping:** the NewRecordBadge pop-in animation had high over-bounce (`Spring.DampingRatioMediumBouncy`), making it bounce and clip against its container boundary. Changed to a smoother, gentler spring (`dampingRatio = 0.85f`, `stiffness = Spring.StiffnessMedium`) in `records/Records.kt`.
+  2. **Settings screen scroll position reset:** scrolling down in Settings to reach sub-screens (like About) and returning reset the scroll position to the top. Hoistered `settingsScrollState = rememberScrollState()` in `NazoApp.kt` and passed it down to `SettingsScreen` so the exact scroll position is preserved across screen navigation.
+- Files: `app/src/main/kotlin/quiz/thaton3app/nazo/records/Records.kt`, `app/src/main/kotlin/quiz/thaton3app/nazo/ui/NazoApp.kt`, `app/src/main/kotlin/quiz/thaton3app/nazo/ui/screens/SettingsScreen.kt`, `handoff.md`.
+
+---
 
 - Owner: when a user is online but has no API key set up and taps "Generate AI Quiz",
   the app previously fell back silently to offline local questions. Request: guard that action

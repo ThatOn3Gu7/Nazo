@@ -15,6 +15,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -38,6 +39,7 @@ import androidx.core.content.ContextCompat
 // screen exists, per the incremental build plan.
 @Composable
 fun SettingsScreen(
+    scrollState: ScrollState = rememberScrollState(),
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
     onOpenAiProvider: () -> Unit = {},
@@ -60,7 +62,7 @@ fun SettingsScreen(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
                 .padding(bottom = 12.dp)
