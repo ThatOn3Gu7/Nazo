@@ -1,64 +1,63 @@
 name: PR Assemble (compile check)
-
-# Runs on every push / pull request so compile errors are caught in CI
-# instead of on the owner's device. A successful run also uploads the
-# debug APK as a downloadable artifact (Actions -> Run -> Artifacts).
+# Compile check for the Arena agent's pushes ONLY: the agent cannot build
+# locally, so every push to an arena/** branch is assembled here and compile
+# errors are reported back onto the branch's open PR. Nothing else triggers
+# this workflow. A successful run also uploads the debug APK as a
+# downloadable artifact (Actions -> Run -> Artifacts).
 on:
   push:
     branches:
-      - 'master'
-      - 'testBranch'
       - 'arena/**'
-  pull_request:
   workflow_dispatch:
-
 permissions:
   contents: read
   pull-requests: write
-
 jobs:
   assemble-debug:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-
       - name: Make gradlew executable
         run: chmod +x ./gradlew
-
       - name: Assemble debug APK
         run: |
           ./gradlew assembleDebug --stacktrace 2>&1 | tee gradle-build.log
           exit ${PIPESTATUS[0]}
-
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: nazo-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: ignore
-
-      # Posts the compiler errors as a PR comment so they're readable via
-      # the API even when the raw run log isn't downloadable.
+      # Posts the compiler errors as a comment on the arena branch's open PR
+      # so they're readable via the API even when the raw run log isn't
+      # downloadable. Push events carry no PR context, so the PR is looked
+      # up from the branch name.
       - name: Report failure to PR
-        if: failure() && github.event.pull_request.number > 0
+        if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          PR_NUMBER=$(gh pr list --repo "${{ github.repository }}" \
+            --head "${GITHUB_REF_NAME}" --state open \
+            --json number --jq '.[0].number' 2>/dev/null)
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No open PR for ${GITHUB_REF_NAME}; skipping comment."
+            exit 0
+          fi
           ERRORS=$( { grep -E '^e: ' gradle-build.log | head -60; \
                       grep -A 12 'What went wrong' gradle-build.log | head -30; \
                       grep -E 'FAILED$|FAILURE:' gradle-build.log | head -20; } 2>/dev/null | head -100)
           if [ -n "$ERRORS" ]; then
-            gh pr comment "${{ github.event.pull_request.number }}" \
+            gh pr comment "$PR_NUMBER" \
               --repo "${{ github.repository }}" \
               --body "### :x: Debug build failed (auto-report)
           \`\`\`
