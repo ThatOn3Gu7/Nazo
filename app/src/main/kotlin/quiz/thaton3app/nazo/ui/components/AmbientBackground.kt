@@ -216,7 +216,7 @@ fun AmbientBackground(
 
                 // Draw connecting lines first
                 for (i in constellationStars.indices) {
-                    for (j in i + 1 until constellationStars.indices) {
+                    for (j in i + 1 until constellationStars.size) {
                         val s1 = constellationStars[i]
                         val s2 = constellationStars[j]
                         val x1 = (s1.x + t * s1.vx * w).let { ((it % w) + w) % w }
