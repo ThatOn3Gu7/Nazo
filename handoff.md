@@ -20,6 +20,14 @@ Conventions:
 
 ---
 
+## [2026-09-02 05:00] fix: onboarding screen touch freeze (removed root Box .clickable)
+
+- Fixed a bug where the onboarding screen froze after the splash/intro animation and could not be interacted with (Skip and Next buttons were unclickable).
+- Root cause: `OnboardingScreen.kt` had `.clickable(onClick = {})` on its root `Box`, which consumed all touch events across the entire screen and prevented children (pager swiping, Skip, Next, back button, text fields, setup toggles) from receiving them. Removed `.clickable(onClick = {})` so touch events reach all interactive children correctly.
+- Files: `app/src/main/kotlin/quiz/thaton3app/nazo/ui/onboarding/OnboardingScreen.kt`, `handoff.md`.
+
+---
+
 ## [2026-09-02 04:30] fix: CI build workflow compilation errors (FloatingParticlesBackground & duplicate scope)
 
 - Fixed compilation errors reported by CI PR Assemble workflow:
