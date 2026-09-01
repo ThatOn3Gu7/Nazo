@@ -162,7 +162,6 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var accentName by remember { mutableStateOf(themePrefs.accent) }
     var navBarFloating by remember { mutableStateOf(themePrefs.floatingNavBar) }
     var backgroundStyle by remember { mutableStateOf(themePrefs.backgroundStyle) }
-    var touchRipples by remember { mutableStateOf(themePrefs.touchRipples) }
 
     // Launcher-icon theme sync now happens silently when the app is backgrounded
     // (see MainActivity.onStop); no in-app prompt is shown. The Appearance toggle
@@ -708,11 +707,6 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onBackgroundStyleChange = {
                             backgroundStyle = it
                             themePrefs.backgroundStyle = it
-                        },
-                        touchRipples = touchRipples,
-                        onTouchRipplesChange = {
-                            touchRipples = it
-                            themePrefs.touchRipples = it
                         },
                         iconFollowsOsTheme = themePrefs.iconFollowsOsTheme,
                         onIconFollowsOsThemeChange = { enabled ->
