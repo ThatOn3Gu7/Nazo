@@ -102,6 +102,7 @@ import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.WavySpinner
 import quiz.thaton3app.nazo.ui.theme.*
+import quiz.thaton3app.nazo.vision.PortraitCrop
 
 /** Fully-blurred at the start of the timer; 0 = fully sharp at the end. */
 private const val MAX_BLUR = 28f
@@ -211,12 +212,18 @@ fun GuessingPlayScreen(
             }.getOrNull()
         }
         imageFetchFailed = bytes == null
-        fetchedImage = bytes
+        // Passport-style reframe (vision/PortraitCrop): find the character's
+        // face on-device and crop to a 3:4 head-and-shoulders portrait, so the
+        // player guesses from a FACE instead of a distant full-body shot.
+        // Returns the ORIGINAL bytes whenever no face is found with confidence
+        // — a round can never look worse than before this step existed.
+        val displayBytes = bytes?.let { PortraitCrop.toPassportPortrait(it) }
+        fetchedImage = displayBytes
         // For the pixelated reveal, pre-scale one bitmap per pixel level so
         // the un-pixelating is a cheap draw per frame. A fetch or decode
         // failure leaves this null → the card falls back to the blur reveal.
         if (revealStyle == "pixel") {
-            pixelLevels = bytes?.let { b ->
+            pixelLevels = displayBytes?.let { b ->
                 withContext(Dispatchers.IO) { buildPixelLevels(b) }
             }
         }
