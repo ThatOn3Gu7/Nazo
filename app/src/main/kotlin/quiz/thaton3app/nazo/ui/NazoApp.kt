@@ -576,10 +576,6 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     val activeProvider = selectedProvider ?: apiKeyStore.getActiveProvider()
     val configuredProviders = apiKeyStore.getConfiguredProviders()
 
-    // Touch ripples state for interactive touch bursts anywhere in the app
-    val ripples = remember { mutableStateListOf<TouchRipple>() }
-    var nextRippleId = remember { 0L }
-
     NazoTheme(darkTheme = isDark, accentId = accentName) {
         Box(modifier = Modifier.fillMaxSize()) {
             // Base color + animated floating particles live OUTSIDE AnimatedContent so the
@@ -589,7 +585,6 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             AmbientBackground(
                 modifier = Modifier.fillMaxSize(),
                 style = backgroundStyle,
-                ripples = ripples,
             )
             AnimatedContent(
                 targetState = currentScreen,
@@ -860,40 +855,6 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // state + persistence as AppearanceScreen), a verified provider
             // key refreshes `selectedProvider`, and "Play Now" launches the
             // user's very first game straight from the tour.
-            if (touchRipples) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(Unit) {
-                            awaitPointerEventScope {
-                                while (true) {
-                                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                                    val down = event.changes.firstOrNull { it.pressed && !it.previousPressed }
-                                    if (down != null) {
-                                        val pos = down.position
-                                        val id = nextRippleId++
-                                        val anim = androidx.compose.animation.core.Animatable(0f)
-                                        val rnd = Random(id)
-                                        val sparkles = List(6) {
-                                            TouchSparkle(
-                                                angle = (it * (2 * PI / 6)).toFloat() + rnd.nextFloat() * 0.5f,
-                                                speed = 40f + rnd.nextFloat() * 80f,
-                                                size = 3f + rnd.nextFloat() * 3f,
-                                            )
-                                        }
-                                        val ripple = TouchRipple(id = id, x = pos.x, y = pos.y, animatable = anim, sparkles = sparkles)
-                                        ripples.add(ripple)
-                                        scope.launch {
-                                            anim.animateTo(1f, animationSpec = tween(durationMillis = 700, easing = LinearEasing))
-                                            ripples.remove(ripple)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                )
-            }
-
             IntroOverlay(isDark = isDark)
 
             if (showOnboarding) {
