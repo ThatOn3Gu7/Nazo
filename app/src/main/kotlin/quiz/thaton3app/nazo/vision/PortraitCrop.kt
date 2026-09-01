@@ -257,8 +257,16 @@ object PortraitCrop {
                 for (xx in left..right) if (dark[row + xx]) eyeDark++
             }
             val eyeFrac = eyeDark / (bw * bh).toFloat()
-            if (eyeFrac < 0.015f) continue
-            val cy = (top + bottom) / 2f / ah                // 0 = top of image
+            if (eyeFrac < 0.02f) continue
+            val cyBlob = (top + bottom) / 2f
+            // Positional plausibility (the "cropped-to-abs" bug: a bare torso
+            // is a big compact skin blob with dark shading lines that passed
+            // every gate above). A face is either high in the frame or, when
+            // low-centered, dominates it (close-up portrait). A mid-frame
+            // blob that ISN'T huge is a torso/limb — never a face.
+            if (cyBlob > ah * 0.55f) continue
+            if (top > ah * 0.35f && bh < ah * 0.40f) continue
+            val cy = cyBlob / ah                             // 0 = top of image
             val posWeight = 1.6f - cy                        // faces live high in character art
             val score = size * density * posWeight * (1f + min(eyeFrac * 8f, 1f))
             if (score > bestScore) {
