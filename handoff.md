@@ -20,6 +20,15 @@ Conventions:
 
 ---
 
+## [2026-09-02 04:30] fix: CI build workflow compilation errors (FloatingParticlesBackground & duplicate scope)
+
+- Fixed compilation errors reported by CI PR Assemble workflow:
+  1. **FloatingParticlesBackground.kt:** removed non-existent `touchRipplesEnabled = true` parameter call on `AmbientBackground`.
+  2. **NazoApp.kt:** removed duplicate `val scope = rememberCoroutineScope()` declaration.
+- Files: `app/src/main/kotlin/quiz/thaton3app/nazo/ui/components/FloatingParticlesBackground.kt`, `app/src/main/kotlin/quiz/thaton3app/nazo/ui/NazoApp.kt`, `handoff.md`.
+
+---
+
 ## [2026-09-02 04:00] fix: ambient background rain direction, streak appearance, constellation coverage, touch bursts
 
 - Address four user feedback items for `AmbientBackground.kt` and `NazoApp.kt`:

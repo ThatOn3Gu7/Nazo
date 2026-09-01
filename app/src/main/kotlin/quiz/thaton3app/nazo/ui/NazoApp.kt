@@ -577,7 +577,6 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     val configuredProviders = apiKeyStore.getConfiguredProviders()
 
     // Touch ripples state for interactive touch bursts anywhere in the app
-    val scope = rememberCoroutineScope()
     val ripples = remember { mutableStateListOf<TouchRipple>() }
     var nextRippleId = remember { 0L }
 

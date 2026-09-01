@@ -5,5 +5,5 @@ import androidx.compose.ui.Modifier
 
 @Composable
 fun FloatingParticlesBackground(modifier: Modifier = Modifier) {
-    AmbientBackground(modifier = modifier, style = "shapes", touchRipplesEnabled = true)
+    AmbientBackground(modifier = modifier, style = "shapes")
 }
