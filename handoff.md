@@ -20,6 +20,25 @@ Conventions:
 
 ---
 
+## [2026-09-02 01:00] feat: blocking AI-missing guard dialog for online users without API key
+
+- Owner: when a user is online but has no API key set up and taps "Generate AI Quiz",
+  the app previously fell back silently to offline local questions. Request: guard that action
+  with a smooth, non-dismissible popup ("AI Integration Not Ready") explaining that AI is not
+  configured and requiring them to switch to offline mode.
+- Implementation:
+  - NEW `ui/components/AiMissingDialog.kt`: mirrors `OfflineWarningDialog` (rounded-32 card,
+    key icon, title, description, and "Go Offline & Play" button). The scrim consumes all taps
+    (non-dismissible) and a `BackHandler` blocks system back gestures while open.
+  - `ui/NazoApp.kt`: in `startQuiz`, when `!isOfflineMode` and no active API key/provider is configured,
+    instead of falling back to `runLocal`, it sets `showAiMissingDialog = true` and stores the pending
+    quiz parameters. Tapping "Go Offline & Play" sets `forceOffline = true`, dismisses the dialog,
+    and proceeds to start the local quiz. Background blur applied while the dialog is visible.
+- Files: `app/src/main/kotlin/quiz/thaton3app/nazo/ui/components/AiMissingDialog.kt` (new),
+  `app/src/main/kotlin/quiz/thaton3app/nazo/ui/NazoApp.kt`, `handoff.md`.
+
+---
+
 ## [2026-08-27 04:00] feat: animation polish — pill selection, answer reveal, progress bar, question transition
 
 - Owner asked the UI to feel less "instant": (1) the Home difficulty/count pills should
