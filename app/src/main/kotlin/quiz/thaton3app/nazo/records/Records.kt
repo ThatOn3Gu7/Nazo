@@ -94,8 +94,8 @@ fun NewRecordBadge(modifier: Modifier = Modifier) {
         visible = shown,
         enter = scaleIn(
             animationSpec = spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
-                stiffness = Spring.StiffnessMediumLow,
+                dampingRatio = 0.85f,
+                stiffness = Spring.StiffnessMedium,
             ),
         ) + fadeIn(tween(220)),
         modifier = modifier,

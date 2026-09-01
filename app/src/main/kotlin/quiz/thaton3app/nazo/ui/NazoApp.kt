@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -115,6 +116,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var profileName by remember { mutableStateOf(profilePrefs.username) }
     var profilePictureUri by remember { mutableStateOf(profilePrefs.profilePictureUri) }
     val backupPrefs = remember { BackupPrefs(context) }
+    val settingsScrollState = rememberScrollState()
 
     // First-launch onboarding tour (ui/onboarding). Shown as an overlay above
     // the app until completed/skipped, then never again (persisted flag).
@@ -613,6 +615,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     )
 
                     Screen.Settings -> SettingsScreen(
+                        scrollState = settingsScrollState,
                         onBackClick = { goBack() },
                         onHomeClick = { goHome() },
                         onOpenAiProvider = { navigate(Screen.AiProvider) },
