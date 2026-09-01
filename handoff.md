@@ -20,6 +20,24 @@ Conventions:
 
 ---
 
+## [2026-09-02 07:15] fix: back gesture from quiz results returned to the last question
+
+- Owner bug report: finish a quiz → on the Quiz Complete screen, the system back
+  gesture took the user BACK INTO the finished quiz (last question re-shown)
+  instead of Home.
+- Root cause: `answer()`'s finish branch did `navigate(Screen.Results)` — a PUSH —
+  so the stack was [Home, Quiz, Results] and the root BackHandler popped to Quiz.
+- Fix: `replace(Screen.Results)` — the finished Quiz screen is swapped out, stack
+  becomes [Home, Results], back lands on Home. Review flow unaffected
+  (Review is pushed on top of Results and pops back to it); "Play Another" still
+  calls goHome().
+- Guessing game checked too (owner asked): `guessNext()` already used
+  `replace(Screen.GuessingResults)` (by design since 2026-08-31), so its results
+  screen was never affected. No change there.
+- Files: `ui/NazoApp.kt`, `handoff.md`.
+
+---
+
 ## [2026-09-02 06:30] feat: onboarding settings parity + 6 new accents + first-launch intro fix
 
 - Owner's three requests (new session, branch arena/01a05df2-nazo):

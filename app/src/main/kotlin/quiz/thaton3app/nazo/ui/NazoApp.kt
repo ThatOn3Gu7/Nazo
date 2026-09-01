@@ -447,7 +447,12 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             } else {
                 0
             }
-            navigate(Screen.Results)
+            // REPLACE the quiz screen (don't push on top of it): the finished
+            // quiz must not stay on the back-stack, otherwise the system back
+            // gesture from the results screen returns to the last question.
+            // Back from Results now lands on Home. (Guessing mode already did
+            // this via replace(Screen.GuessingResults).)
+            replace(Screen.Results)
         }
     }
 
