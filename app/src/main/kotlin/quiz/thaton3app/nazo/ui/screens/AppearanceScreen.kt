@@ -19,6 +19,9 @@ import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.ModeNight
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -235,7 +238,7 @@ fun AppearanceScreen(
             SectionHeader("AMBIENT BACKGROUND")
 
             ThemeModeRow(
-                icon = Icons.Outlined.BubbleChart,
+                icon = Icons.Outlined.BlurOn,
                 title = "Floating Shapes",
                 subtitle = "Drifting geometric particles across the backdrop",
                 isSelected = backgroundStyle == "shapes",
@@ -243,7 +246,7 @@ fun AppearanceScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
             ThemeModeRow(
-                icon = Icons.Outlined.Grain,
+                icon = Icons.Outlined.AutoAwesome,
                 title = "Constellation Web",
                 subtitle = "Twinkling star nodes connected by glowing proximity web lines",
                 isSelected = backgroundStyle == "constellation",
@@ -251,7 +254,7 @@ fun AppearanceScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
             ThemeModeRow(
-                icon = Icons.Outlined.WaterDrop,
+                icon = Icons.Outlined.Speed,
                 title = "Digital Rain",
                 subtitle = "Subtle vertical falling streams of glowing drops",
                 isSelected = backgroundStyle == "rain",
@@ -259,7 +262,7 @@ fun AppearanceScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
             ThemeModeRow(
-                icon = Icons.Outlined.Flare,
+                icon = Icons.Outlined.Lightbulb,
                 title = "Glowing Orbs",
                 subtitle = "Soft wandering radial gradient orbs that pulse and drift",
                 isSelected = backgroundStyle == "orbs",

@@ -4,7 +4,8 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -19,6 +20,7 @@ import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
 import kotlin.random.Random
+import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoSuccess
@@ -169,35 +171,29 @@ fun AmbientBackground(
 
     // Touch ripple state list
     val ripples = remember { mutableStateListOf<TouchRipple>() }
-    val coroutineScope = rememberCoroutineScope()
     var nextRippleId = remember { 0L }
 
     val tapModifier = if (touchRipplesEnabled) {
         Modifier.pointerInput(Unit) {
-            awaitPointerEventScope {
-                while (true) {
-                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                    if (event.type == androidx.compose.ui.input.pointer.PointerEventType.Press) {
-                        event.changes.firstOrNull()?.position?.let { pos ->
-                            val id = nextRippleId++
-                            val anim = Animatable(0f)
-                            val sparkCount = 8
-                            val rng = Random(id)
-                            val sparks = List(sparkCount) {
-                                TouchSparkle(
-                                    angle = rng.nextFloat() * (2f * PI.toFloat()),
-                                    speed = 80f + rng.nextFloat() * 140f,
-                                    size = 3f + rng.nextFloat() * 4f,
-                                )
-                            }
-                            val ripple = TouchRipple(id = id, x = pos.x, y = pos.y, animatable = anim, sparkles = sparks)
-                            ripples.add(ripple)
-                            coroutineScope.launch {
-                                anim.animateTo(1f, animationSpec = tween(durationMillis = 700, easing = LinearEasing))
-                                ripples.remove(ripple)
-                            }
-                        }
-                    }
+            awaitEachGesture {
+                val down = awaitFirstDown(pass = PointerEventPass.Initial)
+                val pos = down.position
+                val id = nextRippleId++
+                val anim = Animatable(0f)
+                val sparkCount = 8
+                val rng = Random(id)
+                val sparks = List(sparkCount) {
+                    TouchSparkle(
+                        angle = rng.nextFloat() * (2f * PI.toFloat()),
+                        speed = 80f + rng.nextFloat() * 140f,
+                        size = 3f + rng.nextFloat() * 4f,
+                    )
+                }
+                val ripple = TouchRipple(id = id, x = pos.x, y = pos.y, animatable = anim, sparkles = sparks)
+                ripples.add(ripple)
+                launch {
+                    anim.animateTo(1f, animationSpec = tween(durationMillis = 700, easing = LinearEasing))
+                    ripples.remove(ripple)
                 }
             }
         }
