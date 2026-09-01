@@ -467,6 +467,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     // shows its drawn placeholder instead of a fetched image.
                     val url = GuessImageFetcher.fetchImageUrl(
                         payload.targetEntity, payload.aliases, payload.imageQuery,
+                        topic = guessTopic,
                     )
                     // Teach ALL later rounds this session (any game) not to
                     // repeat this round's target or its aliases.
