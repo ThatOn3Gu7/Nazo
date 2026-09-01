@@ -20,6 +20,17 @@ Conventions:
 
 ---
 
+## [2026-09-02 04:00] fix: ambient background rain direction, streak appearance, constellation coverage, touch bursts
+
+- Address four user feedback items for `AmbientBackground.kt` and `NazoApp.kt`:
+  1. **Rain direction corrected:** Digital rain drops now fall downwards correctly (`y` increases as progress `t` increases).
+  2. **Rain appearance enhanced:** Replaced single thin rect/circle dots with clean vertical glowing streak lines and distinct lead drop heads.
+  3. **Constellation coverage expanded & visible:** Distributed stars and web connecting lines across the entire screen (increased density to 32 stars, fractional positions, and connection distance threshold to 0.45x min dimension).
+  4. **Touch bursts working app-wide:** Hoisted `ripples` state and `pointerInput` touch listener up to `NazoApp` root Box enclosing all screens, passing `ripples` list to `AmbientBackground` so interactive tap bursts trigger and render reliably app-wide without consuming normal UI clicks.
+- Files: `app/src/main/kotlin/quiz/thaton3app/nazo/ui/components/AmbientBackground.kt`, `app/src/main/kotlin/quiz/thaton3app/nazo/ui/NazoApp.kt`, `handoff.md`.
+
+---
+
 ## [2026-09-02 01:30] feat: settings scroll persistence + NewRecordBadge bounce reduction
 
 - Owner feedback (2 items):
