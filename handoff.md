@@ -20,6 +20,51 @@ Conventions:
 
 ---
 
+## [2026-09-02 06:30] feat: onboarding settings parity + 6 new accents + first-launch intro fix
+
+- Owner's three requests (new session, branch arena/01a05df2-nazo):
+  1. **Onboarding "Make It Yours" = full settings parity.** The setup slide previously
+     exposed only theme / accent / guessing-reveal. Now it carries EVERY user-facing
+     appearance option and settings toggle:
+     - Appearance section grew: AMBIENT BACKGROUND (Shapes / Constellation / Digital
+       Rain / Glowing Orbs pills in a static 2x2 grid — deliberately NOT a
+       horizontalScroll row, per the 2026-09-01 accent-swatch gesture-conflict rule) and
+       LAYOUT & ICON ("Floating navigation bar" + "Match icon to system theme" switch
+       rows). Section subtitle updated.
+     - NEW third ExpandableSection "Preferences" (same animation vocabulary): "Sound
+       effects", "Daily reminder" (with the SettingsScreen-identical POST_NOTIFICATIONS
+       runtime ask on API 33+), and "Offline mode" switches.
+     - New shared `SetupToggleRow` composable (compact switch row, soft haptic, row-tap
+       or switch flip). Icon toggle mirrors locally via `remember` (pref-only, not
+       hoisted state — same pattern as AppearanceScreen). All other toggles are fully
+       controlled from NazoApp state, so they update live and use the exact same
+       persistence paths as Settings/Appearance (ThemePreferences, Sounds,
+       ReminderScheduler, session-only forceOffline).
+     - `OnboardingScreen` signature grew 12 params (backgroundStyle, floatingNavBar,
+       iconFollowsOsTheme, soundEnabled, remindersEnabled, forceOffline + callbacks);
+       NazoApp passes the same lambdas the Settings/Appearance screens get.
+  2. **6 new accent palettes** (`ui/theme/Color.kt`): crimson (hue 5), gold (48),
+     lime (95), teal (172), sapphire (252), magenta (300) — all `recolorToHue`
+     hue-shifts of the mint base, so contrast/harmony hold automatically. Total is now
+     15 (was 9). Stopped at 15 on purpose: hues any tighter than ~20° apart read as
+     duplicates (rose 345 / pink 322 / crimson 5 is already the densest region).
+     `Accents` list REORDERED into hue-wheel order (mint first, mono last) so the
+     pickers read as a gradient; ids are unchanged, so stored prefs/backups keep
+     resolving. Onboarding's `chunked(5)` grid becomes a clean 3x5; the Appearance row
+     still horizontal-scrolls.
+  3. **First-launch splash/intro animation fix** (`ui/NazoApp.kt`): the zoom-through
+     謎 IntroOverlay never played on the FIRST launch but worked after setup. Root
+     cause: a later session left `IntroOverlay` composed BEFORE the onboarding overlay
+     in the root Box, violating this log's own z-order hazard note ("Keep IntroOverlay
+     LAST") — on a fresh install the opaque onboarding drew on top and the intro played
+     invisibly underneath; once onboarding was completed the overlay was gone and the
+     intro showed. Fix: moved `IntroOverlay(isDark)` back to the LAST child (after the
+     onboarding block) with a KEEP-LAST comment. No animation code touched.
+- Files: `ui/theme/Color.kt`, `ui/NazoApp.kt`, `ui/onboarding/OnboardingScreen.kt`,
+  `handoff.md`.
+
+---
+
 ## [2026-09-02 05:30] fix: remove intrusive touch ripple pointerInput layer & default touchRipples to false
 
 - Addressed user feedback regarding touch interaction freezes:

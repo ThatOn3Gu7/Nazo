@@ -235,15 +235,26 @@ private val MonoDarkNazoColors = NazoColors(
     onDarkCardMuted = Color(0xFFBDBDBD),
 )
 
+// Accent registry. Ordered as a walk around the hue wheel (mint/default first,
+// neutral mono last) so adjacent swatches in the pickers read as a smooth
+// gradient. Hues are picked to stay visually distinct from their neighbours —
+// packing them any tighter makes two accents look like duplicates, which is why
+// the list stops at 15 rather than growing further.
 val Accents: List<Accent> = listOf(
     Accent("mint", "Mint Green", LightNazoColors, DarkNazoColors),
-    Accent("rose", "Rose", LightNazoColors.recolorToHue(345f), DarkNazoColors.recolorToHue(345f)),
-    Accent("pink", "Pink", LightNazoColors.recolorToHue(322f), DarkNazoColors.recolorToHue(322f)),
+    Accent("crimson", "Crimson", LightNazoColors.recolorToHue(5f), DarkNazoColors.recolorToHue(5f)),
     Accent("orange", "Orange", LightNazoColors.recolorToHue(22f), DarkNazoColors.recolorToHue(22f)),
     Accent("bronze", "Bronze", LightNazoColors.recolorToHue(35f), DarkNazoColors.recolorToHue(35f)),
-    Accent("indigo", "Indigo", LightNazoColors.recolorToHue(230f), DarkNazoColors.recolorToHue(230f)),
+    Accent("gold", "Gold", LightNazoColors.recolorToHue(48f), DarkNazoColors.recolorToHue(48f)),
+    Accent("lime", "Lime", LightNazoColors.recolorToHue(95f), DarkNazoColors.recolorToHue(95f)),
+    Accent("teal", "Teal", LightNazoColors.recolorToHue(172f), DarkNazoColors.recolorToHue(172f)),
     Accent("slate", "Slate", LightNazoColors.recolorToHue(200f), DarkNazoColors.recolorToHue(200f)),
+    Accent("indigo", "Indigo", LightNazoColors.recolorToHue(230f), DarkNazoColors.recolorToHue(230f)),
+    Accent("sapphire", "Sapphire", LightNazoColors.recolorToHue(252f), DarkNazoColors.recolorToHue(252f)),
     Accent("violet", "Violet", LightNazoColors.recolorToHue(275f), DarkNazoColors.recolorToHue(275f)),
+    Accent("magenta", "Magenta", LightNazoColors.recolorToHue(300f), DarkNazoColors.recolorToHue(300f)),
+    Accent("pink", "Pink", LightNazoColors.recolorToHue(322f), DarkNazoColors.recolorToHue(322f)),
+    Accent("rose", "Rose", LightNazoColors.recolorToHue(345f), DarkNazoColors.recolorToHue(345f)),
     Accent("mono", "Mono", MonoLightNazoColors, MonoDarkNazoColors),
 )
 

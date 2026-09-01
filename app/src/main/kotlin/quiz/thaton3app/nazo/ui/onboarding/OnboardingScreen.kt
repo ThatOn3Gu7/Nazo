@@ -1,6 +1,11 @@
 package quiz.thaton3app.nazo.ui.onboarding
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
@@ -66,6 +71,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -96,6 +103,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.data.remote.ApiClient
@@ -187,6 +195,18 @@ fun OnboardingScreen(
     onAccentChange: (String) -> Unit,
     revealStyle: String,
     onRevealStyleChange: (String) -> Unit,
+    backgroundStyle: String,
+    onBackgroundStyleChange: (String) -> Unit,
+    floatingNavBar: Boolean,
+    onFloatingNavBarChange: (Boolean) -> Unit,
+    iconFollowsOsTheme: Boolean,
+    onIconFollowsOsThemeChange: (Boolean) -> Unit,
+    soundEnabled: Boolean,
+    onSoundEnabledChange: (Boolean) -> Unit,
+    remindersEnabled: Boolean,
+    onRemindersEnabledChange: (Boolean) -> Unit,
+    forceOffline: Boolean,
+    onForceOfflineChange: (Boolean) -> Unit,
     onProvidersChanged: () -> Unit,
     onPlayNow: (mode: String, topic: String) -> Unit,
     onFinish: () -> Unit,
@@ -207,6 +227,7 @@ fun OnboardingScreen(
     }
     var providerExpanded by remember { mutableStateOf(true) }
     var appearanceExpanded by remember { mutableStateOf(false) }
+    var preferencesExpanded by remember { mutableStateOf(false) }
 
     var gameMode by remember { mutableStateOf("QUIZ") }
     var topicInput by remember { mutableStateOf("") }
@@ -366,12 +387,29 @@ fun OnboardingScreen(
                                 Haptics.soft(context)
                                 appearanceExpanded = !appearanceExpanded
                             },
+                            preferencesExpanded = preferencesExpanded,
+                            onPreferencesToggle = {
+                                Haptics.soft(context)
+                                preferencesExpanded = !preferencesExpanded
+                            },
                             themeMode = themeMode,
                             onThemeModeChange = onThemeModeChange,
                             accentId = accentId,
                             onAccentChange = onAccentChange,
                             revealStyle = revealStyle,
                             onRevealStyleChange = onRevealStyleChange,
+                            backgroundStyle = backgroundStyle,
+                            onBackgroundStyleChange = onBackgroundStyleChange,
+                            floatingNavBar = floatingNavBar,
+                            onFloatingNavBarChange = onFloatingNavBarChange,
+                            iconFollowsOsTheme = iconFollowsOsTheme,
+                            onIconFollowsOsThemeChange = onIconFollowsOsThemeChange,
+                            soundEnabled = soundEnabled,
+                            onSoundEnabledChange = onSoundEnabledChange,
+                            remindersEnabled = remindersEnabled,
+                            onRemindersEnabledChange = onRemindersEnabledChange,
+                            forceOffline = forceOffline,
+                            onForceOfflineChange = onForceOfflineChange,
                         )
                         else -> FirstGameSlide(
                             gameMode = gameMode,
@@ -562,14 +600,37 @@ private fun SetupSlide(
     onProviderToggle: () -> Unit,
     appearanceExpanded: Boolean,
     onAppearanceToggle: () -> Unit,
+    preferencesExpanded: Boolean,
+    onPreferencesToggle: () -> Unit,
     themeMode: String,
     onThemeModeChange: (String) -> Unit,
     accentId: String,
     onAccentChange: (String) -> Unit,
     revealStyle: String,
     onRevealStyleChange: (String) -> Unit,
+    backgroundStyle: String,
+    onBackgroundStyleChange: (String) -> Unit,
+    floatingNavBar: Boolean,
+    onFloatingNavBarChange: (Boolean) -> Unit,
+    iconFollowsOsTheme: Boolean,
+    onIconFollowsOsThemeChange: (Boolean) -> Unit,
+    soundEnabled: Boolean,
+    onSoundEnabledChange: (Boolean) -> Unit,
+    remindersEnabled: Boolean,
+    onRemindersEnabledChange: (Boolean) -> Unit,
+    forceOffline: Boolean,
+    onForceOfflineChange: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
+    // The icon preference is persisted directly (no hoisted state in NazoApp),
+    // so mirror it locally for an instantly-updating switch — same pattern as
+    // AppearanceScreen's toggle.
+    var iconFollowsChecked by remember { mutableStateOf(iconFollowsOsTheme) }
+    // Enabling the daily reminder needs POST_NOTIFICATIONS on Android 13+ —
+    // identical flow to the Settings screen's toggle.
+    val notifPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* result handled implicitly — the worker checks before posting */ }
     SlideCardFrame(PAGE_SETUP) {
         // Encompassing the entire inner content with verticalScroll removes dead-zones,
         // letting users scroll smoothly from the title or spacing instead of mis-triggering
@@ -588,7 +649,7 @@ private fun SetupSlide(
             )
             Spacer(modifier = Modifier.height(10.dp))
             Text(
-                text = "Both optional — everything here also lives in Settings.",
+                text = "All optional — everything here also lives in Settings.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = NazoTextSecondary,
             )
@@ -736,7 +797,7 @@ private fun SetupSlide(
                 // ------------------ APPEARANCE ------------------
                 ExpandableSection(
                     title = "Appearance",
-                    subtitle = "Theme, accent color & reveal style",
+                    subtitle = "Theme, accent, background, layout & icon",
                     expanded = appearanceExpanded,
                     onToggle = onAppearanceToggle,
                 ) {
@@ -809,6 +870,87 @@ private fun SetupSlide(
                                 )
                             }
                         }
+
+                        SectionLabel("AMBIENT BACKGROUND")
+                        // 2x2 static grid — NO horizontalScroll rows inside the
+                        // vertically-scrolling setup card (gesture conflict,
+                        // see the accent-swatch fix).
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(
+                                "shapes" to "Shapes",
+                                "constellation" to "Constellation",
+                                "rain" to "Digital Rain",
+                                "orbs" to "Glowing Orbs",
+                            ).chunked(2).forEach { rowItems ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    rowItems.forEach { (id, label) ->
+                                        SelectPill(
+                                            text = label,
+                                            selected = backgroundStyle == id,
+                                            onClick = {
+                                                Haptics.soft(context)
+                                                onBackgroundStyleChange(id)
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        SectionLabel("LAYOUT & ICON")
+                        SetupToggleRow(
+                            title = "Floating navigation bar",
+                            subtitle = "Elevated pill with the background showing around it",
+                            checked = floatingNavBar,
+                            onCheckedChange = onFloatingNavBarChange,
+                        )
+                        SetupToggleRow(
+                            title = "Match icon to system theme",
+                            subtitle = "Launcher icon follows your device's light/dark mode",
+                            checked = iconFollowsChecked,
+                            onCheckedChange = {
+                                iconFollowsChecked = it
+                                onIconFollowsOsThemeChange(it)
+                            },
+                        )
+                    }
+                }
+
+                // ------------------ PREFERENCES ------------------
+                ExpandableSection(
+                    title = "Preferences",
+                    subtitle = "Sound, daily reminder & offline mode",
+                    expanded = preferencesExpanded,
+                    onToggle = onPreferencesToggle,
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SetupToggleRow(
+                            title = "Sound effects",
+                            subtitle = "Soft chimes for answers, results and new records",
+                            checked = soundEnabled,
+                            onCheckedChange = onSoundEnabledChange,
+                        )
+                        SetupToggleRow(
+                            title = "Daily reminder",
+                            subtitle = "One evening nudge when today's challenge is unplayed",
+                            checked = remindersEnabled,
+                            onCheckedChange = { v ->
+                                if (v && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                    ContextCompat.checkSelfPermission(
+                                        context, Manifest.permission.POST_NOTIFICATIONS
+                                    ) != PackageManager.PERMISSION_GRANTED
+                                ) {
+                                    notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                }
+                                onRemindersEnabledChange(v)
+                            },
+                        )
+                        SetupToggleRow(
+                            title = "Offline mode",
+                            subtitle = "Use the local question library only — no API calls",
+                            checked = forceOffline,
+                            onCheckedChange = onForceOfflineChange,
+                        )
                     }
                 }
             }
@@ -1063,6 +1205,60 @@ private fun SectionLabel(text: String) {
         color = NazoTextSecondary,
         fontWeight = FontWeight.Bold,
     )
+}
+
+/**
+ * Compact switch row for the setup slide — same behavior as the Settings /
+ * Appearance toggle rows (row tap or switch flip, soft haptic), sized for the
+ * onboarding card.
+ */
+@Composable
+private fun SetupToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    val context = LocalContext.current
+    val trigger: (Boolean) -> Unit = { value ->
+        Haptics.soft(context)
+        onCheckedChange(value)
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(NazoTextSecondary.copy(alpha = 0.08f))
+            .clickable { trigger(!checked) }
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = NazoTextPrimary,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = NazoTextSecondary,
+            )
+        }
+        Spacer(modifier = Modifier.width(10.dp))
+        Switch(
+            checked = checked,
+            onCheckedChange = trigger,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = NazoOnPrimary,
+                checkedTrackColor = NazoPrimary,
+                uncheckedThumbColor = NazoOnPrimary,
+                uncheckedTrackColor = NazoTextSecondary.copy(alpha = 0.30f),
+                uncheckedBorderColor = Color.Transparent,
+            ),
+        )
+    }
 }
 
 // ---------------------------------------------------------------------------

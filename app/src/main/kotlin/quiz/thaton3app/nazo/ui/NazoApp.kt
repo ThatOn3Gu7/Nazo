@@ -848,8 +848,6 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // state + persistence as AppearanceScreen), a verified provider
             // key refreshes `selectedProvider`, and "Play Now" launches the
             // user's very first game straight from the tour.
-            IntroOverlay(isDark = isDark)
-
             if (showOnboarding) {
                 OnboardingScreen(
                     isDark = isDark,
@@ -862,6 +860,34 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         guessRevealStyle = it
                         themePrefs.guessRevealStyle = it
                     },
+                    backgroundStyle = backgroundStyle,
+                    onBackgroundStyleChange = {
+                        backgroundStyle = it
+                        themePrefs.backgroundStyle = it
+                    },
+                    floatingNavBar = navBarFloating,
+                    onFloatingNavBarChange = {
+                        navBarFloating = it
+                        themePrefs.floatingNavBar = it
+                    },
+                    iconFollowsOsTheme = themePrefs.iconFollowsOsTheme,
+                    onIconFollowsOsThemeChange = { enabled ->
+                        // Just persist the preference; the actual swap happens silently
+                        // when the app is backgrounded (MainActivity.onStop).
+                        themePrefs.iconFollowsOsTheme = enabled
+                    },
+                    soundEnabled = soundEnabled,
+                    onSoundEnabledChange = { v ->
+                        soundEnabled = v
+                        Sounds.setEnabled(context, v)
+                    },
+                    remindersEnabled = remindersEnabled,
+                    onRemindersEnabledChange = { v ->
+                        remindersEnabled = v
+                        ReminderScheduler.setEnabled(context.applicationContext, v)
+                    },
+                    forceOffline = forceOffline,
+                    onForceOfflineChange = { v -> forceOffline = v },
                     onProvidersChanged = {
                         selectedProvider = apiKeyStore.getSelectedProvider()
                     },
@@ -883,6 +909,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     },
                 )
             }
+
+            // KEEP LAST: the cold-start intro must be the final child of this
+            // Box so it draws ON TOP of everything, including the onboarding
+            // overlay. It previously sat before the onboarding block, so on a
+            // true first launch the (opaque) tour covered it and the splash
+            // zoom-through animation played invisibly underneath — the classic
+            // "intro only works after setup" bug.
+            IntroOverlay(isDark = isDark)
         }
     }
 }
