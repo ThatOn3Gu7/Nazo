@@ -55,6 +55,7 @@ import quiz.thaton3app.nazo.modes.guessing_game.GuessScoring
 import quiz.thaton3app.nazo.modes.guessing_game.GuessingPlayScreen
 import quiz.thaton3app.nazo.modes.guessing_game.GuessingResultsScreen
 import quiz.thaton3app.nazo.reminders.ReminderScheduler
+import quiz.thaton3app.nazo.session.SessionMemory
 import quiz.thaton3app.nazo.widget.NazoWidgetProvider
 
 // Every destination in the app. Wrapping this in AnimatedContent gives us a single,
@@ -245,7 +246,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // out) — drives the in-place reveal on the play screen.
     var guessRoundResult by remember { mutableStateOf<GuessRoundResult?>(null) }
     // Targets already played this game, so the AI keeps picking something new.
-    var guessAvoidTargets by remember { mutableStateOf<List<String>>(emptyList()) }
+    // (Round-target anti-repeat moved to session/SessionMemory.guessAvoidList()
+    // — it now spans ALL guessing games this launch, not just one game, and
+    // shares the per-session lifecycle with the quiz question memory.)
     // In-flight round generation (AI call + image fetch) — cancelled on quit
     // so a stale round can never write into a newer game's state.
     var guessJob by remember { mutableStateOf<Job?>(null) }
@@ -261,7 +264,13 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var answeredKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     fun runLocal(topic: String, difficulty: String, count: Int) {
-        questions = LocalQuestionBank.getQuestions(count, topic, difficulty)
+        // Session anti-repeat (session/SessionMemory): over-fetch from the
+        // bank, prefer questions the player hasn't answered this launch, and
+        // only top up with seen ones when the pool is exhausted — a small
+        // topic must still fill a full quiz.
+        val pool = LocalQuestionBank.getQuestions(count * 4, topic, difficulty)
+        val (seen, fresh) = pool.partition { SessionMemory.isQuestionSeen(it.text) }
+        questions = (fresh + seen).take(count)
         userAnswers = emptyList()
         currentQuestionIndex = 0
         score = 0
@@ -276,7 +285,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         // user keeps getting the same questions. Fall through to a fresh API call instead.
         if (cacheKey !in answeredKeys) {
             QuizCache.get(cacheKey)?.let { cached ->
-                questions = cached.map { it.withShuffledOptions() }
+                // Unseen questions first — a cached set may partially overlap
+                // with an abandoned run from earlier this session.
+                val (seen, fresh) = cached.partition { SessionMemory.isQuestionSeen(it.text) }
+                questions = (fresh + seen).take(cached.size).map { it.withShuffledOptions() }
                 userAnswers = emptyList()
                 currentQuestionIndex = 0
                 score = 0
@@ -289,14 +301,20 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         generationState = GenerationState.Loading("${req.provider} • ${req.model}")
         if (navigationStack.last() != Screen.Loading) navigate(Screen.Loading)
         scope.launch {
-            ApiClient.generateQuiz(req.provider, req.key, req.model, req.topic, req.difficulty, req.count)
+            ApiClient.generateQuiz(
+                req.provider, req.key, req.model, req.topic, req.difficulty, req.count,
+                avoidQuestions = SessionMemory.questionAvoidList(),
+            )
                 .onSuccess { qs ->
                     if (qs.isEmpty()) {
                         runLocal(req.topic, req.difficulty, req.count)
                         return@onSuccess
                     }
                     QuizCache.put(cacheKey, qs)
-                    questions = qs.map { it.withShuffledOptions() }
+                    // Belt and braces: even with the prompt avoid list, put any
+                    // question the player already answered this session last.
+                    val (seen, fresh) = qs.partition { SessionMemory.isQuestionSeen(it.text) }
+                    questions = (fresh + seen).take(qs.size).map { it.withShuffledOptions() }
                     userAnswers = emptyList()
                     currentQuestionIndex = 0
                     score = 0
@@ -372,6 +390,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     }
 
     fun answer(isCorrect: Boolean, selected: String?) {
+        // Session anti-repeat: the moment a question is answered (right OR
+        // wrong) it's remembered for this launch — quitting mid-quiz still
+        // counts the ones already faced. Applies to quiz, daily and offline.
+        questions.getOrNull(currentQuestionIndex)?.let { SessionMemory.recordQuestion(it.text) }
         userAnswers = userAnswers + selected
         if (isCorrect) score++
         if (currentQuestionIndex < questions.lastIndex) {
@@ -435,7 +457,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         guessJob?.cancel()
         guessJob = scope.launch {
             GuessApiClient.generateGuessRound(
-                provider, key, model, guessTopic, guessDifficulty, guessAvoidTargets,
+                provider, key, model, guessTopic, guessDifficulty, SessionMemory.guessAvoidList(),
             )
                 .onSuccess { payload ->
                     // A cancelled / stale job (quit, or a newer round started)
@@ -446,8 +468,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     val url = GuessImageFetcher.fetchImageUrl(
                         payload.targetEntity, payload.aliases, payload.imageQuery,
                     )
-                    // Teach the next round not to repeat this round's target/aliases.
-                    guessAvoidTargets = guessAvoidTargets + payload.displayAnswer() + payload.aliases
+                    // Teach ALL later rounds this session (any game) not to
+                    // repeat this round's target or its aliases.
+                    SessionMemory.recordGuessTarget(payload.displayAnswer())
+                    payload.aliases.forEach { SessionMemory.recordGuessTarget(it) }
                     guessPhase = GuessPhase.Playing(payload, url)
                 }
                 .onFailure { e ->
@@ -467,7 +491,6 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         guessScore = 0
         guessResults = emptyList()
         guessRoundResult = null
-        guessAvoidTargets = emptyList()
         if (navigationStack.last() != Screen.GuessingGame) navigate(Screen.GuessingGame)
         prepareGuessRound()
     }

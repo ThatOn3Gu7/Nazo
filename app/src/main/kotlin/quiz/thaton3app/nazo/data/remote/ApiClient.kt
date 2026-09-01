@@ -49,12 +49,13 @@ Hard rules:
         topic: String,
         difficulty: String,
         count: Int,
+        avoidQuestions: List<String> = emptyList(),
     ): Result<List<Question>> = withContext(Dispatchers.IO) {
         runCatching {
             val endpoint = providerById(providerId)
                 ?: throw IllegalArgumentException("Unknown provider: $providerId")
 
-            val prompt = buildUserPrompt(topic, difficulty, count)
+            val prompt = buildUserPrompt(topic, difficulty, count, avoidQuestions = avoidQuestions)
             val url = endpoint.buildUrl(model, apiKey)
 
             val connection = (URL(url).openConnection() as HttpURLConnection).apply {
@@ -153,7 +154,13 @@ Hard rules:
         return list
     }
 
-    private fun buildUserPrompt(topic: String, difficulty: String, count: Int, language: String = "English"): String {
+    private fun buildUserPrompt(
+        topic: String,
+        difficulty: String,
+        count: Int,
+        language: String = "English",
+        avoidQuestions: List<String> = emptyList(),
+    ): String {
         val topicLine = if (topic.isNotBlank()) " about \"$topic\"" else " about any popular anime"
         val diffLine = if (difficulty.isNotBlank()) " at \"$difficulty\" difficulty" else ""
         return buildString {
@@ -163,6 +170,14 @@ Hard rules:
             append("(keys: theme, question, options, correctAnswer, explanation). ")
             append("Do not include any text outside the JSON array.")
             if (language != "English") append(" Write all question text and explanations in $language.")
+            // Session anti-repeat (session/SessionMemory): the player already
+            // answered these this launch — demand genuinely new material.
+            if (avoidQuestions.isNotEmpty()) {
+                append(" The player has ALREADY answered the following questions in this session.")
+                append(" Do NOT repeat or trivially reword ANY of them — every generated question")
+                append(" must cover different facts: ")
+                append(avoidQuestions.joinToString(" | ") { "\"${it.take(120)}\"" })
+            }
         }
     }
 

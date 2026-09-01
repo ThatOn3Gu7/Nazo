@@ -46,6 +46,15 @@ import quiz.thaton3app.nazo.vision.AnimeImageGate
  * cache that [fetchImageBytes] consumes, so the image is never downloaded
  * twice.
  *
+ * FALLBACK LADDER (owner rule: a placeholder is the LAST resort — if no
+ * verified anime image exists, show whatever matched the topic): candidates
+ * rejected by the pixel gate, or whose verification download failed, are
+ * remembered instead of discarded. When the whole search (or its time
+ * budget) ends without an anime-verified winner, the best remembered
+ * candidate is returned — it already passed every title/relevance gate, so
+ * it IS the right character, just maybe not official art. Placeholder only
+ * when no source returned anything relevant at all.
+ *
  * The franchise suffix of [imageQuery] ("Satoru Gojo Jujutsu Kaisen anime
  * character" -> "Jujutsu Kaisen anime character") is appended to the
  * Commons / Wikipedia / Openverse / DuckDuckGo search strings so bare names
@@ -103,23 +112,24 @@ object GuessImageFetcher {
         val franchise = franchiseSuffix(targetName, imageQuery)
         return withContext(Dispatchers.IO) {
             val deadline = System.currentTimeMillis() + TOTAL_BUDGET_MS
+            val fallback = Fallback()
             val url: String? = try {
                 withTimeout(TOTAL_BUDGET_MS) {
                     var found: String? = null
                     for (v in variants) {
                         if (budgetLeftMs(deadline) < MIN_STAGE_BUDGET_MS) break
-                        found = animeVerified(fromAniList(v, variants))
-                            ?: animeVerified(fromCommonsPhrase(v, franchise, variants))
-                            ?: animeVerified(fromWikipediaPhrase(v, franchise, variants))
+                        found = animeVerified(fromAniList(v, variants), fallback)
+                            ?: animeVerified(fromCommonsPhrase(v, franchise, variants), fallback)
+                            ?: animeVerified(fromWikipediaPhrase(v, franchise, variants), fallback)
                         Log.i(TAG, "anilist+commons+wiki('$v') -> ${found ?: "miss"}")
                         if (found != null) break
                     }
                     if (found == null && budgetLeftMs(deadline) >= MIN_STAGE_BUDGET_MS) {
-                        found = animeVerified(fromOpenverse(targetName, franchise, variants))
+                        found = animeVerified(fromOpenverse(targetName, franchise, variants), fallback)
                         Log.i(TAG, "openverse -> ${found ?: "miss"}")
                     }
                     if (found == null && budgetLeftMs(deadline) >= MIN_STAGE_BUDGET_MS) {
-                        found = animeVerified(fromDuckDuckGo(targetName, franchise, imageQuery))
+                        found = animeVerified(fromDuckDuckGo(targetName, franchise, imageQuery), fallback)
                         Log.i(TAG, "duckduckgo -> ${found ?: "miss"}")
                     }
                     found
@@ -131,16 +141,54 @@ object GuessImageFetcher {
                 Log.w(TAG, "image search failed for '$targetName'", e)
                 null
             }
-            if (url == null) {
+            // No anime-verified winner (miss OR timeout): climb down the
+            // fallback ladder before surrendering to the placeholder.
+            val chosen = url ?: fallback.best()?.also { fb ->
+                Log.i(TAG, "using on-topic fallback image for '$targetName' -> $fb")
+            }
+            if (chosen == null) {
                 Log.w(TAG, "no relevant image for '$targetName' (variants: $variants)")
             } else {
-                Log.i(TAG, "image for '$targetName' -> $url")
+                Log.i(TAG, "image for '$targetName' -> $chosen")
             }
-            url
+            chosen
         }
     }
 
     private fun budgetLeftMs(deadline: Long): Long = deadline - System.currentTimeMillis()
+
+    /**
+     * Rejected-but-relevant candidates collected during one search, best
+     * first: a gate-rejected image whose bytes we already hold (strong —
+     * on-topic, instantly displayable) beats a candidate whose verification
+     * download failed (weak — the play screen's own fetch may still work).
+     * [best] promotes the strong candidate's bytes into the one-slot cache
+     * so the play screen doesn't download it again.
+     */
+    private class Fallback {
+        private var rejectedUrl: String? = null
+        private var rejectedBytes: ByteArray? = null
+        private var unfetchedUrl: String? = null
+
+        fun rememberRejected(url: String, bytes: ByteArray) {
+            if (rejectedUrl == null) {
+                rejectedUrl = url
+                rejectedBytes = bytes
+            }
+        }
+
+        fun rememberUnfetched(url: String) {
+            if (unfetchedUrl == null) unfetchedUrl = url
+        }
+
+        fun best(): String? {
+            rejectedUrl?.let { u ->
+                rejectedBytes?.let { b -> verifiedBytes = u to b }
+                return u
+            }
+            return unfetchedUrl
+        }
+    }
 
     /**
      * Pixel gate between the stage searches and the winner: a candidate from
@@ -148,17 +196,21 @@ object GuessImageFetcher {
      * artwork (see [AnimeImageGate]) — a cosplayer's photo is rejected here
      * and the `?:` chain / stage loop continues searching, which IS the
      * "request a new image" retry. AniList CDN art is official and trusted
-     * without a download. Bytes that pass are cached for [fetchImageBytes].
+     * without a download. Bytes that pass are cached for [fetchImageBytes];
+     * candidates that fail are remembered in [fallback] so a fully-missed
+     * search can still show SOMETHING on-topic instead of the placeholder.
      */
-    private fun animeVerified(url: String?): String? {
+    private fun animeVerified(url: String?, fallback: Fallback): String? {
         if (url == null) return null
         if (isTrustedAnimeCdn(url)) return url
         val bytes = fetchImageBytes(url) ?: run {
-            Log.w(TAG, "verification download failed, skipping: $url")
+            Log.w(TAG, "verification download failed, keeping as weak fallback: $url")
+            fallback.rememberUnfetched(url)
             return null
         }
         if (AnimeImageGate.looksLikeRealPhoto(bytes)) {
-            Log.w(TAG, "rejected real-world photo (cosplay/human), searching on: $url")
+            Log.w(TAG, "real-world photo (cosplay/human) — kept only as fallback, searching on: $url")
+            fallback.rememberRejected(url, bytes)
             return null
         }
         verifiedBytes = url to bytes
