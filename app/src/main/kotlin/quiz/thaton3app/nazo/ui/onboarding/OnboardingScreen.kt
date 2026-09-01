@@ -254,14 +254,7 @@ fun OnboardingScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(NazoBackground)
-            // Replaced pointer capture with a clean clickable overlay that prevents clicks 
-            // behind the screen without interfering with scroll gesture detection.
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = {}
-            ),
+            .background(NazoBackground),
     ) {
         Column(
             modifier = Modifier
