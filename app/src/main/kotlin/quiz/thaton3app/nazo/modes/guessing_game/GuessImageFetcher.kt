@@ -18,14 +18,23 @@ import quiz.thaton3app.nazo.vision.AnimeImageGate
  * public sources, in order:
  *
  *   1. AniList — anime character search (keyless GraphQL; official character
- *      portraits — this is an anime game, so the anime database leads; it also
- *      keeps cosplay photos / random sketches out of character rounds)
- *   2. Wikimedia Commons — exact-phrase file search scoped to the franchise
- *   3. English Wikipedia — exact-phrase article search scoped to the franchise
- *   4. Openverse — keyless Creative-Commons image search (WordPress index)
- *   5. DuckDuckGo — image endpoint (i.js + vqd token), strictly gated
+ *      portraits — this is an anime game, so the anime databases lead; they
+ *      also keep cosplay photos / random sketches out of character rounds)
+ *   2. Jikan (MyAnimeList) — keyless character search, official MAL portraits
+ *   3. Kitsu — keyless character search, official portraits (500x600)
+ *   4. Wikimedia Commons — exact-phrase file search scoped to the franchise
+ *   5. English Wikipedia — exact-phrase article search scoped to the franchise
+ *   6. AniList media — anime COVER art when the target is a series, not a
+ *      character (character search can't find "One Piece" itself)
+ *   7. Openverse — keyless Creative-Commons image search (WordPress index)
+ *   8. DuckDuckGo — image endpoint (i.js + vqd token), strictly gated
  *
- * Stages 1-3 are tried for every name variant: the target name, its
+ * The three anime databases (1-3) are how competitor quiz apps get a correct
+ * anime image every time: a character row in a curated database carries its
+ * official portrait, so for characters the web-search stages below almost
+ * never run.
+ *
+ * Stages 1-5 are tried for every name variant: the target name, its
  * honorific-stripped form ("Dr. Vegapunk" -> "Vegapunk") and any AI alias
  * that shares a content word with the target. EVERY result is relevance-
  * gated: the file/article/character title must score >= 2 against a name
@@ -119,10 +128,18 @@ object GuessImageFetcher {
                     for (v in variants) {
                         if (budgetLeftMs(deadline) < MIN_STAGE_BUDGET_MS) break
                         found = animeVerified(fromAniList(v, variants), fallback)
+                            ?: animeVerified(fromJikan(v, variants), fallback)
+                            ?: animeVerified(fromKitsu(v, variants), fallback)
                             ?: animeVerified(fromCommonsPhrase(v, franchise, variants), fallback)
                             ?: animeVerified(fromWikipediaPhrase(v, franchise, variants), fallback)
-                        Log.i(TAG, "anilist+commons+wiki('$v') -> ${found ?: "miss"}")
+                        Log.i(TAG, "anime-dbs+commons+wiki('$v') -> ${found ?: "miss"}")
                         if (found != null) break
+                    }
+                    if (found == null && budgetLeftMs(deadline) >= MIN_STAGE_BUDGET_MS) {
+                        // The target may be a SERIES rather than a character —
+                        // try anime cover art before falling to web search.
+                        found = animeVerified(fromAniListMedia(targetName, variants), fallback)
+                        Log.i(TAG, "anilist-media -> ${found ?: "miss"}")
                     }
                     if (found == null && budgetLeftMs(deadline) >= MIN_STAGE_BUDGET_MS) {
                         found = animeVerified(fromOpenverse(targetName, franchise, variants), fallback)
@@ -217,24 +234,34 @@ object GuessImageFetcher {
         return url
     }
 
-    /** AniList's CDN only serves official character/media art. */
+    /** Official-art CDNs of the anime databases — trusted without a pixel check. */
     private fun isTrustedAnimeCdn(url: String): Boolean =
-        url.contains(".anilist.co/")
+        url.contains(".anilist.co/") ||
+            url.contains("cdn.myanimelist.net/") ||
+            url.contains("media.kitsu.app/") ||
+            url.contains("media.kitsu.io/")
 
     /**
      * The part of [imageQuery] after the target name ("Satoru Gojo Jujutsu
      * Kaisen anime character" -> "Jujutsu Kaisen anime character"); blank
      * when the query doesn't start with the target. Scopes bare-name
      * searches to the right franchise.
+     *
+     * CAPPED at 4 words: the AI sometimes appends a whole scene description
+     * ("One Piece anime character standing with three swords"), and feeding
+     * all of that into an exact-search makes Commons/Wikipedia find NOTHING
+     * (the Zoro-placeholder bug). Four words keep the franchise context and
+     * drop the scene noise.
      */
     private fun franchiseSuffix(targetName: String, imageQuery: String): String {
         val q = imageQuery.trim()
         if (q.length <= targetName.length) return ""
-        return if (q.lowercase().startsWith(targetName.lowercase())) {
+        val suffix = if (q.lowercase().startsWith(targetName.lowercase())) {
             q.substring(targetName.length).trim()
         } else {
             ""
         }
+        return suffix.split(Regex("\\s+")).take(4).joinToString(" ")
     }
 
     /**
@@ -345,18 +372,21 @@ object GuessImageFetcher {
     }
 
     /**
-     * AniList: keyless GraphQL character search. Anime character portraits
-     * live on its CDN, so this is the best source for characters the wikis
-     * don't cover well (and it keeps cosplay photos out of major rounds).
+     * AniList: keyless GraphQL character search. NOTE the shape: the
+     * top-level `Character` query returns a SINGLE character and does NOT
+     * accept perPage — list searches must go through `Page { characters }`.
+     * (The previous query used `Character(search:, perPage:) { nodes }`,
+     * which the API rejects with HTTP 400 — this stage silently never
+     * returned anything. Found via the Zoro-placeholder bug.)
      */
     private fun fromAniList(variant: String, variants: List<String>): String? {
-        val query = "query (\$search: String) { Character(search: \$search, perPage: 5) " +
-            "{ nodes { id name { full } image { large medium } } } }"
+        val query = "query (\$search: String) { Page(perPage: 5) { characters(search: \$search) " +
+            "{ id name { full } image { large medium } } } }"
         val body = JSONObject()
             .put("query", query)
             .put("variables", JSONObject().put("search", variant))
         val json = postJson("https://graphql.anilist.co", body.toString()) ?: return null
-        val nodes = json.optJSONObject("data")?.optJSONObject("Character")?.optJSONArray("nodes")
+        val nodes = json.optJSONObject("data")?.optJSONObject("Page")?.optJSONArray("characters")
             ?: return null
         var bestUrl: String? = null
         var bestScore = 0
@@ -367,6 +397,92 @@ object GuessImageFetcher {
             if (score < bestScore) continue
             val img = node.optJSONObject("image") ?: continue
             val url = img.optString("large", "").ifBlank { img.optString("medium", "") }
+            if (!isUsableImage(url)) continue
+            bestScore = score
+            bestUrl = url
+        }
+        return if (bestScore >= MIN_RELEVANCE) bestUrl else null
+    }
+
+    /**
+     * AniList media search: anime COVER art for rounds whose target is a
+     * series/film rather than a character ("guess the anime" style rounds).
+     */
+    private fun fromAniListMedia(name: String, variants: List<String>): String? {
+        val query = "query (\$search: String) { Page(perPage: 5) { media(search: \$search, type: ANIME) " +
+            "{ id title { romaji english } coverImage { extraLarge large } } } }"
+        val body = JSONObject()
+            .put("query", query)
+            .put("variables", JSONObject().put("search", name))
+        val json = postJson("https://graphql.anilist.co", body.toString()) ?: return null
+        val nodes = json.optJSONObject("data")?.optJSONObject("Page")?.optJSONArray("media")
+            ?: return null
+        var bestUrl: String? = null
+        var bestScore = 0
+        for (i in 0 until nodes.length()) {
+            val node = nodes.getJSONObject(i)
+            val title = node.optJSONObject("title") ?: continue
+            val score = maxOf(
+                titleRelevanceAny(title.optString("romaji", ""), variants),
+                titleRelevanceAny(title.optString("english", ""), variants),
+            )
+            if (score < bestScore) continue
+            val img = node.optJSONObject("coverImage") ?: continue
+            val url = img.optString("extraLarge", "").ifBlank { img.optString("large", "") }
+            if (!isUsableImage(url)) continue
+            bestScore = score
+            bestUrl = url
+        }
+        return if (bestScore >= MIN_RELEVANCE) bestUrl else null
+    }
+
+    /**
+     * Jikan v4 (keyless MyAnimeList proxy): character search, official MAL
+     * portraits from cdn.myanimelist.net. MAL sometimes writes names as
+     * "Surname, Given" — the word-based relevance gate is order-independent
+     * so that still scores. Placeholder "questionmark" images are skipped.
+     */
+    private fun fromJikan(variant: String, variants: List<String>): String? {
+        val json = getJson(
+            "https://api.jikan.moe/v4/characters?q=${enc(variant)}&limit=5",
+        ) ?: return null
+        val results = json.optJSONArray("data") ?: return null
+        var bestUrl: String? = null
+        var bestScore = 0
+        for (i in 0 until results.length()) {
+            val r = results.getJSONObject(i)
+            val score = titleRelevanceAny(r.optString("name", ""), variants)
+            if (score < bestScore) continue
+            val url = r.optJSONObject("images")?.optJSONObject("jpg")
+                ?.optString("image_url", "") ?: ""
+            if (!isUsableImage(url) || url.contains("questionmark")) continue
+            bestScore = score
+            bestUrl = url
+        }
+        return if (bestScore >= MIN_RELEVANCE) bestUrl else null
+    }
+
+    /**
+     * Kitsu (keyless JSON:API): character search, official portraits from
+     * media.kitsu.app (the `large` rendition is a clean 500x600 PORTRAIT —
+     * ideal for the passport crop). Names come back canonical
+     * ("Zoro Roronoa"), which the order-independent gate scores fine.
+     */
+    private fun fromKitsu(variant: String, variants: List<String>): String? {
+        val json = getJson(
+            "https://kitsu.io/api/edge/characters?filter%5Bname%5D=${enc(variant)}&page%5Blimit%5D=5",
+        ) ?: return null
+        val results = json.optJSONArray("data") ?: return null
+        var bestUrl: String? = null
+        var bestScore = 0
+        for (i in 0 until results.length()) {
+            val attrs = results.getJSONObject(i).optJSONObject("attributes") ?: continue
+            val score = titleRelevanceAny(attrs.optString("canonicalName", ""), variants)
+            if (score < bestScore) continue
+            val img = attrs.optJSONObject("image") ?: continue
+            val url = img.optString("large", "")
+                .ifBlank { img.optString("original", "") }
+                .ifBlank { img.optString("medium", "") }
             if (!isUsableImage(url)) continue
             bestScore = score
             bestUrl = url
@@ -549,6 +665,10 @@ object GuessImageFetcher {
             readTimeout = 8_000
             setRequestProperty("User-Agent", userAgent)
             if (url.contains("api.php") || url.contains("rest_v1") || url.contains("i.js")) {
+                setRequestProperty("Accept", "application/json")
+            } else if (url.contains("kitsu.io")) {
+                setRequestProperty("Accept", "application/vnd.api+json")
+            } else if (url.contains("jikan.moe")) {
                 setRequestProperty("Accept", "application/json")
             }
         }
