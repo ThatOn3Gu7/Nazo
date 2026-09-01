@@ -2728,7 +2728,17 @@ covered by `BUG_AUDIT.md` + this log).
 - HANDOVER PLAN agreed with owner: THIS session ends by MERGING PR #2 (closes session — intentional this time). Next session (animations/refinement) MUST be started AFTER the merge so it branches from a master that contains all of this. Owner-side loose ends still open: .github/workflows/PR-assemble.yml → PR-only triggers; release-check.yml.draft regenerate; version bump only at owner-tagged release.
 - Tuning knobs left documented for the future: AnimeImageGate photoScore thresholds; PortraitCrop frame multiplier/headroom + positional gates; SessionMemory prompt caps (40); logcat tags NazoGuessImage / NazoAnimeGate / NazoPortraitCrop.
 
-## [2026-09-01 20:40] Release prep: v6.0 bump + PR-assemble workflow draft (owner-applied)
+## [2026-09-02 02:00] fix: sound effects toggle animation + backup completeness audit
+
+- Owner feedback (2 items):
+  1. **Sound effects switch glitched/instant vs daily reminder:** when toggling sound effects on, it immediately played `Sounds.correct(context)` synchronously/via audio track initialization. This audio engine start / thread dispatch caused a frame drop/glitch on the Switch thumb animation compared to the daily reminder toggle. Removed the instant preview sound on toggle; now the sound effects switch behaves identically to the daily reminder button (pure state toggle + save with smooth Switch animation).
+  2. **Backup completeness check:** verified whether all new data (achievements, records, daily challenge, sound & reminder preferences, profiles, theme, stats) gets backed up.
+     - Confirmed `BackupRepository.kt` includes all 9 SharedPreferences stores (`nazo_stats`, `nazo_theme`, `nazo_profile`, `nazo_provider_models`, `nazo_secure`, `nazo_records`, `nazo_daily`, `nazo_sound`, `nazo_reminders`).
+     - Achievements are dynamically computed on the fly from `nazo_stats`, `nazo_records`, and `nazo_daily` data, so backing up those underlying stores fully preserves and restores achievements automatically.
+- Files: `app/src/main/kotlin/quiz/thaton3app/nazo/ui/NazoApp.kt`, `handoff.md`.
+
+---
+
 - Owner is merging PR #2 and tagging a release. Bumped versionCode 5→6, versionName "5.0"→"6.0" (build-release.yml: the tag IS the release version — owner tags v6.0 after merge).
 - NEW root-level `PR-assemble.yml.draft` for the owner to paste into .github/workflows/PR-assemble.yml (agent cannot push workflow files): triggers ONLY on push to arena/** (drops master/testBranch pushes and ALL pull_request triggers); workflow_dispatch kept as manual-only escape hatch; failure→PR-comment step REWRITTEN to look up the open PR by branch name (`gh pr list --head $GITHUB_REF_NAME`) since push events carry no PR context — this preserves the agent's CI-error readback loop (`gh api .../issues/N/comments`). Owner deletes the draft after applying.
 - This closes the long-standing owner-side loose end (PR-only triggers). Remaining owner-side item: release-check.yml.draft regenerate if ever wanted.

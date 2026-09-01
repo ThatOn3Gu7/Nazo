@@ -629,7 +629,6 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     onSoundEnabledChange = { v ->
                         soundEnabled = v
                         Sounds.setEnabled(context, v)
-                        if (v) Sounds.correct(context) // instant preview of the new setting
                     },
                     remindersEnabled = remindersEnabled,
                     onRemindersEnabledChange = { v ->
