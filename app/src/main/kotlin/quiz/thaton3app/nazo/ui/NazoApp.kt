@@ -38,6 +38,7 @@ import quiz.thaton3app.nazo.achievements.AchievementEngine
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.ui.components.OfflineWarningDialog
+import quiz.thaton3app.nazo.ui.components.AiMissingDialog
 import quiz.thaton3app.nazo.ui.components.FloatingParticlesBackground
 import quiz.thaton3app.nazo.ui.components.StartupMode
 import quiz.thaton3app.nazo.ui.launch.IntroOverlay
@@ -135,6 +136,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var forceOffline by remember { mutableStateOf(false) }
     var detectedOffline by remember { mutableStateOf(false) }
     var startupDialogMode by remember { mutableStateOf<StartupMode?>(null) }
+    var showAiMissingDialog by remember { mutableStateOf(false) }
+    var pendingQuizRequest by remember { mutableStateOf<Triple<String, String, Int>?>(null) }
     val isOfflineMode = forceOffline || detectedOffline
 
     LaunchedEffect(Unit) {
@@ -201,6 +204,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     BackHandler(enabled = true) {
         if (startupDialogMode != null) {
             startupDialogMode = null
+            return@BackHandler
+        }
+        if (showAiMissingDialog) {
             return@BackHandler
         }
         if (navigationStack.size > 1) {
@@ -355,7 +361,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             generationRequest = req
             launchGeneration(req)
         } else {
-            runLocal(topic, difficulty, count)
+            // User is online, but no API key is set up. Show non-dismissible AI missing dialog.
+            pendingQuizRequest = Triple(topic, difficulty, count)
+            showAiMissingDialog = true
         }
     }
 
@@ -565,7 +573,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 targetState = currentScreen,
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(if (startupDialogMode != null) Modifier.blur(16.dp) else Modifier),
+                    .then(if (startupDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp) else Modifier),
                 transitionSpec = {
                     fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
                 },
@@ -797,6 +805,19 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         startupDialogMode = null
                     },
                     onContinue = { startupDialogMode = null },
+                )
+            }
+
+            if (showAiMissingDialog) {
+                AiMissingDialog(
+                    onGoOffline = {
+                        forceOffline = true
+                        showAiMissingDialog = false
+                        pendingQuizRequest?.let { (t, d, c) ->
+                            runLocal(t, d, c)
+                        }
+                        pendingQuizRequest = null
+                    },
                 )
             }
 
