@@ -2685,3 +2685,12 @@ covered by `BUG_AUDIT.md` + this log).
 - Trusted CDNs (skip pixel gate): .anilist.co/, cdn.myanimelist.net/, media.kitsu.app/, media.kitsu.io/.
 - Told owner how competitors do it: curated anime databases / official-portrait APIs (exactly this tier), some hardcode packs; general image search is everyone's last resort.
 - SANDBOX NOTE: bash has NO outbound network (curl → HTTP 000); use fetch_page/web_search tools for live API checks.
+
+## [2026-09-01 19:10] Same-name character disambiguation ("which Sanji?") in the database stages
+- Owner's concern: DB stages searched by NAME only — a namesake from a different anime could win. Fix = franchise-aware DB selection:
+  - Franchise context = franchiseSuffix(imageQuery) .ifBlank { topic } — NEW `topic` param on fetchImageUrl (default ""), NazoApp passes guessTopic. So even a bare-name image query gets disambiguated by the game's topic.
+  - `franchiseWords()`: distinctive words only (generic filler stripped: anime/manga/character/series/the/from/movie/film/art/official); `containsAllWords()` = ALL words present (empty list = no evidence).
+  - fromAniList: query now also fetches `media(perPage:4, sort:POPULARITY_DESC){nodes{title{romaji english}}}` per candidate; rank = nameScore + 10 if candidate's media titles contain the franchise words. Franchise-verified always beats name-only; name-only still wins if nothing verifies (log: "franchise unverified") — namesake art beats placeholder.
+  - fromJikan: same ranking using candidate `about` bio text (MAL bios usually name the series). fromKitsu: same using `description` (weakest evidence; boost-only, never blocks).
+  - Ties now resolve to the EARLIEST candidate (API relevance order) — was last-equal-wins before; strictly better.
+- Signatures changed (private, single file): fromAniList/fromJikan/fromKitsu take `franchise`; fetchImageUrl takes `topic` (defaulted — GuessingPlayScreen's fetchImageBytes untouched, only NazoApp call updated).

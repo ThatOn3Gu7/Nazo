@@ -34,6 +34,14 @@ import quiz.thaton3app.nazo.vision.AnimeImageGate
  * official portrait, so for characters the web-search stages below almost
  * never run.
  *
+ * SAME-NAME CHARACTERS ("which Sanji?"): the database stages are franchise-
+ * aware. Franchise context comes from the AI's image query suffix, or from
+ * the game's TOPIC when the query is a bare name. AniList candidates carry
+ * the anime they appear in; Jikan/Kitsu candidates their bio text. A
+ * candidate matching name AND franchise always outranks a name-only match;
+ * a name-only match still wins when nothing franchise-verifies (and logs
+ * that it was unverified) — official art of a namesake beats no image.
+ *
  * Stages 1-5 are tried for every name variant: the target name, its
  * honorific-stripped form ("Dr. Vegapunk" -> "Vegapunk") and any AI alias
  * that shares a content word with the target. EVERY result is relevance-
@@ -108,17 +116,20 @@ object GuessImageFetcher {
     /**
      * [target] is the round's target_entity; [aliases] are the AI's
      * alternative names for the same entity; [imageQuery] supplies the
-     * franchise context appended to the later search stages.
+     * franchise context appended to the later search stages; [topic] is the
+     * game's topic (e.g. "One Piece") — the franchise fallback when the AI's
+     * image query is just a bare name.
      */
     suspend fun fetchImageUrl(
         target: String,
         aliases: List<String>,
         imageQuery: String = "",
+        topic: String = "",
     ): String? {
         if (target.isBlank()) return null
         val targetName = target.trim()
         val variants = nameVariants(targetName, aliases)
-        val franchise = franchiseSuffix(targetName, imageQuery)
+        val franchise = franchiseSuffix(targetName, imageQuery).ifBlank { topic.trim() }
         return withContext(Dispatchers.IO) {
             val deadline = System.currentTimeMillis() + TOTAL_BUDGET_MS
             val fallback = Fallback()
@@ -127,9 +138,9 @@ object GuessImageFetcher {
                     var found: String? = null
                     for (v in variants) {
                         if (budgetLeftMs(deadline) < MIN_STAGE_BUDGET_MS) break
-                        found = animeVerified(fromAniList(v, variants), fallback)
-                            ?: animeVerified(fromJikan(v, variants), fallback)
-                            ?: animeVerified(fromKitsu(v, variants), fallback)
+                        found = animeVerified(fromAniList(v, variants, franchise), fallback)
+                            ?: animeVerified(fromJikan(v, variants, franchise), fallback)
+                            ?: animeVerified(fromKitsu(v, variants, franchise), fallback)
                             ?: animeVerified(fromCommonsPhrase(v, franchise, variants), fallback)
                             ?: animeVerified(fromWikipediaPhrase(v, franchise, variants), fallback)
                         Log.i(TAG, "anime-dbs+commons+wiki('$v') -> ${found ?: "miss"}")
@@ -378,30 +389,56 @@ object GuessImageFetcher {
      * (The previous query used `Character(search:, perPage:) { nodes }`,
      * which the API rejects with HTTP 400 — this stage silently never
      * returned anything. Found via the Zoro-placeholder bug.)
+     *
+     * SAME-NAME DISAMBIGUATION (the "which Sanji?" problem): each candidate
+     * also returns the anime it appears in; when franchise context is known,
+     * a candidate whose media titles contain the franchise words outranks
+     * every candidate that merely matches the name. A name-only match still
+     * wins when nothing franchise-matches — official art of the wrong
+     * series' namesake beats no image, and the log says it was unverified.
      */
-    private fun fromAniList(variant: String, variants: List<String>): String? {
+    private fun fromAniList(variant: String, variants: List<String>, franchise: String): String? {
         val query = "query (\$search: String) { Page(perPage: 5) { characters(search: \$search) " +
-            "{ id name { full } image { large medium } } } }"
+            "{ id name { full } image { large medium } " +
+            "media(perPage: 4, sort: POPULARITY_DESC) { nodes { title { romaji english } } } } } }"
         val body = JSONObject()
             .put("query", query)
             .put("variables", JSONObject().put("search", variant))
         val json = postJson("https://graphql.anilist.co", body.toString()) ?: return null
         val nodes = json.optJSONObject("data")?.optJSONObject("Page")?.optJSONArray("characters")
             ?: return null
+        val fWords = franchiseWords(franchise)
         var bestUrl: String? = null
-        var bestScore = 0
+        var bestRank = 0
+        var bestVerified = false
         for (i in 0 until nodes.length()) {
             val node = nodes.getJSONObject(i)
             val name = node.optJSONObject("name")?.optString("full", "") ?: ""
-            val score = titleRelevanceAny(name, variants)
-            if (score < bestScore) continue
+            val nameScore = titleRelevanceAny(name, variants)
+            if (nameScore < MIN_RELEVANCE) continue
+            val mediaTitles = StringBuilder()
+            node.optJSONObject("media")?.optJSONArray("nodes")?.let { media ->
+                for (m in 0 until media.length()) {
+                    media.getJSONObject(m).optJSONObject("title")?.let { t ->
+                        mediaTitles.append(t.optString("romaji", "")).append(' ')
+                        mediaTitles.append(t.optString("english", "")).append(' ')
+                    }
+                }
+            }
+            val franchiseMatch = containsAllWords(mediaTitles.toString(), fWords)
+            val rank = (if (franchiseMatch) 10 else 0) + nameScore
+            if (rank <= bestRank) continue
             val img = node.optJSONObject("image") ?: continue
             val url = img.optString("large", "").ifBlank { img.optString("medium", "") }
             if (!isUsableImage(url)) continue
-            bestScore = score
+            bestRank = rank
             bestUrl = url
+            bestVerified = franchiseMatch
         }
-        return if (bestScore >= MIN_RELEVANCE) bestUrl else null
+        if (bestUrl != null && fWords.isNotEmpty() && !bestVerified) {
+            Log.w(TAG, "anilist: name-only match for '$variant' — franchise '$franchise' unverified")
+        }
+        return bestUrl
     }
 
     /**
@@ -441,25 +478,33 @@ object GuessImageFetcher {
      * portraits from cdn.myanimelist.net. MAL sometimes writes names as
      * "Surname, Given" — the word-based relevance gate is order-independent
      * so that still scores. Placeholder "questionmark" images are skipped.
+     * Franchise check uses the candidate's `about` bio text (MAL bios almost
+     * always name the series) — softer evidence than AniList's media list,
+     * but the same ranking rule applies.
      */
-    private fun fromJikan(variant: String, variants: List<String>): String? {
+    private fun fromJikan(variant: String, variants: List<String>, franchise: String): String? {
         val json = getJson(
             "https://api.jikan.moe/v4/characters?q=${enc(variant)}&limit=5",
         ) ?: return null
         val results = json.optJSONArray("data") ?: return null
+        val fWords = franchiseWords(franchise)
         var bestUrl: String? = null
-        var bestScore = 0
+        var bestRank = 0
         for (i in 0 until results.length()) {
             val r = results.getJSONObject(i)
-            val score = titleRelevanceAny(r.optString("name", ""), variants)
-            if (score < bestScore) continue
+            val nameScore = titleRelevanceAny(r.optString("name", ""), variants)
+            if (nameScore < MIN_RELEVANCE) continue
+            val bio = r.optString("about", "")
+            val franchiseMatch = containsAllWords(bio, fWords)
+            val rank = (if (franchiseMatch) 10 else 0) + nameScore
+            if (rank <= bestRank) continue
             val url = r.optJSONObject("images")?.optJSONObject("jpg")
                 ?.optString("image_url", "") ?: ""
             if (!isUsableImage(url) || url.contains("questionmark")) continue
-            bestScore = score
+            bestRank = rank
             bestUrl = url
         }
-        return if (bestScore >= MIN_RELEVANCE) bestUrl else null
+        return bestUrl
     }
 
     /**
@@ -467,27 +512,52 @@ object GuessImageFetcher {
      * media.kitsu.app (the `large` rendition is a clean 500x600 PORTRAIT —
      * ideal for the passport crop). Names come back canonical
      * ("Zoro Roronoa"), which the order-independent gate scores fine.
+     * Franchise evidence is weakest here (only the description text, which
+     * often omits the series name) — a match boosts, absence never blocks.
      */
-    private fun fromKitsu(variant: String, variants: List<String>): String? {
+    private fun fromKitsu(variant: String, variants: List<String>, franchise: String): String? {
         val json = getJson(
             "https://kitsu.io/api/edge/characters?filter%5Bname%5D=${enc(variant)}&page%5Blimit%5D=5",
         ) ?: return null
         val results = json.optJSONArray("data") ?: return null
+        val fWords = franchiseWords(franchise)
         var bestUrl: String? = null
-        var bestScore = 0
+        var bestRank = 0
         for (i in 0 until results.length()) {
             val attrs = results.getJSONObject(i).optJSONObject("attributes") ?: continue
-            val score = titleRelevanceAny(attrs.optString("canonicalName", ""), variants)
-            if (score < bestScore) continue
+            val nameScore = titleRelevanceAny(attrs.optString("canonicalName", ""), variants)
+            if (nameScore < MIN_RELEVANCE) continue
+            val franchiseMatch = containsAllWords(attrs.optString("description", ""), fWords)
+            val rank = (if (franchiseMatch) 10 else 0) + nameScore
+            if (rank <= bestRank) continue
             val img = attrs.optJSONObject("image") ?: continue
             val url = img.optString("large", "")
                 .ifBlank { img.optString("original", "") }
                 .ifBlank { img.optString("medium", "") }
             if (!isUsableImage(url)) continue
-            bestScore = score
+            bestRank = rank
             bestUrl = url
         }
-        return if (bestScore >= MIN_RELEVANCE) bestUrl else null
+        return bestUrl
+    }
+
+    /**
+     * Franchise context reduced to its distinctive words: "One Piece anime
+     * character" -> ["one", "piece"]. Generic filler never disambiguates.
+     */
+    private fun franchiseWords(franchise: String): List<String> {
+        val generic = setOf(
+            "anime", "manga", "character", "characters", "series",
+            "the", "from", "movie", "film", "art", "official",
+        )
+        return targetWords(franchise).filter { it !in generic }
+    }
+
+    /** True when [text] contains EVERY franchise word (empty list = no evidence). */
+    private fun containsAllWords(text: String, words: List<String>): Boolean {
+        if (words.isEmpty()) return false
+        val t = text.lowercase()
+        return words.all { t.contains(it) }
     }
 
     /**
