@@ -2728,7 +2728,16 @@ covered by `BUG_AUDIT.md` + this log).
 - HANDOVER PLAN agreed with owner: THIS session ends by MERGING PR #2 (closes session — intentional this time). Next session (animations/refinement) MUST be started AFTER the merge so it branches from a master that contains all of this. Owner-side loose ends still open: .github/workflows/PR-assemble.yml → PR-only triggers; release-check.yml.draft regenerate; version bump only at owner-tagged release.
 - Tuning knobs left documented for the future: AnimeImageGate photoScore thresholds; PortraitCrop frame multiplier/headroom + positional gates; SessionMemory prompt caps (40); logcat tags NazoGuessImage / NazoAnimeGate / NazoPortraitCrop.
 
-## [2026-09-02 03:00] feat: ambient background style variants + interactive touch bursts
+## [2026-09-02 03:30] fix: ambient background variants (constellation, rain) & interactive touch bursts
+
+- User test feedback fixes for the new ambient background styles and interactive touch bursts:
+  1. **Touch Bursts Fixed:** The `ripples` `mutableStateListOf` was modified inside pointer input callbacks, but the `Canvas` draw lambda didn't subscribe to state changes in composition. Added `val rippleCount = ripples.size` in the Composable function scope of `AmbientBackground` so adding a touch ripple correctly triggers recomposition and animates the expanding ripple rings and sparkle bursts across the screen.
+  2. **Constellation Web Enhanced:** Sped up stellar drift (`4x` velocity) and increased max distance (`0.38f` of min dimension) with denser stars (25) so proximity web connecting lines and pulsing stars render vividly and dynamically.
+  3. **Digital Rain Accelerated:** Boosted drop fall speed (`3x` vertical multiplier) so falling glowing streams are crisp and immediately noticeable instead of crawling.
+- Files: `app/src/main/kotlin/quiz/thaton3app/nazo/ui/components/AmbientBackground.kt`, `handoff.md`.
+
+---
+
 
 - Owner feedback / new feature request (ambient background variants + tap touch animation):
   1. **Background Style Variants:** Added 4 distinct ambient background styles:
