@@ -3,23 +3,32 @@ package quiz.thaton3app.nazo.ui.onboarding
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -76,7 +85,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.SpanStyle
@@ -105,6 +114,7 @@ import quiz.thaton3app.nazo.ui.theme.NazoSurface
 import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 import quiz.thaton3app.nazo.ui.theme.resolveAccent
+import kotlin.math.absoluteValue
 
 // ---------------------------------------------------------------------------
 // Pages. 0-2 = feature slides (reference-style doodle cards), 3 = setup
@@ -168,17 +178,6 @@ private sealed interface VerifyState {
     data class Failed(val message: String) : VerifyState
 }
 
-/**
- * First-launch onboarding, v3: the reference-style tour is now a full setup
- * wizard. Slides 1-3 present the app; slide 4 sets up an AI provider (key →
- * verify → models fetched + best model auto-picked) and appearance (theme /
- * accent / reveal style — applied LIVE so the whole tour recolors); slide 5
- * lets the user pick a topic and launch straight into their first game (Quiz
- * offline or with AI; Guessing once a provider is ready). Everything is
- * optional and skippable. All expand/collapse/state changes are animated
- * (expandVertically/shrinkVertically + fades + animateContentSize + color
- * crossfades) — motion polish is a hard requirement from the owner.
- */
 @Composable
 fun OnboardingScreen(
     isDark: Boolean,
@@ -199,8 +198,6 @@ fun OnboardingScreen(
     val page = pagerState.currentPage
     val isLast = page == PAGE_COUNT - 1
 
-    // --- Setup state, hoisted here so it survives page swipes (the pager
-    // disposes far-away pages). ---
     val apiKeyStore = remember { ApiKeyStore(context) }
     var providerId by remember { mutableStateOf(ApiKeyStore.PROVIDER_ORDER.first()) }
     var keyInput by remember { mutableStateOf(apiKeyStore.getKey(providerId).orEmpty()) }
@@ -211,7 +208,6 @@ fun OnboardingScreen(
     var providerExpanded by remember { mutableStateOf(true) }
     var appearanceExpanded by remember { mutableStateOf(false) }
 
-    // --- First-game state. ---
     var gameMode by remember { mutableStateOf("QUIZ") }
     var topicInput by remember { mutableStateOf("") }
     var showProviderHint by remember { mutableStateOf(false) }
@@ -244,7 +240,6 @@ fun OnboardingScreen(
         }
     }
 
-    // Auto-hide the "needs a provider" hint.
     LaunchedEffect(showProviderHint) {
         if (showProviderHint) {
             kotlinx.coroutines.delay(2600)
@@ -260,13 +255,13 @@ fun OnboardingScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(NazoBackground)
-            .pointerInput(Unit) {
-                awaitPointerEventScope {
-                    while (true) {
-                        awaitPointerEvent().changes.forEach { it.consume() }
-                    }
-                }
-            },
+            // Replaced pointer capture with a clean clickable overlay that prevents clicks 
+            // behind the screen without interfering with scroll gesture detection.
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {}
+            ),
     ) {
         Column(
             modifier = Modifier
@@ -274,19 +269,31 @@ fun OnboardingScreen(
                 .statusBarsPadding()
                 .imePadding(),
         ) {
-
             // Top bar: dash progress + Skip.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    // Smoothly animate the row's height so when "Skip" vanishes, the 
+                    // card below can gracefully glide up into the freed space.
+                    .animateContentSize(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy, 
+                            stiffness = Spring.StiffnessLow
+                        )
+                    )
                     .padding(start = 28.dp, end = 12.dp, top = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 repeat(PAGE_COUNT) { i ->
                     val dashWidth by animateDpAsState(
                         targetValue = if (i == page) 26.dp else 12.dp,
-                        animationSpec = tween(240),
-                        label = "dash",
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow),
+                        label = "dashWidth",
+                    )
+                    val dashColor by animateColorAsState(
+                        targetValue = if (i == page) NazoTextPrimary else NazoTextSecondary.copy(alpha = 0.35f),
+                        animationSpec = tween(300, easing = FastOutSlowInEasing),
+                        label = "dashColor"
                     )
                     Box(
                         modifier = Modifier
@@ -294,17 +301,14 @@ fun OnboardingScreen(
                             .height(4.dp)
                             .width(dashWidth)
                             .clip(CircleShape)
-                            .background(
-                                if (i == page) NazoTextPrimary
-                                else NazoTextSecondary.copy(alpha = 0.35f)
-                            ),
+                            .background(dashColor),
                     )
                 }
                 Spacer(modifier = Modifier.weight(1f))
                 AnimatedVisibility(
                     visible = !isLast,
-                    enter = fadeIn(tween(180)),
-                    exit = fadeOut(tween(180)),
+                    enter = fadeIn(tween(250, easing = FastOutSlowInEasing)),
+                    exit = fadeOut(tween(200, easing = FastOutSlowInEasing)),
                 ) {
                     TextButton(
                         onClick = {
@@ -328,66 +332,75 @@ fun OnboardingScreen(
                 contentPadding = PaddingValues(horizontal = 14.dp),
                 pageSpacing = 10.dp,
             ) { index ->
-                when (index) {
-                    in 0..2 -> FeatureSlide(index)
-                    PAGE_SETUP -> SetupSlide(
-                        isDark = isDark,
-                        providerId = providerId,
-                        onProviderChange = { id ->
-                            if (id != providerId) {
+                val pageOffset = (pagerState.currentPage - index) + pagerState.currentPageOffsetFraction
+                val scale = 1f - (0.05f * pageOffset.absoluteValue).coerceIn(0f, 0.05f)
+                val alpha = 1f - (0.3f * pageOffset.absoluteValue).coerceIn(0f, 0.3f)
+
+                Box(
+                    modifier = Modifier.graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        this.alpha = alpha
+                    }
+                ) {
+                    when (index) {
+                        in 0..2 -> FeatureSlide(index)
+                        PAGE_SETUP -> SetupSlide(
+                            isDark = isDark,
+                            providerId = providerId,
+                            onProviderChange = { id ->
+                                if (id != providerId) {
+                                    Haptics.soft(context)
+                                    providerId = id
+                                    keyInput = apiKeyStore.getKey(id).orEmpty()
+                                    verifyState = VerifyState.Idle
+                                }
+                            },
+                            keyInput = keyInput,
+                            onKeyChange = {
+                                keyInput = it
+                                if (verifyState !is VerifyState.Checking) verifyState = VerifyState.Idle
+                            },
+                            verifyState = verifyState,
+                            onVerify = { verifyKey() },
+                            providerExpanded = providerExpanded,
+                            onProviderToggle = {
                                 Haptics.soft(context)
-                                providerId = id
-                                keyInput = apiKeyStore.getKey(id).orEmpty()
-                                verifyState = VerifyState.Idle
-                            }
-                        },
-                        keyInput = keyInput,
-                        onKeyChange = {
-                            keyInput = it
-                            if (verifyState !is VerifyState.Checking) verifyState = VerifyState.Idle
-                        },
-                        verifyState = verifyState,
-                        onVerify = { verifyKey() },
-                        providerExpanded = providerExpanded,
-                        onProviderToggle = {
-                            Haptics.soft(context)
-                            providerExpanded = !providerExpanded
-                        },
-                        appearanceExpanded = appearanceExpanded,
-                        onAppearanceToggle = {
-                            Haptics.soft(context)
-                            appearanceExpanded = !appearanceExpanded
-                        },
-                        themeMode = themeMode,
-                        onThemeModeChange = onThemeModeChange,
-                        accentId = accentId,
-                        onAccentChange = onAccentChange,
-                        revealStyle = revealStyle,
-                        onRevealStyleChange = onRevealStyleChange,
-                    )
-                    else -> FirstGameSlide(
-                        gameMode = gameMode,
-                        onGameModeChange = { mode ->
-                            if (mode == "GUESSING" && !providerReady) {
+                                providerExpanded = !providerExpanded
+                            },
+                            appearanceExpanded = appearanceExpanded,
+                            onAppearanceToggle = {
                                 Haptics.soft(context)
-                                showProviderHint = true
-                            } else {
-                                Haptics.soft(context)
-                                gameMode = mode
-                            }
-                        },
-                        providerReady = providerReady,
-                        showProviderHint = showProviderHint,
-                        topicInput = topicInput,
-                        onTopicChange = { topicInput = it },
-                        onDone = { focusManager.clearFocus() },
-                    )
+                                appearanceExpanded = !appearanceExpanded
+                            },
+                            themeMode = themeMode,
+                            onThemeModeChange = onThemeModeChange,
+                            accentId = accentId,
+                            onAccentChange = onAccentChange,
+                            revealStyle = revealStyle,
+                            onRevealStyleChange = onRevealStyleChange,
+                        )
+                        else -> FirstGameSlide(
+                            gameMode = gameMode,
+                            onGameModeChange = { mode ->
+                                if (mode == "GUESSING" && !providerReady) {
+                                    Haptics.soft(context)
+                                    showProviderHint = true
+                                } else {
+                                    Haptics.soft(context)
+                                    gameMode = mode
+                                }
+                            },
+                            providerReady = providerReady,
+                            showProviderHint = showProviderHint,
+                            topicInput = topicInput,
+                            onTopicChange = { topicInput = it },
+                            onDone = { focusManager.clearFocus() },
+                        )
+                    }
                 }
             }
 
-            // Bottom bar: full-width button on slide 1 (no arrow); back arrow
-            // slides in from slide 2 on. On the last slide the button becomes
-            // "Play Now" once a topic is set, else "Start Playing" (= skip).
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -397,8 +410,8 @@ fun OnboardingScreen(
             ) {
                 AnimatedVisibility(
                     visible = page > 0,
-                    enter = expandHorizontally(tween(220)) + fadeIn(tween(220)),
-                    exit = shrinkHorizontally(tween(220)) + fadeOut(tween(160)),
+                    enter = expandHorizontally(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(tween(250)),
+                    exit = shrinkHorizontally(spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut(tween(200)),
                 ) {
                     Row {
                         IconButton(
@@ -448,7 +461,10 @@ fun OnboardingScreen(
                 ) {
                     AnimatedContent(
                         targetState = buttonLabel,
-                        transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(160)) },
+                        transitionSpec = { 
+                            (fadeIn(tween(220, delayMillis = 40)) + slideInVertically { height -> height / 2 }) togetherWith
+                            (fadeOut(tween(140)) + slideOutVertically { height -> -height / 2 }) using SizeTransform(clip = false)
+                        },
                         label = "nextLabel",
                     ) { label ->
                         Text(
@@ -464,7 +480,6 @@ fun OnboardingScreen(
 }
 
 private fun pickDefaultModel(providerId: String, models: List<ModelInfo>): ModelInfo =
-    // Shared app-wide preference (gemini-3.1-flash-lite first — owner-tested).
     preferredDefaultModel(providerId, models) ?: models.first()
 
 // ---------------------------------------------------------------------------
@@ -483,8 +498,6 @@ private fun slideTint(index: Int): Color = when (index) {
 @Composable
 private fun SlideCardFrame(
     index: Int,
-    // ColumnScope receiver so children can use weight(1f) — a plain
-    // `() -> Unit` lambda breaks `weight` resolution (CI-caught).
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
@@ -565,235 +578,247 @@ private fun SetupSlide(
 ) {
     val context = LocalContext.current
     SlideCardFrame(PAGE_SETUP) {
-        Text(
-            text = "Make It\nYours",
-            style = MaterialTheme.typography.titleLarge.copy(fontSize = 40.sp, lineHeight = 46.sp),
-            color = NazoTextPrimary,
-            fontWeight = FontWeight.Bold,
-        )
-        Spacer(modifier = Modifier.height(10.dp))
-        Text(
-            text = "Both optional — everything here also lives in Settings.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = NazoTextSecondary,
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-
+        // Encompassing the entire inner content with verticalScroll removes dead-zones,
+        // letting users scroll smoothly from the title or spacing instead of mis-triggering
+        // clickable elements inside the expansion.
         Column(
             modifier = Modifier
                 .weight(1f)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
         ) {
-            // ------------------ AI PROVIDER ------------------
-            ExpandableSection(
-                title = "AI Provider",
-                subtitle = when {
-                    verifyState is VerifyState.Ready -> "Ready — AI quizzes unlocked"
-                    else -> "Unlock AI quizzes & the Guessing Game"
-                },
-                expanded = providerExpanded,
-                onToggle = onProviderToggle,
+            Text(
+                text = "Make It\nYours",
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 40.sp, lineHeight = 46.sp),
+                color = NazoTextPrimary,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "Both optional — everything here also lives in Settings.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = NazoTextSecondary,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ApiKeyStore.PROVIDER_ORDER.forEach { id ->
-                            SelectPill(
-                                text = PROVIDER_NAMES[id] ?: id,
-                                selected = id == providerId,
-                                onClick = { onProviderChange(id) },
-                            )
+                // ------------------ AI PROVIDER ------------------
+                ExpandableSection(
+                    title = "AI Provider",
+                    subtitle = when {
+                        verifyState is VerifyState.Ready -> "Ready — AI quizzes unlocked"
+                        else -> "Unlock AI quizzes & the Guessing Game"
+                    },
+                    expanded = providerExpanded,
+                    onToggle = onProviderToggle,
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ApiKeyStore.PROVIDER_ORDER.forEach { id ->
+                                SelectPill(
+                                    text = PROVIDER_NAMES[id] ?: id,
+                                    selected = id == providerId,
+                                    onClick = { onProviderChange(id) },
+                                )
+                            }
                         }
-                    }
 
-                    OutlinedTextField(
-                        value = keyInput,
-                        onValueChange = onKeyChange,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = verifyState !is VerifyState.Checking,
-                        singleLine = true,
-                        placeholder = {
-                            Text("Paste your API key…", color = NazoTextSecondary.copy(alpha = 0.7f))
-                        },
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { onVerify() }),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = NazoPrimary,
-                            unfocusedBorderColor = NazoTextSecondary.copy(alpha = 0.3f),
-                            focusedTextColor = NazoTextPrimary,
-                            unfocusedTextColor = NazoTextPrimary,
-                            cursorColor = NazoPrimary,
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            disabledContainerColor = Color.Transparent,
-                            disabledTextColor = NazoTextSecondary,
-                            disabledBorderColor = NazoTextSecondary.copy(alpha = 0.2f),
-                        ),
-                    )
+                        OutlinedTextField(
+                            value = keyInput,
+                            onValueChange = onKeyChange,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = verifyState !is VerifyState.Checking,
+                            singleLine = true,
+                            placeholder = {
+                                Text("Paste your API key…", color = NazoTextSecondary.copy(alpha = 0.7f))
+                            },
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { onVerify() }),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = NazoPrimary,
+                                unfocusedBorderColor = NazoTextSecondary.copy(alpha = 0.3f),
+                                focusedTextColor = NazoTextPrimary,
+                                unfocusedTextColor = NazoTextPrimary,
+                                cursorColor = NazoPrimary,
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                disabledContainerColor = Color.Transparent,
+                                disabledTextColor = NazoTextSecondary,
+                                disabledBorderColor = NazoTextSecondary.copy(alpha = 0.2f),
+                            ),
+                        )
 
-                    Button(
-                        onClick = onVerify,
-                        enabled = keyInput.isNotBlank() && verifyState !is VerifyState.Checking,
-                        modifier = Modifier.fillMaxWidth().height(46.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = NazoPrimary,
-                            contentColor = NazoOnPrimary,
-                            disabledContainerColor = NazoPrimary.copy(alpha = 0.4f),
-                            disabledContentColor = NazoOnPrimary.copy(alpha = 0.7f),
-                        ),
-                    ) {
-                        AnimatedContent(
-                            targetState = verifyState,
-                            transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(140)) },
-                            label = "verifyBtn",
-                        ) { state ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                when (state) {
-                                    is VerifyState.Checking -> {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(16.dp),
-                                            color = NazoOnPrimary,
-                                            strokeWidth = 2.dp,
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Checking key…", fontWeight = FontWeight.Bold)
+                        Button(
+                            onClick = onVerify,
+                            enabled = keyInput.isNotBlank() && verifyState !is VerifyState.Checking,
+                            modifier = Modifier.fillMaxWidth().height(46.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = NazoPrimary,
+                                contentColor = NazoOnPrimary,
+                                disabledContainerColor = NazoPrimary.copy(alpha = 0.4f),
+                                disabledContentColor = NazoOnPrimary.copy(alpha = 0.7f),
+                            ),
+                        ) {
+                            AnimatedContent(
+                                targetState = verifyState,
+                                transitionSpec = { 
+                                    (fadeIn(tween(220, delayMillis = 40)) + scaleIn(initialScale = 0.95f)) togetherWith 
+                                    (fadeOut(tween(140)) + scaleOut(targetScale = 1.05f)) using SizeTransform(clip = false) 
+                                },
+                                label = "verifyBtn",
+                            ) { state ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    when (state) {
+                                        is VerifyState.Checking -> {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(16.dp),
+                                                color = NazoOnPrimary,
+                                                strokeWidth = 2.dp,
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Checking key…", fontWeight = FontWeight.Bold)
+                                        }
+                                        is VerifyState.Ready -> {
+                                            Icon(
+                                                imageVector = Icons.Filled.Check,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Saved & ready", fontWeight = FontWeight.Bold)
+                                        }
+                                        else -> Text("Verify & Save", fontWeight = FontWeight.Bold)
                                     }
-                                    is VerifyState.Ready -> {
-                                        Icon(
-                                            imageVector = Icons.Filled.Check,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp),
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Saved & ready", fontWeight = FontWeight.Bold)
-                                    }
-                                    else -> Text("Verify & Save", fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
-                    }
 
-                    // Success caption — fades/expands in under the button.
-                    AnimatedVisibility(
-                        visible = verifyState is VerifyState.Ready,
-                        enter = expandVertically(tween(220)) + fadeIn(tween(220)),
-                        exit = shrinkVertically(tween(180)) + fadeOut(tween(140)),
-                    ) {
-                        val ready = verifyState as? VerifyState.Ready
+                        AnimatedVisibility(
+                            visible = verifyState is VerifyState.Ready,
+                            enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(tween(250)),
+                            exit = shrinkVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut(tween(200)),
+                        ) {
+                            val ready = verifyState as? VerifyState.Ready
+                            Text(
+                                text = "Using ${ready?.modelName ?: ""} · ${ready?.count ?: 0} models available — change anytime in Settings.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NazoSuccess,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+
+                        AnimatedVisibility(
+                            visible = verifyState is VerifyState.Failed,
+                            enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(tween(250)),
+                            exit = shrinkVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut(tween(200)),
+                        ) {
+                            val failed = verifyState as? VerifyState.Failed
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(NazoErrorBg)
+                                    .border(1.dp, NazoError, RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                            ) {
+                                Text(
+                                    text = failed?.message ?: "",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = NazoError,
+                                )
+                            }
+                        }
+
                         Text(
-                            text = "Using ${ready?.modelName ?: ""} · ${ready?.count ?: 0} models available — change anytime in Settings.",
+                            text = "No key? No problem — Quiz Mode works fully offline.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = NazoSuccess,
-                            fontWeight = FontWeight.SemiBold,
+                            color = NazoTextSecondary,
                         )
                     }
-
-                    // Error pill — plain fade, like the provider screen's.
-                    AnimatedVisibility(
-                        visible = verifyState is VerifyState.Failed,
-                        enter = fadeIn(tween(180)),
-                        exit = fadeOut(tween(160)),
-                    ) {
-                        val failed = verifyState as? VerifyState.Failed
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(NazoErrorBg)
-                                .border(1.dp, NazoError, RoundedCornerShape(12.dp))
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                        ) {
-                            Text(
-                                text = failed?.message ?: "",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = NazoError,
-                            )
-                        }
-                    }
-
-                    Text(
-                        text = "No key? No problem — Quiz Mode works fully offline.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NazoTextSecondary,
-                    )
                 }
-            }
 
-            // ------------------ APPEARANCE ------------------
-            ExpandableSection(
-                title = "Appearance",
-                subtitle = "Theme, accent color & reveal style",
-                expanded = appearanceExpanded,
-                onToggle = onAppearanceToggle,
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    SectionLabel("THEME")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("system" to "System", "light" to "Light", "dark" to "Dark").forEach { (id, label) ->
-                            SelectPill(
-                                text = label,
-                                selected = themeMode == id,
-                                onClick = {
-                                    Haptics.soft(context)
-                                    onThemeModeChange(id)
-                                },
-                            )
+                // ------------------ APPEARANCE ------------------
+                ExpandableSection(
+                    title = "Appearance",
+                    subtitle = "Theme, accent color & reveal style",
+                    expanded = appearanceExpanded,
+                    onToggle = onAppearanceToggle,
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        SectionLabel("THEME")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("system" to "System", "light" to "Light", "dark" to "Dark").forEach { (id, label) ->
+                                SelectPill(
+                                    text = label,
+                                    selected = themeMode == id,
+                                    onClick = {
+                                        Haptics.soft(context)
+                                        onThemeModeChange(id)
+                                    },
+                                )
+                            }
                         }
-                    }
 
-                    SectionLabel("ACCENT")
-                    // Static two-row wrap instead of a horizontalScroll row: a
-                    // horizontal scroller here claimed any slightly-angled drag,
-                    // which intermittently blocked the slide's vertical scroll
-                    // when both sections were expanded.
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Accents.chunked(5).forEach { accentRow ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                accentRow.forEach { accent ->
-                                    val selected = accent.id == accentId
-                                    val ringAlpha by animateFloatAsState(
-                                        targetValue = if (selected) 1f else 0f,
-                                        animationSpec = tween(200),
-                                        label = "accentRing",
-                                    )
-                                    Box(
-                                        modifier = Modifier
-                                            .size(34.dp)
-                                            .border(
-                                                2.5.dp,
-                                                NazoTextPrimary.copy(alpha = ringAlpha),
-                                                CircleShape,
-                                            )
-                                            .padding(5.dp)
-                                            .clip(CircleShape)
-                                            .background(resolveAccent(accent.id, isDark).primary)
-                                            .clickable {
-                                                Haptics.soft(context)
-                                                onAccentChange(accent.id)
-                                            },
-                                    )
+                        SectionLabel("ACCENT")
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Accents.chunked(5).forEach { accentRow ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    accentRow.forEach { accent ->
+                                        val selected = accent.id == accentId
+                                        val ringAlpha by animateFloatAsState(
+                                            targetValue = if (selected) 1f else 0f,
+                                            animationSpec = tween(250, easing = FastOutSlowInEasing),
+                                            label = "accentRing",
+                                        )
+                                        val ringScale by animateFloatAsState(
+                                            targetValue = if (selected) 1f else 0.8f,
+                                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                                            label = "accentRingScale"
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .graphicsLayer {
+                                                    scaleX = ringScale
+                                                    scaleY = ringScale
+                                                }
+                                                .border(
+                                                    2.5.dp,
+                                                    NazoTextPrimary.copy(alpha = ringAlpha),
+                                                    CircleShape,
+                                                )
+                                                .padding(5.dp)
+                                                .clip(CircleShape)
+                                                .background(resolveAccent(accent.id, isDark).primary)
+                                                .clickable {
+                                                    Haptics.soft(context)
+                                                    onAccentChange(accent.id)
+                                                },
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    SectionLabel("GUESSING REVEAL")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("pixel" to "Pixelate", "blur" to "Blur").forEach { (id, label) ->
-                            SelectPill(
-                                text = label,
-                                selected = revealStyle == id,
-                                onClick = {
-                                    Haptics.soft(context)
-                                    onRevealStyleChange(id)
-                                },
-                            )
+                        SectionLabel("GUESSING REVEAL")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("pixel" to "Pixelate", "blur" to "Blur").forEach { (id, label) ->
+                                SelectPill(
+                                    text = label,
+                                    selected = revealStyle == id,
+                                    onClick = {
+                                        Haptics.soft(context)
+                                        onRevealStyleChange(id)
+                                    },
+                                )
+                            }
                         }
                     }
                 }
             }
-
             Spacer(modifier = Modifier.height(4.dp))
         }
     }
@@ -826,105 +851,113 @@ private fun FirstGameSlide(
     }
 
     SlideCardFrame(PAGE_FIRST_GAME) {
-        Text(
-            text = "Your First\nGame",
-            style = MaterialTheme.typography.titleLarge.copy(fontSize = 40.sp, lineHeight = 46.sp),
-            color = NazoTextPrimary,
-            fontWeight = FontWeight.Bold,
-        )
-        Spacer(modifier = Modifier.height(10.dp))
-        Text(
-            text = "Pick a topic and jump right in — or just start exploring from Home.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = NazoTextSecondary,
-        )
-        Spacer(modifier = Modifier.height(18.dp))
-
         Column(
-            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
         ) {
-            SectionLabel("MODE")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SelectPill(
-                    text = "Quiz",
-                    selected = gameMode == "QUIZ",
-                    onClick = { onGameModeChange("QUIZ") },
-                )
-                SelectPill(
-                    text = if (providerReady) "Guessing Game" else "Guessing Game 🔒",
-                    selected = gameMode == "GUESSING",
-                    enabledLook = providerReady,
-                    onClick = { onGameModeChange("GUESSING") },
-                )
-            }
-            AnimatedVisibility(
-                visible = showProviderHint,
-                enter = expandVertically(tween(220)) + fadeIn(tween(220)),
-                exit = shrinkVertically(tween(180)) + fadeOut(tween(140)),
-            ) {
-                Text(
-                    text = "The Guessing Game needs an AI provider — set one up on the previous step.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NazoError,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-
-            SectionLabel("TOPIC")
-            OutlinedTextField(
-                value = topicInput,
-                onValueChange = onTopicChange,
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                placeholder = {
-                    Text("e.g. Naruto…", color = NazoTextSecondary.copy(alpha = 0.7f))
-                },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { onDone() }),
-                shape = RoundedCornerShape(14.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = NazoPrimary,
-                    unfocusedBorderColor = NazoTextSecondary.copy(alpha = 0.3f),
-                    focusedTextColor = NazoTextPrimary,
-                    unfocusedTextColor = NazoTextPrimary,
-                    cursorColor = NazoPrimary,
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                ),
+            Text(
+                text = "Your First\nGame",
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 40.sp, lineHeight = 46.sp),
+                color = NazoTextPrimary,
+                fontWeight = FontWeight.Bold,
             )
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "Pick a topic and jump right in — or just start exploring from Home.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = NazoTextSecondary,
+            )
+            Spacer(modifier = Modifier.height(18.dp))
 
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Column(
+                verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                suggestions.forEach { suggestion ->
+                SectionLabel("MODE")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SelectPill(
-                        text = suggestion,
-                        selected = topicInput.equals(suggestion, ignoreCase = true),
-                        onClick = {
-                            Haptics.soft(context)
-                            onTopicChange(suggestion)
-                        },
+                        text = "Quiz",
+                        selected = gameMode == "QUIZ",
+                        onClick = { onGameModeChange("QUIZ") },
+                    )
+                    SelectPill(
+                        text = if (providerReady) "Guessing Game" else "Guessing Game 🔒",
+                        selected = gameMode == "GUESSING",
+                        enabledLook = providerReady,
+                        onClick = { onGameModeChange("GUESSING") },
                     )
                 }
-            }
+                AnimatedVisibility(
+                    visible = showProviderHint,
+                    enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(tween(250)),
+                    exit = shrinkVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut(tween(200)),
+                ) {
+                    Text(
+                        text = "The Guessing Game needs an AI provider — set one up on the previous step.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NazoError,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
 
-            // What the first game will be — crossfades when the mode changes.
-            AnimatedContent(
-                targetState = gameMode,
-                transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(150)) },
-                label = "modeNote",
-            ) { mode ->
-                Text(
-                    text = if (mode == "GUESSING") {
-                        "3 rounds · Medium difficulty · scored by speed"
-                    } else {
-                        "5 questions · Medium difficulty · beat the clock"
+                SectionLabel("TOPIC")
+                OutlinedTextField(
+                    value = topicInput,
+                    onValueChange = onTopicChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = {
+                        Text("e.g. Naruto…", color = NazoTextSecondary.copy(alpha = 0.7f))
                     },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NazoTextSecondary,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { onDone() }),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = NazoPrimary,
+                        unfocusedBorderColor = NazoTextSecondary.copy(alpha = 0.3f),
+                        focusedTextColor = NazoTextPrimary,
+                        unfocusedTextColor = NazoTextPrimary,
+                        cursorColor = NazoPrimary,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                    ),
                 )
+
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    suggestions.forEach { suggestion ->
+                        SelectPill(
+                            text = suggestion,
+                            selected = topicInput.equals(suggestion, ignoreCase = true),
+                            onClick = {
+                                Haptics.soft(context)
+                                onTopicChange(suggestion)
+                            },
+                        )
+                    }
+                }
+
+                AnimatedContent(
+                    targetState = gameMode,
+                    transitionSpec = {
+                        (fadeIn(tween(220, delayMillis = 40)) + slideInVertically { height -> height / 2 }) togetherWith
+                        (fadeOut(tween(140)) + slideOutVertically { height -> -height / 2 }) using SizeTransform(clip = false)
+                    },
+                    label = "modeNote",
+                ) { mode ->
+                    Text(
+                        text = if (mode == "GUESSING") {
+                            "3 rounds · Medium difficulty · scored by speed"
+                        } else {
+                            "5 questions · Medium difficulty · beat the clock"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NazoTextSecondary,
+                    )
+                }
             }
         }
     }
@@ -934,8 +967,6 @@ private fun FirstGameSlide(
 // Shared setup widgets
 // ---------------------------------------------------------------------------
 
-/** Rounded expandable section card: animated chevron, expand/collapse reveal,
- * and animateContentSize so the card height glides instead of snapping. */
 @Composable
 private fun ExpandableSection(
     title: String,
@@ -946,7 +977,7 @@ private fun ExpandableSection(
 ) {
     val chevron by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
-        animationSpec = tween(240),
+        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
         label = "chevron",
     )
     Column(
@@ -955,7 +986,7 @@ private fun ExpandableSection(
             .clip(RoundedCornerShape(20.dp))
             .background(NazoSurface)
             .border(1.dp, NazoTextSecondary.copy(alpha = 0.18f), RoundedCornerShape(20.dp))
-            .animateContentSize(animationSpec = tween(260)),
+            .animateContentSize(animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)),
     ) {
         Row(
             modifier = Modifier
@@ -986,8 +1017,8 @@ private fun ExpandableSection(
         }
         AnimatedVisibility(
             visible = expanded,
-            enter = expandVertically(tween(240)) + fadeIn(tween(240)),
-            exit = shrinkVertically(tween(200)) + fadeOut(tween(140)),
+            enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(tween(250)),
+            exit = shrinkVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut(tween(200)),
         ) {
             Box(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
                 content()
@@ -996,7 +1027,6 @@ private fun ExpandableSection(
     }
 }
 
-/** Selection pill with animated background/text colors. */
 @Composable
 private fun SelectPill(
     text: String,
@@ -1007,12 +1037,12 @@ private fun SelectPill(
 ) {
     val bg by animateColorAsState(
         targetValue = if (selected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.10f),
-        animationSpec = tween(180),
+        animationSpec = tween(250, easing = FastOutSlowInEasing),
         label = "pillBg",
     )
     val fg by animateColorAsState(
         targetValue = if (selected) NazoOnPrimary else NazoTextPrimary,
-        animationSpec = tween(180),
+        animationSpec = tween(250, easing = FastOutSlowInEasing),
         label = "pillFg",
     )
     Box(
@@ -1046,7 +1076,6 @@ private fun SectionLabel(text: String) {
 // Hand-drawn doodle illustrations (unchanged from the reference redesign).
 // ---------------------------------------------------------------------------
 
-/** Slide 1: a question card + an answer sheet, sparkles and a curly arrow. */
 @Composable
 private fun QuizDoodle() {
     val ink = NazoTextPrimary
@@ -1101,7 +1130,6 @@ private fun QuizDoodle() {
     }
 }
 
-/** Slide 2: a pixelated mystery card with a magnifier revealing the 謎. */
 @Composable
 private fun GuessDoodle() {
     val ink = NazoTextPrimary
@@ -1167,7 +1195,6 @@ private fun GuessDoodle() {
     }
 }
 
-/** Slide 3: a rising bar chart card, an XP badge and a victory arrow. */
 @Composable
 private fun StatsDoodle() {
     val ink = NazoTextPrimary
@@ -1217,7 +1244,6 @@ private fun StatsDoodle() {
     }
 }
 
-/** Four-point hand-drawn sparkle (the reference's little asterisks). */
 @Composable
 private fun DoodleSparkle(size: Dp, color: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier.size(size)) {
@@ -1230,7 +1256,6 @@ private fun DoodleSparkle(size: Dp, color: Color, modifier: Modifier = Modifier)
     }
 }
 
-/** A curly hand-drawn arrow, swooping up-right. */
 @Composable
 private fun DoodleArrow(size: Dp, color: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier.size(size)) {
@@ -1246,3 +1271,4 @@ private fun DoodleArrow(size: Dp, color: Color, modifier: Modifier = Modifier) {
         drawLine(color, Offset(w * 0.78f, h * 0.22f), Offset(w * 0.62f, h * 0.42f), strokeWidth, StrokeCap.Round)
     }
 }
+

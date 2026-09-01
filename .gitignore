@@ -1,3 +1,5 @@
 /.gradle
 /app/build
 /.acside
+/diff.md
+/.kotlin/sessions
