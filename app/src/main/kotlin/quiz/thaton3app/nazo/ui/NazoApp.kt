@@ -1,6 +1,7 @@
 package quiz.thaton3app.nazo.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -43,6 +44,14 @@ import quiz.thaton3app.nazo.ui.components.AiMissingDialog
 import quiz.thaton3app.nazo.ui.components.AmbientBackground
 import quiz.thaton3app.nazo.ui.components.FloatingParticlesBackground
 import quiz.thaton3app.nazo.ui.components.StartupMode
+import quiz.thaton3app.nazo.ui.components.TouchRipple
+import quiz.thaton3app.nazo.ui.components.TouchSparkle
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlin.random.Random
+import kotlin.math.PI
 import quiz.thaton3app.nazo.ui.launch.IntroOverlay
 import quiz.thaton3app.nazo.ui.onboarding.OnboardingPrefs
 import quiz.thaton3app.nazo.ui.onboarding.OnboardingScreen
@@ -567,6 +576,11 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     val activeProvider = selectedProvider ?: apiKeyStore.getActiveProvider()
     val configuredProviders = apiKeyStore.getConfiguredProviders()
 
+    // Touch ripples state for interactive touch bursts anywhere in the app
+    val scope = rememberCoroutineScope()
+    val ripples = remember { mutableStateListOf<TouchRipple>() }
+    var nextRippleId = remember { 0L }
+
     NazoTheme(darkTheme = isDark, accentId = accentName) {
         Box(modifier = Modifier.fillMaxSize()) {
             // Base color + animated floating particles live OUTSIDE AnimatedContent so the
@@ -576,7 +590,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             AmbientBackground(
                 modifier = Modifier.fillMaxSize(),
                 style = backgroundStyle,
-                touchRipplesEnabled = touchRipples,
+                ripples = ripples,
             )
             AnimatedContent(
                 targetState = currentScreen,
@@ -878,6 +892,40 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onboardingPrefs.completed = true
                         showOnboarding = false
                     },
+                )
+            }
+
+            if (touchRipples) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                    val down = event.changes.firstOrNull { it.pressed && !it.previousPressed }
+                                    if (down != null) {
+                                        val pos = down.position
+                                        val id = nextRippleId++
+                                        val anim = androidx.compose.animation.core.Animatable(0f)
+                                        val rnd = Random(id)
+                                        val sparkles = List(6) {
+                                            TouchSparkle(
+                                                angle = (it * (2 * PI / 6)).toFloat() + rnd.nextFloat() * 0.5f,
+                                                speed = 40f + rnd.nextFloat() * 80f,
+                                                size = 3f + rnd.nextFloat() * 3f,
+                                            )
+                                        }
+                                        val ripple = TouchRipple(id = id, x = pos.x, y = pos.y, animatable = anim, sparkles = sparkles)
+                                        ripples.add(ripple)
+                                        scope.launch {
+                                            anim.animateTo(1f, animationSpec = tween(durationMillis = 700, easing = LinearEasing))
+                                            ripples.remove(ripple)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                 )
             }
 

@@ -4,8 +4,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -13,14 +11,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
 import kotlin.random.Random
-import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoSuccess
@@ -43,8 +38,8 @@ private data class ShapeParticle(
 )
 
 private data class ConstellationStar(
-    val x: Float,
-    val y: Float,
+    val fracX: Float,
+    val fracY: Float,
     val vx: Float,
     val vy: Float,
     val radius: Float,
@@ -53,8 +48,8 @@ private data class ConstellationStar(
 )
 
 private data class RainDrop(
-    val x: Float,
-    val speed: Float, // screen heights per second
+    val fracX: Float,
+    val speed: Float,
     val length: Float,
     val alpha: Float,
 )
@@ -69,7 +64,7 @@ private data class GlowingOrb(
     val color: Color,
 )
 
-private data class TouchRipple(
+data class TouchRipple(
     val id: Long,
     val x: Float,
     val y: Float,
@@ -77,7 +72,7 @@ private data class TouchRipple(
     val sparkles: List<TouchSparkle>,
 )
 
-private data class TouchSparkle(
+data class TouchSparkle(
     val angle: Float,
     val speed: Float,
     val size: Float,
@@ -152,7 +147,7 @@ private class ParticleDrawCache {
 fun AmbientBackground(
     modifier: Modifier = Modifier,
     style: String = "shapes", // "shapes" | "constellation" | "rain" | "orbs"
-    touchRipplesEnabled: Boolean = true,
+    ripples: List<TouchRipple> = emptyList(),
 ) {
     val shapeParticles = remember { buildShapeParticles() }
     val constellationStars = remember { buildConstellationStars() }
@@ -163,46 +158,12 @@ fun AmbientBackground(
     val progress = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
         while (true) {
+            progress.snapTo(0f)
             progress.animateTo(1f, animationSpec = tween(durationMillis = 30000, easing = LinearEasing))
-            progress.animateTo(0f, animationSpec = tween(durationMillis = 30000, easing = LinearEasing))
         }
     }
 
-    // Touch ripple state list
-    val ripples = remember { mutableStateListOf<TouchRipple>() }
-    val rippleCount = ripples.size // Read in Composable scope so adding ripples triggers recomposition/redraw
-    val coroutineScope = rememberCoroutineScope()
-    var nextRippleId = remember { 0L }
-
-    val tapModifier = if (touchRipplesEnabled) {
-        Modifier.pointerInput(Unit) {
-            awaitEachGesture {
-                val down = awaitFirstDown(pass = PointerEventPass.Initial)
-                val pos = down.position
-                val id = nextRippleId++
-                val anim = Animatable(0f)
-                val sparkCount = 10
-                val rng = Random(id)
-                val sparks = List(sparkCount) {
-                    TouchSparkle(
-                        angle = rng.nextFloat() * (2f * PI.toFloat()),
-                        speed = 120f + rng.nextFloat() * 180f,
-                        size = 3.5f + rng.nextFloat() * 4.5f,
-                    )
-                }
-                val ripple = TouchRipple(id = id, x = pos.x, y = pos.y, animatable = anim, sparkles = sparks)
-                ripples.add(ripple)
-                coroutineScope.launch {
-                    anim.animateTo(1f, animationSpec = tween(durationMillis = 750, easing = LinearEasing))
-                    ripples.remove(ripple)
-                }
-            }
-        }
-    } else {
-        Modifier
-    }
-
-    Canvas(modifier = modifier.then(tapModifier)) {
+    Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
         val minDimension = if (w < h) w else h
@@ -212,25 +173,27 @@ fun AmbientBackground(
         when (style) {
             "constellation" -> {
                 // --- CONSTELLATION WEB STYLE ---
-                val maxDist = minDimension * 0.38f
+                val maxDist = minDimension * 0.45f
+
+                // Compute current screen positions for all stars across the entire screen
+                val starPositions = constellationStars.map { s ->
+                    val x = (s.fracX * w + t * s.vx * w * 1.5f).let { ((it % w) + w) % w }
+                    val y = (s.fracY * h + t * s.vy * h * 1.5f).let { ((it % h) + h) % h }
+                    Offset(x, y)
+                }
 
                 // Draw connecting lines first
-                for (i in constellationStars.indices) {
-                    for (j in i + 1 until constellationStars.size) {
-                        val s1 = constellationStars[i]
-                        val s2 = constellationStars[j]
-                        // Faster, highly visible drift using t * vx * w (vx expanded)
-                        val x1 = (s1.x + t * s1.vx * w * 4f).let { ((it % w) + w) % w }
-                        val y1 = (s1.y + t * s1.vy * h * 4f).let { ((it % h) + h) % h }
-                        val x2 = (s2.x + t * s2.vx * w * 4f).let { ((it % w) + w) % w }
-                        val y2 = (s2.y + t * s2.vy * h * 4f).let { ((it % h) + h) % h }
-                        val dist = hypot(x2 - x1, y2 - y1)
+                for (i in starPositions.indices) {
+                    for (j in i + 1 until starPositions.size) {
+                        val p1 = starPositions[i]
+                        val p2 = starPositions[j]
+                        val dist = hypot(p2.x - p1.x, p2.y - p1.y)
                         if (dist < maxDist) {
-                            val alpha = (1f - (dist / maxDist)) * 0.35f
+                            val alpha = (1f - (dist / maxDist)) * 0.4f
                             drawLine(
                                 color = NazoPrimary.copy(alpha = alpha),
-                                start = Offset(x1, y1),
-                                end = Offset(x2, y2),
+                                start = p1,
+                                end = p2,
                                 strokeWidth = 2f,
                             )
                         }
@@ -238,39 +201,43 @@ fun AmbientBackground(
                 }
 
                 // Draw stars
-                for (s in constellationStars) {
-                    val x = (s.x + t * s.vx * w * 4f).let { ((it % w) + w) % w }
-                    val y = (s.y + t * s.vy * h * 4f).let { ((it % h) + h) % h }
+                for (i in constellationStars.indices) {
+                    val s = constellationStars[i]
+                    val pos = starPositions[i]
                     val pulse = (sin(t * s.pulseFreq * 35f + s.pulsePhase) * 0.4f + 0.6f).coerceIn(0.2f, 1f)
                     drawCircle(
-                        color = NazoPrimary.copy(alpha = 0.3f * pulse),
+                        color = NazoPrimary.copy(alpha = 0.35f * pulse),
                         radius = s.radius * 2.5f,
-                        center = Offset(x, y),
+                        center = pos,
                     )
                     drawCircle(
-                        color = NazoPrimary.copy(alpha = 0.85f * pulse),
+                        color = NazoPrimary.copy(alpha = 0.9f * pulse),
                         radius = s.radius * 1.2f,
-                        center = Offset(x, y),
+                        center = pos,
                     )
                 }
             }
 
             "rain" -> {
                 // --- DIGITAL RAIN STYLE ---
-                val colWidth = w / 16f
+                val colWidth = w / 18f
                 for (i in rainDrops.indices) {
                     val drop = rainDrops[i]
-                    val x = (i * colWidth) + (colWidth * 0.5f)
-                    // Fast falling: progress t loops 0..1, multiply by h * 3 so drops fall past screen multiple times per cycle
-                    val y = (t * drop.speed * h * 3f + (i * 77f)) % (h + drop.length) - drop.length
+                    val x = (drop.fracX * w)
+                    // Falling downwards correctly: t increases 0..1, y moves downwards (addition)
+                    val y = ((t * drop.speed * h * 1.8f + (i * 91f)) % (h + drop.length)) - drop.length
                     val alpha = drop.alpha
-                    drawRect(
-                        color = NazoPrimary.copy(alpha = alpha * 0.5f),
-                        topLeft = Offset(x - 1.5f, y),
-                        size = androidx.compose.ui.geometry.Size(3f, drop.length),
+
+                    // Glowing vertical trail line
+                    drawLine(
+                        color = NazoPrimary.copy(alpha = alpha * 0.4f),
+                        start = Offset(x, y),
+                        end = Offset(x, y + drop.length),
+                        strokeWidth = 2.5f,
                     )
+                    // Bright lead droplet head at the bottom of the streak
                     drawCircle(
-                        color = NazoSuccess.copy(alpha = alpha * 0.9f),
+                        color = NazoSuccess.copy(alpha = alpha * 0.95f),
                         radius = 3.5f,
                         center = Offset(x, y + drop.length),
                     )
@@ -341,15 +308,15 @@ fun AmbientBackground(
         // --- INTERACTIVE TOUCH RIPPLES & SPARKLES ---
         for (ripple in ripples) {
             val progressVal = ripple.animatable.value
-            val ringRadius = progressVal * minDimension * 0.42f
-            val ringAlpha = (1f - progressVal) * 0.55f
+            val ringRadius = progressVal * minDimension * 0.45f
+            val ringAlpha = (1f - progressVal) * 0.6f
 
             // Expanding ring
             drawCircle(
                 color = NazoPrimary.copy(alpha = ringAlpha),
                 radius = ringRadius,
                 center = Offset(ripple.x, ripple.y),
-                style = Stroke(width = 4f * (1f - progressVal * 0.5f)),
+                style = Stroke(width = 4.5f * (1f - progressVal * 0.5f)),
             )
 
             // Burst sparkles
@@ -357,7 +324,7 @@ fun AmbientBackground(
                 val dist = sparkle.speed * progressVal
                 val sx = ripple.x + cos(sparkle.angle) * dist
                 val sy = ripple.y + sin(sparkle.angle) * dist
-                val sparkAlpha = (1f - progressVal) * 0.7f
+                val sparkAlpha = (1f - progressVal) * 0.75f
                 drawCircle(
                     color = NazoSuccess.copy(alpha = sparkAlpha),
                     radius = sparkle.size * (1f - progressVal * 0.3f),
@@ -395,14 +362,14 @@ private fun buildShapeParticles(): List<ShapeParticle> {
 
 private fun buildConstellationStars(): List<ConstellationStar> {
     val random = Random(3033)
-    return List(25) {
+    return List(32) {
         ConstellationStar(
-            x = random.nextFloat(),
-            y = random.nextFloat(),
-            vx = (random.nextFloat() - 0.5f) * 0.08f,
-            vy = (random.nextFloat() - 0.5f) * 0.08f,
-            radius = 3.5f + random.nextFloat() * 3f,
-            pulseFreq = 1.0f + random.nextFloat() * 2f,
+            fracX = random.nextFloat(),
+            fracY = random.nextFloat(),
+            vx = (random.nextFloat() - 0.5f) * 0.4f,
+            vy = (random.nextFloat() - 0.5f) * 0.4f,
+            radius = 3f + random.nextFloat() * 3.5f,
+            pulseFreq = 1.2f + random.nextFloat() * 2f,
             pulsePhase = random.nextFloat() * (2f * PI.toFloat()),
         )
     }
@@ -410,12 +377,12 @@ private fun buildConstellationStars(): List<ConstellationStar> {
 
 private fun buildRainDrops(): List<RainDrop> {
     val random = Random(4044)
-    return List(18) {
+    return List(22) {
         RainDrop(
-            x = 0f,
-            speed = 0.6f + random.nextFloat() * 0.8f,
-            length = 50f + random.nextFloat() * 70f,
-            alpha = 0.25f + random.nextFloat() * 0.35f,
+            fracX = random.nextFloat(),
+            speed = 0.7f + random.nextFloat() * 0.8f,
+            length = 65f + random.nextFloat() * 85f,
+            alpha = 0.35f + random.nextFloat() * 0.4f,
         )
     }
 }
