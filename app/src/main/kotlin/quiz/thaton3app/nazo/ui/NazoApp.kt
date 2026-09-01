@@ -40,6 +40,7 @@ import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.ui.components.OfflineWarningDialog
 import quiz.thaton3app.nazo.ui.components.AiMissingDialog
+import quiz.thaton3app.nazo.ui.components.AmbientBackground
 import quiz.thaton3app.nazo.ui.components.FloatingParticlesBackground
 import quiz.thaton3app.nazo.ui.components.StartupMode
 import quiz.thaton3app.nazo.ui.launch.IntroOverlay
@@ -151,6 +152,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var themeMode by remember { mutableStateOf(themePrefs.mode) }
     var accentName by remember { mutableStateOf(themePrefs.accent) }
     var navBarFloating by remember { mutableStateOf(themePrefs.floatingNavBar) }
+    var backgroundStyle by remember { mutableStateOf(themePrefs.backgroundStyle) }
+    var touchRipples by remember { mutableStateOf(themePrefs.touchRipples) }
 
     // Launcher-icon theme sync now happens silently when the app is backgrounded
     // (see MainActivity.onStop); no in-app prompt is shown. The Appearance toggle
@@ -570,7 +573,11 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // animation never resets on screen changes. Screens render transparent on top,
             // letting the particles drift behind their content.
             Box(modifier = Modifier.fillMaxSize().background(NazoBackground))
-            FloatingParticlesBackground(modifier = Modifier.fillMaxSize())
+            AmbientBackground(
+                modifier = Modifier.fillMaxSize(),
+                style = backgroundStyle,
+                touchRipplesEnabled = touchRipples,
+            )
             AnimatedContent(
                 targetState = currentScreen,
                 modifier = Modifier
@@ -688,6 +695,16 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onRevealStyleChange = {
                             guessRevealStyle = it
                             themePrefs.guessRevealStyle = it
+                        },
+                        backgroundStyle = backgroundStyle,
+                        onBackgroundStyleChange = {
+                            backgroundStyle = it
+                            themePrefs.backgroundStyle = it
+                        },
+                        touchRipples = touchRipples,
+                        onTouchRipplesChange = {
+                            touchRipples = it
+                            themePrefs.touchRipples = it
                         },
                         iconFollowsOsTheme = themePrefs.iconFollowsOsTheme,
                         onIconFollowsOsThemeChange = { enabled ->

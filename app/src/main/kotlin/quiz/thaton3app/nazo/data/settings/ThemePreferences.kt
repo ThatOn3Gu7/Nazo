@@ -47,6 +47,16 @@ class ThemePreferences(context: Context) {
         get() = prefs.getString(KEY_GUESS_REVEAL_STYLE, "pixel") ?: "pixel"
         set(value) = prefs.edit().putString(KEY_GUESS_REVEAL_STYLE, value).apply()
 
+    /** Ambient background style variant ("shapes" | "constellation" | "rain" | "orbs"). */
+    var backgroundStyle: String
+        get() = prefs.getString(KEY_BG_STYLE, "shapes") ?: "shapes"
+        set(value) = prefs.edit().putString(KEY_BG_STYLE, value).apply()
+
+    /** Whether tapping anywhere in the app spawns interactive touch ripple bursts. */
+    var touchRipples: Boolean
+        get() = prefs.getBoolean(KEY_TOUCH_RIPPLES, true)
+        set(value) = prefs.edit().putBoolean(KEY_TOUCH_RIPPLES, value).apply()
+
     private companion object {
         const val KEY_MODE = "theme_mode"
         const val KEY_ACCENT = "theme_accent"
@@ -55,5 +65,7 @@ class ThemePreferences(context: Context) {
         const val KEY_FLOATING_NAV = "floating_nav"
         const val KEY_LAST_MODE = "last_game_mode"
         const val KEY_GUESS_REVEAL_STYLE = "guess_reveal_style"
+        const val KEY_BG_STYLE = "background_style"
+        const val KEY_TOUCH_RIPPLES = "touch_ripples_enabled"
     }
 }

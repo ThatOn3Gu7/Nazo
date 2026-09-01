@@ -2728,7 +2728,20 @@ covered by `BUG_AUDIT.md` + this log).
 - HANDOVER PLAN agreed with owner: THIS session ends by MERGING PR #2 (closes session — intentional this time). Next session (animations/refinement) MUST be started AFTER the merge so it branches from a master that contains all of this. Owner-side loose ends still open: .github/workflows/PR-assemble.yml → PR-only triggers; release-check.yml.draft regenerate; version bump only at owner-tagged release.
 - Tuning knobs left documented for the future: AnimeImageGate photoScore thresholds; PortraitCrop frame multiplier/headroom + positional gates; SessionMemory prompt caps (40); logcat tags NazoGuessImage / NazoAnimeGate / NazoPortraitCrop.
 
-## [2026-09-02 02:00] fix: sound effects toggle animation + backup completeness audit
+## [2026-09-02 03:00] feat: ambient background style variants + interactive touch bursts
+
+- Owner feedback / new feature request (ambient background variants + tap touch animation):
+  1. **Background Style Variants:** Added 4 distinct ambient background styles:
+     - **Floating Shapes** (`"shapes"`): 7 drifting geometric particles (original zero-alloc cached design).
+     - **Constellation Web** (`"constellation"`): Twinkling star nodes connected by glowing proximity web lines.
+     - **Digital Rain** (`"rain"`): Subtle vertical falling streams of glowing drops.
+     - **Glowing Orbs** (`"orbs"`): Soft wandering radial gradient orbs that pulse and drift slowly.
+  2. **Interactive Touch Bursts:** Added an interactive touch feedback effect (`touchRipples` toggle in Appearance). Using non-consuming initial-pass pointer input (`PointerEventPass.Initial`), wherever the user taps anywhere in the app, a gorgeous expanding ripple ring and radial sparkle burst spawn and animate out smoothly without blocking any underlying UI clicks.
+  3. **Appearance & Settings Integration:** Added an **"AMBIENT BACKGROUND"** section in `AppearanceScreen` letting users switch between the 4 background variants and toggle interactive touch bursts live, persisted via `ThemePreferences` (`backgroundStyle` & `touchRipples`, included in backup/restore via `nazo_theme`).
+- Files: `app/src/main/kotlin/quiz/thaton3app/nazo/ui/components/AmbientBackground.kt` (new), `FloatingParticlesBackground.kt`, `ThemePreferences.kt`, `AppearanceScreen.kt`, `NazoApp.kt`, `handoff.md`.
+
+---
+
 
 - Owner feedback (2 items):
   1. **Sound effects switch glitched/instant vs daily reminder:** when toggling sound effects on, it immediately played `Sounds.correct(context)` synchronously/via audio track initialization. This audio engine start / thread dispatch caused a frame drop/glitch on the Switch thumb animation compared to the daily reminder toggle. Removed the instant preview sound on toggle; now the sound effects switch behaves identically to the daily reminder button (pure state toggle + save with smooth Switch animation).
