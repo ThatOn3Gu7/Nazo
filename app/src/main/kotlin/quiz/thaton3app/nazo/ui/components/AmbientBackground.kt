@@ -20,7 +20,6 @@ import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
 import kotlin.random.Random
-import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoSuccess
@@ -171,6 +170,7 @@ fun AmbientBackground(
 
     // Touch ripple state list
     val ripples = remember { mutableStateListOf<TouchRipple>() }
+    val coroutineScope = rememberCoroutineScope()
     var nextRippleId = remember { 0L }
 
     val tapModifier = if (touchRipplesEnabled) {
@@ -191,7 +191,7 @@ fun AmbientBackground(
                 }
                 val ripple = TouchRipple(id = id, x = pos.x, y = pos.y, animatable = anim, sparkles = sparks)
                 ripples.add(ripple)
-                launch {
+                coroutineScope.launch {
                     anim.animateTo(1f, animationSpec = tween(durationMillis = 700, easing = LinearEasing))
                     ripples.remove(ripple)
                 }
