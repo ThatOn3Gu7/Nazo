@@ -54,7 +54,7 @@ class ThemePreferences(context: Context) {
 
     /** Whether tapping anywhere in the app spawns interactive touch ripple bursts. */
     var touchRipples: Boolean
-        get() = prefs.getBoolean(KEY_TOUCH_RIPPLES, true)
+        get() = prefs.getBoolean(KEY_TOUCH_RIPPLES, false)
         set(value) = prefs.edit().putBoolean(KEY_TOUCH_RIPPLES, value).apply()
 
     private companion object {

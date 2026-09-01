@@ -20,6 +20,15 @@ Conventions:
 
 ---
 
+## [2026-09-02 05:30] fix: remove intrusive touch ripple pointerInput layer & default touchRipples to false
+
+- Addressed user feedback regarding touch interaction freezes:
+  1. **Touch Ripples Turned Off by Default:** Updated `ThemePreferences.touchRipples` default value from `true` to `false`.
+  2. **Removed Global Pointer Capture:** Completely removed the full-screen `pointerInput` touch ripple Box overlay from `NazoApp.kt` that was intercepting touch events and blocking UI clicks on onboarding, home, and sub-screens. Touch interactions across the entire app are now 100% pristine and unimpeded, while keeping all 4 robust background variants (`shapes`, `constellation`, `rain`, `orbs`) fully functional.
+- Files: `app/src/main/kotlin/quiz/thaton3app/nazo/data/settings/ThemePreferences.kt`, `app/src/main/kotlin/quiz/thaton3app/nazo/ui/NazoApp.kt`, `handoff.md`.
+
+---
+
 ## [2026-09-02 05:00] fix: onboarding screen touch freeze (removed root Box .clickable)
 
 - Fixed a bug where the onboarding screen froze after the splash/intro animation and could not be interacted with (Skip and Next buttons were unclickable).
