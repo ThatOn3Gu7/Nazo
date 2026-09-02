@@ -20,6 +20,48 @@ Conventions:
 
 ---
 
+## [2026-09-02 11:30] feat: curved top ceiling + curved bottom nav, floating pill slimmed & restyled
+
+- Owner request (with sketch): (1) the bottom nav's edge should not be a
+  straight line — it should rise out of the bottom-left screen corner, run
+  flat, and sink back into the bottom-right corner; (2) the app title +
+  profile button should sit inside a matching "curve ceiling" at the top;
+  (3) the floating nav bar variant is too big and "doesn't feel like it
+  belongs to the same app" — shrink and restyle it.
+- **`CurvedBarShape`** (public, in `ui/components/NazoBottomNav.kt`): custom
+  `Shape` producing the shared silhouette — cubic ramps with horizontal
+  tangents out of both screen corners plus a flat plateau; `ceiling=true`
+  mirrors it vertically for the header canopy. Ramp width is a Dp param
+  clamped to w*0.25 so the plateau always dominates.
+- **Anchored bottom nav**: `.background(NazoNavBar, curve)` applied BEFORE
+  `navigationBarsPadding()` so the plateau still covers the gesture area;
+  ambient particles now peek through only the two tapered corners (intended,
+  matches the ceiling). Ramp 48dp; tabs at ~25/75% width sit safely on the
+  plateau.
+- **Nav items restyled to the app's pill language** (both modes): selected
+  tab = solid NazoPrimary pill with 18dp icon + label side by side in
+  NazoOnPrimary; unselected = quiet icon+label in NazoTextSecondary. Much
+  slimmer than the old icon-over-label stack.
+- **Floating mode**: no longer a full-width translucent slab — now a compact
+  wrap-content centred pill (solid NazoNavBar, RoundedCornerShape(50), 4dp
+  inner padding, 6dp shadow, same hairline border), i.e. a segmented pill
+  like the Quiz/Guessing-mode buttons. Caller's align(BottomCenter) centres
+  it. Preference & toggle untouched.
+- **Home ceiling** (`ui/screens/HomeScreen.kt`): HomeHeader moved OUT of the
+  scroll column into a fixed canopy at the top of a new wrapper Column:
+  `.background(NazoNavBar, CurvedBarShape(30.dp, ceiling=true))` BEFORE
+  `.statusBarsPadding()` (covers the status bar area; outer Box's
+  statusBarsPadding removed — NazoApp adds no insets of its own). Header
+  horizontal padding 34dp keeps the title pill/avatar clear of the 30dp
+  ramps. Scroll column is now `.weight(1f)`, starts with Spacer(18); content
+  scrolls beneath the plateau line. Region re-indented after restructure.
+- NOT touched (scope): Settings screen top, onboarding (only a toggle there,
+  no visual mock), 96dp scroll bottom padding (still clears the slimmer bar).
+- Files: `ui/components/NazoBottomNav.kt`, `ui/screens/HomeScreen.kt`,
+  `handoff.md`.
+
+---
+
 ## [2026-09-02 10:00] feat: per-style "bloom" entrances + graceful fade when switching background effects
 
 - Owner request: switching particle backgrounds was an instant hard cut both

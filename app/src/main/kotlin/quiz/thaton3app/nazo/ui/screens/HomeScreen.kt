@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.daily.DailyChallengeCard
+import quiz.thaton3app.nazo.ui.components.CurvedBarShape
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoTab
@@ -107,165 +108,180 @@ fun HomeScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .statusBarsPadding()
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .navigationBarsPadding()
-                .padding(bottom = 96.dp)
-        ) {
-            Spacer(Modifier.height(24.dp))
-            
-            HomeHeader(
-                onSettingsClick = onSettingsClick,
-                profileName = profileName,
-                profilePictureUri = profilePictureUri,
-                onProfileClick = onProfileClick,
-            )
-            
-            Spacer(Modifier.height(18.dp))
-            
-            ApiKeyBadge(
-                active = apiKeyActive,
-                activeProvider = activeProvider,
-                offline = offline,
-                onClick = if (offline) null else ({ showProviderSheet = true }),
-            )
-
-            Spacer(Modifier.height(22.dp))
-
-            // Daily Challenge (Phase 5): date-seeded from the local bank, so it
-            // is always available — even offline and with no provider set up.
-            DailyChallengeCard(
-                completed = dailyCompleted,
-                lastScore = dailyScore,
-                lastBonus = dailyBonus,
-                onPlay = onPlayDaily,
-            )
-
-            Spacer(Modifier.height(22.dp))
-
-            SectionLabel("MODE")
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PillButton(
-                    text = NazoMode.QUIZ.label,
-                    selected = !isGuessing,
-                    icon = Icons.Filled.Quiz,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        if (isGuessing) Haptics.light(context)
-                        onModeChange(NazoMode.QUIZ.name)
-                    },
-                )
-                PillButton(
-                    text = NazoMode.GUESSING.label,
-                    selected = isGuessing,
-                    icon = Icons.Filled.ImageSearch,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        if (!isGuessing) Haptics.light(context)
-                        onModeChange(NazoMode.GUESSING.name)
-                    },
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Curved "ceiling": the header sits inside a fixed canopy whose
+            // bottom edge sweeps down from the top-left corner, runs flat and
+            // sweeps back up to the top-right — mirroring the bottom nav's
+            // curved floor. Background is applied BEFORE the status-bar
+            // padding so the canopy also covers the status bar area.
+            val ceiling = remember { CurvedBarShape(rampWidth = 30.dp, ceiling = true) }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(NazoNavBar, ceiling)
+                    .statusBarsPadding()
+                    .padding(horizontal = 34.dp)
+                    .padding(top = 6.dp, bottom = 18.dp)
+            ) {
+                HomeHeader(
+                    onSettingsClick = onSettingsClick,
+                    profileName = profileName,
+                    profilePictureUri = profilePictureUri,
+                    onProfileClick = onProfileClick,
                 )
             }
 
-            Spacer(Modifier.height(24.dp))
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp)
+                    .navigationBarsPadding()
+                    .padding(bottom = 96.dp)
+            ) {
+                Spacer(Modifier.height(18.dp))
 
-            Text(
-                text = if (isGuessing) "Can you spot the\nmystery image?" else "Ready to test your\nanime knowledge?",
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 28.sp,
-                    lineHeight = 34.sp,
-                    letterSpacing = (-0.5).sp
-                ),
-                color = NazoTextPrimary,
-            )
+                ApiKeyBadge(
+                    active = apiKeyActive,
+                    activeProvider = activeProvider,
+                    offline = offline,
+                    onClick = if (offline) null else ({ showProviderSheet = true }),
+                )
 
-            Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(22.dp))
 
-            TopicInputCard(topic = topic, onTopicChange = onTopicChange)
-            
-            Spacer(Modifier.height(24.dp))
-            
-            SectionLabel("DIFFICULTY")
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf(Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD).forEach { level ->
+                // Daily Challenge (Phase 5): date-seeded from the local bank, so it
+                // is always available — even offline and with no provider set up.
+                DailyChallengeCard(
+                    completed = dailyCompleted,
+                    lastScore = dailyScore,
+                    lastBonus = dailyBonus,
+                    onPlay = onPlayDaily,
+                )
+
+                Spacer(Modifier.height(22.dp))
+
+                SectionLabel("MODE")
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     PillButton(
-                        text = level.label,
-                        selected = difficulty == level,
+                        text = NazoMode.QUIZ.label,
+                        selected = !isGuessing,
+                        icon = Icons.Filled.Quiz,
                         modifier = Modifier.weight(1f),
                         onClick = {
-                            if (difficulty != level) Haptics.light(context)
-                            onDifficultyChange(level.name)
+                            if (isGuessing) Haptics.light(context)
+                            onModeChange(NazoMode.QUIZ.name)
+                        },
+                    )
+                    PillButton(
+                        text = NazoMode.GUESSING.label,
+                        selected = isGuessing,
+                        icon = Icons.Filled.ImageSearch,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            if (!isGuessing) Haptics.light(context)
+                            onModeChange(NazoMode.GUESSING.name)
                         },
                     )
                 }
-            }
-            Spacer(Modifier.height(10.dp))
-            PillButton(
-                text = Difficulty.OTAKU_MASTER.label,
-                selected = difficulty == Difficulty.OTAKU_MASTER,
-                icon = Icons.Filled.WorkspacePremium,
-                onClick = {
-                    if (difficulty != Difficulty.OTAKU_MASTER) Haptics.light(context)
-                    onDifficultyChange(Difficulty.OTAKU_MASTER.name)
-                },
-            )
-            
-            Spacer(Modifier.height(24.dp))
 
-            if (isGuessing) {
-                SectionLabel("ROUNDS")
+                Spacer(Modifier.height(24.dp))
+
+                Text(
+                    text = if (isGuessing) "Can you spot the\nmystery image?" else "Ready to test your\nanime knowledge?",
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 28.sp,
+                        lineHeight = 34.sp,
+                        letterSpacing = (-0.5).sp
+                    ),
+                    color = NazoTextPrimary,
+                )
+
+                Spacer(Modifier.height(24.dp))
+
+                TopicInputCard(topic = topic, onTopicChange = onTopicChange)
+                
+                Spacer(Modifier.height(24.dp))
+                
+                SectionLabel("DIFFICULTY")
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    listOf(1, 3, 5).forEach { count ->
+                    listOf(Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD).forEach { level ->
                         PillButton(
-                            text = if (count == 1) "1 Round" else "$count Rounds",
-                            selected = guessingRounds == count,
+                            text = level.label,
+                            selected = difficulty == level,
                             modifier = Modifier.weight(1f),
                             onClick = {
-                                if (guessingRounds != count) Haptics.light(context)
-                                onGuessingRoundsChange(count)
+                                if (difficulty != level) Haptics.light(context)
+                                onDifficultyChange(level.name)
                             },
                         )
                     }
                 }
-            } else {
-                SectionLabel("QUESTIONS")
                 Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    listOf(5, 10, 15).forEach { count ->
-                        PillButton(
-                            text = "$count Questions",
-                            selected = questionCount == count,
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                if (questionCount != count) Haptics.light(context)
-                                onQuestionCountChange(count)
-                            },
-                        )
+                PillButton(
+                    text = Difficulty.OTAKU_MASTER.label,
+                    selected = difficulty == Difficulty.OTAKU_MASTER,
+                    icon = Icons.Filled.WorkspacePremium,
+                    onClick = {
+                        if (difficulty != Difficulty.OTAKU_MASTER) Haptics.light(context)
+                        onDifficultyChange(Difficulty.OTAKU_MASTER.name)
+                    },
+                )
+                
+                Spacer(Modifier.height(24.dp))
+
+                if (isGuessing) {
+                    SectionLabel("ROUNDS")
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        listOf(1, 3, 5).forEach { count ->
+                            PillButton(
+                                text = if (count == 1) "1 Round" else "$count Rounds",
+                                selected = guessingRounds == count,
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    if (guessingRounds != count) Haptics.light(context)
+                                    onGuessingRoundsChange(count)
+                                },
+                            )
+                        }
+                    }
+                } else {
+                    SectionLabel("QUESTIONS")
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        listOf(5, 10, 15).forEach { count ->
+                            PillButton(
+                                text = "$count Questions",
+                                selected = questionCount == count,
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    if (questionCount != count) Haptics.light(context)
+                                    onQuestionCountChange(count)
+                                },
+                            )
+                        }
                     }
                 }
+
+                Spacer(Modifier.height(28.dp))
+
+                GenerateButton(
+                    label = if (isGuessing) "Start Guessing Game" else if (offline) "Generate Quiz" else "Generate AI Quiz",
+                    onClick = {
+                        if (isGuessing) onStartGuessing(topic, difficulty.label, guessingRounds)
+                        else onStartQuiz(topic, difficulty.label, questionCount)
+                    },
+                )
+                Spacer(Modifier.height(16.dp))
             }
-
-            Spacer(Modifier.height(28.dp))
-
-            GenerateButton(
-                label = if (isGuessing) "Start Guessing Game" else if (offline) "Generate Quiz" else "Generate AI Quiz",
-                onClick = {
-                    if (isGuessing) onStartGuessing(topic, difficulty.label, guessingRounds)
-                    else onStartQuiz(topic, difficulty.label, questionCount)
-                },
-            )
-            Spacer(Modifier.height(16.dp))
         }
-        
+
         NazoBottomNav(
             selected = NazoTab.Home,
             onSettingsClick = onSettingsClick,

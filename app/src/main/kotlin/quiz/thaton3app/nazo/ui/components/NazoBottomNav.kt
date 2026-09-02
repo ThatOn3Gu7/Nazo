@@ -7,12 +7,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -21,18 +22,72 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.ui.theme.NazoNavBar
+import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
-import quiz.thaton3app.nazo.ui.components.Haptics
 
 enum class NazoTab { Home, Settings }
+
+/**
+ * Shared silhouette for the app's top and bottom chrome. Instead of a
+ * straight edge, the bar's free edge ramps smoothly out of the screen
+ * corner, runs flat across the middle, and ramps back into the opposite
+ * corner — a curved "floor" for the bottom nav and, mirrored vertically
+ * ([ceiling] = true), a curved "ceiling" for the home header.
+ *
+ * [rampWidth] is how much horizontal room each ramp takes (clamped to a
+ * quarter of the width so the flat plateau always dominates).
+ */
+class CurvedBarShape(
+    private val rampWidth: Dp,
+    private val ceiling: Boolean,
+) : Shape {
+    override fun createOutline(
+        size: Size,
+        layoutDirection: LayoutDirection,
+        density: Density,
+    ): Outline {
+        val w = size.width
+        val h = size.height
+        val ramp = with(density) { rampWidth.toPx() }.coerceAtMost(w * 0.25f)
+        val path = Path().apply {
+            if (ceiling) {
+                // Edge starts at the top-left screen corner, sweeps DOWN to
+                // full depth, runs flat, and sweeps back UP to the top-right.
+                moveTo(0f, 0f)
+                cubicTo(ramp * 0.55f, 0f, ramp * 0.45f, h, ramp, h)
+                lineTo(w - ramp, h)
+                cubicTo(w - ramp * 0.45f, h, w - ramp * 0.55f, 0f, w, 0f)
+            } else {
+                // Edge starts at the bottom-left screen corner, sweeps UP to
+                // full height, runs flat, and sweeps back DOWN to the
+                // bottom-right.
+                moveTo(0f, h)
+                cubicTo(ramp * 0.55f, h, ramp * 0.45f, 0f, ramp, 0f)
+                lineTo(w - ramp, 0f)
+                cubicTo(w - ramp * 0.45f, 0f, w - ramp * 0.55f, h, w, h)
+            }
+            close()
+        }
+        return Outline.Generic(path)
+    }
+}
 
 @Composable
 fun NazoBottomNav(
@@ -41,37 +96,43 @@ fun NazoBottomNav(
     onHomeClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
 ) {
-    // Floating mode is a user preference (Appearance → Layout). In floating mode the
-    // bar becomes an elevated rounded pill, inset from the edges and slightly
-    // translucent, so screen content scrolling *under* it stays visible. The caller
-    // (Home) positions it via `modifier` (e.g. align(BottomCenter)) so it overlays.
+    // Floating mode is a user preference (Appearance → Layout). In floating mode
+    // the bar is a compact centred pill in the app's pill design language —
+    // wrap-content width, solid surface, subtle border — so it reads like the
+    // rest of the UI instead of a detached slab. The caller (Home) positions it
+    // via `modifier` (e.g. align(BottomCenter)) so it overlays.
     val floating = ThemePreferences(LocalContext.current).floatingNavBar
 
     if (floating) {
         Row(
             modifier = modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
-                .padding(bottom = 12.dp)
-                .shadow(elevation = 8.dp, shape = RoundedCornerShape(26.dp), clip = false)
-                .background(NazoNavBar.copy(alpha = 0.92f), RoundedCornerShape(26.dp))
-                .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(26.dp))
-                .padding(vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+                .padding(bottom = 14.dp)
+                .shadow(elevation = 6.dp, shape = RoundedCornerShape(50), clip = false)
+                .background(NazoNavBar, RoundedCornerShape(50))
+                .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(50))
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             NavItems(selected = selected, onHomeClick = onHomeClick, onSettingsClick = onSettingsClick)
         }
     } else {
-        // Solid bar: the background is applied BEFORE the navigation-bar padding so it
-        // also covers the system gesture area, hiding the ambient particles behind it.
+        // Anchored bar with the curved silhouette: it rises out of the
+        // bottom-left corner, runs flat under the tabs, and sinks back into
+        // the bottom-right corner. The background is applied BEFORE the
+        // navigation-bar padding so the plateau also covers the system
+        // gesture area (the ambient particles only peek through the two
+        // tapered corners, matching the header ceiling above).
+        val curve = remember { CurvedBarShape(rampWidth = 48.dp, ceiling = false) }
         Row(
             modifier = modifier
                 .fillMaxWidth()
-                .background(NazoNavBar)
+                .background(NazoNavBar, curve)
                 .navigationBarsPadding()
-                .padding(vertical = 14.dp),
+                .padding(top = 12.dp, bottom = 4.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             NavItems(selected = selected, onHomeClick = onHomeClick, onSettingsClick = onSettingsClick)
         }
@@ -105,25 +166,29 @@ private fun NazoNavItem(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    val tint = if (selected) NazoPrimary else NazoTextSecondary
+    // Same pill language as the rest of the app (mode/difficulty pills):
+    // the selected tab is a solid accent pill with icon + label side by side,
+    // the unselected tab is quiet text. Much slimmer than icon-over-label.
+    val tint = if (selected) NazoOnPrimary else NazoTextSecondary
     val context = LocalContext.current
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        // Clip to a rounded pill so the long-press ripple is round, not square.
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .clip(RoundedCornerShape(percent = 50))
+            .clip(RoundedCornerShape(50))
+            .background(if (selected) NazoPrimary else Color.Transparent)
             .clickable {
                 Haptics.light(context)
                 onClick()
             }
-            .padding(horizontal = 24.dp, vertical = 8.dp),
+            .padding(horizontal = 18.dp, vertical = 9.dp),
     ) {
-        Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.height(22.dp))
+        Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(7.dp))
         Text(
             text = label,
             color = tint,
             style = MaterialTheme.typography.bodyMedium,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
         )
     }
 }
