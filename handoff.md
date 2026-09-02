@@ -20,6 +20,24 @@ Conventions:
 
 ---
 
+## [2026-09-03 03:00] docs: README overhaul for v7.0 + screenshots scaffold
+
+- Features section rewritten around the five game modes + smarter-quizzing /
+  look-and-feel / QoL groups; covers everything shipped this session.
+- Fixed master-README inaccuracies: 15 accents (not 9), stats are
+  SharedPreferences JSON (no Room — removed Room/KSP from the tech stack),
+  updater description now matches the in-app download flow.
+- Architecture tree updated to the real package layout (achievements, daily,
+  hints, modes, records, reminders, session, sound, vision, widget,
+  onboarding).
+- "📱 Screenshots" section added with an HTML-commented 2×4 grid expecting
+  `assets/screenshots/{home,quiz,survival,blitz,versus,guessing,results,
+  appearance}.png` — drop the files, delete the comment markers, done.
+  Visible placeholder line until then.
+- Files: README.md, handoff.md.
+
+---
+
 ## [2026-09-03 02:30] release: v7.0 (versionCode 7) + pre-release branch review
 
 - End-of-session review of the whole branch (owner request). Logic audit of

@@ -17,49 +17,111 @@
 
 ## What is Nazo?
 
-**Nazo** is an Android quiz game for anime fans. Test your knowledge across four
-difficulty tiers — **Easy**, **Medium**, **Hard**, and the brutal **Otaku Master** —
-each with its own per-difficulty countdown timer. Track your stats, review every
-answer, and even generate fresh quizzes with an AI provider of your choice.
+**Nazo** (謎, "mystery") is an Android quiz game for anime fans. Five game modes,
+four difficulty tiers — **Easy**, **Medium**, **Hard**, and the brutal
+**Otaku Master** — a daily challenge, records to chase, and AI-generated
+question sets from a provider of your choice. Fully offline-capable, fully
+themable, no account, no ads.
 
-### Features
+## 📱 Screenshots
 
-- 🎯 **Four difficulty tiers** with independent, per-difficulty countdown timers (custom quiz engine).
-- 🎨 **Fully themable** — 9 whole-app color accents (Mint, Rose, Pink, Orange, Bronze, Indigo, Slate, Violet, Mono) that recolor background, cards, toggles and text.
-- 🌗 **Material You aware** with a light/dark palette for every accent.
-- 📴 **Offline mode** so you can keep quizzing without a connection.
-- 🖼️ **Guessing Game** mode — name a topic, then race the countdown to un-blur a mystery
-  image: 4-choice answers (Easy/Medium) or fuzzy auto-complete (Hard/Otaku Master), with
-  time-decay scoring and elimination when the timer hits zero.
-- 🤖 **AI Provider** screen to wire up an external AI for generating new question sets.
-- 💾 **Backup & restore** of your local progress and stats.
-- 🔔 **In-app updates** — background update checks (WorkManager) download new APKs with a notification.
-- 🌓 **Launcher icon that follows your system dark/light theme.**
-- 📳 **Haptic feedback** on navigation, toggles, and confirmations.
+<!--
+  Drop PNGs into assets/screenshots/ with these names, then remove this
+  comment to reveal the grid:
+
+| Home | Quiz | Survival | Blitz |
+|:---:|:---:|:---:|:---:|
+| <img src="assets/screenshots/home.png" width="180"/> | <img src="assets/screenshots/quiz.png" width="180"/> | <img src="assets/screenshots/survival.png" width="180"/> | <img src="assets/screenshots/blitz.png" width="180"/> |
+
+| Versus | Guessing Game | Results | Appearance |
+|:---:|:---:|:---:|:---:|
+| <img src="assets/screenshots/versus.png" width="180"/> | <img src="assets/screenshots/guessing.png" width="180"/> | <img src="assets/screenshots/results.png" width="180"/> | <img src="assets/screenshots/appearance.png" width="180"/> |
+-->
+
+*Screenshots coming soon.*
+
+## Features
+
+### 🎮 Five game modes
+
+- 🎯 **Quiz** — pick a topic, difficulty and length; AI-generated questions online,
+  a huge local question bank offline. Per-difficulty countdown timers, hints,
+  explanations, and a full answer review.
+- 🖼️ **Guessing Game** — race the countdown to un-blur a mystery image:
+  4-choice answers (Easy/Medium) or fuzzy auto-complete (Hard/Otaku Master),
+  with time-decay scoring and elimination when the timer hits zero.
+- 🔥 **Survival** — endless questions, 3 lives. Fresh batches load in the
+  background (AI when available, local bank otherwise) so a run never starves.
+  Chase your longest-run record.
+- ⏱️ **Blitz** — 60 seconds on one global clock, answer as many as you can.
+  Auto-advancing questions, works fully offline, most-in-60s record.
+- 🤝 **Versus** — pass & play on one phone: Player 1 plays, hands off (score kept
+  secret), Player 2 answers the same questions re-shuffled. Head-to-head results
+  with a swipeable per-player answer review.
+
+### 🧠 Smarter quizzing
+
+- ⚡ **Daily Challenge** — a date-seeded mixed quiz every day, works offline, bonus XP.
+- 🔁 **Question anti-repeat** — recently answered questions are remembered across
+  launches, sent to the AI as an avoid-list and filtered from local picks.
+- 📚 **Practice deck** — questions you miss build a personal deck; replay them from
+  Home, and a later correct answer graduates them out.
+- 🛟 **Model fallback** — if AI generation fails, Nazo automatically retries with the
+  provider's next model before giving up.
+- 🏆 **Records & stats** — per-difficulty personal bests, survival/blitz records,
+  achievements, XP levels and long-term statistics with a home-screen widget.
+
+### 🎨 Look & feel
+
+- 🎨 **15 whole-app color accents** (Mint, Crimson, Orange, Bronze, Gold, Lime, Teal,
+  Slate, Indigo, Sapphire, Violet, Magenta, Pink, Rose, Mono) that recolor
+  background, cards, toggles and text — each with light & dark palettes.
+- 🎉 **5 victory confetti styles** (plus None), each with its own sound cue, derived
+  from your accent color.
+- 🌫️ **Ambient backgrounds** — switchable animated background styles that drift
+  behind every screen.
+- 🌓 **Launcher icon follows the system theme**; Material You aware.
+- 📳 **Haptic feedback** and a full set of tiny sound cues (both toggleable).
+- 🚀 **Guided onboarding** — feature tour, provider setup, appearance picker and a
+  jump-straight-in first game for every mode.
+
+### 🔧 Quality of life
+
+- 📴 **Offline mode** — every mode except the Guessing Game works without a connection.
+- 🤖 **AI Provider screen** — plug in Google Gemini, OpenRouter or OpenCode Zen
+  (free-model filtering included) to generate fresh question sets.
+- 📤 **Share cards** — render your results as a themed PNG and share it anywhere.
+- 💾 **Backup & restore** — every store (stats, records, practice deck, question
+  history, theme, providers) into one JSON file, manual or automatic.
+- 🔄 **In-app updates** — checks GitHub Releases on your schedule; updates download
+  inside the app with a live progress bar (MB + %), version comparison and
+  one-tap install. A "What's new" sheet appears once after each update.
+- ⏰ **Daily reminders** and a **streak flame** that burns hotter the longer you keep it.
 
 ## How it works
 
-1. **Quiz flow** — `HomeScreen` → pick a difficulty → `ActiveQuizScreen` runs the timed
-   round → `ReviewAnswersScreen` shows what you got right/wrong → `QuizCompleteScreen`
-   summarizes, and `StatisticsScreen` tracks long-term performance.
-2. **Guessing Game flow** — `HomeScreen` → MODE → Guessing Game → topic + rounds →
-   `modes/guessing_game/GuessingPlayScreen`: the AI picks a target for the topic, an image
-   is fetched keylessly (Wikimedia Commons → Wikipedia, placeholder fallback), and the
-   image un-blurs linearly as the per-difficulty timer runs. Easy/Medium show
-   4-choice buttons; Hard/Otaku Master show a fuzzy auto-complete (tap a suggestion to
-   answer). One shot per round — points decay with the remaining time and a timeout
-   eliminates you. `GuessingResultsScreen` summarizes the run.
-3. **Quiz engine** — `data/QuizEngine.kt` + `LocalQuestionBank.kt` own the difficulty→behavior
-   rules and serve questions; `QuizStats.kt` records results in a **Room** database.
-4. **Theming** — a single `NazoColors` palette drives the whole UI. `ui/theme/Color.kt`
-   defines the palette plus an `Accents` registry; `NazoTheme` resolves the selected
-   accent into a full light+dark palette and every screen reads colors through the
-   `NazoXxx` accessors, so changing the accent re-themes the app instantly.
-5. **Updates** — `data/UpdateScheduler` + `UpdateCheckWorker` (WorkManager) periodically
-   check for a newer build; `UpdateDownloader` + `DownloadReceiver` fetch and prompt to
-   install it (`REQUEST_INSTALL_PACKAGES`).
-6. **App icon theming** — `LauncherLight` / `LauncherDark` activity-aliases are toggled
-   based on the device theme so the home-screen icon matches.
+1. **Quiz flow** — `HomeScreen` → mode dropdown → topic/difficulty/length →
+   `ActiveQuizScreen` runs the timed round → `QuizCompleteScreen` summarizes →
+   `ReviewAnswersScreen` shows every answer; `StatisticsScreen` tracks long-term
+   performance. Survival/Blitz/Versus reuse the same quiz screen with mode
+   flags (lives, global clock, player badges).
+2. **Guessing Game flow** — topic + rounds → `modes/guessing_game/GuessingPlayScreen`:
+   the AI picks a target, an image is fetched keylessly (Wikimedia Commons →
+   Wikipedia, placeholder fallback) and un-blurs as the timer runs.
+3. **Quiz engine** — `data/QuizEngine.kt` + `LocalQuestionBank.kt` own the
+   difficulty→behavior rules and serve questions; `data/QuizStats.kt` persists
+   aggregate stats as a JSON blob in SharedPreferences (no database needed).
+4. **Theming** — a single `NazoColors` palette drives the whole UI.
+   `ui/theme/Color.kt` defines the palette plus the `Accents` registry;
+   `NazoTheme` resolves the selected accent into a full light+dark palette and
+   every screen reads colors through `NazoXxx` accessors, so changing the accent
+   re-themes the app instantly.
+5. **Updates** — `data/UpdateScheduler` + `UpdateCheckWorker` (WorkManager)
+   periodically check GitHub Releases; the About screen's update sheet streams
+   the APK in-app via `UpdateDownloader.downloadApk` with live progress, then
+   hands off to the system installer (`REQUEST_INSTALL_PACKAGES`).
+6. **App icon theming** — `LauncherLight` / `LauncherDark` activity-aliases are
+   toggled based on the device theme so the home-screen icon matches.
 
 ## Development
 
@@ -101,12 +163,22 @@ Nazo/
 │       ├── AndroidManifest.xml   # single MainActivity + LauncherLight/LauncherDark aliases
 │       ├── kotlin/quiz/thaton3app/nazo/
 │       │   ├── MainActivity.kt
-│       │   ├── NazoApp.kt        # Theme host + navigation
+│       │   ├── achievements/     # achievement definitions + tracking
+│       │   ├── daily/            # date-seeded daily challenge
+│       │   ├── data/             # QuizEngine, LocalQuestionBank, stats, stores, update pipeline
+│       │   ├── hints/            # lifeline/hint engine
+│       │   ├── modes/            # guessing_game/ (image guessing mode)
+│       │   ├── records/          # personal bests (quiz/guess/survival/blitz)
+│       │   ├── reminders/        # daily reminder scheduling
+│       │   ├── session/          # in-memory session state (anti-repeat, etc.)
+│       │   ├── sound/            # generated sound cues + celebration jingles
 │       │   ├── ui/
-│       │   │   ├── theme/        # Color.kt (palette + accent registry), Theme.kt (NazoTheme)
-│       │   │   ├── components/   # Haptics, NazoBottomNav, OfflineWarningDialog, ...
-│       │   │   └── screens/      # Home, ActiveQuiz, ReviewAnswers, Settings, Appearance, ...
-│       │   └── data/             # QuizEngine, LocalQuestionBank, QuizStats, Room, update workers
+│       │   │   ├── theme/        # Color.kt (palette + accent registry), NazoTheme
+│       │   │   ├── components/   # nav bar, celebrations, share card, What's New, ...
+│       │   │   ├── onboarding/   # first-run tour + setup
+│       │   │   └── screens/      # Home, ActiveQuiz, VersusScreens, Settings, About, ...
+│       │   ├── vision/           # keyless image fetching for the guessing game
+│       │   └── widget/           # home-screen stats widget
 │       └── res/                  # resources, launcher icons, themes
 └── .github/
     ├── workflows/build-release.yml   # tag-triggered release pipeline
@@ -119,7 +191,7 @@ Nazo/
 |------|------------|
 | Language | Kotlin 2.1 |
 | UI | Jetpack Compose + Material 3 |
-| Persistence | Room (with KSP) |
+| Persistence | SharedPreferences (JSON blobs) — no database |
 | Background | WorkManager |
 | Build | Gradle (Kotlin DSL), Android Gradle Plugin |
 | CI | GitHub Actions |
