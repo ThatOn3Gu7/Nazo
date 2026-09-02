@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Replay
@@ -166,6 +167,25 @@ fun VersusResultsScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
+            // Screen identity: a trophy emblem crowning the match result.
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(84.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (tie) NazoTextSecondary.copy(alpha = 0.12f)
+                        else NazoSuccess.copy(alpha = 0.14f)
+                    ),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.EmojiEvents,
+                    contentDescription = null,
+                    tint = if (tie) NazoTextSecondary else NazoSuccess,
+                    modifier = Modifier.size(44.dp),
+                )
+            }
+            Spacer(Modifier.height(18.dp))
             Text(
                 text = if (tie) "It's a tie!" else "Player $winner wins!",
                 style = MaterialTheme.typography.headlineMedium,
@@ -180,7 +200,8 @@ fun VersusResultsScreen(
             )
             Spacer(Modifier.height(28.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            // Head-to-head: two equal cards with a "VS" coin between them.
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 PlayerScoreCard(
                     label = "Player 1",
                     score = p1Score,
@@ -188,6 +209,21 @@ fun VersusResultsScreen(
                     isWinner = !tie && winner == 1,
                     modifier = Modifier.weight(1f),
                 )
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .padding(horizontal = 8.dp)
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(NazoPrimary),
+                ) {
+                    Text(
+                        text = "VS",
+                        color = NazoOnPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Black,
+                    )
+                }
                 PlayerScoreCard(
                     label = "Player 2",
                     score = p2Score,
@@ -283,14 +319,14 @@ private fun PlayerScoreCard(
             style = MaterialTheme.typography.bodySmall,
             color = NazoTextSecondary,
         )
-        if (isWinner) {
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = "WINNER",
-                style = MaterialTheme.typography.labelSmall,
-                color = NazoSuccess,
-                fontWeight = FontWeight.Bold,
-            )
-        }
+        // Always reserve the badge line so both cards measure the same height
+        // whether or not this player won.
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = if (isWinner) "WINNER" else "",
+            style = MaterialTheme.typography.labelSmall,
+            color = NazoSuccess,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }

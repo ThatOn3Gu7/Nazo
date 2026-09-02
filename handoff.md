@@ -20,6 +20,26 @@ Conventions:
 
 ---
 
+## [2026-09-02 22:20] refactor: Home mode dropdown + status row; versus-results identity; quiz-header spacing
+
+Owner feedback after live-testing the 10-feature batch:
+- `HomeScreen.kt`: streak flame chip moved onto the same row as the provider
+  status badge (badge left, flame right) — saves a full row. The 3-row mode
+  pill grid replaced by `ModeSelector`, a compact dropdown card: selected
+  mode with icon-in-circle + one-line pitch, chevron rotates and the card
+  expands in place (animateContentSize) listing the other four modes with
+  their blurbs. Mode headline now swaps with a slide+fade AnimatedContent
+  keyed on the mode.
+- `VersusScreens.kt` results: trophy emblem (EmojiEvents in a tinted circle,
+  grey on tie / success-green on win) crowns the screen; a solid "VS" coin
+  sits between the two score cards; PlayerScoreCard always reserves the
+  WINNER badge line so both cards measure identical heights.
+- `ActiveQuizScreen.kt`: 10dp trailing gap after the P1/P2 badge and the
+  survival hearts so they no longer crowd the countdown circle.
+- Files: HomeScreen.kt, VersusScreens.kt, ActiveQuizScreen.kt, handoff.md.
+
+---
+
 ## [2026-09-02 21:30] feat: all 10 backlog ideas — Survival, Blitz, Versus, dedup memory, practice deck, model fallback, streak flame, share card, celebration sounds, What's New
 
 Owner asked for every idea from the improvement backlog, none skipped. Ten

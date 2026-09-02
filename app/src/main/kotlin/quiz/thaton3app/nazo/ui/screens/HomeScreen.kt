@@ -1,10 +1,17 @@
 package quiz.thaton3app.nazo.ui.screens
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,6 +30,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -138,22 +146,27 @@ fun HomeScreen(
 
             Spacer(Modifier.height(18.dp))
 
-            ApiKeyBadge(
-                active = apiKeyActive,
-                activeProvider = activeProvider,
-                offline = offline,
-                onClick = if (offline) null else ({ showProviderSheet = true }),
-            )
+            // Status row: provider badge on the left, daily-streak flame on
+            // the right — one line instead of two stacked chips.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ApiKeyBadge(
+                    active = apiKeyActive,
+                    activeProvider = activeProvider,
+                    offline = offline,
+                    onClick = if (offline) null else ({ showProviderSheet = true }),
+                )
+                Spacer(Modifier.weight(1f))
+                // Daily streak flame: appears from day 1 and burns hotter as
+                // the streak grows (see StreakFlameChip).
+                if (streakDays >= 1) {
+                    StreakFlameChip(streakDays = streakDays)
+                }
+            }
 
             Spacer(Modifier.height(22.dp))
-
-            // Daily streak flame: appears from day 1 and burns hotter as the
-            // streak grows (see StreakFlameChip). Sits right above the daily
-            // card since the daily challenge is the easiest way to keep it lit.
-            if (streakDays >= 1) {
-                StreakFlameChip(streakDays = streakDays)
-                Spacer(Modifier.height(12.dp))
-            }
 
             // Daily Challenge (Phase 5): date-seeded from the local bank, so it
             // is always available — even offline and with no provider set up.
@@ -168,66 +181,45 @@ fun HomeScreen(
 
             SectionLabel("MODE")
             Spacer(Modifier.height(10.dp))
-            // Five modes now — a 2-per-row pill grid (same static-grid pattern
-            // as the difficulty section, no horizontal scrolling).
-            val modeIcons = mapOf(
-                NazoMode.QUIZ to Icons.Filled.Quiz,
-                NazoMode.GUESSING to Icons.Filled.ImageSearch,
-                NazoMode.SURVIVAL to Icons.Filled.Whatshot,
-                NazoMode.BLITZ to Icons.Filled.Timer,
-                NazoMode.VERSUS to Icons.Filled.Groups,
+            // Five modes — a compact dropdown card instead of a 3-row pill
+            // grid: shows the selected mode (icon + one-line pitch) and
+            // expands in place to reveal the others.
+            ModeSelector(
+                selected = nazoMode,
+                onSelect = { m ->
+                    if (nazoMode != m) Haptics.light(context)
+                    onModeChange(m.name)
+                },
             )
-            NazoMode.entries.chunked(2).forEach { rowModes ->
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    rowModes.forEach { m ->
-                        PillButton(
-                            text = m.label,
-                            selected = nazoMode == m,
-                            icon = modeIcons[m],
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                if (nazoMode != m) Haptics.light(context)
-                                onModeChange(m.name)
-                            },
-                        )
-                    }
-                    if (rowModes.size == 1) Spacer(Modifier.weight(1f))
-                }
-                Spacer(Modifier.height(10.dp))
-            }
-            // One-line pitch for the newer modes.
-            val modeBlurb = when (nazoMode) {
-                NazoMode.SURVIVAL -> "Endless questions • 3 lives • how far can you go?"
-                NazoMode.BLITZ -> "60 seconds on the clock • instant questions • works offline"
-                NazoMode.VERSUS -> "Pass & play — 2 players answer the same questions"
-                else -> null
-            }
-            if (modeBlurb != null) {
-                Text(
-                    text = modeBlurb,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NazoTextSecondary,
-                )
-            }
 
             Spacer(Modifier.height(24.dp))
 
-            Text(
-                text = when (nazoMode) {
-                    NazoMode.GUESSING -> "Can you spot the\nmystery image?"
-                    NazoMode.SURVIVAL -> "How long can\nyou survive?"
-                    NazoMode.BLITZ -> "How many in\n60 seconds?"
-                    NazoMode.VERSUS -> "Who knows their\nanime better?"
-                    else -> "Ready to test your\nanime knowledge?"
+            // Headline swaps with a little slide+fade whenever the mode changes.
+            AnimatedContent(
+                targetState = nazoMode,
+                transitionSpec = {
+                    (slideInVertically(spring(stiffness = Spring.StiffnessMediumLow)) { it / 3 } + fadeIn())
+                        .togetherWith(slideOutVertically { -it / 3 } + fadeOut())
                 },
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 28.sp,
-                    lineHeight = 34.sp,
-                    letterSpacing = (-0.5).sp
-                ),
-                color = NazoTextPrimary,
-            )
+                label = "modeHeadline",
+            ) { m ->
+                Text(
+                    text = when (m) {
+                        NazoMode.GUESSING -> "Can you spot the\nmystery image?"
+                        NazoMode.SURVIVAL -> "How long can\nyou survive?"
+                        NazoMode.BLITZ -> "How many in\n60 seconds?"
+                        NazoMode.VERSUS -> "Who knows their\nanime better?"
+                        else -> "Ready to test your\nanime knowledge?"
+                    },
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 28.sp,
+                        lineHeight = 34.sp,
+                        letterSpacing = (-0.5).sp
+                    ),
+                    color = NazoTextPrimary,
+                )
+            }
 
             Spacer(Modifier.height(24.dp))
 
@@ -681,6 +673,147 @@ private fun StreakFlameChip(streakDays: Int) {
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
         )
+    }
+}
+
+private val MODE_ICONS = mapOf(
+    NazoMode.QUIZ to Icons.Filled.Quiz,
+    NazoMode.GUESSING to Icons.Filled.ImageSearch,
+    NazoMode.SURVIVAL to Icons.Filled.Whatshot,
+    NazoMode.BLITZ to Icons.Filled.Timer,
+    NazoMode.VERSUS to Icons.Filled.Groups,
+)
+
+private fun modeBlurb(m: NazoMode): String = when (m) {
+    NazoMode.QUIZ -> "AI-crafted questions on any topic you pick"
+    NazoMode.GUESSING -> "Guess the anime from a mystery image"
+    NazoMode.SURVIVAL -> "Endless questions • 3 lives • how far can you go?"
+    NazoMode.BLITZ -> "60 seconds on the clock • works offline"
+    NazoMode.VERSUS -> "Pass & play — 2 players, same questions"
+}
+
+/**
+ * Compact mode dropdown: a single card showing the selected mode with its
+ * icon and one-line pitch; tapping expands it in place to list the other
+ * modes. Replaces the old 3-row pill grid to keep Home short.
+ */
+@Composable
+private fun ModeSelector(
+    selected: NazoMode,
+    onSelect: (NazoMode) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val chevron by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "modeChevron",
+    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .background(NazoSurface)
+            .border(
+                width = 1.dp,
+                color = if (expanded) NazoPrimary.copy(alpha = 0.35f)
+                else NazoTextSecondary.copy(alpha = 0.08f),
+                shape = RoundedCornerShape(22.dp),
+            )
+            .animateContentSize(spring(stiffness = Spring.StiffnessMediumLow)),
+    ) {
+        // Selected mode header — always visible, toggles the list.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(NazoPrimary.copy(alpha = 0.14f)),
+            ) {
+                Icon(
+                    imageVector = MODE_ICONS[selected] ?: Icons.Filled.Quiz,
+                    contentDescription = null,
+                    tint = NazoPrimary,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = selected.label,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = NazoTextPrimary,
+                )
+                Text(
+                    text = modeBlurb(selected),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NazoTextSecondary,
+                    maxLines = 1,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                imageVector = Icons.Filled.KeyboardArrowDown,
+                contentDescription = if (expanded) "Collapse modes" else "Expand modes",
+                tint = NazoTextSecondary,
+                modifier = Modifier
+                    .size(24.dp)
+                    .rotate(chevron),
+            )
+        }
+        if (expanded) {
+            HorizontalDivider(color = NazoTextSecondary.copy(alpha = 0.08f))
+            NazoMode.entries.filter { it != selected }.forEach { m ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            expanded = false
+                            onSelect(m)
+                        }
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(NazoPillUnselected),
+                    ) {
+                        Icon(
+                            imageVector = MODE_ICONS[m] ?: Icons.Filled.Quiz,
+                            contentDescription = null,
+                            tint = NazoTextSecondary,
+                            modifier = Modifier.size(19.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = m.label,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = NazoTextPrimary,
+                        )
+                        Text(
+                            text = modeBlurb(m),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NazoTextSecondary,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+        }
     }
 }
 

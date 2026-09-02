@@ -242,6 +242,7 @@ fun ActiveQuizScreen(
                             fontWeight = FontWeight.SemiBold,
                         )
                     }
+                    Spacer(Modifier.width(10.dp))
                 }
                 if (endless) {
                     // Survival lives: three hearts, misses hollow them out.
@@ -257,6 +258,7 @@ fun ActiveQuizScreen(
                             if (i < 2) Spacer(Modifier.width(2.dp))
                         }
                     }
+                    Spacer(Modifier.width(10.dp))
                 }
                 if (isAiGenerated) {
                     Spacer(Modifier.width(8.dp))
