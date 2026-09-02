@@ -20,6 +20,48 @@ Conventions:
 
 ---
 
+## [2026-09-02 10:00] feat: per-style "bloom" entrances + graceful fade when switching background effects
+
+- Owner request: switching particle backgrounds was an instant hard cut both
+  ways; each style should instead bloom in "in a manner that suits their
+  style" (constellation forms as a small web then grows to full; orbs pop in
+  small then suddenly get big over a second or two; likewise for the others).
+- All in `ui/components/AmbientBackground.kt` (single-file change; full
+  refactor of the draw code):
+  - The big `when(style)` canvas block is now four private
+    `DrawScope.drawXxx(particles, t, appear, master)` functions dispatched by
+    `drawAmbientStyle`. `appear` = bloom progress 0→1, `master` = global fade
+    multiplier. INVARIANT: at appear=1/master=1 every formula reduces EXACTLY
+    to the previous steady-state rendering (verified per-term; easeOutBack(1)
+    is exactly 1f so even the `scale != 1f` canvas-scale branch is skipped).
+  - Choreography — constellation: stars lerp from a 22%-spread mini-web at
+    screen centre outward (spread=0.22+0.78·easeOutCubic), staggered star
+    pop-in (shuffled ×13 order), links dimmed 50%→100% while forming, 2.4 s.
+    Orbs: staggered; quick pop to 0.28 scale then easeOutBack spring to full
+    (slight overshoot), 2.0 s. Shapes: staggered scale-from-0 with overshoot
+    + 120° entrance twist, 1.8 s. Rain: streaks start fully above the top
+    edge and sweep down into their natural positions (offset −(1−ease)·(h+2·len)),
+    1.7 s. Outgoing style fades out over 0.45 s, overlapping the bloom — no
+    hard cut in either direction, including switching TO "None".
+  - Mechanics: bloom/fade progress is computed IN THE DRAW PHASE from the
+    existing unbounded clock — no new Animatables, zero recomposition. A
+    plain (non-snapshot) `BackgroundTransition` holder records shown/retiring
+    style + clock timestamps; composition writes it only on style change.
+    First appearance also blooms (app launch, onboarding).
+  - "None" guarantee preserved: `engineActive` snapshot flag replaces the old
+    early return. After a fade-to-none completes, the frame loop detects it
+    (`shown=="none" && t-retireStart > 1.5×fade`), flips engineActive off and
+    breaks; the composable then composes nothing (state torn down, zero
+    per-frame work). `LaunchedEffect(engineActive)` + `baseCycles=trans.clock`
+    keeps the time domain continuous across any relaunch, so timestamps stay
+    valid. Starting on "None" composes only two remembers, no clock.
+- Bonus effect: selecting effects in the Appearance sheet now demos the bloom
+  live behind the scrim; sheet preview cards intentionally unchanged (steady
+  loops).
+- Files: `ui/components/AmbientBackground.kt`, `handoff.md`.
+
+---
+
 ## [2026-09-02 09:00] feat: "None" background option + Background Effects bottom sheet with live previews
 
 - Owner requests: (1) let users turn ambient background effects OFF entirely;
