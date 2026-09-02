@@ -442,6 +442,9 @@ private fun TextButton(label: String, onClick: () -> Unit) {
             .height(44.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(Color.Transparent)
+            // Subtle outline so it reads as a button at a glance — same as
+            // the guessing game's loading-screen Cancel button.
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,

@@ -82,18 +82,36 @@ fun curvedBarEdgePath(size: Size, rampPx: Float, ceiling: Boolean, edgeInsetPx: 
 
 /**
  * Filled variant of the same silhouette, used as the bottom nav's shape:
- * the edge curve closed along the screen edge.
+ * the edge curve closed through the screen-edge corners, so with a non-zero
+ * [edgeInset] the sides end in short vertical "cut" segments instead of the
+ * swoop tapering all the way into the corners.
  */
 class CurvedBarShape(
     private val rampWidth: Dp,
     private val ceiling: Boolean,
+    private val edgeInset: Dp = 0.dp,
 ) : Shape {
     override fun createOutline(
         size: Size,
         layoutDirection: LayoutDirection,
         density: Density,
     ): Outline {
-        val path = curvedBarEdgePath(size, with(density) { rampWidth.toPx() }, ceiling)
+        val path = curvedBarEdgePath(
+            size,
+            with(density) { rampWidth.toPx() },
+            ceiling,
+            with(density) { edgeInset.toPx() },
+        )
+        // Close through the screen-edge corners so the fill always reaches
+        // the actual screen edge; the short vertical side segments are the
+        // visible "cut".
+        if (ceiling) {
+            path.lineTo(size.width, 0f)
+            path.lineTo(0f, 0f)
+        } else {
+            path.lineTo(size.width, size.height)
+            path.lineTo(0f, size.height)
+        }
         path.close()
         return Outline.Generic(path)
     }
@@ -134,14 +152,14 @@ fun NazoBottomNav(
         // navigation-bar padding so the plateau also covers the system
         // gesture area (the ambient particles only peek through the two
         // tapered corners, matching the header ceiling above).
-        val curve = remember { CurvedBarShape(rampWidth = 56.dp, ceiling = false) }
+        val curve = remember { CurvedBarShape(rampWidth = 56.dp, ceiling = false, edgeInset = 16.dp) }
         Row(
             modifier = modifier
                 .fillMaxWidth()
                 .background(NazoNavBar, curve)
                 .navigationBarsPadding()
                 .padding(top = 12.dp, bottom = 4.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            horizontalArrangement = Arrangement.spacedBy(32.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             NavItems(selected = selected, onHomeClick = onHomeClick, onSettingsClick = onSettingsClick)

@@ -1,5 +1,6 @@
 package quiz.thaton3app.nazo.ui.components
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -86,6 +87,11 @@ fun OfflineWarningDialog(
     // Both modes: the scrim consumes clicks and does nothing (shows the press
     // ripple, blocks the app behind). The only way forward is the button.
     val scrimClick: () -> Unit = {}
+
+    // The back gesture must not escape the popup either: acknowledging via
+    // the button is the ONLY way out (this composes after the app-level
+    // back handler, so it takes precedence while the popup is visible).
+    BackHandler(enabled = true) { /* swallow */ }
 
     val context = LocalContext.current
 

@@ -20,6 +20,39 @@ Conventions:
 
 ---
 
+## [2026-09-02 16:30] refactor: nav-bar corner "cut" + centred tabs; quiz Cancel outline; offline popup swallows back
+
+- Owner (with nav-bar screenshot + doodle): (1) the bottom bar's swoop
+  should be CUT at the sides — end in a short vertical segment at the
+  screen edge instead of tapering into the very corner; also move the
+  Home/Settings tabs a bit closer together. (2) The quiz-generation loading
+  screen's Cancel lacks the outline the guessing game's loading Cancel has.
+  (3) The startup offline popup should be inescapable except via "Go
+  Offline" — back gesture currently escapes it (regression of an old
+  intent; scrim already blocks).
+- `ui/components/NazoBottomNav.kt`: `CurvedBarShape` gained
+  `edgeInset: Dp = 0.dp` (reuses curvedBarEdgePath's edgeInsetPx from the
+  12:45 change) and now closes the fill THROUGH the screen corners
+  (nav: lineTo(w,h)+lineTo(0,h); ceiling: via (w,0)+(0,0)) so the fill
+  still reaches the screen edge and the visible sides are 16dp vertical
+  "cuts". Anchored bar: edgeInset=16.dp; Row arrangement SpaceEvenly →
+  `spacedBy(32.dp, Alignment.CenterHorizontally)` (tabs centred, closer).
+  Floating pill untouched.
+- `ui/screens/LoadingScreen.kt`: private `TextButton` (used by the loading
+  Cancel AND both ErrorContent Cancels) now has the same border as the
+  guessing game's CancelTextButton (1dp NazoTextSecondary@25%, 14dp
+  corners) — consistent across all three usages by design.
+- `ui/components/OfflineWarningDialog.kt`: added
+  `BackHandler(enabled = true) { }` (both modes — matches the existing
+  scrim behaviour where only the button dismisses). It composes AFTER
+  NazoApp's global BackHandler (line ~216 vs dialog at ~826), so it takes
+  precedence while the popup is visible. Import androidx.activity.compose.
+  BackHandler added.
+- Files: NazoBottomNav.kt, LoadingScreen.kt, OfflineWarningDialog.kt,
+  handoff.md.
+
+---
+
 ## [2026-09-02 15:45] fix: onboarding provider pills scroll horizontally; robust JSON coercion for sloppy models
 
 - Owner: (1) Make-It-Yours onboarding slide — the AI Provider pill row wraps
