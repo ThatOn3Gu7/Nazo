@@ -544,11 +544,13 @@ private fun ApiKeyBadge(
 private val PROVIDER_DISPLAY = mapOf(
     "gemini" to "Google Gemini",
     "openrouter" to "OpenRouter",
+    "opencode" to "OpenCode Zen",
 )
 
 private val PROVIDER_ICONS = mapOf(
     "gemini" to Icons.Filled.AutoAwesome,
     "openrouter" to Icons.Filled.Api,
+    "opencode" to Icons.Filled.Code,
 )
 
 @Composable

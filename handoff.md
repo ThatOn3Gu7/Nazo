@@ -20,6 +20,43 @@ Conventions:
 
 ---
 
+## [2026-09-02 15:00] feat: OpenCode Zen provider support (same free-model logic as OpenRouter)
+
+- Owner request: add "Open Code" (OpenCode Zen, opencode.ai/zen) as a new AI
+  provider — another free-tier-friendly gateway — reusing the OpenRouter
+  logic since OpenCode also tags free models.
+- Verified API facts (web, 2026-09-02): OpenAI-compatible; chat completions
+  at https://opencode.ai/zen/v1/chat/completions; models list at
+  https://opencode.ai/zen/v1/models; Bearer auth; keys from
+  opencode.ai/auth; free models tagged with a "-free" id suffix (e.g.
+  deepseek-v4-flash-free, nemotron-3-super-free) plus free stealth model
+  "big-pickle".
+- `data/remote/ProviderConfig.kt`: new ProviderEndpoint(id="opencode",
+  kind=OPENAI, host="opencode.ai", path="/zen/v1/chat/completions");
+  modelsUrl case → /zen/v1/models; parseModels "opencode" branch — isFree =
+  pricing prompt+completion == "0" (when a pricing object exists, mirroring
+  OpenRouter) OR id contains "free" OR id == "big-pickle";
+  preferredDefaultModel: "openrouter","opencode" → first free else first.
+- Registry/UI touch points (all PROVIDER_ORDER-driven flows pick it up
+  automatically): ApiKeyStore.PROVIDER_ORDER += "opencode";
+  AiProviderScreen defaultProviders += "OpenCode Zen" (avatar "Z") + setup
+  help text (opencode.ai/auth, search "free"); HomeScreen PROVIDER_DISPLAY/
+  PROVIDER_ICONS (Icons.Filled.Code via existing filled.* wildcard);
+  Onboarding PROVIDER_NAMES; SettingsScreen row subtitle; AboutScreen
+  third-party services paragraph.
+- ZERO changes needed in ApiClient / GuessApiClient / quiz generation — all
+  fully ProviderKind-generic (OPENAI kind: Bearer header, messages body,
+  response_format json_object, choices[].message.content extraction).
+  ModelDropdown's "free" search filter works via ModelInfo.isFree.
+- NOT verified live (no key in sandbox): actual /models response shape;
+  parse is defensive (optString/optJSONObject) so unknown fields degrade
+  gracefully.
+- Files: ProviderConfig.kt, ApiKeyStore.kt, AiProviderScreen.kt,
+  HomeScreen.kt, OnboardingScreen.kt, SettingsScreen.kt, AboutScreen.kt,
+  handoff.md.
+
+---
+
 ## [2026-09-02 14:15] feat: clouds + star field in the theme transit; fix stuck animation on rapid switching
 
 - Owner: (1) Light theme's sun should have CLOUDS alongside it; Dark theme's

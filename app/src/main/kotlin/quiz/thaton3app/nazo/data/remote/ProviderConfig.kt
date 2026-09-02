@@ -113,6 +113,7 @@ data class ProviderEndpoint(
         ProviderKind.GEMINI -> "https://$host/v1beta/models?key=$apiKey"
         ProviderKind.OPENAI -> when (id) {
             "openrouter" -> "https://openrouter.ai/api/v1/models"
+            "opencode" -> "https://opencode.ai/zen/v1/models"
             else -> "https://$host/v1/models"
         }
         ProviderKind.ANTHROPIC -> null
@@ -155,6 +156,24 @@ data class ProviderEndpoint(
                         if (mid.isNotBlank()) {
                             val name = m.optString("name", "").ifBlank { mid }
                             list += ModelInfo(mid, name, m.optString("description", ""), isFree)
+                        }
+                    }
+                    "opencode" -> {
+                        // OpenCode Zen (opencode.ai/zen): OpenAI-shaped `data[]`.
+                        // Free models are tagged in the id itself with a "-free"
+                        // suffix (e.g. deepseek-v4-flash-free), plus the free
+                        // stealth model "big-pickle". Prefer pricing metadata
+                        // when present, mirroring the OpenRouter logic.
+                        val mid = m.optString("id", "")
+                        if (mid.isNotBlank()) {
+                            val pricing = m.optJSONObject("pricing")
+                            val freeByPricing = pricing != null &&
+                                (pricing.optString("prompt", "0")) == "0" &&
+                                (pricing.optString("completion", "0")) == "0"
+                            val freeByTag = mid.contains("free", ignoreCase = true) ||
+                                mid.equals("big-pickle", ignoreCase = true)
+                            val name = m.optString("name", "").ifBlank { mid }
+                            list += ModelInfo(mid, name, m.optString("description", ""), freeByPricing || freeByTag)
                         }
                     }
                     else -> {
@@ -226,6 +245,14 @@ val PROVIDERS: List<ProviderEndpoint> = listOf(
         urlKey = false,
         models = emptyList(),
     ),
+    ProviderEndpoint(
+        id = "opencode",
+        kind = ProviderKind.OPENAI,
+        host = "opencode.ai",
+        path = "/zen/v1/chat/completions",
+        urlKey = false,
+        models = emptyList(),
+    ),
 )
 
 fun providerById(id: String): ProviderEndpoint? = PROVIDERS.firstOrNull { it.id == id }
@@ -244,6 +271,6 @@ fun preferredDefaultModel(providerId: String, models: List<ModelInfo>): ModelInf
             ?: models.firstOrNull { it.id.contains("3.1", ignoreCase = true) && it.id.contains("flash", ignoreCase = true) }
             ?: models.firstOrNull { it.id.contains("flash", ignoreCase = true) }
             ?: models.firstOrNull()
-    "openrouter" -> models.firstOrNull { it.isFree } ?: models.firstOrNull()
+    "openrouter", "opencode" -> models.firstOrNull { it.isFree } ?: models.firstOrNull()
     else -> models.firstOrNull()
 }

@@ -81,7 +81,7 @@ fun SettingsScreen(
                 SettingsRow(
                     icon = Icons.Filled.VpnKey,
                     title = "AI Provider & API Keys",
-                    subtitle = "Configure Gemini, OpenRouter, and model settings",
+                    subtitle = "Configure Gemini, OpenRouter, OpenCode, and model settings",
                     onClick = onOpenAiProvider,
                 )
             }

@@ -991,7 +991,7 @@ private fun AboutDevDialog(onDismiss: () -> Unit) {
                     Text(
                         "Optional AI question generation is powered by third-party providers — " +
                             "Google Gemini, OpenAI (ChatGPT), Anthropic (Claude), OpenRouter, " +
-                            "DeepSeek, and Mistral AI. Remote images (e.g. profile pictures) are " +
+                            "OpenCode Zen, DeepSeek, and Mistral AI. Remote images (e.g. profile pictures) are " +
                             "loaded with Coil. Update checks use the GitHub API, and network " +
                             "connectivity is verified via Google's service. These services are not " +
                             "affiliated with or endorsed by Nazo.",

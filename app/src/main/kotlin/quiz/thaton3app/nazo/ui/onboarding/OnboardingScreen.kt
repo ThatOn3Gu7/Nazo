@@ -176,6 +176,7 @@ private const val PAGE_FIRST_GAME = 4
 private val PROVIDER_NAMES = mapOf(
     "gemini" to "Google Gemini",
     "openrouter" to "OpenRouter",
+    "opencode" to "OpenCode Zen",
 )
 
 /** Key-verification state for the provider section. */

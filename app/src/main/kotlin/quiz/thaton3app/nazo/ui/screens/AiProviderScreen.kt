@@ -131,6 +131,12 @@ private fun defaultProviders() = listOf(
         avatarLetter = "R",
         status = KeyStatus.NOT_CONFIGURED,
     ),
+    ProviderUiState(
+        id = "opencode",
+        name = "OpenCode Zen",
+        avatarLetter = "Z",
+        status = KeyStatus.NOT_CONFIGURED,
+    ),
 )
 
 // Load the persisted key/model/list for each provider so the UI reflects what's stored on device.
@@ -547,6 +553,9 @@ private fun providerSetupHelp(id: String): String = when (id) {
     "openrouter" -> "1) Sign up at openrouter.ai and create an API key on the Keys page.\n" +
         "2) Paste it below and tap \"Fetch models\".\n" +
         "3) Tap the search icon and type \"free\" to list the \$0 models, pick one, then Save."
+    "opencode" -> "1) Sign in at opencode.ai/auth and create an API key (OpenCode Zen).\n" +
+        "2) Paste it below and tap \"Fetch models\".\n" +
+        "3) Tap the search icon and type \"free\" to list the \$0 models (tagged \"-free\"), pick one, then Save."
     else -> "Enter your API key for this provider, tap Fetch models, choose a model, then Save."
 }
 

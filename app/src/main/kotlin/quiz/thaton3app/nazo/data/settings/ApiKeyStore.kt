@@ -105,6 +105,7 @@ class ApiKeyStore(context: Context) {
         val PROVIDER_ORDER = listOf(
             "gemini",
             "openrouter",
+            "opencode",
         )
     }
 }
