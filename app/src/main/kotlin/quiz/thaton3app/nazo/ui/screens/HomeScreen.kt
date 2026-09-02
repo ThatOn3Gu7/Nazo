@@ -112,184 +112,188 @@ fun HomeScreen(
         modifier = Modifier
             .fillMaxSize()
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Curved "ceiling": an OUTLINE running from the top-left screen
-            // corner, swooping down around the header + profile button, and
-            // back up to the top-right corner. The area inside is fully
-            // transparent so the ambient background particles stay visible
-            // beneath the header.
-            val outlineColor = NazoPrimary.copy(alpha = 0.45f)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .drawBehind {
-                        val edge = curvedBarEdgePath(size, 44.dp.toPx(), ceiling = true)
-                        drawPath(
-                            path = edge,
-                            color = outlineColor,
-                            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
-                        )
-                    }
-                    .statusBarsPadding()
-                    .padding(horizontal = 34.dp)
-                    .padding(top = 6.dp, bottom = 18.dp)
-            ) {
-                HomeHeader(
-                    onSettingsClick = onSettingsClick,
-                    profileName = profileName,
-                    profilePictureUri = profilePictureUri,
-                    onProfileClick = onProfileClick,
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .navigationBarsPadding()
+                .padding(bottom = 96.dp)
+        ) {
+            // Clears the fixed header overlay on arrival — but there is no
+            // container anymore: content scrolls UP beneath the transparent
+            // outline and stays fully visible outside and inside it.
+            Spacer(Modifier.statusBarsPadding().height(86.dp))
+
+            ApiKeyBadge(
+                active = apiKeyActive,
+                activeProvider = activeProvider,
+                offline = offline,
+                onClick = if (offline) null else ({ showProviderSheet = true }),
+            )
+
+            Spacer(Modifier.height(22.dp))
+
+            // Daily Challenge (Phase 5): date-seeded from the local bank, so it
+            // is always available — even offline and with no provider set up.
+            DailyChallengeCard(
+                completed = dailyCompleted,
+                lastScore = dailyScore,
+                lastBonus = dailyBonus,
+                onPlay = onPlayDaily,
+            )
+
+            Spacer(Modifier.height(22.dp))
+
+            SectionLabel("MODE")
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PillButton(
+                    text = NazoMode.QUIZ.label,
+                    selected = !isGuessing,
+                    icon = Icons.Filled.Quiz,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        if (isGuessing) Haptics.light(context)
+                        onModeChange(NazoMode.QUIZ.name)
+                    },
+                )
+                PillButton(
+                    text = NazoMode.GUESSING.label,
+                    selected = isGuessing,
+                    icon = Icons.Filled.ImageSearch,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        if (!isGuessing) Haptics.light(context)
+                        onModeChange(NazoMode.GUESSING.name)
+                    },
                 )
             }
 
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp)
-                    .navigationBarsPadding()
-                    .padding(bottom = 96.dp)
-            ) {
-                Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(24.dp))
 
-                ApiKeyBadge(
-                    active = apiKeyActive,
-                    activeProvider = activeProvider,
-                    offline = offline,
-                    onClick = if (offline) null else ({ showProviderSheet = true }),
-                )
+            Text(
+                text = if (isGuessing) "Can you spot the\nmystery image?" else "Ready to test your\nanime knowledge?",
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 28.sp,
+                    lineHeight = 34.sp,
+                    letterSpacing = (-0.5).sp
+                ),
+                color = NazoTextPrimary,
+            )
 
-                Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(24.dp))
 
-                // Daily Challenge (Phase 5): date-seeded from the local bank, so it
-                // is always available — even offline and with no provider set up.
-                DailyChallengeCard(
-                    completed = dailyCompleted,
-                    lastScore = dailyScore,
-                    lastBonus = dailyBonus,
-                    onPlay = onPlayDaily,
-                )
-
-                Spacer(Modifier.height(22.dp))
-
-                SectionLabel("MODE")
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            TopicInputCard(topic = topic, onTopicChange = onTopicChange)
+            
+            Spacer(Modifier.height(24.dp))
+            
+            SectionLabel("DIFFICULTY")
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                listOf(Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD).forEach { level ->
                     PillButton(
-                        text = NazoMode.QUIZ.label,
-                        selected = !isGuessing,
-                        icon = Icons.Filled.Quiz,
+                        text = level.label,
+                        selected = difficulty == level,
                         modifier = Modifier.weight(1f),
                         onClick = {
-                            if (isGuessing) Haptics.light(context)
-                            onModeChange(NazoMode.QUIZ.name)
-                        },
-                    )
-                    PillButton(
-                        text = NazoMode.GUESSING.label,
-                        selected = isGuessing,
-                        icon = Icons.Filled.ImageSearch,
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            if (!isGuessing) Haptics.light(context)
-                            onModeChange(NazoMode.GUESSING.name)
+                            if (difficulty != level) Haptics.light(context)
+                            onDifficultyChange(level.name)
                         },
                     )
                 }
+            }
+            Spacer(Modifier.height(10.dp))
+            PillButton(
+                text = Difficulty.OTAKU_MASTER.label,
+                selected = difficulty == Difficulty.OTAKU_MASTER,
+                icon = Icons.Filled.WorkspacePremium,
+                onClick = {
+                    if (difficulty != Difficulty.OTAKU_MASTER) Haptics.light(context)
+                    onDifficultyChange(Difficulty.OTAKU_MASTER.name)
+                },
+            )
+            
+            Spacer(Modifier.height(24.dp))
 
-                Spacer(Modifier.height(24.dp))
-
-                Text(
-                    text = if (isGuessing) "Can you spot the\nmystery image?" else "Ready to test your\nanime knowledge?",
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 28.sp,
-                        lineHeight = 34.sp,
-                        letterSpacing = (-0.5).sp
-                    ),
-                    color = NazoTextPrimary,
-                )
-
-                Spacer(Modifier.height(24.dp))
-
-                TopicInputCard(topic = topic, onTopicChange = onTopicChange)
-                
-                Spacer(Modifier.height(24.dp))
-                
-                SectionLabel("DIFFICULTY")
+            if (isGuessing) {
+                SectionLabel("ROUNDS")
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    listOf(Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD).forEach { level ->
+                    listOf(1, 3, 5).forEach { count ->
                         PillButton(
-                            text = level.label,
-                            selected = difficulty == level,
+                            text = if (count == 1) "1 Round" else "$count Rounds",
+                            selected = guessingRounds == count,
                             modifier = Modifier.weight(1f),
                             onClick = {
-                                if (difficulty != level) Haptics.light(context)
-                                onDifficultyChange(level.name)
+                                if (guessingRounds != count) Haptics.light(context)
+                                onGuessingRoundsChange(count)
                             },
                         )
                     }
                 }
+            } else {
+                SectionLabel("QUESTIONS")
                 Spacer(Modifier.height(10.dp))
-                PillButton(
-                    text = Difficulty.OTAKU_MASTER.label,
-                    selected = difficulty == Difficulty.OTAKU_MASTER,
-                    icon = Icons.Filled.WorkspacePremium,
-                    onClick = {
-                        if (difficulty != Difficulty.OTAKU_MASTER) Haptics.light(context)
-                        onDifficultyChange(Difficulty.OTAKU_MASTER.name)
-                    },
-                )
-                
-                Spacer(Modifier.height(24.dp))
-
-                if (isGuessing) {
-                    SectionLabel("ROUNDS")
-                    Spacer(Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        listOf(1, 3, 5).forEach { count ->
-                            PillButton(
-                                text = if (count == 1) "1 Round" else "$count Rounds",
-                                selected = guessingRounds == count,
-                                modifier = Modifier.weight(1f),
-                                onClick = {
-                                    if (guessingRounds != count) Haptics.light(context)
-                                    onGuessingRoundsChange(count)
-                                },
-                            )
-                        }
-                    }
-                } else {
-                    SectionLabel("QUESTIONS")
-                    Spacer(Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        listOf(5, 10, 15).forEach { count ->
-                            PillButton(
-                                text = "$count Questions",
-                                selected = questionCount == count,
-                                modifier = Modifier.weight(1f),
-                                onClick = {
-                                    if (questionCount != count) Haptics.light(context)
-                                    onQuestionCountChange(count)
-                                },
-                            )
-                        }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    listOf(5, 10, 15).forEach { count ->
+                        PillButton(
+                            text = "$count Questions",
+                            selected = questionCount == count,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                if (questionCount != count) Haptics.light(context)
+                                onQuestionCountChange(count)
+                            },
+                        )
                     }
                 }
-
-                Spacer(Modifier.height(28.dp))
-
-                GenerateButton(
-                    label = if (isGuessing) "Start Guessing Game" else if (offline) "Generate Quiz" else "Generate AI Quiz",
-                    onClick = {
-                        if (isGuessing) onStartGuessing(topic, difficulty.label, guessingRounds)
-                        else onStartQuiz(topic, difficulty.label, questionCount)
-                    },
-                )
-                Spacer(Modifier.height(16.dp))
             }
+
+            Spacer(Modifier.height(28.dp))
+
+            GenerateButton(
+                label = if (isGuessing) "Start Guessing Game" else if (offline) "Generate Quiz" else "Generate AI Quiz",
+                onClick = {
+                    if (isGuessing) onStartGuessing(topic, difficulty.label, guessingRounds)
+                    else onStartQuiz(topic, difficulty.label, questionCount)
+                },
+            )
+            Spacer(Modifier.height(16.dp))
+        }
+
+        // Fixed, fully transparent ceiling overlay: only an OUTLINE is drawn
+        // — it enters from the left screen edge slightly below the top
+        // corner, swoops down around the header + profile button, and exits
+        // on the right edge. Content and particles show through everywhere.
+        val outlineColor = NazoPrimary.copy(alpha = 0.45f)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .drawBehind {
+                    val edge = curvedBarEdgePath(
+                        size,
+                        rampPx = 44.dp.toPx(),
+                        ceiling = true,
+                        edgeInsetPx = 15.dp.toPx(),
+                    )
+                    drawPath(
+                        path = edge,
+                        color = outlineColor,
+                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
+                    )
+                }
+                .statusBarsPadding()
+                .padding(horizontal = 34.dp)
+                .padding(top = 6.dp, bottom = 18.dp)
+        ) {
+            HomeHeader(
+                onSettingsClick = onSettingsClick,
+                profileName = profileName,
+                profilePictureUri = profilePictureUri,
+                onProfileClick = onProfileClick,
+            )
         }
 
         NazoBottomNav(

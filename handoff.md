@@ -20,6 +20,31 @@ Conventions:
 
 ---
 
+## [2026-09-02 12:45] fix: top outline enters below the corners; header container removed (content scrolls beneath)
+
+- Owner feedback (with screenshot): (1) the top outline was "way too curved"
+  — it must NOT run into the screen corners; it should enter from the side
+  edges ~15px below the top corners; (2) there was "still a container": the
+  scroll content clipped at an invisible line under the outline — elements
+  must be visible OUTSIDE the outline and slide INSIDE it while scrolling.
+- `ui/components/NazoBottomNav.kt`: `curvedBarEdgePath` gained
+  `edgeInsetPx: Float = 0f` — moves both endpoints along the side edges away
+  from the corners (ceiling: start y = inset; nav: start y = h − inset).
+  Default 0 keeps the bottom bar and `CurvedBarShape` byte-identical.
+- `ui/screens/HomeScreen.kt` layout: the wrapper Column is GONE. The scroll
+  Column is a full-size direct child of the root Box again, starting with
+  `Spacer(Modifier.statusBarsPadding().height(86.dp))` (clears the header on
+  arrival, total = status inset + 86dp). The ceiling is now a fixed OVERLAY
+  Box drawn AFTER the column (outline 44dp ramp, edgeInset 15dp, 2dp
+  NazoPrimary@45%, plus HomeHeader) — content scrolls up beneath it fully
+  visible through the transparency, passing "inside" the outline. A plain
+  Box overlay consumes no touches, so scrolling/taps under it still work;
+  the title pill/avatar have their own solid backgrounds for legibility.
+- Files: `ui/components/NazoBottomNav.kt`, `ui/screens/HomeScreen.kt`,
+  `handoff.md`.
+
+---
+
 ## [2026-09-02 12:15] refactor: rounder chrome curves + transparent outline-only ceiling
 
 - Owner feedback on the 11:30 chrome: (1) nav bar curve read as angular —

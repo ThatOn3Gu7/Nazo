@@ -46,30 +46,36 @@ enum class NazoTab { Home, Settings }
 
 /**
  * Builds the OPEN edge curve shared by the app's top and bottom chrome: the
- * line hugs the screen corner, rounds through a soft knee, rises (or dips),
+ * line hugs the screen edge, rounds through a soft knee, rises (or dips),
  * rounds again and runs flat across the middle. Control points sit at 80/20%
  * of the ramp so both bends are properly round — a flowing swoop rather than
  * a straight diagonal. [ceiling] mirrors it vertically for the top.
+ * [edgeInsetPx] moves the two endpoints along the screen's side edges away
+ * from the corners (e.g. the top outline starts slightly BELOW the top
+ * corners instead of running into them).
  */
-fun curvedBarEdgePath(size: Size, rampPx: Float, ceiling: Boolean): Path {
+fun curvedBarEdgePath(size: Size, rampPx: Float, ceiling: Boolean, edgeInsetPx: Float = 0f): Path {
     val w = size.width
     val h = size.height
     val ramp = rampPx.coerceAtMost(w * 0.25f)
     return Path().apply {
         if (ceiling) {
-            // Starts at the top-left screen corner, swoops DOWN below the
-            // header, runs flat, and swoops back UP to the top-right corner.
-            moveTo(0f, 0f)
-            cubicTo(ramp * 0.8f, 0f, ramp * 0.2f, h, ramp, h)
+            // Starts on the left screen edge just below the top corner,
+            // swoops DOWN below the header, runs flat, and swoops back UP to
+            // the right screen edge.
+            val top = edgeInsetPx
+            moveTo(0f, top)
+            cubicTo(ramp * 0.8f, top, ramp * 0.2f, h, ramp, h)
             lineTo(w - ramp, h)
-            cubicTo(w - ramp * 0.2f, h, w - ramp * 0.8f, 0f, w, 0f)
+            cubicTo(w - ramp * 0.2f, h, w - ramp * 0.8f, top, w, top)
         } else {
             // Starts at the bottom-left screen corner, swoops UP, runs flat
             // under the tabs, and swoops back DOWN to the bottom-right.
-            moveTo(0f, h)
-            cubicTo(ramp * 0.8f, h, ramp * 0.2f, 0f, ramp, 0f)
+            val bottom = h - edgeInsetPx
+            moveTo(0f, bottom)
+            cubicTo(ramp * 0.8f, bottom, ramp * 0.2f, 0f, ramp, 0f)
             lineTo(w - ramp, 0f)
-            cubicTo(w - ramp * 0.2f, 0f, w - ramp * 0.8f, h, w, h)
+            cubicTo(w - ramp * 0.2f, 0f, w - ramp * 0.8f, bottom, w, bottom)
         }
     }
 }
