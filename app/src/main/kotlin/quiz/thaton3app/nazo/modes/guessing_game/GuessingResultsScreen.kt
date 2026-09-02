@@ -60,8 +60,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.records.NewRecordBadge
 import quiz.thaton3app.nazo.sound.Sounds
+import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.theme.*
 
@@ -92,6 +94,7 @@ fun GuessingResultsScreen(
     var showCard by remember { mutableStateOf(false) }
     var showRounds by remember { mutableStateOf(false) }
     var showButtons by remember { mutableStateOf(false) }
+    var triggerConfetti by remember { mutableStateOf(false) }
 
     val animatedScore by animateIntAsState(
         targetValue = if (showCard) score else 0,
@@ -110,6 +113,9 @@ fun GuessingResultsScreen(
         showHeader = true
         delay(150)
         showCard = true
+        if (accuracy >= 50f) {
+            triggerConfetti = true
+        }
         delay(200)
         showRounds = true
         delay(200)
@@ -317,6 +323,16 @@ fun GuessingResultsScreen(
                 }
                 Spacer(Modifier.height(16.dp))
             }
+        }
+
+        // Celebration overlay — same variants + preference as the quiz's
+        // complete screen (Appearance → Celebrations); fires when at least
+        // half the rounds were solved, mirroring the quiz's success rule.
+        if (triggerConfetti) {
+            CelebrationOverlay(
+                style = remember { ThemePreferences(context).celebrationStyle },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }

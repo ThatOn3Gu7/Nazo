@@ -21,8 +21,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -33,13 +31,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
+import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.records.NewRecordBadge
 import quiz.thaton3app.nazo.daily.DailyBonusChip
 import quiz.thaton3app.nazo.sound.Sounds
 import androidx.compose.ui.platform.LocalContext
+import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
 import quiz.thaton3app.nazo.ui.theme.*
-import kotlin.random.Random
 
 @Composable
 fun QuizCompleteScreen(
@@ -231,9 +229,12 @@ fun QuizCompleteScreen(
             }
         }
 
-        // Confetti Overlay
+        // Celebration overlay — variant is a user preference (Appearance → Celebrations)
         if (triggerConfetti) {
-            ConfettiBurst(modifier = Modifier.fillMaxSize())
+            CelebrationOverlay(
+                style = remember { ThemePreferences(context).celebrationStyle },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }
@@ -393,83 +394,6 @@ private fun StatCard(modifier: Modifier = Modifier, icon: ImageVector, title: St
         Text(title, style = MaterialTheme.typography.labelSmall, color = NazoTextSecondary)
         Spacer(Modifier.height(4.dp))
         Text(value, style = MaterialTheme.typography.titleMedium, color = NazoTextPrimary, fontWeight = FontWeight.Bold)
-    }
-}
-
-// --- Physics-based Confetti Engine ---
-
-private class Particle(
-    var x: Float, var y: Float,
-    var vx: Float, var vy: Float,
-    var color: Color,
-    var size: Float
-)
-
-@Composable
-private fun ConfettiBurst(modifier: Modifier = Modifier) {
-    val particles = remember { mutableStateListOf<Particle>() }
-    val frame = remember { mutableStateOf(0) }
-
-    // Standard appealing confetti colors
-    val colors = listOf(
-        Color(0xFFFFC107), Color(0xFFE91E63), Color(0xFF00BCD4),
-        Color(0xFF8BC34A), Color(0xFF9C27B0), Color(0xFFFF5722)
-    )
-
-    LaunchedEffect(Unit) {
-        // Initialize particles
-        val newParticles = List(70) {
-            Particle(
-                x = 0f, y = 0f, // Will be set relative to canvas center
-                vx = Random.nextFloat() * 1200 - 600,
-                vy = -(Random.nextFloat() * 1000 + 400),
-                color = colors.random(),
-                size = Random.nextFloat() * 20f + 10f
-            )
-        }
-        particles.addAll(newParticles)
-
-        // Physics loop
-        var lastFrameTime = withFrameNanos { it }
-        while (isActive && particles.isNotEmpty()) {
-            withFrameNanos { frameTime ->
-                val delta = (frameTime - lastFrameTime) / 1_000_000_000f // Delta time in seconds
-                lastFrameTime = frameTime
-
-                val iterator = particles.iterator()
-                while (iterator.hasNext()) {
-                    val p = iterator.next()
-                    p.vy += 1800f * delta // Gravity
-                    p.x += p.vx * delta
-                    p.y += p.vy * delta
-
-                    // Remove if fallen off screen deeply
-                    if (p.y > 3000f) {
-                        iterator.remove()
-                    }
-                }
-            }
-            frame.value++ // force Canvas redraw each frame
-        }
-    }
-
-    Canvas(modifier = modifier) {
-        // FIXED: By observing `frame.value` INSIDE the draw phase, Compose will correctly invalidate 
-        // the draw layer and render the explosion instead of a static un-updated dot.
-        @Suppress("UNUSED_VARIABLE")
-        val currentFrame = frame.value 
-        
-        val centerX = size.width / 2
-        val centerY = size.height / 3 // Erupt from upper middle
-
-        particles.forEach { p ->
-            drawRect(
-                color = p.color,
-                topLeft = Offset(centerX + p.x, centerY + p.y),
-                size = Size(p.size, p.size * 0.6f),
-                alpha = 1f - (p.y / size.height).coerceIn(0f, 1f) * 0.5f // Fade slightly as they fall
-            )
-        }
     }
 }
 

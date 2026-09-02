@@ -20,6 +20,51 @@ Conventions:
 
 ---
 
+## [2026-09-02 18:45] feat: switchable victory-confetti variants + live previews; guessing game celebrates too
+
+- Owner request: the quiz-complete "graffiti" (confetti) should come in
+  multiple variants, selectable in the Appearance screen with a preview, and
+  the guessing-game results screen should get the celebration as well.
+  Owner picked (via Q&A): 5 variants + a "None" option; colors derived from
+  the active accent (not the old fixed rainbow); preview = live miniatures on
+  each option card (same pattern as the Background Effects sheet). Inspired
+  by Image Toolbox's confetti presets.
+- NEW `ui/components/CelebrationEffect.kt`:
+  - `CELEBRATION_STYLES` registry: none / burst (Classic Burst — the old
+    center pop) / festive (bottom fountain) / rain (top shower) / cannons
+    (both bottom corners fire inward) / fireworks (5 staggered mini-pops).
+  - `celebrationPalette()`: 6 confetti colors from NazoPrimary via HSV — hue
+    ±22°/±45° rotations + a pale sparkle — so confetti always matches the accent.
+  - `CelebrationOverlay(style, modifier)`: one-shot particle engine
+    (generalized from the old private ConfettiBurst: per-style emission
+    window/rate, gravity, air drag, spin + ttl fade; frame-counter draw
+    invalidation trick kept). No-op for "none"/unknown ids.
+  - `DrawScope.drawCelebrationPreview(style, t)`: deterministic closed-form
+    looping miniatures (2.6s cycle; rain is seamless) for the sheet cards.
+- `ThemePreferences`: new `celebrationStyle` ("burst" default,
+  KEY `celebration_style`, nazo_theme store → already covered by backups).
+- `QuizCompleteScreen`: private Particle/ConfettiBurst engine DELETED;
+  overlay now `CelebrationOverlay(ThemePreferences.celebrationStyle)`.
+  Trigger unchanged (accuracy ≥ 50).
+- `GuessingResultsScreen`: NEW `triggerConfetti` fired with the card
+  entrance when accuracy ≥ 50% (same success rule as the quiz); overlay
+  drawn above the root Box content.
+- `AppearanceScreen`: new "CELEBRATIONS" section (entry row "Victory
+  confetti", Celebration icon, current-variant subtitle) between Ambient
+  Background and Layout; opens a ModalBottomSheet where every option card
+  plays a live looping miniature (shared 30s clock, draw-phase reads only);
+  selection applies instantly, sheet stays open for comparison. New
+  `celebrationStyle`/`onCelebrationStyleChange` params.
+- `NazoApp`: `celebrationStyle` state + persistence wiring for
+  AppearanceScreen (completion screens read the pref directly). Onboarding
+  intentionally untouched.
+- Files: `app/src/main/kotlin/quiz/thaton3app/nazo/ui/components/CelebrationEffect.kt`,
+  `.../ui/screens/QuizCompleteScreen.kt`, `.../ui/screens/AppearanceScreen.kt`,
+  `.../modes/guessing_game/GuessingResultsScreen.kt`, `.../ui/NazoApp.kt`,
+  `.../data/settings/ThemePreferences.kt`, `handoff.md`.
+
+---
+
 ## [2026-09-02 17:45] fix: anchored nav bar is now a wrap-content "tombstone" — curve starts just past the tabs
 
 - Owner sent a second doodle (red dots): the 17:00 read was still wrong — the

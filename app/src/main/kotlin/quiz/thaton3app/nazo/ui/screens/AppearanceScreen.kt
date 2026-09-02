@@ -21,6 +21,7 @@ import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.ModeNight
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Celebration
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -57,6 +58,9 @@ import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoTab
+import quiz.thaton3app.nazo.ui.components.CELEBRATION_STYLES
+import quiz.thaton3app.nazo.ui.components.CelebrationStyle
+import quiz.thaton3app.nazo.ui.components.drawCelebrationPreview
 import quiz.thaton3app.nazo.ui.theme.*
 
 // Mock data enums for the prototype state
@@ -92,6 +96,8 @@ fun AppearanceScreen(
     onRevealStyleChange: (String) -> Unit = {},
     backgroundStyle: String = "shapes",
     onBackgroundStyleChange: (String) -> Unit = {},
+    celebrationStyle: String = "burst",
+    onCelebrationStyleChange: (String) -> Unit = {},
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
 ) {
@@ -107,6 +113,8 @@ fun AppearanceScreen(
     var floatingNavBarChecked by remember { mutableStateOf(floatingNavBar) }
     var showEffectsSheet by remember { mutableStateOf(false) }
     val effectsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var showCelebrationSheet by remember { mutableStateOf(false) }
+    val celebrationSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
 
     Column(
@@ -309,6 +317,54 @@ fun AppearanceScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
+            // --- CELEBRATIONS ---
+            SectionHeader("CELEBRATIONS")
+
+            // Single entry point — the confetti variants (with live previews
+            // and a "None" option) live in a bottom sheet, mirroring the
+            // ambient-background pattern above.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(NazoSurface)
+                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
+                    .clickable {
+                        Haptics.soft(context)
+                        showCelebrationSheet = true
+                    }
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Celebration,
+                    contentDescription = null,
+                    tint = NazoTextPrimary,
+                    modifier = Modifier.size(24.dp),
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Victory confetti",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = NazoTextPrimary,
+                    )
+                    Text(
+                        text = "Currently: " + (CELEBRATION_STYLES.firstOrNull { it.id == celebrationStyle }?.label ?: "Classic Burst"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = NazoTextSecondary,
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = NazoTextSecondary.copy(alpha = 0.5f),
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
             // --- LAYOUT SECTION ---
             SectionHeader("LAYOUT")
 
@@ -436,6 +492,90 @@ fun AppearanceScreen(
                         onClick = {
                             Haptics.soft(context)
                             onBackgroundStyleChange(effect.id)
+                        },
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+        }
+    }
+
+    // --- CELEBRATIONS SHEET ---
+    // Same pattern as the background-effects sheet: every option card plays a
+    // LIVE miniature of its confetti variant (a looping preview of how the
+    // real game-completion celebration behaves), driven by one shared clock.
+    // Selecting applies instantly and keeps the sheet open for comparison.
+    if (showCelebrationSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showCelebrationSheet = false },
+            sheetState = celebrationSheetState,
+            containerColor = NazoSurface,
+            dragHandle = {
+                Box(
+                    modifier = Modifier
+                        .padding(top = 16.dp, bottom = 8.dp)
+                        .size(width = 36.dp, height = 4.dp)
+                        .clip(CircleShape)
+                        .background(NazoTextSecondary.copy(alpha = 0.3f))
+                )
+            }
+        ) {
+            val previewTime = remember { mutableFloatStateOf(0f) }
+            LaunchedEffect(Unit) {
+                val startNanos = withFrameNanos { it }
+                while (true) {
+                    withFrameNanos { now ->
+                        previewTime.floatValue = (now - startNanos) / 30_000_000_000f
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 10.dp)
+                    .navigationBarsPadding(),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(NazoPrimary.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Celebration,
+                            contentDescription = null,
+                            tint = NazoPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "Victory confetti",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = NazoTextPrimary,
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Live previews of the end-of-game cheer — colors follow your accent.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NazoTextSecondary,
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                CELEBRATION_STYLES.forEach { style ->
+                    CelebrationOptionCard(
+                        style = style,
+                        selected = celebrationStyle == style.id,
+                        time = { previewTime.floatValue },
+                        onClick = {
+                            Haptics.soft(context)
+                            onCelebrationStyleChange(style.id)
                         },
                     )
                     Spacer(modifier = Modifier.height(10.dp))
@@ -729,6 +869,82 @@ private fun EffectOptionCard(
 }
 
 private const val TAU = (2.0 * PI).toFloat()
+
+/**
+ * One selectable confetti variant in the Celebrations sheet. Identical
+ * anatomy to EffectOptionCard: the card's own Canvas plays a live looping
+ * miniature of the celebration behind the label, driven by the shared clock
+ * and read only in the draw phase.
+ */
+@Composable
+private fun CelebrationOptionCard(
+    style: CelebrationStyle,
+    selected: Boolean,
+    time: () -> Float,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(78.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(NazoSurfaceVariant)
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.12f),
+                shape = RoundedCornerShape(18.dp),
+            )
+            .clickable(onClick = onClick),
+    ) {
+        Canvas(modifier = Modifier.matchParentSize()) {
+            drawCelebrationPreview(style.id, time())
+        }
+        Row(
+            modifier = Modifier
+                .matchParentSize()
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = style.label,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = NazoTextPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = style.blurb,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NazoTextSecondary,
+                    maxLines = 1,
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(if (selected) NazoPrimary else Color.Transparent)
+                    .border(
+                        width = 2.dp,
+                        color = if (selected) Color.Transparent else NazoTextSecondary.copy(alpha = 0.4f),
+                        shape = CircleShape,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (selected) {
+                    Icon(
+                        imageVector = Icons.Outlined.Check,
+                        contentDescription = "Selected",
+                        tint = NazoOnPrimary,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
 
 // Constellation preview stars (fractional base positions + drift velocities).
 // Top-level so nothing is allocated per frame; the position buffers below are

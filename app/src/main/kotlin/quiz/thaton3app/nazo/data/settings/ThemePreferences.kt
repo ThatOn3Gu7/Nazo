@@ -52,6 +52,12 @@ class ThemePreferences(context: Context) {
         get() = prefs.getString(KEY_BG_STYLE, "shapes") ?: "shapes"
         set(value) = prefs.edit().putString(KEY_BG_STYLE, value).apply()
 
+    /** End-of-game celebration ("graffiti") variant shown on the quiz / guessing
+     *  completion screens: "none" | "burst" | "festive" | "rain" | "cannons" | "fireworks". */
+    var celebrationStyle: String
+        get() = prefs.getString(KEY_CELEBRATION_STYLE, "burst") ?: "burst"
+        set(value) = prefs.edit().putString(KEY_CELEBRATION_STYLE, value).apply()
+
     /** Whether tapping anywhere in the app spawns interactive touch ripple bursts. */
     var touchRipples: Boolean
         get() = prefs.getBoolean(KEY_TOUCH_RIPPLES, false)
@@ -66,6 +72,7 @@ class ThemePreferences(context: Context) {
         const val KEY_LAST_MODE = "last_game_mode"
         const val KEY_GUESS_REVEAL_STYLE = "guess_reveal_style"
         const val KEY_BG_STYLE = "background_style"
+        const val KEY_CELEBRATION_STYLE = "celebration_style"
         const val KEY_TOUCH_RIPPLES = "touch_ripples_enabled"
     }
 }
