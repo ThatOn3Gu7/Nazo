@@ -1,8 +1,5 @@
 package quiz.thaton3app.nazo.ui.components
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -140,11 +137,22 @@ fun AmbientBackground(
     val glowingOrbs = remember { buildGlowingOrbs() }
     val cache = remember { ParticleDrawCache() }
 
-    val progress = remember { Animatable(0f) }
+    // Unbounded, monotonic animation clock (in "cycles": 1.0 = the old 30s
+    // sweep, so every existing speed constant below keeps its exact pace).
+    // The previous driver animated an Animatable 0→1 over 30s and then
+    // snapped back to 0 in a while-loop — but none of the styles' motion
+    // actually lined up at that wrap point (non-integer sin/cos frequencies,
+    // modulo drifts, unbounded rotations), so every variant visibly jerked
+    // back to its starting pose every 30 seconds. A clock that only ever
+    // counts UP has no wrap point: the sin/cos and modulo-based formulas are
+    // all continuous in t, making every background a true endless loop.
+    var timeCycles by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(Unit) {
+        val startNanos = withFrameNanos { it }
         while (true) {
-            progress.snapTo(0f)
-            progress.animateTo(1f, animationSpec = tween(durationMillis = 30000, easing = LinearEasing))
+            withFrameNanos { now ->
+                timeCycles = (now - startNanos) / 30_000_000_000f
+            }
         }
     }
 
@@ -152,7 +160,7 @@ fun AmbientBackground(
         val w = size.width
         val h = size.height
         val minDimension = if (w < h) w else h
-        val t = progress.value
+        val t = timeCycles
         val canvas = drawContext.canvas
 
         when (style) {

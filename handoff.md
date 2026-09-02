@@ -20,6 +20,32 @@ Conventions:
 
 ---
 
+## [2026-09-02 08:00] fix: ambient backgrounds jerked back to start every 30s — now truly endless
+
+- Owner bug report: some ambient background variants played smoothly then suddenly
+  "jerked back into some strange position" and restarted — the loop had a visible
+  start/end instead of being continuous.
+- Root cause (`ui/components/AmbientBackground.kt`): the shared driver was an
+  `Animatable` looping `snapTo(0f)` → `animateTo(1f, tween(30s))`. A 0→1→snap loop is
+  only seamless if every formula renders the identical frame at t=1 and t=0 — and NO
+  style did: shapes use non-integer random sin/cos frequencies + unbounded rotation
+  (t*rotSpeed*360°), constellation drifts stars by `t*vx*1.5*w mod w` (offset ≠ multiple
+  of w at the wrap), rain's `% (h+length)` didn't align either, orbs use non-integer
+  drift frequencies. So ALL FOUR variants teleported every 30 seconds (constellation/
+  rain most visibly — the two the owner noticed).
+- Fix: replaced the wrapping driver with an UNBOUNDED monotonic clock —
+  `withFrameNanos` loop writing `timeCycles = elapsedNanos / 30e9f` (1.0 cycle = the
+  old 30s sweep, so every existing speed constant keeps its exact pace). The clock only
+  counts up, so there is no wrap point; every formula (periodic sin/cos or modulo-
+  wrapped drift) is continuous in t → genuinely infinite motion for all 4 styles.
+  Draw formulas untouched; removed the now-unused Animatable/LinearEasing/tween imports.
+- Float-precision desk-check: after 24h continuous foreground running, positional
+  error stays ≈1px and sin() args reduce in double — no degradation concern for any
+  realistic session.
+- Files: `ui/components/AmbientBackground.kt`, `handoff.md`.
+
+---
+
 ## [2026-09-02 07:15] fix: back gesture from quiz results returned to the last question
 
 - Owner bug report: finish a quiz → on the Quiz Complete screen, the system back
