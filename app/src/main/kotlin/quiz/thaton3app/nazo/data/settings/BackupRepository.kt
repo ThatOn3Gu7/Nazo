@@ -35,6 +35,8 @@ object BackupRepository {
         "nazo_daily",
         "nazo_sound",
         "nazo_reminders",
+        "nazo_qhistory",   // persistent question anti-repeat memory
+        "nazo_missed",     // practice deck (missed questions)
     )
     private const val PROFILE_PICTURE_KEY = "profile_picture_uri"
 

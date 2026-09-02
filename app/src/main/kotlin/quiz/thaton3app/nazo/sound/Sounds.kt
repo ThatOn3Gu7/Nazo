@@ -53,6 +53,25 @@ object Sounds {
     fun record(context: Context) =
         play(context, "record") { notes(783.99 to 95, 1046.5 to 95, 1318.5 to 320) }
 
+    /**
+     * Per-variant celebration cue, paired with the victory confetti
+     * (Appearance → Celebrations). Queued on the same worker as [complete],
+     * so it plays right AFTER the completion arpeggio instead of over it.
+     */
+    fun celebration(context: Context, style: String) = when (style) {
+        // One big pop: short bright hit + ring-out.
+        "burst" -> play(context, "celeb_burst") { notes(1046.5 to 60, 1568.0 to 200) }
+        // Fountain: quick rising run.
+        "festive" -> play(context, "celeb_festive") { notes(523.25 to 60, 659.25 to 60, 783.99 to 60, 1046.5 to 60, 1318.5 to 180) }
+        // Shower: gentle falling twinkle.
+        "rain" -> play(context, "celeb_rain") { notes(1318.5 to 80, 1046.5 to 80, 880.0 to 80, 659.25 to 200) }
+        // Two cannons: low pop, then high pop.
+        "cannons" -> play(context, "celeb_cannons") { notes(392.0 to 70, 783.99 to 70, 392.0 to 70, 1046.5 to 180) }
+        // Staggered pops climbing like fireworks.
+        "fireworks" -> play(context, "celeb_fireworks") { notes(1046.5 to 55, 1318.5 to 55, 1568.0 to 55, 2093.0 to 160) }
+        else -> Unit // "none" or unknown → silence
+    }
+
     // ------------------------------------------------------------------
 
     private val executor = Executors.newSingleThreadExecutor { r ->
