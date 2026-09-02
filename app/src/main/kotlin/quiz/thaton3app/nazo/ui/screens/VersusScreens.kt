@@ -431,7 +431,10 @@ fun VersusReviewScreen(
 
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier.weight(1f),
+            // fill=false → the pager (and its cards) only takes as much
+            // height as the question list needs; short reviews get short
+            // cards instead of a full-screen slab.
+            modifier = Modifier.weight(1f, fill = false),
             // The peek: the inactive card stays visible at the screen edge.
             contentPadding = PaddingValues(horizontal = 36.dp),
             pageSpacing = 12.dp,
@@ -445,7 +448,7 @@ fun VersusReviewScreen(
                 questions = questions,
                 answers = if (page == 0) p1Answers else p2Answers,
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
                     .graphicsLayer {
                         val scale = 0.94f + 0.06f * focus
                         scaleX = scale
@@ -504,7 +507,9 @@ private fun PlayerReviewCard(
 
         Column(
             modifier = Modifier
-                .weight(1f)
+                // Wrap the question list's natural height, but never grow past
+                // the card's available space — long lists scroll instead.
+                .weight(1f, fill = false)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 18.dp, vertical = 12.dp),
         ) {

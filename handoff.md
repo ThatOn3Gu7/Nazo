@@ -20,6 +20,22 @@ Conventions:
 
 ---
 
+## [2026-09-03 00:30] fix: versus review cards wrap their content; nav bar reverted to session version
+
+- Owner feedback: review cards took the full screen even with few
+  questions; the merged master nav bar "is not what I had" → revert.
+- `VersusScreens.kt`: pager uses `weight(1f, fill = false)` and the cards
+  `fillMaxWidth()` + inner list `weight(1f, fill = false)` — cards now wrap
+  the question list's natural height (short review = short card) while
+  long lists still cap at the available space and scroll.
+- `NazoBottomNav.kt`: restored to this branch's pre-merge version
+  (`git checkout 4f73dfd -- …`). AboutScreen's simplified credits from
+  master were kept (owner only flagged the nav). Owner will merge the
+  branches himself at release time and resolve nav conflicts then.
+- Files: VersusScreens.kt, NazoBottomNav.kt, handoff.md.
+
+---
+
 ## [2026-09-02 23:59] feat: versus head-to-head review (peeking swipe cards); merge owner's nav-bar redesign from master
 
 - Merged `origin/master` (owner's Gemini-assisted commit `bcdcab6`, built on
