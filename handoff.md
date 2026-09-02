@@ -20,6 +20,47 @@ Conventions:
 
 ---
 
+## [2026-09-02 09:00] feat: "None" background option + Background Effects bottom sheet with live previews
+
+- Owner requests: (1) let users turn ambient background effects OFF entirely;
+  (2) move the effect choice out of the flat Appearance list into a "Background
+  effects" sub-entry that opens a slide-up menu; (3) [optional, done] each option's
+  container should play a LIVE miniature of its effect so users can preview all
+  styles without committing.
+- **"None" option** (`ui/components/AmbientBackground.kt`): style id `"none"` —
+  the composable early-returns before ANY remember/clock/canvas, so opting out
+  costs zero per-frame work. Persisted through the existing
+  `ThemePreferences.backgroundStyle` string (round-trips through backup as-is);
+  default stays "shapes".
+- **Appearance restructure** (`ui/screens/AppearanceScreen.kt`): the 4 inline
+  ThemeModeRows (and a leftover empty decorative card) were replaced by ONE nav
+  row ("Background effects", AutoAwesome icon, "Currently: <label>" subtitle,
+  chevron). Tapping opens a Material3 `ModalBottomSheet` — the exact pattern of
+  Home's provider-switch sheet (NazoSurface container, same drag handle, icon
+  chip + title header, outside-tap / back / swipe-down dismiss). New
+  `BACKGROUND_EFFECTS` registry (id/label/blurb) drives both the row subtitle
+  and the sheet. Selecting applies INSTANTLY (radio + real background update
+  live) and keeps the sheet open for comparison.
+- **Live preview cards**: each of the 5 options is an `EffectOptionCard` — a
+  78dp container whose background Canvas plays a sped-up miniature of its
+  effect (`drawEffectPreview`): shapes = drifting circle + rotating square +
+  counter-rotating diamond; constellation = 6 wrapping stars with proximity
+  lines + pulse; rain = 7 streaks with lead drops; orbs = 3 layered gradient
+  orbs; none = intentionally still (the plain card IS the preview). One shared
+  UNBOUNDED `withFrameNanos` clock (same seamless-loop principle as the
+  2026-09-02 08:00 fix — no wrap point) drives all cards and lives only while
+  the sheet is composed; cards read it via a `() -> Float` lambda inside the
+  draw phase only, so the animation never recomposes anything. Constellation
+  buffers are top-level reused FloatArrays (zero per-frame allocation; UI
+  thread only, so sharing is safe).
+- **Onboarding parity** (`ui/onboarding/OnboardingScreen.kt`): "None" pill added
+  to the Make-It-Yours background grid (5 pills, chunked rows of 2), honoring
+  the 2026-09-02 06:30 settings-parity rule.
+- Files: `ui/components/AmbientBackground.kt`, `ui/screens/AppearanceScreen.kt`,
+  `ui/onboarding/OnboardingScreen.kt`, `handoff.md`.
+
+---
+
 ## [2026-09-02 08:00] fix: ambient backgrounds jerked back to start every 30s — now truly endless
 
 - Owner bug report: some ambient background variants played smoothly then suddenly

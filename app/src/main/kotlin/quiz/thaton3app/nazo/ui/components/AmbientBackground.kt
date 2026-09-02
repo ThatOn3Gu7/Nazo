@@ -125,12 +125,16 @@ private class ParticleDrawCache {
  * Enhanced ambient background supporting multiple distinct visual variants
  * (Floating Shapes, Constellation Web, Digital Rain, Glowing Orbs) plus an
  * optional interactive touch ripple / sparkle burst system.
+ * `style = "none"` disables the effect entirely.
  */
 @Composable
 fun AmbientBackground(
     modifier: Modifier = Modifier,
-    style: String = "shapes", // "shapes" | "constellation" | "rain" | "orbs"
+    style: String = "shapes", // "none" | "shapes" | "constellation" | "rain" | "orbs"
 ) {
+    // "None": the user opted out of every particle effect — compose nothing at
+    // all (no canvas, no frame clock, zero per-frame work).
+    if (style == "none") return
     val shapeParticles = remember { buildShapeParticles() }
     val constellationStars = remember { buildConstellationStars() }
     val rainDrops = remember { buildRainDrops() }

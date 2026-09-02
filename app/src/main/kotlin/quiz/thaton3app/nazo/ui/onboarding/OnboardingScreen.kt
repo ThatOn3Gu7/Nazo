@@ -877,6 +877,7 @@ private fun SetupSlide(
                         // see the accent-swatch fix).
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf(
+                                "none" to "None",
                                 "shapes" to "Shapes",
                                 "constellation" to "Constellation",
                                 "rain" to "Digital Rain",
