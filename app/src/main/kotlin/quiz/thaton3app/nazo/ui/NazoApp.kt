@@ -1284,6 +1284,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         if (mode == "GUESSING") {
                             homeMode = NazoMode.GUESSING.name
                             startGuessing(topic, "Medium", 3)
+                        } else if (mode == "SURVIVAL") {
+                            homeMode = NazoMode.SURVIVAL.name
+                            startSurvival(topic, "Medium")
+                        } else if (mode == "BLITZ") {
+                            homeMode = NazoMode.BLITZ.name
+                            startBlitz(topic, "Medium")
+                        } else if (mode == "VERSUS") {
+                            homeMode = NazoMode.VERSUS.name
+                            startVersus(topic, "Medium", 5)
                         } else {
                             homeMode = NazoMode.QUIZ.name
                             startQuiz(topic, "Medium", 5)

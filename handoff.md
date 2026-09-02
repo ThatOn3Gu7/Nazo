@@ -20,6 +20,28 @@ Conventions:
 
 ---
 
+## [2026-09-02 23:00] feat: new game modes in onboarding (combined slide + first-game picker); score-backup audit
+
+- Owner: the new modes were missing from onboarding; combine-vs-per-mode
+  slides left to the agent → ONE combined slide chosen (tour stays at 6
+  pages, no fatigue).
+- `ui/onboarding/OnboardingScreen.kt`: new feature slide "More Ways to Play"
+  at index 2 (Survival/Blitz/Versus pitch, fire-amber tint, new ModesDoodle:
+  ♥♥♥ lives card + "60s" ink coin + accent "P1 vs P2" chip). PAGE_COUNT 5→6,
+  PAGE_SETUP 3→4, PAGE_FIRST_GAME 4→5 (all references go through the
+  constants). "Your First Game" picker gains Survival/Blitz/Versus pills
+  (second row, no provider lock — they work offline), per-mode note line and
+  "Play Now · <mode>" CTA labels.
+- `ui/NazoApp.kt`: onPlayNow handles SURVIVAL/BLITZ/VERSUS (Medium, versus
+  = 5 questions) and pre-selects the mode on Home.
+- Backup audit (no code change needed): survival/blitz bests live in
+  `nazo_records`, per-mode accuracy in `nazo_stats` — both already in
+  BackupRepository.STORES, so new-mode scores are in manual+auto backups.
+  Versus is intentionally unrecorded (guest play).
+- Files: OnboardingScreen.kt, NazoApp.kt, handoff.md.
+
+---
+
 ## [2026-09-02 22:20] refactor: Home mode dropdown + status row; versus-results identity; quiz-header spacing
 
 Owner feedback after live-testing the 10-feature batch:

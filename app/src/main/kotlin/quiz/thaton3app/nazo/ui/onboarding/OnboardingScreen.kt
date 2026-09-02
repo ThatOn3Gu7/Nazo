@@ -125,8 +125,8 @@ import quiz.thaton3app.nazo.ui.theme.resolveAccent
 import kotlin.math.absoluteValue
 
 // ---------------------------------------------------------------------------
-// Pages. 0-2 = feature slides (reference-style doodle cards), 3 = setup
-// (provider + appearance), 4 = first game. Same visual language throughout.
+// Pages. 0-3 = feature slides (reference-style doodle cards), 4 = setup
+// (provider + appearance), 5 = first game. Same visual language throughout.
 // ---------------------------------------------------------------------------
 
 private data class OnboardingPage(
@@ -156,6 +156,17 @@ private val FEATURE_PAGES = listOf(
         ),
     ),
     OnboardingPage(
+        title = "More Ways\nto Play",
+        body = listOf(
+            "Survival" to true,
+            " gives you 3 lives against endless questions, " to false,
+            "Blitz" to true,
+            " is a 60-second sprint, and " to false,
+            "Versus" to true,
+            " is pass-and-play for two." to false,
+        ),
+    ),
+    OnboardingPage(
         title = "Level Up\n& Track It",
         body = listOf(
             "Every game earns " to false,
@@ -169,9 +180,9 @@ private val FEATURE_PAGES = listOf(
     ),
 )
 
-private const val PAGE_COUNT = 5
-private const val PAGE_SETUP = 3
-private const val PAGE_FIRST_GAME = 4
+private const val PAGE_COUNT = 6
+private const val PAGE_SETUP = 4
+private const val PAGE_FIRST_GAME = 5
 
 private val PROVIDER_NAMES = mapOf(
     "gemini" to "Google Gemini",
@@ -361,7 +372,7 @@ fun OnboardingScreen(
                     }
                 ) {
                     when (index) {
-                        in 0..2 -> FeatureSlide(index)
+                        in 0..3 -> FeatureSlide(index)
                         PAGE_SETUP -> SetupSlide(
                             isDark = isDark,
                             providerId = providerId,
@@ -475,8 +486,13 @@ fun OnboardingScreen(
                 val topic = topicInput.trim()
                 val buttonLabel = when {
                     !isLast -> "Next"
-                    topic.isNotEmpty() && gameMode == "GUESSING" -> "Play Now · Guessing"
-                    topic.isNotEmpty() -> "Play Now · Quiz"
+                    topic.isNotEmpty() -> "Play Now · " + when (gameMode) {
+                        "GUESSING" -> "Guessing"
+                        "SURVIVAL" -> "Survival"
+                        "BLITZ" -> "Blitz"
+                        "VERSUS" -> "Versus"
+                        else -> "Quiz"
+                    }
                     else -> "Start Playing"
                 }
                 Button(
@@ -526,7 +542,10 @@ private fun pickDefaultModel(providerId: String, models: List<ModelInfo>): Model
 private fun slideTint(index: Int): Color = when (index) {
     0 -> NazoPrimary.copy(alpha = 0.14f)
     1 -> NazoError.copy(alpha = 0.10f)
-    2 -> NazoSuccess.copy(alpha = 0.13f)
+    // Modes slide: fixed fire-amber on purpose (Survival's flame identity),
+    // same reasoning as the streak chip — fire reads as fire in every theme.
+    2 -> Color(0xFFFFA000).copy(alpha = 0.12f)
+    3 -> NazoSuccess.copy(alpha = 0.13f)
     PAGE_SETUP -> NazoPrimary.copy(alpha = 0.09f)
     else -> NazoSuccess.copy(alpha = 0.10f)
 }
@@ -566,6 +585,7 @@ private fun FeatureSlide(index: Int) {
             when (index) {
                 0 -> QuizDoodle()
                 1 -> GuessDoodle()
+                2 -> ModesDoodle()
                 else -> StatsDoodle()
             }
         }
@@ -1064,6 +1084,23 @@ private fun FirstGameSlide(
                         onClick = { onGameModeChange("GUESSING") },
                     )
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SelectPill(
+                        text = "Survival",
+                        selected = gameMode == "SURVIVAL",
+                        onClick = { onGameModeChange("SURVIVAL") },
+                    )
+                    SelectPill(
+                        text = "Blitz",
+                        selected = gameMode == "BLITZ",
+                        onClick = { onGameModeChange("BLITZ") },
+                    )
+                    SelectPill(
+                        text = "Versus",
+                        selected = gameMode == "VERSUS",
+                        onClick = { onGameModeChange("VERSUS") },
+                    )
+                }
                 AnimatedVisibility(
                     visible = showProviderHint,
                     enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(tween(250)),
@@ -1125,10 +1162,12 @@ private fun FirstGameSlide(
                     label = "modeNote",
                 ) { mode ->
                     Text(
-                        text = if (mode == "GUESSING") {
-                            "3 rounds · Medium difficulty · scored by speed"
-                        } else {
-                            "5 questions · Medium difficulty · beat the clock"
+                        text = when (mode) {
+                            "GUESSING" -> "3 rounds · Medium difficulty · scored by speed"
+                            "SURVIVAL" -> "3 lives · endless questions · works offline"
+                            "BLITZ" -> "60 seconds · as many as you can · works offline"
+                            "VERSUS" -> "2 players · same questions · one phone"
+                            else -> "5 questions · Medium difficulty · beat the clock"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = NazoTextSecondary,
@@ -1471,6 +1510,57 @@ private fun StatsDoodle() {
         DoodleArrow(size = 52.dp, color = ink, modifier = Modifier.align(Alignment.TopStart).offset(x = 22.dp, y = 6.dp))
         DoodleSparkle(size = 20.dp, color = ink, modifier = Modifier.align(Alignment.TopEnd).offset(x = (-16).dp, y = 14.dp))
         DoodleSparkle(size = 13.dp, color = ink, modifier = Modifier.align(Alignment.BottomEnd).offset(x = (-30).dp, y = (-14).dp))
+    }
+}
+
+@Composable
+private fun ModesDoodle() {
+    val ink = NazoTextPrimary
+    val paper = NazoSurface
+    val accent = NazoPrimary
+    Box(modifier = Modifier.size(250.dp, 205.dp)) {
+        // Survival: a card of three lives.
+        Box(
+            modifier = Modifier
+                .size(118.dp, 72.dp)
+                .align(Alignment.TopStart)
+                .offset(x = 10.dp, y = 20.dp)
+                .rotate(-7f)
+                .clip(RoundedCornerShape(16.dp))
+                .background(paper)
+                .border(3.dp, ink, RoundedCornerShape(16.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(text = "♥ ♥ ♥", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = ink)
+        }
+        // Blitz: the 60-second coin.
+        Box(
+            modifier = Modifier
+                .size(84.dp)
+                .align(Alignment.TopEnd)
+                .offset(x = (-14).dp, y = 36.dp)
+                .rotate(8f)
+                .clip(CircleShape)
+                .background(ink),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(text = "60s", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = paper)
+        }
+        // Versus: the pass-and-play matchup chip.
+        Box(
+            modifier = Modifier
+                .size(120.dp, 54.dp)
+                .align(Alignment.BottomCenter)
+                .offset(y = (-16).dp)
+                .rotate(-4f)
+                .clip(RoundedCornerShape(18.dp))
+                .background(accent),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(text = "P1 vs P2", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = NazoOnPrimary)
+        }
+        DoodleSparkle(size = 20.dp, color = ink, modifier = Modifier.align(Alignment.BottomStart).offset(x = 16.dp, y = (-26).dp))
+        DoodleSparkle(size = 13.dp, color = ink, modifier = Modifier.align(Alignment.TopCenter).offset(x = 12.dp, y = 4.dp))
     }
 }
 
