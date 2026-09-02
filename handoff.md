@@ -20,6 +20,21 @@ Conventions:
 
 ---
 
+## [2026-09-03 01:00] fix: tap outside any input field dismisses the keyboard (app-wide)
+
+- Owner: fields focus/raise the IME on tap, but tapping elsewhere never
+  released it.
+- `ui/NazoApp.kt`: one `detectTapGestures` on the ROOT Box (inside
+  NazoTheme) calls `LocalFocusManager.clearFocus()` — covers every screen
+  incl. onboarding, since all screens are children of that Box. Only
+  unconsumed taps (dead space) trigger it; fields/buttons consume their
+  own taps, and scrolls are drags so they don't clear focus. Fields inside
+  ModalBottomSheets live in their own window (dismissed on outside tap
+  anyway).
+- Files: NazoApp.kt, handoff.md.
+
+---
+
 ## [2026-09-03 00:30] fix: versus review cards wrap their content; nav bar reverted to session version
 
 - Owner feedback: review cards took the full screen even with few

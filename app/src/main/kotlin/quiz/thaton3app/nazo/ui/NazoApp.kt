@@ -52,8 +52,10 @@ import quiz.thaton3app.nazo.ui.components.WhatsNewStore
 
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import kotlin.random.Random
 import kotlin.math.PI
 import quiz.thaton3app.nazo.ui.launch.IntroOverlay
@@ -910,8 +912,18 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     val activeProvider = selectedProvider ?: apiKeyStore.getActiveProvider()
     val configuredProviders = apiKeyStore.getConfiguredProviders()
 
+    val rootFocusManager = LocalFocusManager.current
     NazoTheme(darkTheme = isDark, accentId = accentName) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                // App-wide keyboard etiquette: tapping any dead space (outside
+                // buttons/fields) clears focus, which dismisses the IME. Taps
+                // consumed by children (fields, buttons) never reach this.
+                .pointerInput(Unit) {
+                    detectTapGestures(onTap = { rootFocusManager.clearFocus() })
+                }
+        ) {
             // Base color + animated floating particles live OUTSIDE AnimatedContent so the
             // animation never resets on screen changes. Screens render transparent on top,
             // letting the particles drift behind their content.
