@@ -20,6 +20,17 @@ Conventions:
 
 ---
 
+## [2026-09-03 02:00] chore: TEMPORARY version downgrade 6.0 → 5.0 (updater test only)
+
+- Owner request: build a 5.0 APK purely to live-test the new in-app update
+  flow against the published v6.0 release. **Must be reverted to 6.0 (or
+  bumped higher) before any real release.** Commit message marks it as
+  test-only for the permanent git history.
+- `app/build.gradle.kts`: versionCode 6→5, versionName "6.0"→"5.0".
+- Files: app/build.gradle.kts, handoff.md.
+
+---
+
 ## [2026-09-03 01:45] feat: fully in-app update download — live progress, version comparison, install button
 
 - Owner: updater used DownloadManager + toast ("check your notifications");
