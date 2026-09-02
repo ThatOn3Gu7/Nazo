@@ -25,8 +25,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -151,6 +156,7 @@ fun AppearanceScreen(
                 title = "System Default",
                 subtitle = "Follow device setting",
                 isSelected = currentMode == ThemeMode.System.mode,
+                celestial = "cycle",
                 onClick = { Haptics.soft(context); onModeChange(ThemeMode.System.mode) }
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -159,6 +165,7 @@ fun AppearanceScreen(
                 title = "Light",
                 subtitle = "Mint daylight surface",
                 isSelected = currentMode == ThemeMode.Light.mode,
+                celestial = "sun",
                 onClick = { Haptics.soft(context); onModeChange(ThemeMode.Light.mode) }
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -167,6 +174,7 @@ fun AppearanceScreen(
                 title = "Dark",
                 subtitle = "Deep forest surface",
                 isSelected = currentMode == ThemeMode.Dark.mode,
+                celestial = "moon",
                 onClick = { Haptics.soft(context); onModeChange(ThemeMode.Dark.mode) }
             )
 
@@ -452,17 +460,45 @@ private fun ThemeModeRow(
     title: String,
     subtitle: String,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    celestial: String = "", // "" | "sun" | "moon" | "cycle"
 ) {
     val backgroundColor = if (isSelected) NazoDarkCard else NazoSurface
     val contentColor = if (isSelected) Color.White else NazoTextPrimary
     val subtitleColor = if (isSelected) Color.White.copy(alpha = 0.7f) else NazoTextSecondary
+
+    // One-shot celestial transit: when this row BECOMES the selected theme,
+    // a sun ("sun"), a moon ("moon"), or a full sun-then-moon day/night
+    // cycle ("cycle") rises and falls in an arc across the row container.
+    // The body enters and exits through the bottom edge (the row's clip does
+    // the masking), and progress is read only in the draw phase.
+    val transit = remember { Animatable(0f) }
+    var wasSelected by remember { mutableStateOf(isSelected) }
+    LaunchedEffect(isSelected) {
+        val becameSelected = isSelected && !wasSelected
+        wasSelected = isSelected
+        if (becameSelected && celestial.isNotEmpty()) {
+            transit.snapTo(0f)
+            transit.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = if (celestial == "cycle") 2600 else 1500,
+                    easing = LinearEasing,
+                ),
+            )
+            transit.snapTo(0f)
+        }
+    }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
             .background(backgroundColor)
+            .drawBehind {
+                val p = transit.value
+                if (p > 0f && p < 1f) drawCelestialTransit(celestial, p, backgroundColor)
+            }
             .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 16.dp),
@@ -817,4 +853,59 @@ private fun DrawScope.drawEffectPreview(style: String, t: Float) {
 
         // "none" -> intentionally draws nothing: the plain card IS the preview.
     }
+}
+
+// ---------------------------------------------------------------------------
+// Celestial transit — the theme-mode switch animation
+// ---------------------------------------------------------------------------
+// The body follows a ballistic arc: it rises out of the row's bottom edge on
+// the left, peaks at ~20% height mid-row, and sets through the bottom edge on
+// the right. Entry/exit masking is free — the row's rounded clip cuts it off.
+
+private fun DrawScope.drawCelestialTransit(kind: String, p: Float, rowColor: Color) {
+    when (kind) {
+        "sun" -> drawSunTransit(p)
+        "moon" -> drawMoonTransit(p, rowColor)
+        // "cycle" (System Default): a miniature day/night cycle — the sun
+        // makes its full transit, then the moon follows for the night shift.
+        "cycle" -> if (p < 0.5f) drawSunTransit(p * 2f) else drawMoonTransit((p - 0.5f) * 2f, rowColor)
+    }
+}
+
+private fun DrawScope.transitCenter(p: Float, r: Float): Offset {
+    val cx = size.width * (0.06f + 0.88f * p)
+    val cy = size.height + r * 2f - sin(p * PI.toFloat()) * (size.height * 0.80f + r * 2f)
+    return Offset(cx, cy)
+}
+
+private fun DrawScope.drawSunTransit(p: Float) {
+    val r = size.height * 0.16f
+    val c = transitCenter(p, r)
+    val gold = Color(0xFFFFC107)
+    drawCircle(gold.copy(alpha = 0.20f), r * 1.9f, c)
+    drawCircle(gold, r, c)
+    // Slowly spinning rays
+    val spin = p * PI.toFloat()
+    for (i in 0 until 8) {
+        val a = spin + i * (PI.toFloat() / 4f)
+        drawLine(
+            color = gold,
+            start = Offset(c.x + cos(a) * r * 1.35f, c.y + sin(a) * r * 1.35f),
+            end = Offset(c.x + cos(a) * r * 1.75f, c.y + sin(a) * r * 1.75f),
+            strokeWidth = r * 0.22f,
+            cap = StrokeCap.Round,
+        )
+    }
+}
+
+private fun DrawScope.drawMoonTransit(p: Float, rowColor: Color) {
+    val r = size.height * 0.16f
+    val c = transitCenter(p, r)
+    drawCircle(Color(0xFFCDD8F2), r, c)
+    // Crescent bite in the row's own colour
+    drawCircle(rowColor, r * 0.82f, Offset(c.x + r * 0.52f, c.y - r * 0.40f))
+    // Two tiny stars twinkling in the moon's wake
+    val tw = sin(p * PI.toFloat())
+    drawCircle(Color.White.copy(alpha = 0.80f * tw), r * 0.14f, Offset(c.x - r * 2.2f, c.y - r * 0.9f))
+    drawCircle(Color.White.copy(alpha = 0.55f * tw), r * 0.10f, Offset(c.x - r * 3.1f, c.y + r * 0.5f))
 }

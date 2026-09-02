@@ -23,11 +23,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -38,7 +35,6 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.daily.DailyChallengeCard
-import quiz.thaton3app.nazo.ui.components.curvedBarEdgePath
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoTab
@@ -111,6 +107,7 @@ fun HomeScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding()
     ) {
         Column(
             modifier = Modifier
@@ -120,10 +117,16 @@ fun HomeScreen(
                 .navigationBarsPadding()
                 .padding(bottom = 96.dp)
         ) {
-            // Clears the fixed header overlay on arrival — but there is no
-            // container anymore: content scrolls UP beneath the transparent
-            // outline and stays fully visible outside and inside it.
-            Spacer(Modifier.statusBarsPadding().height(86.dp))
+            Spacer(Modifier.height(24.dp))
+
+            HomeHeader(
+                onSettingsClick = onSettingsClick,
+                profileName = profileName,
+                profilePictureUri = profilePictureUri,
+                onProfileClick = onProfileClick,
+            )
+
+            Spacer(Modifier.height(18.dp))
 
             ApiKeyBadge(
                 active = apiKeyActive,
@@ -261,39 +264,6 @@ fun HomeScreen(
                 },
             )
             Spacer(Modifier.height(16.dp))
-        }
-
-        // Fixed, fully transparent ceiling overlay: only an OUTLINE is drawn
-        // — it enters from the left screen edge slightly below the top
-        // corner, swoops down around the header + profile button, and exits
-        // on the right edge. Content and particles show through everywhere.
-        val outlineColor = NazoPrimary.copy(alpha = 0.45f)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .drawBehind {
-                    val edge = curvedBarEdgePath(
-                        size,
-                        rampPx = 44.dp.toPx(),
-                        ceiling = true,
-                        edgeInsetPx = 15.dp.toPx(),
-                    )
-                    drawPath(
-                        path = edge,
-                        color = outlineColor,
-                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
-                    )
-                }
-                .statusBarsPadding()
-                .padding(horizontal = 34.dp)
-                .padding(top = 6.dp, bottom = 18.dp)
-        ) {
-            HomeHeader(
-                onSettingsClick = onSettingsClick,
-                profileName = profileName,
-                profilePictureUri = profilePictureUri,
-                onProfileClick = onProfileClick,
-            )
         }
 
         NazoBottomNav(

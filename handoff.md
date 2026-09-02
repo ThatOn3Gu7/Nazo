@@ -20,6 +20,40 @@ Conventions:
 
 ---
 
+## [2026-09-02 13:30] feat: sun/moon transit animation on theme switch; top curve outline DROPPED
+
+- Owner: (1) drop the top-of-app curve outline entirely ("feels weird") —
+  bottom nav curve stays; (2) new: when switching theme mode in Appearance,
+  play an animation inside the picked row — Light: a sun rises and falls in
+  the button container; Dark: a moon does; System: agent's choice.
+- **Revert** (`ui/screens/HomeScreen.kt`): Home restored to the pre-curve
+  layout — outer Box has `.statusBarsPadding()` again, HomeHeader back
+  inside the scroll column (Spacer 24 / header / Spacer 18), overlay +
+  drawBehind outline deleted, outline-related imports removed.
+  `curvedBarEdgePath`'s ceiling branch + edgeInsetPx stay in
+  NazoBottomNav.kt (bottom bar uses the same builder; ceiling=true is now
+  simply unused).
+- **Celestial transit** (`ui/screens/AppearanceScreen.kt`): `ThemeModeRow`
+  gained `celestial: String = ""` ("sun"|"moon"|"cycle"); only the three
+  THEME MODE rows pass it (System="cycle", Light="sun", Dark="moon") —
+  reveal-style rows unaffected. Trigger: row transitions unselected→selected
+  (tracked via `wasSelected`; no replay on re-tap of already-selected row,
+  no play on first composition). One-shot `Animatable` 0→1 (LinearEasing,
+  1500 ms; cycle 2600 ms), then snapTo(0).
+- Rendering: `.drawBehind` between `.background` and `.border` → above card
+  colour, below icon/text; row's `clip(RoundedCornerShape(24))` masks entry/
+  exit. Ballistic arc: cx 6%→94% width, cy = h+2r − sin(pπ)·(0.8h+2r) (peak
+  ≈0.2h; fully hidden below the edge at p=0/1, halo included). Sun r=0.16h
+  gold #FFC107 with glow + 8 spinning rays (StrokeCap.Round); Moon #CDD8F2
+  with crescent bite drawn in the ROW's own colour (rowColor param — matches
+  NazoDarkCard since the row is selected while playing) + 2 twinkling star
+  dots (alpha=sin(pπ)). System = sun transit then moon transit (day/night).
+  Progress read only in draw phase → zero recomposition.
+- Files: `ui/screens/HomeScreen.kt`, `ui/screens/AppearanceScreen.kt`,
+  `handoff.md`.
+
+---
+
 ## [2026-09-02 12:45] fix: top outline enters below the corners; header container removed (content scrolls beneath)
 
 - Owner feedback (with screenshot): (1) the top outline was "way too curved"
