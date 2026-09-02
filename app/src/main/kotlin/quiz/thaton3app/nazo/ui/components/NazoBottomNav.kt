@@ -45,14 +45,38 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 enum class NazoTab { Home, Settings }
 
 /**
- * Shared silhouette for the app's top and bottom chrome. Instead of a
- * straight edge, the bar's free edge ramps smoothly out of the screen
- * corner, runs flat across the middle, and ramps back into the opposite
- * corner — a curved "floor" for the bottom nav and, mirrored vertically
- * ([ceiling] = true), a curved "ceiling" for the home header.
- *
- * [rampWidth] is how much horizontal room each ramp takes (clamped to a
- * quarter of the width so the flat plateau always dominates).
+ * Builds the OPEN edge curve shared by the app's top and bottom chrome: the
+ * line hugs the screen corner, rounds through a soft knee, rises (or dips),
+ * rounds again and runs flat across the middle. Control points sit at 80/20%
+ * of the ramp so both bends are properly round — a flowing swoop rather than
+ * a straight diagonal. [ceiling] mirrors it vertically for the top.
+ */
+fun curvedBarEdgePath(size: Size, rampPx: Float, ceiling: Boolean): Path {
+    val w = size.width
+    val h = size.height
+    val ramp = rampPx.coerceAtMost(w * 0.25f)
+    return Path().apply {
+        if (ceiling) {
+            // Starts at the top-left screen corner, swoops DOWN below the
+            // header, runs flat, and swoops back UP to the top-right corner.
+            moveTo(0f, 0f)
+            cubicTo(ramp * 0.8f, 0f, ramp * 0.2f, h, ramp, h)
+            lineTo(w - ramp, h)
+            cubicTo(w - ramp * 0.2f, h, w - ramp * 0.8f, 0f, w, 0f)
+        } else {
+            // Starts at the bottom-left screen corner, swoops UP, runs flat
+            // under the tabs, and swoops back DOWN to the bottom-right.
+            moveTo(0f, h)
+            cubicTo(ramp * 0.8f, h, ramp * 0.2f, 0f, ramp, 0f)
+            lineTo(w - ramp, 0f)
+            cubicTo(w - ramp * 0.2f, 0f, w - ramp * 0.8f, h, w, h)
+        }
+    }
+}
+
+/**
+ * Filled variant of the same silhouette, used as the bottom nav's shape:
+ * the edge curve closed along the screen edge.
  */
 class CurvedBarShape(
     private val rampWidth: Dp,
@@ -63,28 +87,8 @@ class CurvedBarShape(
         layoutDirection: LayoutDirection,
         density: Density,
     ): Outline {
-        val w = size.width
-        val h = size.height
-        val ramp = with(density) { rampWidth.toPx() }.coerceAtMost(w * 0.25f)
-        val path = Path().apply {
-            if (ceiling) {
-                // Edge starts at the top-left screen corner, sweeps DOWN to
-                // full depth, runs flat, and sweeps back UP to the top-right.
-                moveTo(0f, 0f)
-                cubicTo(ramp * 0.55f, 0f, ramp * 0.45f, h, ramp, h)
-                lineTo(w - ramp, h)
-                cubicTo(w - ramp * 0.45f, h, w - ramp * 0.55f, 0f, w, 0f)
-            } else {
-                // Edge starts at the bottom-left screen corner, sweeps UP to
-                // full height, runs flat, and sweeps back DOWN to the
-                // bottom-right.
-                moveTo(0f, h)
-                cubicTo(ramp * 0.55f, h, ramp * 0.45f, 0f, ramp, 0f)
-                lineTo(w - ramp, 0f)
-                cubicTo(w - ramp * 0.45f, 0f, w - ramp * 0.55f, h, w, h)
-            }
-            close()
-        }
+        val path = curvedBarEdgePath(size, with(density) { rampWidth.toPx() }, ceiling)
+        path.close()
         return Outline.Generic(path)
     }
 }
@@ -124,7 +128,7 @@ fun NazoBottomNav(
         // navigation-bar padding so the plateau also covers the system
         // gesture area (the ambient particles only peek through the two
         // tapered corners, matching the header ceiling above).
-        val curve = remember { CurvedBarShape(rampWidth = 48.dp, ceiling = false) }
+        val curve = remember { CurvedBarShape(rampWidth = 56.dp, ceiling = false) }
         Row(
             modifier = modifier
                 .fillMaxWidth()

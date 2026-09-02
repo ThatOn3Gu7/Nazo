@@ -20,6 +20,38 @@ Conventions:
 
 ---
 
+## [2026-09-02 12:15] refactor: rounder chrome curves + transparent outline-only ceiling
+
+- Owner feedback on the 11:30 chrome: (1) nav bar curve read as angular —
+  "like a stock market chart" — wanted it more curvy/flowing; (2) the top
+  should be an OUTLINE only, running from the top of the screen around the
+  header + profile, fully transparent so the ambient particles are visible
+  beneath it. (Owner offered a real-world reference website; told them to
+  send one if this pass still isn't the vibe.)
+- `ui/components/NazoBottomNav.kt`: path builder extracted as public
+  `curvedBarEdgePath(size, rampPx, ceiling): Path` (OPEN edge curve);
+  `CurvedBarShape` now just closes it for the filled bottom bar. Control
+  points moved 0.55/0.45 → **0.80/0.20** of the ramp (both bends hug the
+  corners much longer = properly round knees, no diagonal segment) and nav
+  ramp widened 48 → 56dp. Geometry check: tab pill left edge ≈ x=43dp of a
+  56dp ramp → edge y ≈ 4–8dp < pill top 12dp, so tabs still clear the curve.
+  Ramp must stay ≤ ~56–60dp while tabs are full pills (SpaceEvenly puts pill
+  edges at ~43dp on a 360dp screen) — widen only if tabs move inward.
+- `ui/screens/HomeScreen.kt`: ceiling no longer filled — the Box now has NO
+  background; a `drawBehind` strokes the open edge path (ramp 44dp, 2dp
+  width, StrokeCap.Round, NazoPrimary @ 45% alpha) from the top-left corner,
+  around under the header, back to the top-right. Particles show through the
+  whole header area incl. status bar. Header padding (34dp) verified to keep
+  the pill/avatar inside the 44dp-ramp outline. Imports: +drawBehind,
+  +StrokeCap, +drawscope.Stroke, CurvedBarShape → curvedBarEdgePath.
+- Known accepted quirk: scrolled content still clips at the invisible line
+  under the outline (Column layout unchanged); a fade edge could soften it
+  if the owner ever asks.
+- Files: `ui/components/NazoBottomNav.kt`, `ui/screens/HomeScreen.kt`,
+  `handoff.md`.
+
+---
+
 ## [2026-09-02 11:30] feat: curved top ceiling + curved bottom nav, floating pill slimmed & restyled
 
 - Owner request (with sketch): (1) the bottom nav's edge should not be a

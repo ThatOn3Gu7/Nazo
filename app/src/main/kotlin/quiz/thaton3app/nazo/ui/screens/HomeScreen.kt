@@ -23,8 +23,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -35,7 +38,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.daily.DailyChallengeCard
-import quiz.thaton3app.nazo.ui.components.CurvedBarShape
+import quiz.thaton3app.nazo.ui.components.curvedBarEdgePath
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoTab
@@ -110,16 +113,23 @@ fun HomeScreen(
             .fillMaxSize()
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Curved "ceiling": the header sits inside a fixed canopy whose
-            // bottom edge sweeps down from the top-left corner, runs flat and
-            // sweeps back up to the top-right — mirroring the bottom nav's
-            // curved floor. Background is applied BEFORE the status-bar
-            // padding so the canopy also covers the status bar area.
-            val ceiling = remember { CurvedBarShape(rampWidth = 30.dp, ceiling = true) }
+            // Curved "ceiling": an OUTLINE running from the top-left screen
+            // corner, swooping down around the header + profile button, and
+            // back up to the top-right corner. The area inside is fully
+            // transparent so the ambient background particles stay visible
+            // beneath the header.
+            val outlineColor = NazoPrimary.copy(alpha = 0.45f)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(NazoNavBar, ceiling)
+                    .drawBehind {
+                        val edge = curvedBarEdgePath(size, 44.dp.toPx(), ceiling = true)
+                        drawPath(
+                            path = edge,
+                            color = outlineColor,
+                            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
+                        )
+                    }
                     .statusBarsPadding()
                     .padding(horizontal = 34.dp)
                     .padding(top = 6.dp, bottom = 18.dp)
