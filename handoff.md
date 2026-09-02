@@ -20,6 +20,25 @@ Conventions:
 
 ---
 
+## [2026-09-03 03:30] fix: share-card layout overflow; README screenshot grid mapped to owner's shots
+
+- Share card (`ShareResultCard.kt`): the card rect had a hardcoded bottom
+  (h-220) while 3 stat rows starting at cy+330 ran to y≈1202 — the "Time"
+  row rendered OUTSIDE the card, colliding with the footer (owner's
+  screenshot confirmed). Geometry is now computed from content: card bottom
+  = last stat baseline + padding, footer always below the card. Any row
+  count fits.
+- README screenshots: owner sent 14 screenshots via chat, but the platform
+  upload folder never appeared in the sandbox — files could not be
+  committed. The commented grid now matches the owner's actual batch
+  (home/quiz/results/review/guessing/stats/appearance/providers) with an
+  exact rename map from the original filenames. Owner (or next agent WITH
+  the files) drops them in assets/screenshots/ and removes the comment
+  markers.
+- Files: ShareResultCard.kt, README.md, handoff.md.
+
+---
+
 ## [2026-09-03 03:00] docs: README overhaul for v7.0 + screenshots scaffold
 
 - Features section rewritten around the five game modes + smarter-quizzing /

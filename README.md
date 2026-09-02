@@ -26,16 +26,26 @@ themable, no account, no ads.
 ## 📱 Screenshots
 
 <!--
-  Drop PNGs into assets/screenshots/ with these names, then remove this
-  comment to reveal the grid:
+  The grid below is ready to go — add the images and delete the comment
+  markers (the arrow lines) plus the "coming soon" line.
 
-| Home | Quiz | Survival | Blitz |
-|:---:|:---:|:---:|:---:|
-| <img src="assets/screenshots/home.png" width="180"/> | <img src="assets/screenshots/quiz.png" width="180"/> | <img src="assets/screenshots/survival.png" width="180"/> | <img src="assets/screenshots/blitz.png" width="180"/> |
+  Rename map (owner's 2026-09-02 screenshot batch → assets/screenshots/):
+    Screenshot_20260902-221004.png → home.png        (Home: mode dropdown, streak, daily)
+    Screenshot_20260902-220808.png → quiz.png        (Active quiz question)
+    Screenshot_20260902-220825.png → results.png     (Quiz Complete + share button)
+    Screenshot_20260902-220839.png → review.png      (Review Answers + explanations)
+    Screenshot_20260902-221055.png → guessing.png    (Guessing Game, pixelated mystery)
+    Screenshot_20260902-220911.png → stats.png       (Statistics & Insights)
+    Screenshot_20260902-220721.png → appearance.png  (Appearance settings)
+    Screenshot_20260902-220948.png → providers.png   (AI & Model Configuration)
 
-| Versus | Guessing Game | Results | Appearance |
+| Home | Quiz | Results | Review |
 |:---:|:---:|:---:|:---:|
-| <img src="assets/screenshots/versus.png" width="180"/> | <img src="assets/screenshots/guessing.png" width="180"/> | <img src="assets/screenshots/results.png" width="180"/> | <img src="assets/screenshots/appearance.png" width="180"/> |
+| <img src="assets/screenshots/home.png" width="180"/> | <img src="assets/screenshots/quiz.png" width="180"/> | <img src="assets/screenshots/results.png" width="180"/> | <img src="assets/screenshots/review.png" width="180"/> |
+
+| Guessing Game | Statistics | Appearance | AI Providers |
+|:---:|:---:|:---:|:---:|
+| <img src="assets/screenshots/guessing.png" width="180"/> | <img src="assets/screenshots/stats.png" width="180"/> | <img src="assets/screenshots/appearance.png" width="180"/> | <img src="assets/screenshots/providers.png" width="180"/> |
 -->
 
 *Screenshots coming soon.*
