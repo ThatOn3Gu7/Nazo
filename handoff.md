@@ -20,6 +20,30 @@ Conventions:
 
 ---
 
+## [2026-09-02 17:00] fix: nav-bar curve is now single-bend — straight drop, no bottom knee
+
+- Owner clarified the 16:30 "cut" was misread: they want NO second curve at
+  the bottom at all. The edge should bend down off the plateau ONCE and then
+  go STRAIGHT down into the screen bottom — the doodle's two black lines
+  meant "vertical from here". The 16dp edge-inset approach was wrong.
+- `ui/components/NazoBottomNav.kt`: `curvedBarEdgePath` rewritten as a
+  single-bend profile — per side: vertical screen-edge segment from the
+  bottom up to `bend` (= min(0.62·h, ramp)), then ONE cubic with vertical
+  tangent at the edge and horizontal tangent at the plateau
+  (c1=(0, bend·0.45), c2=(ramp·0.45, 0)), flat plateau across, mirrored on
+  the right. Ceiling branch mirrored vertically (still unused).
+  `edgeInsetPx`/`edgeInset` param REMOVED from both the path fn and
+  `CurvedBarShape` (shape now just closes the edge along the screen edge —
+  the sides are already straight verticals). Nav call site:
+  CurvedBarShape(56.dp, ceiling=false). Bar remains full-width; tabs
+  (centred pair, 32dp gap, outer edges ≈x=48) clear the bend (edge y <
+  ~6dp there vs pill top 12dp).
+- Owner confirmed the other two 16:30 items (Cancel outline, offline
+  back-block) work.
+- Files: NazoBottomNav.kt, handoff.md.
+
+---
+
 ## [2026-09-02 16:30] refactor: nav-bar corner "cut" + centred tabs; quiz Cancel outline; offline popup swallows back
 
 - Owner (with nav-bar screenshot + doodle): (1) the bottom bar's swoop

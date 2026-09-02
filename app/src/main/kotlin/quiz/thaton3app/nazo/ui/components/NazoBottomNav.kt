@@ -45,73 +45,58 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 enum class NazoTab { Home, Settings }
 
 /**
- * Builds the OPEN edge curve shared by the app's top and bottom chrome: the
- * line hugs the screen edge, rounds through a soft knee, rises (or dips),
- * rounds again and runs flat across the middle. Control points sit at 80/20%
- * of the ramp so both bends are properly round — a flowing swoop rather than
- * a straight diagonal. [ceiling] mirrors it vertically for the top.
- * [edgeInsetPx] moves the two endpoints along the screen's side edges away
- * from the corners (e.g. the top outline starts slightly BELOW the top
- * corners instead of running into them).
+ * Builds the OPEN edge silhouette shared by the app's top and bottom chrome.
+ * ONE bend per side: the edge leaves the flat plateau through a wide rounded
+ * shoulder and then runs STRAIGHT down the screen edge — no second curve
+ * back into the corners (owner's 2026-09-02 doodle: "cut from there").
+ * [ceiling] mirrors it vertically for the top.
  */
-fun curvedBarEdgePath(size: Size, rampPx: Float, ceiling: Boolean, edgeInsetPx: Float = 0f): Path {
+fun curvedBarEdgePath(size: Size, rampPx: Float, ceiling: Boolean): Path {
     val w = size.width
     val h = size.height
     val ramp = rampPx.coerceAtMost(w * 0.25f)
+    // Vertical extent of the single bend; whatever remains below (or above,
+    // for the ceiling) is a straight vertical drop into the screen edge.
+    val bend = (h * 0.62f).coerceAtMost(ramp)
     return Path().apply {
         if (ceiling) {
-            // Starts on the left screen edge just below the top corner,
-            // swoops DOWN below the header, runs flat, and swoops back UP to
-            // the right screen edge.
-            val top = edgeInsetPx
-            moveTo(0f, top)
-            cubicTo(ramp * 0.8f, top, ramp * 0.2f, h, ramp, h)
+            // Straight down the left screen edge, one bend onto the flat
+            // bottom, flat across, one bend back up, straight up to the top.
+            moveTo(0f, 0f)
+            lineTo(0f, h - bend)
+            cubicTo(0f, h - bend * 0.45f, ramp * 0.45f, h, ramp, h)
             lineTo(w - ramp, h)
-            cubicTo(w - ramp * 0.2f, h, w - ramp * 0.8f, top, w, top)
+            cubicTo(w - ramp * 0.45f, h, w, h - bend * 0.45f, w, h - bend)
+            lineTo(w, 0f)
         } else {
-            // Starts at the bottom-left screen corner, swoops UP, runs flat
-            // under the tabs, and swoops back DOWN to the bottom-right.
-            val bottom = h - edgeInsetPx
-            moveTo(0f, bottom)
-            cubicTo(ramp * 0.8f, bottom, ramp * 0.2f, 0f, ramp, 0f)
+            // Up the left screen edge, ONE bend onto the plateau (vertical
+            // tangent at the edge, horizontal at the plateau), flat across,
+            // one bend down, then straight down into the screen bottom.
+            moveTo(0f, h)
+            lineTo(0f, bend)
+            cubicTo(0f, bend * 0.45f, ramp * 0.45f, 0f, ramp, 0f)
             lineTo(w - ramp, 0f)
-            cubicTo(w - ramp * 0.2f, 0f, w - ramp * 0.8f, bottom, w, bottom)
+            cubicTo(w - ramp * 0.45f, 0f, w, bend * 0.45f, w, bend)
+            lineTo(w, h)
         }
     }
 }
 
 /**
- * Filled variant of the same silhouette, used as the bottom nav's shape:
- * the edge curve closed through the screen-edge corners, so with a non-zero
- * [edgeInset] the sides end in short vertical "cut" segments instead of the
- * swoop tapering all the way into the corners.
+ * Filled variant of the same silhouette, used as the bottom nav's shape.
+ * The edge already includes the straight vertical sides, so closing it just
+ * runs along the screen edge (bottom for the nav, top for the ceiling).
  */
 class CurvedBarShape(
     private val rampWidth: Dp,
     private val ceiling: Boolean,
-    private val edgeInset: Dp = 0.dp,
 ) : Shape {
     override fun createOutline(
         size: Size,
         layoutDirection: LayoutDirection,
         density: Density,
     ): Outline {
-        val path = curvedBarEdgePath(
-            size,
-            with(density) { rampWidth.toPx() },
-            ceiling,
-            with(density) { edgeInset.toPx() },
-        )
-        // Close through the screen-edge corners so the fill always reaches
-        // the actual screen edge; the short vertical side segments are the
-        // visible "cut".
-        if (ceiling) {
-            path.lineTo(size.width, 0f)
-            path.lineTo(0f, 0f)
-        } else {
-            path.lineTo(size.width, size.height)
-            path.lineTo(0f, size.height)
-        }
+        val path = curvedBarEdgePath(size, with(density) { rampWidth.toPx() }, ceiling)
         path.close()
         return Outline.Generic(path)
     }
@@ -146,13 +131,12 @@ fun NazoBottomNav(
             NavItems(selected = selected, onHomeClick = onHomeClick, onSettingsClick = onSettingsClick)
         }
     } else {
-        // Anchored bar with the curved silhouette: it rises out of the
-        // bottom-left corner, runs flat under the tabs, and sinks back into
-        // the bottom-right corner. The background is applied BEFORE the
-        // navigation-bar padding so the plateau also covers the system
-        // gesture area (the ambient particles only peek through the two
-        // tapered corners, matching the header ceiling above).
-        val curve = remember { CurvedBarShape(rampWidth = 56.dp, ceiling = false, edgeInset = 16.dp) }
+        // Anchored bar with the single-bend silhouette: the top edge bends
+        // down off the plateau through one wide shoulder and then drops
+        // STRAIGHT down the screen edge — no second curve into the corners.
+        // The background is applied BEFORE the navigation-bar padding so the
+        // bar also covers the system gesture area.
+        val curve = remember { CurvedBarShape(rampWidth = 56.dp, ceiling = false) }
         Row(
             modifier = modifier
                 .fillMaxWidth()
