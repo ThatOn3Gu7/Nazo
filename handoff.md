@@ -20,6 +20,24 @@ Conventions:
 
 ---
 
+## [2026-09-03 02:30] release: v7.0 (versionCode 7) + pre-release branch review
+
+- End-of-session review of the whole branch (owner request). Logic audit of
+  survival/blitz/versus finish paths (record read-before-submit order OK),
+  blitz auto-advance guards, navigation stack for VersusReview, WhatsNew
+  gating, updater state machine, no leftover TODO/println. One real issue
+  found and fixed: the in-app What's New changelog was stale (written
+  mid-session) — now covers the full v7.0 drop; CHANGELOG_ID bumped to
+  "2026-09-03-v7" so the sheet shows once after the update.
+- Version bump 5.0 (test-only downgrade) → **7.0**, versionCode 7, as the
+  final commit per AGENTS.md convention.
+- Owner will merge the arena branch + their master and publish the release
+  (nav-bar conflict in NazoBottomNav.kt is expected and intentional — both
+  sides touched it; owner picks their favourite at merge time).
+- Files: WhatsNew.kt, app/build.gradle.kts, handoff.md.
+
+---
+
 ## [2026-09-03 02:00] chore: TEMPORARY version downgrade 6.0 → 5.0 (updater test only)
 
 - Owner request: build a 5.0 APK purely to live-test the new in-app update

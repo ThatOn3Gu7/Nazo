@@ -45,7 +45,7 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 // ---------------------------------------------------------------------------
 
 /** Bump this whenever CHANGELOG below gains entries the user should see. */
-const val CHANGELOG_ID = "2026-09-02-big-drop"
+const val CHANGELOG_ID = "2026-09-03-v7"
 
 data class ChangeEntry(val title: String, val points: List<String>)
 
@@ -56,6 +56,7 @@ val CHANGELOG: List<ChangeEntry> = listOf(
             "Survival — endless questions, 3 lives, chase your longest streak",
             "Blitz — 60 seconds, answer as many as you can, works offline",
             "Versus — pass & play: two players, same questions, one winner",
+            "Versus results now include a swipeable head-to-head answer review",
         ),
     ),
     ChangeEntry(
@@ -67,12 +68,26 @@ val CHANGELOG: List<ChangeEntry> = listOf(
         ),
     ),
     ChangeEntry(
-        "More celebration & polish",
+        "A fresher Home",
+        listOf(
+            "Compact mode selector — all five game modes in one expandable card",
+            "Daily streak flame on the Home screen — keep it burning!",
+            "Tap anywhere outside a text field to dismiss the keyboard",
+        ),
+    ),
+    ChangeEntry(
+        "Celebrations & sharing",
         listOf(
             "Victory confetti now comes in 5 switchable styles (Appearance → Celebrations)",
             "Each confetti style has its own sound cue (when sounds are on)",
-            "Daily streak flame on the Home screen — keep it burning!",
             "Share your results as an image from the completion screens",
+        ),
+    ),
+    ChangeEntry(
+        "Updates, upgraded",
+        listOf(
+            "App updates now download inside the app with a live progress bar",
+            "See exactly which version you're upgrading from and to",
         ),
     ),
 )
