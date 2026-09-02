@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.FitnessCenter
 import androidx.compose.material3.Icon
@@ -65,6 +66,7 @@ import quiz.thaton3app.nazo.records.NewRecordBadge
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.ShareResultCard
 import quiz.thaton3app.nazo.ui.theme.*
 
 /**
@@ -84,6 +86,7 @@ fun GuessingResultsScreen(
     onHomeClick: () -> Unit,
 ) {
     val context = LocalContext.current
+    val celebrationStyle = remember { ThemePreferences(context).celebrationStyle }
     val total = results.size
     val solved = results.count { it.correct }
     val allMissed = total > 0 && solved == 0
@@ -115,6 +118,8 @@ fun GuessingResultsScreen(
         showCard = true
         if (accuracy >= 50f) {
             triggerConfetti = true
+            // Per-variant cue queued after the completion arpeggio (opt-in).
+            Sounds.celebration(context, celebrationStyle)
         }
         delay(200)
         showRounds = true
@@ -319,6 +324,41 @@ fun GuessingResultsScreen(
                             Spacer(Modifier.width(8.dp))
                             Text("Home", color = NazoTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         }
+                        Spacer(Modifier.height(12.dp))
+                        // Share the run as a themed image card (system share sheet).
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(NazoSurfaceVariant)
+                                .clickable {
+                                    Haptics.light(context)
+                                    ShareResultCard.share(
+                                        context = context,
+                                        heading = "Guessing Game",
+                                        headline = "$score",
+                                        headlineCaption = "points",
+                                        stats = listOf(
+                                            "Rounds solved" to "$solved / $total",
+                                            "Difficulty" to difficulty,
+                                            "Topic" to topic.ifBlank { "Any popular anime" },
+                                        ),
+                                        background = NazoBackground,
+                                        surface = NazoSurface,
+                                        primary = NazoPrimary,
+                                        onPrimary = NazoOnPrimary,
+                                        textPrimary = NazoTextPrimary,
+                                        textSecondary = NazoTextSecondary,
+                                    )
+                                }
+                        ) {
+                            Icon(Icons.Filled.Share, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Share Result", color = NazoTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
                 Spacer(Modifier.height(16.dp))
@@ -330,7 +370,7 @@ fun GuessingResultsScreen(
         // half the rounds were solved, mirroring the quiz's success rule.
         if (triggerConfetti) {
             CelebrationOverlay(
-                style = remember { ThemePreferences(context).celebrationStyle },
+                style = celebrationStyle,
                 modifier = Modifier.fillMaxSize(),
             )
         }

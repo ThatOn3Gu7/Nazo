@@ -52,6 +52,9 @@ enum class Difficulty(val label: String) {
 enum class NazoMode(val label: String) {
     QUIZ("Quiz"),
     GUESSING("Guessing Game"),
+    SURVIVAL("Survival"),
+    BLITZ("Blitz"),
+    VERSUS("Versus"),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -76,6 +79,9 @@ fun HomeScreen(
     guessingRounds: Int = 3,
     onGuessingRoundsChange: (Int) -> Unit = {},
     onStartGuessing: (topic: String, difficulty: String, rounds: Int) -> Unit = { _, _, _ -> },
+    onStartSurvival: (topic: String, difficulty: String) -> Unit = { _, _ -> },
+    onStartBlitz: (topic: String, difficulty: String) -> Unit = { _, _ -> },
+    onStartVersus: (topic: String, difficulty: String, count: Int) -> Unit = { _, _, _ -> },
     configuredProviders: List<String> = emptyList(),
     onSelectProvider: (String) -> Unit = {},
     onManageClick: () -> Unit = {},
@@ -83,9 +89,13 @@ fun HomeScreen(
     dailyScore: Int = 0,
     dailyBonus: Int = 0,
     onPlayDaily: () -> Unit = {},
+    streakDays: Int = 0,
+    practiceCount: Int = 0,
+    onStartPractice: () -> Unit = {},
 ) {
     val difficulty = Difficulty.valueOf(difficultyName)
-    val isGuessing = mode == NazoMode.GUESSING.name
+    val nazoMode = NazoMode.entries.firstOrNull { it.name == mode } ?: NazoMode.QUIZ
+    val isGuessing = nazoMode == NazoMode.GUESSING
     val context = LocalContext.current
     var showProviderSheet by remember { mutableStateOf(false) }
     
@@ -137,6 +147,14 @@ fun HomeScreen(
 
             Spacer(Modifier.height(22.dp))
 
+            // Daily streak flame: appears from day 1 and burns hotter as the
+            // streak grows (see StreakFlameChip). Sits right above the daily
+            // card since the daily challenge is the easiest way to keep it lit.
+            if (streakDays >= 1) {
+                StreakFlameChip(streakDays = streakDays)
+                Spacer(Modifier.height(12.dp))
+            }
+
             // Daily Challenge (Phase 5): date-seeded from the local bank, so it
             // is always available — even offline and with no provider set up.
             DailyChallengeCard(
@@ -150,33 +168,58 @@ fun HomeScreen(
 
             SectionLabel("MODE")
             Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PillButton(
-                    text = NazoMode.QUIZ.label,
-                    selected = !isGuessing,
-                    icon = Icons.Filled.Quiz,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        if (isGuessing) Haptics.light(context)
-                        onModeChange(NazoMode.QUIZ.name)
-                    },
-                )
-                PillButton(
-                    text = NazoMode.GUESSING.label,
-                    selected = isGuessing,
-                    icon = Icons.Filled.ImageSearch,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        if (!isGuessing) Haptics.light(context)
-                        onModeChange(NazoMode.GUESSING.name)
-                    },
+            // Five modes now — a 2-per-row pill grid (same static-grid pattern
+            // as the difficulty section, no horizontal scrolling).
+            val modeIcons = mapOf(
+                NazoMode.QUIZ to Icons.Filled.Quiz,
+                NazoMode.GUESSING to Icons.Filled.ImageSearch,
+                NazoMode.SURVIVAL to Icons.Filled.Whatshot,
+                NazoMode.BLITZ to Icons.Filled.Timer,
+                NazoMode.VERSUS to Icons.Filled.Groups,
+            )
+            NazoMode.entries.chunked(2).forEach { rowModes ->
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    rowModes.forEach { m ->
+                        PillButton(
+                            text = m.label,
+                            selected = nazoMode == m,
+                            icon = modeIcons[m],
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                if (nazoMode != m) Haptics.light(context)
+                                onModeChange(m.name)
+                            },
+                        )
+                    }
+                    if (rowModes.size == 1) Spacer(Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(10.dp))
+            }
+            // One-line pitch for the newer modes.
+            val modeBlurb = when (nazoMode) {
+                NazoMode.SURVIVAL -> "Endless questions • 3 lives • how far can you go?"
+                NazoMode.BLITZ -> "60 seconds on the clock • instant questions • works offline"
+                NazoMode.VERSUS -> "Pass & play — 2 players answer the same questions"
+                else -> null
+            }
+            if (modeBlurb != null) {
+                Text(
+                    text = modeBlurb,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NazoTextSecondary,
                 )
             }
 
             Spacer(Modifier.height(24.dp))
 
             Text(
-                text = if (isGuessing) "Can you spot the\nmystery image?" else "Ready to test your\nanime knowledge?",
+                text = when (nazoMode) {
+                    NazoMode.GUESSING -> "Can you spot the\nmystery image?"
+                    NazoMode.SURVIVAL -> "How long can\nyou survive?"
+                    NazoMode.BLITZ -> "How many in\n60 seconds?"
+                    NazoMode.VERSUS -> "Who knows their\nanime better?"
+                    else -> "Ready to test your\nanime knowledge?"
+                },
                 style = MaterialTheme.typography.headlineMedium.copy(
                     fontWeight = FontWeight.Bold,
                     fontSize = 28.sp,
@@ -236,7 +279,7 @@ fun HomeScreen(
                         )
                     }
                 }
-            } else {
+            } else if (nazoMode == NazoMode.QUIZ || nazoMode == NazoMode.VERSUS) {
                 SectionLabel("QUESTIONS")
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -252,15 +295,61 @@ fun HomeScreen(
                         )
                     }
                 }
+
+                // Practice deck: replay previously missed questions. Only
+                // appears once there's something to practice; the count is
+                // live (questions graduate out when answered correctly).
+                if (nazoMode == NazoMode.QUIZ && practiceCount > 0) {
+                    Spacer(Modifier.height(14.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(50))
+                            .background(NazoSurface)
+                            .border(1.dp, NazoPrimary.copy(alpha = 0.35f), RoundedCornerShape(50))
+                            .clickable {
+                                Haptics.light(context)
+                                onStartPractice()
+                            }
+                            .padding(horizontal = 20.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.School,
+                            contentDescription = null,
+                            tint = NazoPrimary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Practice your misses ($practiceCount)",
+                            color = NazoPrimary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
             }
 
             Spacer(Modifier.height(28.dp))
 
             GenerateButton(
-                label = if (isGuessing) "Start Guessing Game" else if (offline) "Generate Quiz" else "Generate AI Quiz",
+                label = when (nazoMode) {
+                    NazoMode.GUESSING -> "Start Guessing Game"
+                    NazoMode.SURVIVAL -> "Start Survival Run"
+                    NazoMode.BLITZ -> "Start 60-Second Blitz"
+                    NazoMode.VERSUS -> "Start Versus Match"
+                    else -> if (offline) "Generate Quiz" else "Generate AI Quiz"
+                },
                 onClick = {
-                    if (isGuessing) onStartGuessing(topic, difficulty.label, guessingRounds)
-                    else onStartQuiz(topic, difficulty.label, questionCount)
+                    when (nazoMode) {
+                        NazoMode.GUESSING -> onStartGuessing(topic, difficulty.label, guessingRounds)
+                        NazoMode.SURVIVAL -> onStartSurvival(topic, difficulty.label)
+                        NazoMode.BLITZ -> onStartBlitz(topic, difficulty.label)
+                        NazoMode.VERSUS -> onStartVersus(topic, difficulty.label, questionCount)
+                        else -> onStartQuiz(topic, difficulty.label, questionCount)
+                    }
                 },
             )
             Spacer(Modifier.height(16.dp))
@@ -552,6 +641,48 @@ private val PROVIDER_ICONS = mapOf(
     "openrouter" to Icons.Filled.Api,
     "opencode" to Icons.Filled.Code,
 )
+
+/**
+ * Daily streak flame: a quiet chip whose flame burns hotter as the streak
+ * grows — amber for days 1–2, deep orange for 3–6, red-hot (and slightly
+ * bigger) from a full week. Fixed semantic colors on purpose: fire reads as
+ * fire in every accent/theme.
+ */
+@Composable
+private fun StreakFlameChip(streakDays: Int) {
+    val flameColor = when {
+        streakDays >= 7 -> Color(0xFFE53935) // red-hot
+        streakDays >= 3 -> Color(0xFFFF6D00) // deep orange
+        else -> Color(0xFFFFA000)            // amber
+    }
+    val flameSize = when {
+        streakDays >= 7 -> 24.dp
+        streakDays >= 3 -> 21.dp
+        else -> 18.dp
+    }
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(flameColor.copy(alpha = 0.12f))
+            .border(1.dp, flameColor.copy(alpha = 0.35f), RoundedCornerShape(50))
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.LocalFireDepartment,
+            contentDescription = null,
+            tint = flameColor,
+            modifier = Modifier.size(flameSize),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = if (streakDays == 1) "1-day streak" else "$streakDays-day streak",
+            color = flameColor,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
 
 @Composable
 private fun SectionLabel(text: String) {

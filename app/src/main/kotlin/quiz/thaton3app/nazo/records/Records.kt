@@ -73,6 +73,28 @@ class RecordsStore(context: Context) {
         if (points > prev) prefs.edit().putInt("guess_best_${difficulty}_$rounds", points).apply()
         return points > prev && points > 0
     }
+
+    // --- Survival mode: longest run (total correct answers before 3 misses) ---
+
+    fun survivalBest(): Int = prefs.getInt("survival_best", -1)
+
+    /** Persists the run if it beats the stored best; true = show the badge. */
+    fun submitSurvival(correct: Int): Boolean {
+        val prev = survivalBest()
+        if (correct > prev) prefs.edit().putInt("survival_best", correct).apply()
+        return correct > prev && correct > 0
+    }
+
+    // --- Blitz mode: most correct answers inside the 60-second window ---
+
+    fun blitzBest(): Int = prefs.getInt("blitz_best", -1)
+
+    /** Persists the run if it beats the stored best; true = show the badge. */
+    fun submitBlitz(correct: Int): Boolean {
+        val prev = blitzBest()
+        if (correct > prev) prefs.edit().putInt("blitz_best", correct).apply()
+        return correct > prev && correct > 0
+    }
 }
 
 /**

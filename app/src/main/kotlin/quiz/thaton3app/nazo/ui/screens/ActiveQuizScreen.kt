@@ -32,6 +32,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material3.Icon
@@ -68,11 +70,21 @@ fun ActiveQuizScreen(
     totalQuestions: Int,
     difficulty: String = "Medium",
     isAiGenerated: Boolean = false,
+    // Survival mode: header shows lives instead of "x of y" / progress.
+    endless: Boolean = false,
+    livesLeft: Int = 0,
+    // Versus mode: whose turn it is ("P1" / "P2"), shown as a header badge.
+    playerLabel: String? = null,
+    // Blitz mode: one GLOBAL deadline replaces the per-question countdown;
+    // answers auto-advance and the run ends via [onBlitzTimeUp].
+    blitzDeadlineMs: Long? = null,
+    onBlitzTimeUp: () -> Unit = {},
     onNextQuestion: (Boolean, String?) -> Unit,
     onCloseClick: () -> Unit,
 ) {
     var selectedAnswer by remember { mutableStateOf<String?>(null) }
     var isTimeUp by remember { mutableStateOf(false) }
+    val isBlitz = blitzDeadlineMs != null
     val secondsPerQuestion = QuizEngine.specFor(difficulty).secondsPerQuestion
     var remainingSeconds by remember { mutableIntStateOf(secondsPerQuestion) }
     val context = LocalContext.current
@@ -95,11 +107,14 @@ fun ActiveQuizScreen(
     // coroutine auto-cancels when this screen leaves composition, and it stops early
     // the moment the user answers. On timeout the answer is revealed and the
     // question counts as incorrect (the user is "eliminated").
+    // In BLITZ mode this effect only resets the per-question state — the
+    // clock is the single global deadline handled below.
     LaunchedEffect(currentQuestionIndex) {
         selectedAnswer = null
         isTimeUp = false
         hiddenOptions = emptySet()
         letterHint = null
+        if (isBlitz) return@LaunchedEffect
         remainingSeconds = secondsPerQuestion
         while (remainingSeconds > 0 && selectedAnswer == null) {
             delay(1000)
@@ -120,6 +135,46 @@ fun ActiveQuizScreen(
         }
         if (remainingSeconds == 0 && selectedAnswer == null) {
             isTimeUp = true
+        }
+    }
+
+    // BLITZ global clock: one countdown for the whole run. Survives question
+    // changes (keyed on the deadline, not the index); fires onBlitzTimeUp
+    // exactly once when it crosses zero.
+    if (blitzDeadlineMs != null) {
+        LaunchedEffect(blitzDeadlineMs) {
+            while (true) {
+                val left = ((blitzDeadlineMs - System.currentTimeMillis() + 999) / 1000L)
+                    .coerceAtLeast(0L).toInt()
+                if (left != remainingSeconds) {
+                    remainingSeconds = left
+                    when (left) {
+                        5 -> Haptics.tick(context, 30)
+                        4 -> Haptics.tick(context, 36)
+                        3 -> Haptics.tick(context, 47)
+                        2 -> Haptics.tick(context, 66)
+                        1 -> Haptics.tick(context, 85)
+                    }
+                }
+                if (left <= 0) {
+                    Haptics.timeUp(context)
+                    Sounds.wrong(context)
+                    onBlitzTimeUp()
+                    break
+                }
+                delay(200)
+            }
+        }
+        // Blitz auto-advance: no Next button — a short beat to see the
+        // right/wrong colors, then straight to the next question.
+        LaunchedEffect(selectedAnswer, currentQuestionIndex) {
+            if (selectedAnswer != null) {
+                val wasCorrect = selectedAnswer == question.correctAnswer
+                val picked = selectedAnswer
+                delay(650)
+                onNextQuestion(wasCorrect, picked)
+                selectedAnswer = null
+            }
         }
     }
 
@@ -163,10 +218,45 @@ fun ActiveQuizScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Question ${currentQuestionIndex + 1} of $totalQuestions",
+                        // Survival is endless — no meaningful "of y".
+                        text = if (endless) "Question ${currentQuestionIndex + 1}"
+                        else "Question ${currentQuestionIndex + 1} of $totalQuestions",
                         style = MaterialTheme.typography.bodyMedium,
                         color = NazoTextSecondary
                     )
+                }
+                if (playerLabel != null) {
+                    // Versus: whose turn is it (P1 / P2).
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50.dp))
+                            .background(NazoPrimary.copy(alpha = 0.16f))
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = playerLabel,
+                            color = NazoPrimary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+                if (endless) {
+                    // Survival lives: three hearts, misses hollow them out.
+                    Spacer(Modifier.width(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        repeat(3) { i ->
+                            Icon(
+                                imageVector = if (i < livesLeft) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                                contentDescription = null,
+                                tint = if (i < livesLeft) NazoError else NazoTextSecondary.copy(alpha = 0.35f),
+                                modifier = Modifier.size(18.dp),
+                            )
+                            if (i < 2) Spacer(Modifier.width(2.dp))
+                        }
+                    }
                 }
                 if (isAiGenerated) {
                     Spacer(Modifier.width(8.dp))
@@ -225,20 +315,23 @@ fun ActiveQuizScreen(
             }
 
             Spacer(Modifier.height(16.dp))
-            val progressAnim = animateFloatAsState(
-                targetValue = (currentQuestionIndex + 1) / totalQuestions.toFloat(),
-                animationSpec = tween(durationMillis = 400),
-                label = "quizProgress"
-            ).value
-            LinearProgressIndicator(
-                progress = { progressAnim },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(50)),
-                color = NazoPrimary,
-                trackColor = NazoSurface
-            )
+            // Endless/blitz runs have no meaningful fraction — skip the bar.
+            if (!endless && !isBlitz) {
+                val progressAnim = animateFloatAsState(
+                    targetValue = (currentQuestionIndex + 1) / totalQuestions.toFloat(),
+                    animationSpec = tween(durationMillis = 400),
+                    label = "quizProgress"
+                ).value
+                LinearProgressIndicator(
+                    progress = { progressAnim },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(50)),
+                    color = NazoPrimary,
+                    trackColor = NazoSurface
+                )
+            }
 
             // Lifeline row (Phase 4): lives OUTSIDE the question AnimatedContent so it
             // never slides with the question. Revealed letter hint grows in from the
@@ -384,9 +477,10 @@ fun ActiveQuizScreen(
                     }
                 }
 
-                // Explanation Card (shows after answering OR when time runs out)
+                // Explanation Card (shows after answering OR when time runs out).
+                // Hidden in blitz: answers auto-advance on a 650ms beat instead.
                 AnimatedVisibility(
-                    visible = reveal,
+                    visible = reveal && !isBlitz,
                     // Replaced simple fade with a beautiful expanding drop-down animation
                     enter = expandVertically(tween(350)) + fadeIn(tween(350)),
                     exit = shrinkVertically(tween(250)) + fadeOut(tween(250))
@@ -429,7 +523,11 @@ fun ActiveQuizScreen(
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(if (currentQuestionIndex == totalQuestions - 1) "Finish Quiz" else "Next Question", color = NazoOnPrimary, fontWeight = FontWeight.Bold)
+                                Text(
+                                    if (!endless && currentQuestionIndex == totalQuestions - 1) "Finish Quiz" else "Next Question",
+                                    color = NazoOnPrimary,
+                                    fontWeight = FontWeight.Bold
+                                )
                                 Spacer(Modifier.width(8.dp))
                                 Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = NazoOnPrimary, modifier = Modifier.size(18.dp))
                             }

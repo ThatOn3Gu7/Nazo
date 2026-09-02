@@ -37,6 +37,8 @@ import quiz.thaton3app.nazo.daily.DailyBonusChip
 import quiz.thaton3app.nazo.sound.Sounds
 import androidx.compose.ui.platform.LocalContext
 import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
+import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.ShareResultCard
 import quiz.thaton3app.nazo.ui.theme.*
 
 @Composable
@@ -48,6 +50,10 @@ fun QuizCompleteScreen(
     bestPercent: Int = -1,
     isNewRecord: Boolean = false,
     dailyBonusXp: Int = 0,
+    // "Survival" | "Blitz" | null (normal quiz). Adjusts the heading and the
+    // personal-best caption: those modes track a COUNT (longest run / most
+    // correct in 60s) in bestPercent's slot, not a percentage.
+    modeLabel: String? = null,
     onPlayAnother: () -> Unit,
     onReviewAnswers: () -> Unit,
     onSettingsClick: () -> Unit
@@ -84,6 +90,7 @@ fun QuizCompleteScreen(
 
     // Orchestrate entrances
     val context = LocalContext.current
+    val celebrationStyle = remember { ThemePreferences(context).celebrationStyle }
     LaunchedEffect(Unit) {
         Sounds.complete(context) // opt-in, no-op when sounds are disabled
         delay(100)
@@ -92,6 +99,8 @@ fun QuizCompleteScreen(
         showCard = true
         if (isSuccess) {
             triggerConfetti = true
+            // Per-variant cue queued after the completion arpeggio (opt-in).
+            Sounds.celebration(context, celebrationStyle)
         }
         delay(200)
         showStats = true
@@ -121,7 +130,11 @@ fun QuizCompleteScreen(
                     enter = slideInVertically(spring(stiffness = Spring.StiffnessMediumLow)) { -40 } + fadeIn()
                 ) {
                     Text(
-                        text = "Quiz Complete",
+                        text = when (modeLabel) {
+                            "Survival" -> "Run over — you survived $score!"
+                            "Blitz" -> "Time's up!"
+                            else -> if (difficulty == "Practice") "Practice Complete" else "Quiz Complete"
+                        },
                         style = MaterialTheme.typography.headlineMedium,
                         color = NazoTextPrimary,
                         fontWeight = FontWeight.Bold
@@ -155,7 +168,11 @@ fun QuizCompleteScreen(
                             NewRecordBadge()
                         } else {
                             Text(
-                                text = "Personal best on $difficulty: $bestPercent%",
+                                text = when (modeLabel) {
+                                    "Survival" -> "Longest run: $bestPercent correct"
+                                    "Blitz" -> "Best blitz: $bestPercent correct"
+                                    else -> "Personal best on $difficulty: $bestPercent%"
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = NazoTextSecondary
                             )
@@ -224,6 +241,45 @@ fun QuizCompleteScreen(
                             Spacer(Modifier.width(8.dp))
                             Text("Review Answers & Explanations", color = NazoTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         }
+
+                        Spacer(Modifier.height(12.dp))
+
+                        // Share the run as a themed image card (system share sheet).
+                        Button(
+                            onClick = {
+                                Haptics.light(context)
+                                ShareResultCard.share(
+                                    context = context,
+                                    heading = when (modeLabel) {
+                                        "Survival" -> "Survival Run"
+                                        "Blitz" -> "60-Second Blitz"
+                                        else -> "Quiz Complete"
+                                    },
+                                    headline = if (modeLabel != null) "$score" else "$accuracy%",
+                                    headlineCaption = if (modeLabel != null) "correct" else "accuracy",
+                                    stats = listOf(
+                                        "Score" to "$score / $totalQuestions",
+                                        "Difficulty" to difficulty,
+                                        "Time" to timeSpent,
+                                    ),
+                                    background = NazoBackground,
+                                    surface = NazoSurface,
+                                    primary = NazoPrimary,
+                                    onPrimary = NazoOnPrimary,
+                                    textPrimary = NazoTextPrimary,
+                                    textSecondary = NazoTextSecondary,
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = NazoSurfaceVariant),
+                            shape = RoundedCornerShape(50)
+                        ) {
+                            Icon(Icons.Outlined.Share, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Share Result", color = NazoTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -232,7 +288,7 @@ fun QuizCompleteScreen(
         // Celebration overlay — variant is a user preference (Appearance → Celebrations)
         if (triggerConfetti) {
             CelebrationOverlay(
-                style = remember { ThemePreferences(context).celebrationStyle },
+                style = celebrationStyle,
                 modifier = Modifier.fillMaxSize(),
             )
         }

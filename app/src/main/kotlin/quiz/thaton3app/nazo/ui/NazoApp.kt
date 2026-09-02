@@ -31,7 +31,9 @@ import quiz.thaton3app.nazo.data.remote.Connectivity
 import quiz.thaton3app.nazo.data.backup.BackupScheduler
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.data.settings.BackupPrefs
+import quiz.thaton3app.nazo.data.settings.MissedQuestionsStore
 import quiz.thaton3app.nazo.data.settings.ProfilePreferences
+import quiz.thaton3app.nazo.data.settings.QuestionHistoryStore
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.records.RecordsStore
 import quiz.thaton3app.nazo.daily.DailyChallenge
@@ -44,6 +46,9 @@ import quiz.thaton3app.nazo.ui.components.AiMissingDialog
 import quiz.thaton3app.nazo.ui.components.AmbientBackground
 import quiz.thaton3app.nazo.ui.components.FloatingParticlesBackground
 import quiz.thaton3app.nazo.ui.components.StartupMode
+import quiz.thaton3app.nazo.ui.components.CHANGELOG_ID
+import quiz.thaton3app.nazo.ui.components.WhatsNewSheet
+import quiz.thaton3app.nazo.ui.components.WhatsNewStore
 
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -86,6 +91,8 @@ sealed interface Screen {
     data object Review : Screen
     data object GuessingGame : Screen
     data object GuessingResults : Screen
+    data object VersusHandoff : Screen
+    data object VersusResults : Screen
 }
 
 private data class GenerationRequest(
@@ -95,6 +102,8 @@ private data class GenerationRequest(
     val provider: String,
     val key: String,
     val model: String,
+    /** True when this request is the automatic one-shot retry with another model. */
+    val isFallback: Boolean = false,
 )
 
 @Composable
@@ -132,6 +141,13 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     val onboardingPrefs = remember { OnboardingPrefs(context) }
     var showOnboarding by remember { mutableStateOf(!onboardingPrefs.completed) }
 
+    // Persistent question anti-repeat memory (survives launches; the
+    // session-scoped layer stays in SessionMemory).
+    val questionHistory = remember { QuestionHistoryStore(context.applicationContext) }
+    // Practice deck: questions the player has missed and not yet re-mastered.
+    val missedStore = remember { MissedQuestionsStore(context.applicationContext) }
+    var missedCount by remember { mutableIntStateOf(0) }
+
     LaunchedEffect(Unit) {
         BackupScheduler.apply(context, backupPrefs.autoBackupFrequency)
         // Re-arm the reminder worker if the pref survived a backup/restore
@@ -155,6 +171,20 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         detectedOffline = !Connectivity.isOnline(context)
         // Only block with a popup when offline — the "you're online" notice is no longer needed.
         startupDialogMode = if (detectedOffline) StartupMode.OFFLINE else null
+    }
+
+    // In-app changelog: one-time "What's new" sheet after an update. A true
+    // first launch (onboarding shown) marks the current changelog as seen
+    // silently — a brand-new user needs no diff.
+    val whatsNewStore = remember { WhatsNewStore(context.applicationContext) }
+    var showWhatsNew by remember { mutableStateOf(false) }
+    LaunchedEffect(showOnboarding, startupDialogMode) {
+        if (showOnboarding) {
+            whatsNewStore.lastSeenId = CHANGELOG_ID
+        } else if (startupDialogMode == null && whatsNewStore.lastSeenId != CHANGELOG_ID) {
+            delay(700) // let the intro/home settle first
+            showWhatsNew = true
+        }
     }
 
     var themeMode by remember { mutableStateOf(themePrefs.mode) }
@@ -205,6 +235,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // Leaving Home cancels the "press back again to exit" flag; it also auto-resets after 2s.
     LaunchedEffect(currentScreen) {
         if (currentScreen != Screen.Home) backPressedOnce = false
+        // Practice-deck badge stays fresh every time Home comes back.
+        if (currentScreen == Screen.Home) missedCount = missedStore.count()
     }
     LaunchedEffect(backPressedOnce) {
         if (backPressedOnce) {
@@ -239,6 +271,19 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var score by remember { mutableIntStateOf(0) }
     var quizDifficulty by remember { mutableStateOf("Medium") }
     var quizStartedAt by remember { mutableStateOf(0L) }
+
+    // ---- Question-based game modes (share the quiz screen/flow) ----
+    // "normal" (incl. daily & practice) | "survival" | "blitz" | "versus".
+    var quizMode by remember { mutableStateOf("normal") }
+    // Survival: 3 lives; the run ends on the 3rd wrong answer. Batches of 5
+    // keep getting appended (AI when available, local bank otherwise).
+    var survivalWrongs by remember { mutableIntStateOf(0) }
+    var survivalFetching by remember { mutableStateOf(false) }
+    // Blitz: one global 60-second deadline (epoch ms).
+    var blitzDeadline by remember { mutableStateOf(0L) }
+    // Versus: which player is at the phone (1 or 2) + Player 1's final score.
+    var versusStage by remember { mutableIntStateOf(1) }
+    var versusP1Score by remember { mutableIntStateOf(0) }
 
     // ---- Guessing Game (modes/guessing_game) ----
     // Home-screen mode preset is hoisted here too (like the quiz presets) so the
@@ -283,12 +328,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var answeredKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     fun runLocal(topic: String, difficulty: String, count: Int) {
-        // Session anti-repeat (session/SessionMemory): over-fetch from the
-        // bank, prefer questions the player hasn't answered this launch, and
-        // only top up with seen ones when the pool is exhausted — a small
-        // topic must still fill a full quiz.
+        // Anti-repeat (session + persistent history): over-fetch from the
+        // bank, prefer questions the player hasn't answered this launch OR
+        // in the recent past, and only top up with seen ones when the pool
+        // is exhausted — a small topic must still fill a full quiz.
         val pool = LocalQuestionBank.getQuestions(count * 4, topic, difficulty)
-        val (seen, fresh) = pool.partition { SessionMemory.isQuestionSeen(it.text) }
+        val (seen, fresh) = pool.partition {
+            SessionMemory.isQuestionSeen(it.text) || questionHistory.isSeen(it.text)
+        }
         questions = (fresh + seen).take(count)
         userAnswers = emptyList()
         currentQuestionIndex = 0
@@ -317,12 +364,17 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 return
             }
         }
-        generationState = GenerationState.Loading("${req.provider} • ${req.model}")
+        generationState = GenerationState.Loading(
+            "${req.provider} • ${req.model}" + if (req.isFallback) " (auto-retry)" else ""
+        )
         if (navigationStack.last() != Screen.Loading) navigate(Screen.Loading)
         scope.launch {
             ApiClient.generateQuiz(
                 req.provider, req.key, req.model, req.topic, req.difficulty, req.count,
-                avoidQuestions = SessionMemory.questionAvoidList(),
+                // Avoid list = persistent history (recent past launches) +
+                // this session's questions, deduped, capped for prompt size.
+                avoidQuestions = (questionHistory.recentForPrompt(20) + SessionMemory.questionAvoidList())
+                    .distinct().takeLast(40),
             )
                 .onSuccess { qs ->
                     if (qs.isEmpty()) {
@@ -342,6 +394,20 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     replace(Screen.Quiz)
                 }
                 .onFailure { e ->
+                    // Retry-with-fallback: on the FIRST failure, silently try
+                    // once more with the next model configured for this
+                    // provider before surfacing an error screen.
+                    if (!req.isFallback) {
+                        val altModel = apiKeyStore.getModels(req.provider)
+                            .map { it.id }
+                            .firstOrNull { it != req.model }
+                        if (altModel != null) {
+                            val retry = req.copy(model = altModel, isFallback = true)
+                            generationRequest = retry
+                            launchGeneration(retry)
+                            return@onFailure
+                        }
+                    }
                     val msg = e.message ?: "Something went wrong."
                     generationState = GenerationState.Error(
                         message = msg,
@@ -354,6 +420,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     fun startQuiz(topic: String, difficulty: String, count: Int) {
         themePrefs.lastMode = NazoMode.QUIZ.name
         isDailyQuiz = false
+        quizMode = "normal"
         // Set BEFORE the offline early-return: this branch used to skip both
         // assignments, so offline quizzes inherited the PREVIOUS game's
         // difficulty (wrong timer/hints/stats/records) and a stale start time.
@@ -396,8 +463,197 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         generationState = GenerationState.Idle
         quizDifficulty = "Daily"
         isDailyQuiz = true
+        quizMode = "normal"
         quizStartedAt = System.currentTimeMillis()
         navigate(Screen.Quiz)
+    }
+
+    /**
+     * Practice deck: replays up to 10 questions the player previously got
+     * wrong (MissedQuestionsStore). Fully offline, no provider needed. Runs
+     * through the normal quiz flow; stats land under the "Practice"
+     * difficulty and correctly answered questions graduate out of the deck.
+     */
+    fun startPractice() {
+        val set = missedStore.practiceSet(10)
+        if (set.isEmpty()) return
+        questions = set
+        userAnswers = emptyList()
+        currentQuestionIndex = 0
+        score = 0
+        aiGenerated = false
+        generationState = GenerationState.Idle
+        quizDifficulty = "Practice"
+        isDailyQuiz = false
+        quizMode = "normal"
+        quizStartedAt = System.currentTimeMillis()
+        navigate(Screen.Quiz)
+    }
+
+    // ---- Survival / Blitz / Versus (all reuse the quiz screen + answer flow) ----
+
+    /** Appends a fresh batch of local-bank questions, skipping anything already loaded or seen. */
+    fun appendLocalSurvivalBatch() {
+        val loaded = questions.map { it.text }.toSet()
+        val pool = LocalQuestionBank.getQuestions(40, homeTopic, quizDifficulty)
+            .filter { it.text !in loaded }
+        val (seen, fresh) = pool.partition {
+            SessionMemory.isQuestionSeen(it.text) || questionHistory.isSeen(it.text)
+        }
+        questions = questions + (fresh + seen).take(5)
+    }
+
+    /**
+     * Survival top-up: keeps the horizon at least a batch ahead. Online with
+     * a provider it fetches 5 more AI questions in the background; otherwise
+     * (or on failure) the local bank fills in — a run never starves.
+     */
+    fun survivalTopUp() {
+        if (survivalFetching) return
+        val req = generationRequest
+        if (!isOfflineMode && req != null && aiGenerated) {
+            survivalFetching = true
+            scope.launch {
+                ApiClient.generateQuiz(
+                    req.provider, req.key, req.model, req.topic, req.difficulty, 5,
+                    avoidQuestions = (questionHistory.recentForPrompt(20) + SessionMemory.questionAvoidList())
+                        .distinct().takeLast(40),
+                )
+                    .onSuccess { qs ->
+                        if (quizMode == "survival") {
+                            val loaded = questions.map { it.text }.toSet()
+                            val fresh = qs.filter {
+                                it.text !in loaded && !SessionMemory.isQuestionSeen(it.text)
+                            }
+                            if (fresh.isNotEmpty()) {
+                                questions = questions + fresh.map { it.withShuffledOptions() }
+                            } else {
+                                appendLocalSurvivalBatch()
+                            }
+                        }
+                        survivalFetching = false
+                    }
+                    .onFailure {
+                        if (quizMode == "survival") appendLocalSurvivalBatch()
+                        survivalFetching = false
+                    }
+            }
+        } else {
+            appendLocalSurvivalBatch()
+        }
+    }
+
+    /** Ends a survival run: fold answered questions into stats, check the longest-run record. */
+    fun finishSurvival() {
+        if (quizMode != "survival") return // double-fire guard
+        quizMode = "survival-done" // also blocks any in-flight top-up from appending
+        val answered = questions.take(userAnswers.size)
+        val finishedAnswers = userAnswers
+        val finishedDifficulty = quizDifficulty
+        // The quiz screen may still render one exit-transition frame — keep the
+        // index inside the truncated list.
+        currentQuestionIndex = (userAnswers.size - 1).coerceAtLeast(0)
+        questions = answered.ifEmpty { questions.take(1) } // Results/Review only see what was actually played
+        scope.launch {
+            statsStore.record(finishedDifficulty, answered, finishedAnswers)
+            quizStats = statsStore.get()
+            NazoWidgetProvider.refreshAll(context.applicationContext)
+        }
+        quizPrevBest = recordsStore.survivalBest()
+        quizNewRecord = recordsStore.submitSurvival(score)
+        replace(Screen.Results)
+    }
+
+    fun startSurvival(topic: String, difficulty: String) {
+        themePrefs.lastMode = NazoMode.SURVIVAL.name
+        isDailyQuiz = false
+        quizMode = "survival"
+        survivalWrongs = 0
+        survivalFetching = false
+        quizDifficulty = difficulty
+        quizStartedAt = System.currentTimeMillis()
+        if (isOfflineMode) {
+            runLocal(topic, difficulty, 5)
+            return
+        }
+        val provider = apiKeyStore.getSelectedProvider() ?: apiKeyStore.getActiveProvider()
+        val key = provider?.let { apiKeyStore.getKey(it) }
+        val model = provider?.let { apiKeyStore.getModel(it) }.orEmpty()
+        if (provider != null && !key.isNullOrBlank() && model.isNotBlank()) {
+            val req = GenerationRequest(topic, difficulty, 5, provider, key, model)
+            generationRequest = req
+            launchGeneration(req)
+        } else {
+            // No provider set up → survival still works instantly off the bank.
+            runLocal(topic, difficulty, 5)
+        }
+    }
+
+    /** Ends a blitz run (time-up or pool exhausted): stats + most-in-60s record. */
+    fun finishBlitz() {
+        if (quizMode != "blitz") return // double-fire guard (time-up races an answer)
+        quizMode = "blitz-done"
+        val answered = questions.take(userAnswers.size)
+        val finishedAnswers = userAnswers
+        // Time-up can land mid-question: clamp the index and never leave the
+        // list empty, since the quiz screen may render one more exit frame.
+        currentQuestionIndex = (userAnswers.size - 1).coerceAtLeast(0)
+        questions = answered.ifEmpty { questions.take(1) }
+        scope.launch {
+            statsStore.record("Blitz", answered, finishedAnswers)
+            quizStats = statsStore.get()
+            NazoWidgetProvider.refreshAll(context.applicationContext)
+        }
+        quizPrevBest = recordsStore.blitzBest()
+        quizNewRecord = recordsStore.submitBlitz(score)
+        replace(Screen.Results)
+    }
+
+    fun startBlitz(topic: String, difficulty: String) {
+        themePrefs.lastMode = NazoMode.BLITZ.name
+        isDailyQuiz = false
+        quizMode = "blitz"
+        quizDifficulty = "Blitz"
+        quizStartedAt = System.currentTimeMillis()
+        // Blitz is instant + offline by design: a big local-bank pool, unseen
+        // questions first. The chosen difficulty picks the pool.
+        val pool = LocalQuestionBank.getQuestions(80, topic, difficulty)
+        val (seen, fresh) = pool.partition {
+            SessionMemory.isQuestionSeen(it.text) || questionHistory.isSeen(it.text)
+        }
+        questions = (fresh + seen).take(60)
+        userAnswers = emptyList()
+        currentQuestionIndex = 0
+        score = 0
+        aiGenerated = false
+        generationState = GenerationState.Idle
+        blitzDeadline = System.currentTimeMillis() + 60_000L
+        navigate(Screen.Quiz)
+    }
+
+    fun startVersus(topic: String, difficulty: String, count: Int) {
+        themePrefs.lastMode = NazoMode.VERSUS.name
+        isDailyQuiz = false
+        quizMode = "versus"
+        versusStage = 1
+        versusP1Score = 0
+        quizDifficulty = difficulty
+        quizStartedAt = System.currentTimeMillis()
+        if (isOfflineMode) {
+            runLocal(topic, difficulty, count)
+            return
+        }
+        val provider = apiKeyStore.getSelectedProvider() ?: apiKeyStore.getActiveProvider()
+        val key = provider?.let { apiKeyStore.getKey(it) }
+        val model = provider?.let { apiKeyStore.getModel(it) }.orEmpty()
+        if (provider != null && !key.isNullOrBlank() && model.isNotBlank()) {
+            val req = GenerationRequest(topic, difficulty, count, provider, key, model)
+            generationRequest = req
+            launchGeneration(req)
+        } else {
+            // Party mode should start instantly — no setup nagging, local bank.
+            runLocal(topic, difficulty, count)
+        }
     }
 
     // Launcher-shortcut deep link ("Daily" on app-icon long-press): jump straight
@@ -411,12 +667,80 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     }
 
     fun answer(isCorrect: Boolean, selected: String?) {
-        // Session anti-repeat: the moment a question is answered (right OR
-        // wrong) it's remembered for this launch — quitting mid-quiz still
-        // counts the ones already faced. Applies to quiz, daily and offline.
-        questions.getOrNull(currentQuestionIndex)?.let { SessionMemory.recordQuestion(it.text) }
+        // A finished run's screen can still fire one queued answer during the
+        // exit transition (blitz auto-advance, double-tap) — ignore it.
+        if (quizMode == "blitz-done" || quizMode == "survival-done") return
+        // Anti-repeat: the moment a question is answered (right OR wrong)
+        // it's remembered — for this launch (SessionMemory) AND across
+        // launches (QuestionHistoryStore). Quitting mid-quiz still counts
+        // the ones already faced. Applies to quiz, daily and offline.
+        questions.getOrNull(currentQuestionIndex)?.let { q ->
+            SessionMemory.recordQuestion(q.text)
+            questionHistory.record(q.text)
+            // Practice deck: a miss joins the deck; a correct answer anywhere
+            // graduates it out. Versus is excluded — guest answers must not
+            // pollute the owner's deck.
+            if (quizMode != "versus") {
+                if (isCorrect) missedStore.recordCorrect(q.text) else missedStore.recordMiss(q)
+            }
+        }
         userAnswers = userAnswers + selected
         if (isCorrect) score++
+
+        // ---- SURVIVAL: 3 lives, endless horizon ----
+        if (quizMode == "survival") {
+            if (!isCorrect) survivalWrongs++
+            if (survivalWrongs >= 3) {
+                finishSurvival()
+                return
+            }
+            // Keep at least a batch ahead; background AI fetch or local fill.
+            if (currentQuestionIndex >= questions.size - 3) survivalTopUp()
+            if (currentQuestionIndex < questions.lastIndex) {
+                currentQuestionIndex++
+            } else {
+                // Horizon caught up with us — try an instant local fill.
+                appendLocalSurvivalBatch()
+                if (currentQuestionIndex < questions.lastIndex) {
+                    currentQuestionIndex++
+                } else {
+                    finishSurvival() // pool truly exhausted
+                }
+            }
+            return
+        }
+
+        // ---- BLITZ: only the clock (or an empty pool) ends the run ----
+        if (quizMode == "blitz") {
+            if (currentQuestionIndex < questions.lastIndex) {
+                currentQuestionIndex++
+            } else {
+                finishBlitz()
+            }
+            return
+        }
+
+        // ---- VERSUS: stage 1 → handoff; stage 2 → head-to-head results ----
+        if (quizMode == "versus") {
+            if (currentQuestionIndex < questions.lastIndex) {
+                currentQuestionIndex++
+            } else if (versusStage == 1) {
+                versusP1Score = score
+                // Same questions for Player 2, options re-shuffled; P1's
+                // score is kept secret until the results screen.
+                questions = questions.map { it.withShuffledOptions() }
+                userAnswers = emptyList()
+                currentQuestionIndex = 0
+                score = 0
+                versusStage = 2
+                replace(Screen.VersusHandoff)
+            } else {
+                // Party mode: intentionally NO stats/records writes.
+                replace(Screen.VersusResults)
+            }
+            return
+        }
+
         if (currentQuestionIndex < questions.lastIndex) {
             currentQuestionIndex++
         } else {
@@ -627,10 +951,16 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         guessingRounds = guessRounds,
                         onGuessingRoundsChange = { guessRounds = it },
                         onStartGuessing = { topic, difficulty, rounds -> startGuessing(topic, difficulty, rounds) },
+                        onStartSurvival = { topic, difficulty -> startSurvival(topic, difficulty) },
+                        onStartBlitz = { topic, difficulty -> startBlitz(topic, difficulty) },
+                        onStartVersus = { topic, difficulty, count -> startVersus(topic, difficulty, count) },
                         dailyCompleted = dailyStore.isCompletedToday(),
                         dailyScore = dailyStore.lastScore(),
                         dailyBonus = dailyStore.lastBonus(),
                         onPlayDaily = { startDailyChallenge() },
+                        streakDays = quizStats.currentStreakDays,
+                        practiceCount = missedCount,
+                        onStartPractice = { startPractice() },
                     )
 
                     Screen.Settings -> SettingsScreen(
@@ -744,6 +1074,11 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         totalQuestions = questions.size,
                         difficulty = quizDifficulty,
                         isAiGenerated = aiGenerated,
+                        endless = quizMode == "survival",
+                        livesLeft = 3 - survivalWrongs,
+                        playerLabel = if (quizMode == "versus") "P$versusStage" else null,
+                        blitzDeadlineMs = if (quizMode == "blitz") blitzDeadline else null,
+                        onBlitzTimeUp = { finishBlitz() },
                         onNextQuestion = { isCorrect, selected -> answer(isCorrect, selected) },
                         onCloseClick = { goHome() },
                     )
@@ -756,9 +1091,32 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         bestPercent = quizPrevBest,
                         isNewRecord = quizNewRecord,
                         dailyBonusXp = lastDailyBonus,
+                        modeLabel = when (quizMode) {
+                            "survival", "survival-done" -> "Survival"
+                            "blitz", "blitz-done" -> "Blitz"
+                            else -> null
+                        },
                         onPlayAnother = { goHome() },
                         onReviewAnswers = { navigate(Screen.Review) },
                         onSettingsClick = { navigate(Screen.Settings) },
+                    )
+
+                    Screen.VersusHandoff -> VersusHandoffScreen(
+                        p1Score = versusP1Score,
+                        totalQuestions = questions.size,
+                        onPlayer2Ready = { replace(Screen.Quiz) },
+                    )
+
+                    Screen.VersusResults -> VersusResultsScreen(
+                        p1Score = versusP1Score,
+                        p2Score = score,
+                        totalQuestions = questions.size,
+                        topic = homeTopic,
+                        difficulty = quizDifficulty,
+                        onPlayAgain = {
+                            startVersus(homeTopic, quizDifficulty, questions.size)
+                        },
+                        onHomeClick = { goHome() },
                     )
 
                     Screen.Loading -> LoadingScreen(
@@ -836,6 +1194,18 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         startupDialogMode = null
                     },
                     onContinue = { startupDialogMode = null },
+                )
+            }
+
+            // One-time "What's new" sheet after an update (in-app changelog).
+            // Only over Home, never over dialogs/onboarding; dismissing marks
+            // the current changelog id as seen.
+            if (showWhatsNew && currentScreen == Screen.Home && !showOnboarding) {
+                WhatsNewSheet(
+                    onDismiss = {
+                        whatsNewStore.lastSeenId = CHANGELOG_ID
+                        showWhatsNew = false
+                    },
                 )
             }
 
