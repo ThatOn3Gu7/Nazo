@@ -20,6 +20,31 @@ Conventions:
 
 ---
 
+## [2026-09-02 23:59] feat: versus head-to-head review (peeking swipe cards); merge owner's nav-bar redesign from master
+
+- Merged `origin/master` (owner's Gemini-assisted commit `bcdcab6`, built on
+  the pre-session base): conflicts in NazoBottomNav.kt + AboutScreen.kt
+  resolved in favour of master (owner's anchored rounded nav bar +
+  simplified About credits are authoritative). Everything else from this
+  session preserved. NOTE: master's fetch is shallow here — deepen with
+  `git fetch --depth=5 origin master` before merging or merge-base fails
+  with "unrelated histories".
+- Versus review: `VersusResultsScreen` gains a "Review Answers" button →
+  new `VersusReviewScreen` (VersusScreens.kt): a 2-page HorizontalPager,
+  one card per player, with `contentPadding = 36.dp` so the neighbouring
+  card PEEKS in from the screen edge instead of fully disappearing
+  (owner-requested effect), plus scale/alpha focus on the active card.
+  Each card: player label, score chip, scrollable per-question list
+  (✓/✗ pick in green/red, "Correct: …" line when wrong, "No answer" for
+  timeouts).
+- `NazoApp.kt`: Screen.VersusReview; `versusP1Answers` frozen at the P1→P2
+  handoff (reset in startVersus) so both players' picks survive to review;
+  P2's answers are live `userAnswers`.
+- Files: NazoApp.kt, VersusScreens.kt, NazoBottomNav.kt (merge),
+  AboutScreen.kt (merge), handoff.md.
+
+---
+
 ## [2026-09-02 23:00] feat: new game modes in onboarding (combined slide + first-game picker); score-backup audit
 
 - Owner: the new modes were missing from onboarding; combine-vs-per-mode

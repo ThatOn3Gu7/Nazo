@@ -93,6 +93,7 @@ sealed interface Screen {
     data object GuessingResults : Screen
     data object VersusHandoff : Screen
     data object VersusResults : Screen
+    data object VersusReview : Screen
 }
 
 private data class GenerationRequest(
@@ -284,6 +285,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // Versus: which player is at the phone (1 or 2) + Player 1's final score.
     var versusStage by remember { mutableIntStateOf(1) }
     var versusP1Score by remember { mutableIntStateOf(0) }
+    // P1's picks, frozen at the handoff so the head-to-head review can show
+    // both players side by side.
+    var versusP1Answers by remember { mutableStateOf<List<String?>>(emptyList()) }
 
     // ---- Guessing Game (modes/guessing_game) ----
     // Home-screen mode preset is hoisted here too (like the quiz presets) so the
@@ -637,6 +641,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         quizMode = "versus"
         versusStage = 1
         versusP1Score = 0
+        versusP1Answers = emptyList()
         quizDifficulty = difficulty
         quizStartedAt = System.currentTimeMillis()
         if (isOfflineMode) {
@@ -726,6 +731,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 currentQuestionIndex++
             } else if (versusStage == 1) {
                 versusP1Score = score
+                versusP1Answers = userAnswers
                 // Same questions for Player 2, options re-shuffled; P1's
                 // score is kept secret until the results screen.
                 questions = questions.map { it.withShuffledOptions() }
@@ -1116,7 +1122,17 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onPlayAgain = {
                             startVersus(homeTopic, quizDifficulty, questions.size)
                         },
+                        onReviewAnswers = { navigate(Screen.VersusReview) },
                         onHomeClick = { goHome() },
+                    )
+
+                    Screen.VersusReview -> VersusReviewScreen(
+                        questions = questions,
+                        p1Answers = versusP1Answers,
+                        p2Answers = userAnswers,
+                        p1Score = versusP1Score,
+                        p2Score = score,
+                        onBackClick = { goBack() },
                     )
 
                     Screen.Loading -> LoadingScreen(
