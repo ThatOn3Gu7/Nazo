@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -19,7 +20,6 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withFrameNanos
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import kotlin.math.PI
 import kotlin.math.cos
