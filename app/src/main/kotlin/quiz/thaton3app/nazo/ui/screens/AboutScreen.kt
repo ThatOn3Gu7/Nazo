@@ -990,8 +990,8 @@ private fun AboutDevDialog(onDismiss: () -> Unit) {
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "Optional AI question generation is powered by third-party providers — " +
-                            "Google Gemini, OpenAI (ChatGPT), Anthropic (Claude), OpenRouter, " +
-                            "OpenCode Zen, DeepSeek, and Mistral AI. Remote images (e.g. profile pictures) are " +
+                            "Google Gemini, OpenRouter, " +
+                            "OpenCode Zen. Remote images (e.g. profile pictures) are " +
                             "loaded with Coil. Update checks use the GitHub API, and network " +
                             "connectivity is verified via Google's service. These services are not " +
                             "affiliated with or endorsed by Nazo.",
