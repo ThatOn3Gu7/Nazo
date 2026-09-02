@@ -17,6 +17,7 @@ data class GitHubRelease(
     val htmlUrl: String,
     val body: String,
     val apkUrl: String?,
+    val apkSizeBytes: Long = -1L,
 )
 
 suspend fun fetchLatestRelease(repo: String = GITHUB_REPO): GitHubRelease? =
@@ -42,6 +43,7 @@ suspend fun fetchLatestRelease(repo: String = GITHUB_REPO): GitHubRelease? =
             val body = json.optString("body")
 
             var apkUrl: String? = null
+            var apkSize = -1L
             val assets = json.optJSONArray("assets")
             if (assets != null) {
                 for (i in 0 until assets.length()) {
@@ -49,12 +51,13 @@ suspend fun fetchLatestRelease(repo: String = GITHUB_REPO): GitHubRelease? =
                     val name = asset.optString("name")
                     if (name.endsWith(".apk", ignoreCase = true)) {
                         apkUrl = asset.optString("browser_download_url")
+                        apkSize = asset.optLong("size", -1L)
                         break
                     }
                 }
             }
 
-            if (tag.isBlank()) null else GitHubRelease(tag, html, body, apkUrl)
+            if (tag.isBlank()) null else GitHubRelease(tag, html, body, apkUrl, apkSize)
         } catch (_: Exception) {
             null
         }

@@ -20,6 +20,32 @@ Conventions:
 
 ---
 
+## [2026-09-03 01:45] feat: fully in-app update download — live progress, version comparison, install button
+
+- Owner: updater used DownloadManager + toast ("check your notifications");
+  wanted the whole flow inside the app's existing update bottom sheet, with
+  visible progress and a current→new version comparison (reference
+  screenshots provided; sheet kept, popup not copied).
+- `data/UpdateDownloader.kt`: new `downloadApk()` — streaming
+  HttpURLConnection download to `nazo-update.apk` (app external files),
+  manual redirect handling (GitHub CDN), progress callback every ~100ms,
+  cooperative cancellation (partial file deleted), min-size sanity check.
+  Old DownloadManager `enqueue()` + DownloadReceiver kept but no longer
+  used by the UI.
+- `data/UpdateChecker.kt`: `GitHubRelease.apkSizeBytes` parsed from the
+  release asset (fallback total when Content-Length is missing).
+- `ui/screens/AboutScreen.kt`: `ApkDownloadState` (Idle/Running/Done/
+  Failed) + download Job; sheet's Available card now shows: Current→New
+  version pill comparison (accent pill for new), "What's New" notes,
+  then Download & Install → live progress (spinner, bar, "17.3 / 76.8 MB",
+  percent, Cancel) → auto-launches installer on completion, with an
+  "Install Update" button as backup; failures show inline error + Retry.
+  Sheet dismissal does NOT cancel a running download (job lives in the
+  About screen's scope; leaving the About screen kills it).
+- Files: UpdateDownloader.kt, UpdateChecker.kt, AboutScreen.kt, handoff.md.
+
+---
+
 ## [2026-09-03 01:00] fix: tap outside any input field dismisses the keyboard (app-wide)
 
 - Owner: fields focus/raise the IME on tap, but tapping elsewhere never
