@@ -20,6 +20,40 @@ Conventions:
 
 ---
 
+## [2026-09-02 15:45] fix: onboarding provider pills scroll horizontally; robust JSON coercion for sloppy models
+
+- Owner: (1) Make-It-Yours onboarding slide — the AI Provider pill row wraps
+  now that there are 3 providers; wanted overflow-scroll behaviour. (2)
+  OpenCode Zen models usually fail with "invalid JSON" on quiz generation
+  (only a llama-something model worked once).
+- **Onboarding** (`ui/onboarding/OnboardingScreen.kt` ~line 673): provider
+  pill Row got `Modifier.horizontalScroll(rememberScrollState())` — pills
+  keep intrinsic width and scroll sideways instead of squeezing/wrapping.
+  (imports already present; NOTE the appearance grids below deliberately
+  remain static per an older session's comment — untouched.)
+- **JSON coercion** (`data/remote/ApiClient.kt`): the old cleaner only
+  stripped a leading/trailing markdown fence then did `JSONArray(cleaned)`
+  — brittle. Diagnosis: OpenAI-compatible gateway models often (a) wrap the
+  array in an object because response_format=json_object encourages
+  `{"questions":[...]}`, (b) fence the JSON mid-prose, (c) leak `<think>`
+  reasoning. New shared helpers inside `object ApiClient`:
+  `coerceModelJson(raw)` (drops <think> blocks via `(?s)` regex, extracts
+  the first fenced block's payload else strips stray fences) and
+  `firstBalancedBlock(s, open, close)` (string-literal-aware depth scan).
+  `extractQuestionArray(content)` tries in order: bare JSONArray → object
+  wrapper's array field (keys questions/quiz/items/data/results, then ANY
+  array-valued field) → first balanced [...] block in the text.
+  parseQuestions now uses it. Benefits ALL providers, not just OpenCode.
+- **Guessing game** (`modes/guessing_game/GuessPayload.kt`):
+  parseGuessPayload now uses `ApiClient.coerceModelJson` + falls back to
+  the first balanced {...} block (it expects an OBJECT payload). Imports:
+  +JSONException, +ApiClient.
+- Untestable live in sandbox (no API key); parsing is pure-Kotlin and
+  defensive. If a model still fails, get the owner to share the raw output.
+- Files: OnboardingScreen.kt, ApiClient.kt, GuessPayload.kt, handoff.md.
+
+---
+
 ## [2026-09-02 15:00] feat: OpenCode Zen provider support (same free-model logic as OpenRouter)
 
 - Owner request: add "Open Code" (OpenCode Zen, opencode.ai/zen) as a new AI

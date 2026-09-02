@@ -4,6 +4,7 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 import quiz.thaton3app.nazo.data.Question
 import java.io.IOException
@@ -118,14 +119,87 @@ Hard rules:
             .getString("text")
     }
 
-    private fun parseQuestions(raw: String, topic: String): List<Question> {
-        val cleaned = raw.trim()
-            .removePrefix("```json")
-            .removePrefix("```")
-            .removeSuffix("```")
-            .trim()
+    // ------------------------------------------------------------------
+    // Robust JSON coercion for imperfect model output.
+    // ------------------------------------------------------------------
+    // Several OpenAI-compatible gateway models (observed with OpenCode Zen,
+    // 2026-09-02) don't return the clean JSON array the prompt asks for:
+    // they wrap it in an object (json_object response mode encourages
+    // {"questions":[...]}), add prose around it, fence it in markdown, or
+    // leak <think> reasoning blocks. These helpers salvage the payload
+    // instead of failing the whole generation.
 
-        val arr = JSONArray(cleaned)
+    private val THINK_BLOCK = Regex("(?s)<think>.*?</think>")
+    private val FENCED_BLOCK = Regex("(?si)```(?:json)?\\s*(.*?)```")
+
+    /** Strips reasoning blocks and markdown fences from model output. */
+    internal fun coerceModelJson(raw: String): String {
+        var s = raw.trim()
+        if (s.contains("<think>")) s = s.replace(THINK_BLOCK, "").trim()
+        val fence = FENCED_BLOCK.find(s)
+        s = if (fence != null && fence.groupValues[1].isNotBlank()) {
+            fence.groupValues[1].trim()
+        } else {
+            s.removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+        }
+        return s
+    }
+
+    /**
+     * Returns the first balanced `open`...`close` block in [s] (string-literal
+     * aware, so brackets inside JSON strings don't confuse the scan), or null.
+     */
+    internal fun firstBalancedBlock(s: String, open: Char, close: Char): String? {
+        val start = s.indexOf(open)
+        if (start < 0) return null
+        var depth = 0
+        var inString = false
+        var escaped = false
+        for (i in start until s.length) {
+            val c = s[i]
+            when {
+                escaped -> escaped = false
+                inString && c == '\\' -> escaped = true
+                c == '"' -> inString = !inString
+                !inString && c == open -> depth++
+                !inString && c == close -> {
+                    depth--
+                    if (depth == 0) return s.substring(start, i + 1)
+                }
+            }
+        }
+        return null
+    }
+
+    /**
+     * Coerces model output into the question JSONArray using, in order:
+     * 1) the cleaned text as a bare array;
+     * 2) an object wrapper's first array-valued field (common keys first);
+     * 3) the first balanced [...] block anywhere in the text.
+     */
+    private fun extractQuestionArray(content: String): JSONArray {
+        val cleaned = coerceModelJson(content)
+        runCatching { return JSONArray(cleaned) }
+        runCatching {
+            val obj = JSONObject(cleaned)
+            for (key in arrayOf("questions", "quiz", "items", "data", "results")) {
+                obj.optJSONArray(key)?.let { return it }
+            }
+            val names = obj.names()
+            if (names != null) {
+                for (i in 0 until names.length()) {
+                    obj.optJSONArray(names.getString(i))?.let { return it }
+                }
+            }
+        }
+        firstBalancedBlock(cleaned, '[', ']')?.let { block ->
+            runCatching { return JSONArray(block) }
+        }
+        throw JSONException("Model returned no parsable JSON question array")
+    }
+
+    private fun parseQuestions(raw: String, topic: String): List<Question> {
+        val arr = extractQuestionArray(raw)
         val list = mutableListOf<Question>()
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)

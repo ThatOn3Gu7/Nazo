@@ -1,6 +1,8 @@
 package quiz.thaton3app.nazo.modes.guessing_game
 
+import org.json.JSONException
 import org.json.JSONObject
+import quiz.thaton3app.nazo.data.remote.ApiClient
 
 /**
  * A single guessing-game round, straight from the AI payload. This is the exact
@@ -126,12 +128,16 @@ fun normalizeName(raw: String): String =
  * surface a retryable error instead of an unplayable round.
  */
 fun parseGuessPayload(raw: String): GuessPayload {
-    val cleaned = raw.trim()
-        .removePrefix("```json")
-        .removePrefix("```")
-        .removeSuffix("```")
-        .trim()
-    val o = JSONObject(cleaned)
+    // Shared coercion (see ApiClient): strips fences / <think> blocks, and if
+    // the payload still isn't a bare object (prose around it, etc.), salvages
+    // the first balanced {...} block from the text.
+    val cleaned = ApiClient.coerceModelJson(raw)
+    val o = try {
+        JSONObject(cleaned)
+    } catch (e: JSONException) {
+        val block = ApiClient.firstBalancedBlock(cleaned, '{', '}') ?: throw e
+        JSONObject(block)
+    }
     val target = o.optString("target_entity", o.optString("targetEntity", "")).trim()
     if (target.isBlank()) {
         throw IllegalStateException("AI response was missing target_entity")

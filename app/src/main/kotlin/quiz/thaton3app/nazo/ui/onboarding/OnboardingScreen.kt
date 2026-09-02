@@ -670,7 +670,13 @@ private fun SetupSlide(
                     onToggle = onProviderToggle,
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // Three providers no longer fit on one line: let the
+                        // pill row scroll horizontally instead of squeezing
+                        // the pills until their labels wrap.
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        ) {
                             ApiKeyStore.PROVIDER_ORDER.forEach { id ->
                                 SelectPill(
                                     text = PROVIDER_NAMES[id] ?: id,
