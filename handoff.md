@@ -20,6 +20,69 @@ Conventions:
 
 ---
 
+## [2026-09-02 21:30] feat: all 10 backlog ideas — Survival, Blitz, Versus, dedup memory, practice deck, model fallback, streak flame, share card, celebration sounds, What's New
+
+Owner asked for every idea from the improvement backlog, none skipped. Ten
+features in one session:
+
+1. **Survival mode** (`NazoApp.kt`, `ActiveQuizScreen.kt`, `HomeScreen.kt`,
+   `records/Records.kt`): endless questions, 3 lives (hearts in the quiz
+   header), batches of 5 topped up in the background (AI when a provider is
+   set + first batch was AI, local bank otherwise/on failure — a run never
+   starves). Run ends at 3 wrong or pool exhaustion → Results shows the
+   count-based longest-run record. `quizMode` state machine:
+   normal/survival/survival-done/blitz/blitz-done/versus; the `-done` states
+   block late top-ups and race-y answers during exit transitions.
+   Test: Home → Survival pill → Start Survival Run → answer; hearts deplete
+   on wrongs; after 3 wrongs → "Run over — you survived N!".
+2. **60-second Blitz** (same files): 60 questions pre-picked from the local
+   bank (unseen-first), one global 60s clock instead of per-question timers,
+   auto-advance ~0.65s after each answer, no explanations mid-run. Time-up →
+   "Time's up!" + most-in-60s record. Test: Home → Blitz → Start 60-Second
+   Blitz; watch the single countdown; let it hit 0.
+3. **Versus pass-and-play** (`ui/screens/VersusScreens.kt` NEW, `NazoApp.kt`):
+   P1 plays, handoff screen keeps P1's score secret, P2 plays the same
+   questions (options re-shuffled), head-to-head results with winner banner +
+   confetti + Rematch. Guest answers don't touch the owner's practice deck;
+   no stats/records/share pollution. Test: Home → Versus → Versus Match →
+   finish as P1 → "I'm Player 2" → finish → winner screen.
+4. **Question dedup memory** (`data/settings/QuestionHistoryStore.kt` NEW):
+   last ~200 answered question texts persisted; sent as an avoid-list to the
+   model and used to filter local-bank picks (unseen-first everywhere).
+5. **Missed-questions practice deck** (`data/settings/MissedQuestionsStore.kt`
+   NEW, Home pill): wrong answers join the deck, a later correct answer
+   anywhere graduates them out; "Practice your misses (N)" pill on Home
+   (Quiz mode, N > 0) rebuilds a quiz from the deck.
+6. **Retry-with-fallback-model** (`NazoApp.kt` launchGeneration): on
+   generation failure auto-retries once with the provider's next model
+   before showing the error screen.
+7. **Streak flame on Home** (`HomeScreen.kt`): daily-streak chip with a
+   flame that grows with the streak.
+8. **Share result card** (`ui/components/ShareResultCard.kt` NEW, both
+   results screens): renders an accent-themed score card (謎 logo) to PNG
+   and opens the system share sheet via FileProvider
+   (`res/xml/file_paths.xml`).
+9. **Celebration sound pairing** (`sound/Sounds.kt`): each confetti style
+   has a tiny distinct jingle, queued after the completion sound, honoring
+   the sound toggle.
+10. **What's New sheet** (`ui/components/WhatsNew.kt` NEW): keyed on a
+    `CHANGELOG_ID` constant (not versionCode) so it shows once per changelog
+    bump; fresh installs mark it seen silently.
+
+- Results screen is mode-aware (`QuizCompleteScreen.kt` `modeLabel`):
+  Survival/Blitz headings, count-based "Longest run/Best blitz" captions
+  (bestPercent slot carries a COUNT for those modes), share card headline
+  switches from accuracy% to correct-count.
+- `AGENTS.md`: new standing rule — every report must include per-change
+  live-testing steps ("Testing guide requirement").
+- Files: NazoApp.kt, HomeScreen.kt, ActiveQuizScreen.kt, QuizCompleteScreen.kt,
+  VersusScreens.kt (new), GuessingResultsScreen.kt, Records.kt, Sounds.kt,
+  QuestionHistoryStore.kt (new), MissedQuestionsStore.kt (new), WhatsNew.kt
+  (new), ShareResultCard.kt (new), BackupRepository.kt, file_paths.xml,
+  AGENTS.md, handoff.md.
+
+---
+
 ## [2026-09-02 19:15] feat: victory-confetti picker in the onboarding "Make it yours" appearance section
 
 - Owner request: the new celebration variant should also be selectable during
