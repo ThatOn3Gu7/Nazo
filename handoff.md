@@ -20,6 +20,29 @@ Conventions:
 
 ---
 
+## [2026-09-02 17:45] fix: anchored nav bar is now a wrap-content "tombstone" — curve starts just past the tabs
+
+- Owner sent a second doodle (red dots): the 17:00 read was still wrong — the
+  bar must NOT span the screen. The shoulder curve should start ~15px after
+  the tab (Home pill / Settings) ends, dive steeply, and then drop STRAIGHT
+  vertically into the bottom of the screen, leaving the screen's bottom
+  corners uncovered. One bend per side, nothing else.
+- `ui/components/NazoBottomNav.kt` (anchored mode only; floating pill untouched):
+  - Row no longer `fillMaxWidth()`; HomeScreen already aligns it
+    `BottomCenter`, so it wraps the tabs and centres itself.
+  - Content padding = `ramp (18dp) + overhang (14dp)` per side: 14dp of flat
+    plateau past each tab, then the 18dp-wide shoulder, then the vertical drop.
+  - `curvedBarEdgePath`: bend height decoupled from ramp —
+    `bend = max(0.42·h, ramp)` so the shoulder is taller than wide (steep
+    dive, matches the dots); below it the side is a straight vertical line.
+  - `Arrangement.spacedBy(32.dp)` kept (tabs stay close); dropped the now
+    meaningless CenterHorizontally alignment and the unused fillMaxWidth import.
+- Tunables if the owner wants tweaks: `ramp` (18dp shoulder width),
+  `overhang` (14dp plateau past the tab), bend factor 0.42.
+- Files: `app/src/main/kotlin/quiz/thaton3app/nazo/ui/components/NazoBottomNav.kt`, `handoff.md`.
+
+---
+
 ## [2026-09-02 17:00] fix: nav-bar curve is now single-bend — straight drop, no bottom knee
 
 - Owner clarified the 16:30 "cut" was misread: they want NO second curve at

@@ -9,7 +9,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -45,23 +44,23 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 enum class NazoTab { Home, Settings }
 
 /**
- * Builds the OPEN edge silhouette shared by the app's top and bottom chrome.
- * ONE bend per side: the edge leaves the flat plateau through a wide rounded
- * shoulder and then runs STRAIGHT down the screen edge — no second curve
- * back into the corners (owner's 2026-09-02 doodle: "cut from there").
- * [ceiling] mirrors it vertically for the top.
+ * Builds the OPEN edge silhouette of the anchored bottom bar. The bar no
+ * longer spans the screen: it wraps the tabs, so the silhouette is a
+ * "tombstone" — flat plateau over the tabs, ONE steep shoulder per side
+ * (starting just past the tab, per the owner's 2026-09-02 red-dot doodle),
+ * then a STRAIGHT vertical drop into the bottom of the screen. No second
+ * curve, ever. [ceiling] mirrors it vertically (unused; kept for symmetry).
  */
 fun curvedBarEdgePath(size: Size, rampPx: Float, ceiling: Boolean): Path {
     val w = size.width
     val h = size.height
     val ramp = rampPx.coerceAtMost(w * 0.25f)
-    // Vertical extent of the single bend; whatever remains below (or above,
-    // for the ceiling) is a straight vertical drop into the screen edge.
-    val bend = (h * 0.62f).coerceAtMost(ramp)
+    // Vertical extent of the single shoulder bend — noticeably taller than it
+    // is wide, so the edge dives steeply; everything below it is a straight
+    // vertical drop into the screen bottom.
+    val bend = (h * 0.42f).coerceAtLeast(ramp)
     return Path().apply {
         if (ceiling) {
-            // Straight down the left screen edge, one bend onto the flat
-            // bottom, flat across, one bend back up, straight up to the top.
             moveTo(0f, 0f)
             lineTo(0f, h - bend)
             cubicTo(0f, h - bend * 0.45f, ramp * 0.45f, h, ramp, h)
@@ -69,8 +68,8 @@ fun curvedBarEdgePath(size: Size, rampPx: Float, ceiling: Boolean): Path {
             cubicTo(w - ramp * 0.45f, h, w, h - bend * 0.45f, w, h - bend)
             lineTo(w, 0f)
         } else {
-            // Up the left screen edge, ONE bend onto the plateau (vertical
-            // tangent at the edge, horizontal at the plateau), flat across,
+            // Up the left side, ONE bend onto the plateau (vertical tangent
+            // at the side, horizontal at the plateau), flat across the tabs,
             // one bend down, then straight down into the screen bottom.
             moveTo(0f, h)
             lineTo(0f, bend)
@@ -131,19 +130,24 @@ fun NazoBottomNav(
             NavItems(selected = selected, onHomeClick = onHomeClick, onSettingsClick = onSettingsClick)
         }
     } else {
-        // Anchored bar with the single-bend silhouette: the top edge bends
-        // down off the plateau through one wide shoulder and then drops
-        // STRAIGHT down the screen edge — no second curve into the corners.
-        // The background is applied BEFORE the navigation-bar padding so the
-        // bar also covers the system gesture area.
-        val curve = remember { CurvedBarShape(rampWidth = 56.dp, ceiling = false) }
+        // Anchored "tombstone" bar (owner's red-dot doodle): it wraps the
+        // tabs instead of spanning the screen. The plateau extends a small
+        // overhang past each tab, then the edge takes ONE steep shoulder
+        // bend and drops STRAIGHT down into the bottom of the screen —
+        // the screen corners stay uncovered. The caller aligns it
+        // BottomCenter, so dropping fillMaxWidth centres it automatically.
+        // The background is applied BEFORE the navigation-bar padding so
+        // the bar also covers the system gesture area.
+        val ramp = 18.dp      // horizontal width of the shoulder bend
+        val overhang = 14.dp  // flat plateau past the tab before the bend ("~15px later")
+        val curve = remember { CurvedBarShape(rampWidth = ramp, ceiling = false) }
         Row(
             modifier = modifier
-                .fillMaxWidth()
                 .background(NazoNavBar, curve)
                 .navigationBarsPadding()
+                .padding(horizontal = ramp + overhang)
                 .padding(top = 12.dp, bottom = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(32.dp, Alignment.CenterHorizontally),
+            horizontalArrangement = Arrangement.spacedBy(32.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             NavItems(selected = selected, onHomeClick = onHomeClick, onSettingsClick = onSettingsClick)
