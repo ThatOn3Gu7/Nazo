@@ -20,6 +20,37 @@ Conventions:
 
 ---
 
+## [2026-09-02 14:15] feat: clouds + star field in the theme transit; fix stuck animation on rapid switching
+
+- Owner: (1) Light theme's sun should have CLOUDS alongside it; Dark theme's
+  moon should have STARS (a real field, beyond the 2 dots); System combo =
+  agent's choice. (2) BUG: switching themes really fast left the last-playing
+  sun/moon frozen inside the (now unselected) row container.
+- **Bug root cause & fix** (`ThemeModeRow` in AppearanceScreen.kt): rapid
+  switching restarts `LaunchedEffect(isSelected)`, cancelling the previous
+  run mid-`animateTo` — the Animatable kept its mid-arc value and the
+  trailing snapTo(0) never ran → frozen body. Fix: the effect now ALWAYS
+  `transit.snapTo(0f)` first (before the becameSelected check), so the new
+  effect instance — which runs right after the old one is cancelled —
+  deterministically clears any leftover value. No NonCancellable needed;
+  each row owns its own Animatable so there are no cross-row mutex races.
+- **Sun scene**: 3 puffy clouds (top-level CLOUD_X/Y/S data) drifting slowly
+  leftward as the sun crosses right; middle cloud drawn AFTER the sun so it
+  passes in front (depth). Each cloud is 3 ovals unioned into ONE Path
+  before a translucent white fill — uniform alpha, no darker overlap
+  blotches. Alpha 0.38·env·(1−0.12i), env = sin(pπ).
+- **Moon scene**: 12-star deterministic field (NIGHT_STAR_X/Y/R/PHASE
+  arrays), fades in with env, each star twinkling at its own phase
+  (0.4+0.6·(0.5+0.5·sin(14p+phase))); every 3rd star gets a sparkle cross
+  (2 round-cap lines). Old 2 trailing dots removed. Crescent unchanged.
+- **System "cycle"**: unchanged dispatcher — day half now inherently carries
+  clouds, night half carries stars; the env envelopes make dusk a natural
+  handoff (clouds dissolve → stars come out).
+- Imports added: ui.geometry.Rect, ui.graphics.Path.
+- Files: `ui/screens/AppearanceScreen.kt`, `handoff.md`.
+
+---
+
 ## [2026-09-02 13:30] feat: sun/moon transit animation on theme switch; top curve outline DROPPED
 
 - Owner: (1) drop the top-of-app curve outline entirely ("feels weird") —

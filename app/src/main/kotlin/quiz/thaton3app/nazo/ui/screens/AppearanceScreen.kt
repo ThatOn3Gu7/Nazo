@@ -44,7 +44,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -477,8 +479,14 @@ private fun ThemeModeRow(
     LaunchedEffect(isSelected) {
         val becameSelected = isSelected && !wasSelected
         wasSelected = isSelected
-        if (becameSelected && celestial.isNotEmpty()) {
-            transit.snapTo(0f)
+        if (celestial.isEmpty()) return@LaunchedEffect
+        // ALWAYS clear any leftover mid-flight value first: rapid theme
+        // switching cancels the previous run mid-animateTo, which would
+        // otherwise leave the sun/moon frozen inside the deselected row.
+        // This new effect instance runs right after the old one is
+        // cancelled, so the reset is deterministic.
+        transit.snapTo(0f)
+        if (becameSelected) {
             transit.animateTo(
                 targetValue = 1f,
                 animationSpec = tween(
@@ -867,7 +875,8 @@ private fun DrawScope.drawCelestialTransit(kind: String, p: Float, rowColor: Col
         "sun" -> drawSunTransit(p)
         "moon" -> drawMoonTransit(p, rowColor)
         // "cycle" (System Default): a miniature day/night cycle — the sun
-        // makes its full transit, then the moon follows for the night shift.
+        // crosses with its clouds, dusk falls as they dissolve, then the
+        // moon follows with the stars coming out for the night shift.
         "cycle" -> if (p < 0.5f) drawSunTransit(p * 2f) else drawMoonTransit((p - 0.5f) * 2f, rowColor)
     }
 }
@@ -878,8 +887,26 @@ private fun DrawScope.transitCenter(p: Float, r: Float): Offset {
     return Offset(cx, cy)
 }
 
+// Deterministic scatter for the night sky (fractions of the row size).
+private val NIGHT_STAR_X = floatArrayOf(0.08f, 0.17f, 0.27f, 0.38f, 0.47f, 0.58f, 0.68f, 0.78f, 0.88f, 0.94f, 0.32f, 0.62f)
+private val NIGHT_STAR_Y = floatArrayOf(0.30f, 0.68f, 0.20f, 0.55f, 0.15f, 0.62f, 0.25f, 0.58f, 0.32f, 0.70f, 0.82f, 0.85f)
+private val NIGHT_STAR_R = floatArrayOf(0.045f, 0.030f, 0.050f, 0.028f, 0.055f, 0.035f, 0.048f, 0.030f, 0.042f, 0.026f, 0.032f, 0.038f)
+private val NIGHT_STAR_PHASE = floatArrayOf(0.0f, 1.1f, 2.3f, 3.2f, 4.4f, 5.1f, 0.7f, 1.9f, 2.8f, 3.9f, 4.8f, 5.7f)
+
+// Drifting daytime clouds: start x, y, scale (fractions / multiplier).
+private val CLOUD_X = floatArrayOf(0.20f, 0.58f, 0.86f)
+private val CLOUD_Y = floatArrayOf(0.28f, 0.64f, 0.22f)
+private val CLOUD_S = floatArrayOf(1.0f, 0.78f, 0.62f)
+
 private fun DrawScope.drawSunTransit(p: Float) {
     val r = size.height * 0.16f
+    val env = sin(p * PI.toFloat()) // scenery fade-in/out envelope
+
+    // Clouds drift slowly leftward while the sun crosses to the right.
+    // Cloud 1 (index 1) is drawn AFTER the sun so it passes in front.
+    drawDayCloud(0, p, env)
+    drawDayCloud(2, p, env)
+
     val c = transitCenter(p, r)
     val gold = Color(0xFFFFC107)
     drawCircle(gold.copy(alpha = 0.20f), r * 1.9f, c)
@@ -896,16 +923,48 @@ private fun DrawScope.drawSunTransit(p: Float) {
             cap = StrokeCap.Round,
         )
     }
+
+    drawDayCloud(1, p, env)
+}
+
+/** One puffy cloud: three lobes unioned into a single path so the
+ *  translucent fill stays perfectly uniform (no darker overlap blotches). */
+private fun DrawScope.drawDayCloud(i: Int, p: Float, env: Float) {
+    val h = size.height
+    val rc = h * 0.15f * CLOUD_S[i]
+    val cx = (CLOUD_X[i] - (0.10f + i * 0.03f) * p) * size.width
+    val cy = CLOUD_Y[i] * h
+    val cloud = Path().apply {
+        addOval(Rect(cx - rc * 1.8f, cy - rc * 0.45f, cx + rc * 1.8f, cy + rc * 0.75f))
+        addOval(Rect(cx - rc * 1.35f, cy - rc * 1.05f, cx - rc * 0.05f, cy + rc * 0.25f))
+        addOval(Rect(cx - rc * 0.35f, cy - rc * 1.35f, cx + rc * 1.45f, cy + rc * 0.45f))
+    }
+    drawPath(cloud, Color.White.copy(alpha = 0.38f * env * (1f - i * 0.12f)))
 }
 
 private fun DrawScope.drawMoonTransit(p: Float, rowColor: Color) {
     val r = size.height * 0.16f
+    val env = sin(p * PI.toFloat())
+
+    // Star field: fades in as the moon rises, each star twinkling at its
+    // own rhythm; every third one gets a little sparkle cross.
+    for (i in NIGHT_STAR_X.indices) {
+        val sr = NIGHT_STAR_R[i] * size.height
+        val sx = NIGHT_STAR_X[i] * size.width
+        val sy = NIGHT_STAR_Y[i] * size.height
+        val twinkle = 0.4f + 0.6f * (0.5f + 0.5f * sin(p * 14f + NIGHT_STAR_PHASE[i]))
+        val alpha = 0.85f * env * twinkle
+        drawCircle(Color.White.copy(alpha = alpha), sr, Offset(sx, sy))
+        if (i % 3 == 0) {
+            val arm = sr * 2.6f
+            val sparkle = Color.White.copy(alpha = alpha * 0.55f)
+            drawLine(sparkle, Offset(sx - arm, sy), Offset(sx + arm, sy), strokeWidth = sr * 0.4f, cap = StrokeCap.Round)
+            drawLine(sparkle, Offset(sx, sy - arm), Offset(sx, sy + arm), strokeWidth = sr * 0.4f, cap = StrokeCap.Round)
+        }
+    }
+
     val c = transitCenter(p, r)
     drawCircle(Color(0xFFCDD8F2), r, c)
     // Crescent bite in the row's own colour
     drawCircle(rowColor, r * 0.82f, Offset(c.x + r * 0.52f, c.y - r * 0.40f))
-    // Two tiny stars twinkling in the moon's wake
-    val tw = sin(p * PI.toFloat())
-    drawCircle(Color.White.copy(alpha = 0.80f * tw), r * 0.14f, Offset(c.x - r * 2.2f, c.y - r * 0.9f))
-    drawCircle(Color.White.copy(alpha = 0.55f * tw), r * 0.10f, Offset(c.x - r * 3.1f, c.y + r * 0.5f))
 }
