@@ -198,6 +198,8 @@ fun OnboardingScreen(
     onRevealStyleChange: (String) -> Unit,
     backgroundStyle: String,
     onBackgroundStyleChange: (String) -> Unit,
+    celebrationStyle: String,
+    onCelebrationStyleChange: (String) -> Unit,
     floatingNavBar: Boolean,
     onFloatingNavBarChange: (Boolean) -> Unit,
     iconFollowsOsTheme: Boolean,
@@ -401,6 +403,8 @@ fun OnboardingScreen(
                             onRevealStyleChange = onRevealStyleChange,
                             backgroundStyle = backgroundStyle,
                             onBackgroundStyleChange = onBackgroundStyleChange,
+                            celebrationStyle = celebrationStyle,
+                            onCelebrationStyleChange = onCelebrationStyleChange,
                             floatingNavBar = floatingNavBar,
                             onFloatingNavBarChange = onFloatingNavBarChange,
                             iconFollowsOsTheme = iconFollowsOsTheme,
@@ -611,6 +615,8 @@ private fun SetupSlide(
     onRevealStyleChange: (String) -> Unit,
     backgroundStyle: String,
     onBackgroundStyleChange: (String) -> Unit,
+    celebrationStyle: String,
+    onCelebrationStyleChange: (String) -> Unit,
     floatingNavBar: Boolean,
     onFloatingNavBarChange: (Boolean) -> Unit,
     iconFollowsOsTheme: Boolean,
@@ -898,6 +904,33 @@ private fun SetupSlide(
                                             onClick = {
                                                 Haptics.soft(context)
                                                 onBackgroundStyleChange(id)
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        SectionLabel("VICTORY CONFETTI")
+                        // Same static chunked grid as the ambient section —
+                        // NO horizontalScroll inside the vertical setup card.
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(
+                                "none" to "None",
+                                "burst" to "Burst",
+                                "festive" to "Festive",
+                                "rain" to "Rain",
+                                "cannons" to "Cannons",
+                                "fireworks" to "Fireworks",
+                            ).chunked(2).forEach { rowItems ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    rowItems.forEach { (id, label) ->
+                                        SelectPill(
+                                            text = label,
+                                            selected = celebrationStyle == id,
+                                            onClick = {
+                                                Haptics.soft(context)
+                                                onCelebrationStyleChange(id)
                                             },
                                         )
                                     }

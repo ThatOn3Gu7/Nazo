@@ -20,6 +20,24 @@ Conventions:
 
 ---
 
+## [2026-09-02 19:15] feat: victory-confetti picker in the onboarding "Make it yours" appearance section
+
+- Owner request: the new celebration variant should also be selectable during
+  onboarding, alongside theme/accent/reveal/background.
+- `ui/onboarding/OnboardingScreen.kt`: new "VICTORY CONFETTI" SectionLabel +
+  static chunked(2) SelectPill grid (None/Burst/Festive/Rain/Cannons/
+  Fireworks — short labels to fit the pills) between AMBIENT BACKGROUND and
+  LAYOUT & ICON, following the no-horizontal-scroll rule inside the vertical
+  setup card. New `celebrationStyle`/`onCelebrationStyleChange` params
+  threaded through OnboardingScreen → setup slide.
+- `ui/NazoApp.kt`: OnboardingScreen call site wires the params to the same
+  `celebrationStyle` state + `themePrefs.celebrationStyle` persistence as
+  AppearanceScreen — changes apply live, same as every other tour setting.
+- Files: `app/src/main/kotlin/quiz/thaton3app/nazo/ui/onboarding/OnboardingScreen.kt`,
+  `app/src/main/kotlin/quiz/thaton3app/nazo/ui/NazoApp.kt`, `handoff.md`.
+
+---
+
 ## [2026-09-02 18:45] feat: switchable victory-confetti variants + live previews; guessing game celebrates too
 
 - Owner request: the quiz-complete "graffiti" (confetti) should come in

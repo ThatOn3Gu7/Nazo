@@ -876,6 +876,11 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         backgroundStyle = it
                         themePrefs.backgroundStyle = it
                     },
+                    celebrationStyle = celebrationStyle,
+                    onCelebrationStyleChange = {
+                        celebrationStyle = it
+                        themePrefs.celebrationStyle = it
+                    },
                     floatingNavBar = navBarFloating,
                     onFloatingNavBarChange = {
                         navBarFloating = it
