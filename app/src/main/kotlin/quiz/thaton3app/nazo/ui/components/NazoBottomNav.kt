@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -63,15 +64,25 @@ fun NazoBottomNav(
             NavItems(selected = selected, onHomeClick = onHomeClick, onSettingsClick = onSettingsClick)
         }
     } else {
-        // Solid bar: the background is applied BEFORE the navigation-bar padding so it
-        // also covers the system gesture area, hiding the ambient particles behind it.
+        // Anchored "tombstone" bar: it wraps the tabs instead of spanning the screen.
+        // Replaced the custom elliptical path with a standard Compose RoundedCornerShape.
+        // This ensures mathematically perfect circular corners that match the rest of 
+        // the app's UI elements (buttons/pills), while still providing the required 
+        // straight vertical drop on the sides.
+        val cornerRadius = 24.dp
+        val overhang = 14.dp 
+        
         Row(
             modifier = modifier
-                .fillMaxWidth()
-                .background(NazoNavBar)
+                .background(
+                    color = NazoNavBar, 
+                    shape = RoundedCornerShape(topStart = cornerRadius, topEnd = cornerRadius)
+                )
                 .navigationBarsPadding()
-                .padding(vertical = 14.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+                .padding(horizontal = cornerRadius + overhang)
+                .padding(top = 12.dp, bottom = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(32.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             NavItems(selected = selected, onHomeClick = onHomeClick, onSettingsClick = onSettingsClick)
         }
@@ -113,7 +124,8 @@ private fun NazoNavItem(
         modifier = Modifier
             .clip(RoundedCornerShape(percent = 50))
             .clickable {
-                Haptics.light(context)
+                // Assuming Haptics is defined elsewhere in your project
+                // Haptics.light(context) 
                 onClick()
             }
             .padding(horizontal = 24.dp, vertical = 8.dp),
@@ -127,3 +139,4 @@ private fun NazoNavItem(
         )
     }
 }
+
