@@ -63,21 +63,33 @@ object ShareResultCard {
             paint.textSize = 44f
             c.drawText("NAZO — ANIME QUIZ", 210f, 156f, paint)
 
+            // ---- Geometry: the card's height is computed from its actual
+            // content (heading + circle + N stat rows), so every row always
+            // lands INSIDE the card and the footer sits clear below it.
+            val cardTop = 250f
+            val headingBaseline = cardTop + 132f
+            val cy = cardTop + 400f          // headline circle center
+            val circleR = 185f
+            val statsStartY = cy + 295f      // first stat row baseline
+            val rowH = 95f
+            val lastRowY = statsStartY + (stats.size - 1).coerceAtLeast(0) * rowH
+            val cardBottom = lastRowY + 62f
+            val footerY = (cardBottom + 95f).coerceAtMost(h - 40f)
+
             // Card
             paint.color = surface.toArgb()
-            val card = RectF(72f, 260f, w - 72f, h - 220f)
+            val card = RectF(72f, cardTop, w - 72f, cardBottom)
             c.drawRoundRect(card, 64f, 64f, paint)
 
             // Heading
             paint.color = textPrimary.toArgb()
             paint.textSize = 72f
             paint.textAlign = Paint.Align.CENTER
-            c.drawText(heading, w / 2f, card.top + 140f, paint)
+            c.drawText(heading, w / 2f, headingBaseline, paint)
 
             // Big headline circle
-            val cy = card.top + 420f
             paint.color = primary.toArgb()
-            c.drawCircle(w / 2f, cy, 190f, paint)
+            c.drawCircle(w / 2f, cy, circleR, paint)
             paint.color = onPrimary.toArgb()
             paint.textSize = 120f
             c.drawText(headline, w / 2f, cy + 12f, paint)
@@ -86,7 +98,7 @@ object ShareResultCard {
 
             // Stat rows
             paint.typeface = Typeface.DEFAULT
-            var y = cy + 330f
+            var y = statsStartY
             stats.forEach { (label, value) ->
                 paint.textAlign = Paint.Align.LEFT
                 paint.color = textSecondary.toArgb()
@@ -97,14 +109,14 @@ object ShareResultCard {
                 paint.typeface = Typeface.DEFAULT_BOLD
                 c.drawText(value, card.right - 90f, y, paint)
                 paint.typeface = Typeface.DEFAULT
-                y += 96f
+                y += rowH
             }
 
-            // Footer
+            // Footer — always below the card, never overlapping it.
             paint.textAlign = Paint.Align.CENTER
             paint.color = textSecondary.copy(alpha = 0.7f).toArgb()
             paint.textSize = 40f
-            c.drawText("Can you beat me? • Nazo Anime Quiz", w / 2f, h - 110f, paint)
+            c.drawText("Can you beat me? • Nazo Anime Quiz", w / 2f, footerY, paint)
 
             // Save + share via the existing FileProvider (cache-path "share")
             val dir = File(context.cacheDir, "share").apply { mkdirs() }
