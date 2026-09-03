@@ -14,7 +14,7 @@
 
     <!-- Illustrated-mark icons: splash ground matching each mark's icon background. -->
     <color name="nazo_splash_background_lantern">#FF221729</color>
-    <color name="nazo_splash_background_bubble">#FF18563A</color>
-    <color name="nazo_splash_background_mystery">#FFDC9F1C</color>
-    <color name="nazo_splash_background_pixel">#FF212C42</color>
+    <color name="nazo_splash_background_nneon">#FF0C1420</color>
+    <color name="nazo_splash_background_nbrush">#FFE8DCC2</color>
+    <color name="nazo_splash_background_npixel">#FF212C42</color>
 </resources>

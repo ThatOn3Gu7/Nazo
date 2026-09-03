@@ -4093,3 +4093,48 @@ Test (debug APK):
    a hole (that's the evenOdd fix).
 6. If you were on Torii/Scroll, first launch moves you to Classic Green
    (LauncherIconSwitcher.sanitize).
+
+## 2026-09-03 — "N" icon set + self-drawing stroke animation
+
+**Owner direction:** use the app's initial in English (as a counterpart to the
+謎 kanji), with an animation where "a line rises up from the bottom, then wing,
+wing, wing, turns into N". Also: the bubble / mystery-character / pixel-"?"
+marks were disliked — but PIXEL_RESOLVE (the *animation*) was a favourite and
+had to survive.
+
+**Retired:** Manga Bubble, Mystery Character, Pixel "?" (+ themes, colors,
+activities, BUBBLE_POP and MYSTERY_REVEAL styles).
+**Kept:** Paper Lantern, and PIXEL_RESOLVE — now reused by Pixel N.
+**Added:**
+- `ic_mark_n_neon.xml` — one polyline stroked 3x at decreasing width
+  (haze / glow / hot core) for a neon-tube look.
+- `ic_mark_n_brush.xml` — sumi-e inked N with uneven edges + dry-brush splatter,
+  on a warm paper ground.
+- `ic_mark_n_pixel.xml` — 8x8 grid N, dim left / bright right, same construction
+  as the pixel "?" the owner liked; keeps PIXEL_RESOLVE.
+
+**N_STROKE animation** (`IntroOverlay.drawNStroke`): the punch-out is a Path
+stroked along `N_POINTS` — the SAME polyline `ic_mark_n_neon.xml` is built from,
+so art and animation can't drift. Walked **by arc length**, not per-segment, or
+the two short stems would whip past while the long diagonal crawled. The traced
+line IS the reveal for the first 70% (`N_TRACE_END`); only after that does the
+solid mark punch through, so the two never double up. Verified by simulating
+the exact math offline and rendering a 9-frame strip.
+
+**Silhouette note:** the neon/brush masks are a hand-authored solid N, NOT
+auto-derived — the neon art's three overlapping glow strokes would flatten into
+an unreadably fat letter under DstOut/themed icons.
+
+**Preview-renderer note:** it now honours `android:fillType="evenOdd"`; before
+that it filled every subpath solid and was lying about what Android draws.
+
+Test (debug APK):
+1. Appearance → APP ICON: Neon N, Brush N, Pixel N, Paper Lantern + the color
+   variants. Bubble/Mystery/Pixel-"?" gone.
+2. **Neon N** → Apply & close → kill from recents → relaunch: near-black start,
+   neon splash, then a line rises from the floor and traces left stem → diagonal
+   → right stem into an N, which flares and warps away.
+3. **Brush N**: cream/paper ground, same trace.
+4. **Pixel N**: the stepped mosaic reveal, unchanged.
+5. Android 13+ themed icons: all three tint to a clean readable N.
+6. If you were on a retired icon, first launch moves you to Classic Green.

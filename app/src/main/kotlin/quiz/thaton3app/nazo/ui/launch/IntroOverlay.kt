@@ -22,6 +22,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
@@ -164,6 +169,25 @@ fun IntroOverlay(
                 }
             }
 
+            IntroStyle.N_STROKE -> {
+                // Owner's brief: "a line rises up from the bottom, then wing, wing,
+                // wing, turns into N". The ground is carved by a stroke that draws
+                // itself along the letter's own polyline (see the Canvas below);
+                // once the N is complete it flares and warps away.
+                coroutineScope {
+                    launch { progress.animateTo(1f, tween(900, easing = LinearEasing)) }
+                    launch {
+                        // Hold at rest while the stroke draws, then blow through.
+                        delay(620)
+                        zoomScale.animateTo(20f, tween(380, easing = WarpSpeedEasing))
+                    }
+                    launch {
+                        delay(700)
+                        backgroundAlpha.animateTo(0f, tween(300))
+                    }
+                }
+            }
+
             IntroStyle.PIXEL_RESOLVE -> {
                 // Mirrors the Guessing Game's reveal: the mark jumps through discrete
                 // mosaic steps (no smooth tween) before resolving and zooming out.
@@ -255,18 +279,83 @@ fun IntroOverlay(
                 else -> 0f
             }
 
+            // N_STROKE carves the letter by hand: the punch-out follows the same
+            // polyline the neon art is built from, revealed progressively, so the
+            // line appears to draw itself before the solid mark takes over.
+            if (style == IntroStyle.N_STROKE) {
+                drawNStroke(p)
+            }
+
             val scaledWidth = (logoBitmap.width * scale).toInt()
             val scaledHeight = (logoBitmap.height * scale).toInt()
 
             val left = (size.width - scaledWidth) / 2f + swayX
             val top = (size.height - scaledHeight) / 2f
 
-            drawImage(
-                image = logoBitmap,
-                dstOffset = IntOffset(left.toInt(), top.toInt()),
-                dstSize = IntSize(scaledWidth, scaledHeight),
-                blendMode = BlendMode.DstOut
-            )
+            // For N_STROKE the traced line IS the reveal for the first ~70%; only
+            // then does the full mark punch through, so the two never double up.
+            if (style != IntroStyle.N_STROKE || p > N_TRACE_END) {
+                drawImage(
+                    image = logoBitmap,
+                    dstOffset = IntOffset(left.toInt(), top.toInt()),
+                    dstSize = IntSize(scaledWidth, scaledHeight),
+                    blendMode = BlendMode.DstOut
+                )
+            }
         }
     }
+}
+
+/** Fraction of N_STROKE's progress spent drawing the line before the mark appears. */
+private const val N_TRACE_END = 0.70f
+
+/**
+ * The letter N as a polyline in the marks' 108x108 viewport: up the left stem, down
+ * the diagonal, up the right stem. Mirrors `ic_mark_n_neon.xml`'s pathData, so the
+ * traced animation and the static art describe the same shape.
+ */
+private val N_POINTS = listOf(
+    Offset(30f, 82f),
+    Offset(30f, 28f),
+    Offset(78f, 80f),
+    Offset(78f, 28f),
+)
+
+/**
+ * Punches a progressively-drawn N out of the ground.
+ *
+ * [p] is the overall 0..1 intro progress; the trace occupies the first [N_TRACE_END]
+ * of it. The polyline is walked by arc length so the pen moves at a constant speed
+ * regardless of segment length — without that the short stems would whip past while
+ * the long diagonal crawled.
+ */
+private fun DrawScope.drawNStroke(p: Float) {
+    val t = (p / N_TRACE_END).coerceIn(0f, 1f)
+    // Fit the 108-unit design space into the smaller screen dimension, centered.
+    val span = minOf(size.width, size.height) * 0.52f
+    val unit = span / 108f
+    val originX = (size.width - 108f * unit) / 2f
+    val originY = (size.height - 108f * unit) / 2f
+    fun map(o: Offset) = Offset(originX + o.x * unit, originY + o.y * unit)
+
+    val pts = N_POINTS.map(::map)
+    val lengths = pts.zipWithNext { a, b -> (b - a).getDistance() }
+    val total = lengths.sum()
+    var remaining = total * t
+
+    val stroke = Stroke(
+        width = span * 0.11f,
+        cap = StrokeCap.Round,
+        join = StrokeJoin.Round,
+    )
+    val path = Path().apply { moveTo(pts[0].x, pts[0].y) }
+    for (i in lengths.indices) {
+        val segLen = lengths[i]
+        if (remaining <= 0f) break
+        val frac = (remaining / segLen).coerceAtMost(1f)
+        val end = pts[i] + (pts[i + 1] - pts[i]) * frac
+        path.lineTo(end.x, end.y)
+        remaining -= segLen
+    }
+    drawPath(path = path, color = Color.Black, style = stroke, blendMode = BlendMode.DstOut)
 }
