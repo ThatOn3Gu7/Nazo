@@ -4147,3 +4147,30 @@ PR #7, which is exactly what that loop exists for. Lesson for future agents:
 when retiring an enum constant, grep for it across `IntroOverlay.kt` and
 `NazoApp.kt` before pushing — a quick declared-vs-used diff catches it without
 spending a CI run.
+
+## 2026-09-03 — Dropped the Neon N
+
+Owner: the neon treatment clashed with the app's aesthetic. Removed Neon N
+only; Brush N and Pixel N stay.
+
+Removed: `ic_mark_n_neon.xml`, `ic_mark_n_neon_silhouette.xml`, its background /
+foreground / mipmap wrappers, `Theme.Nazo.Splash.Neon`,
+`nazo_splash_background_nneon`, the `.LauncherNeon` manifest activity and its
+`LauncherActivities.kt` class, and the `nneon` registry entry.
+
+**Kept deliberately:** `IntroStyle.N_STROKE` — Brush N still uses the
+self-drawing trace, so the animation and `drawNStroke`/`N_POINTS` stay. Only the
+doc comments changed, since they used to describe the polyline as mirroring the
+*neon* art; they now reference the N marks generally.
+
+Final icon list (8): Classic Green, Deep Green (the themed OS pair), Sakura,
+Midnight, Ocean, Paper Lantern, Brush N, Pixel N.
+
+Test (debug APK):
+1. Appearance → APP ICON: no Neon N. Brush N and Pixel N present.
+2. **Brush N** → Apply & close → kill from recents → relaunch: cream/paper
+   starting window, inked N splash, then the line traces itself into the N.
+3. **Pixel N**: stepped mosaic reveal, unchanged.
+4. If you were running Neon N when you updated, first launch moves you to
+   Classic Green (`LauncherIconSwitcher.sanitize`) rather than leaving you with
+   no enabled launcher component.

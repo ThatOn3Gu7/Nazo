@@ -13,7 +13,6 @@
 
     <!-- Illustrated-mark icons: splash ground matching each mark's icon background. -->
     <color name="nazo_splash_background_lantern">#FF221729</color>
-    <color name="nazo_splash_background_nneon">#FF0C1420</color>
     <color name="nazo_splash_background_nbrush">#FFE8DCC2</color>
     <color name="nazo_splash_background_npixel">#FF212C42</color>
 </resources>

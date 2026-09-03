@@ -33,8 +33,6 @@ class LauncherOcean : MainActivity()
 
 class LauncherLantern : MainActivity()
 
-class LauncherNeon : MainActivity()
-
 class LauncherBrush : MainActivity()
 
 class LauncherPixel : MainActivity()

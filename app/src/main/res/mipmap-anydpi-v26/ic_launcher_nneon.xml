@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@drawable/ic_launcher_background_nneon" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground_nneon" />
-    <monochrome android:drawable="@drawable/ic_mark_n_neon_silhouette" />
-</adaptive-icon>

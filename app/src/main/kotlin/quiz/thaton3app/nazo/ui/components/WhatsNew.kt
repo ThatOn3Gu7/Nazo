@@ -50,7 +50,7 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
  * is a pre-release one (the owner releases every ~20-30 commits, see
  * AGENTS.md); the next actual release commit will set its own id.
  */
-const val CHANGELOG_ID = "2026-09-03-next7"
+const val CHANGELOG_ID = "2026-09-03-next8"
 
 data class ChangeEntry(val title: String, val points: List<String>)
 
@@ -58,7 +58,7 @@ val CHANGELOG: List<ChangeEntry> = listOf(
     ChangeEntry(
         "The N icons",
         listOf(
-            "Nazo's initial, three ways: Neon N, Brush N and Pixel N",
+            "Nazo's initial, two ways: Brush N and Pixel N",
             "The N marks draw themselves at launch — a line rises from the floor and traces out the letter before it flares away",
             "Pixel N keeps the stepped mosaic reveal; Paper Lantern stays too",
             "Some earlier variants were retired; if you were using one you'll be moved to Classic Green",

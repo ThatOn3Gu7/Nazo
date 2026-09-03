@@ -239,9 +239,9 @@ fun IntroOverlay(
                 sin(p * 12f) * (1f - p) * size.width * 0.012f
             } else 0f
 
-            // N_STROKE carves the letter by hand: the punch-out follows the same
-            // polyline the neon art is built from, revealed progressively, so the
-            // line appears to draw itself before the solid mark takes over.
+            // N_STROKE carves the letter by hand: the punch-out follows the letter's
+            // own polyline, revealed progressively, so the line appears to draw
+            // itself before the solid mark takes over.
             if (style == IntroStyle.N_STROKE) {
                 drawNStroke(p)
             }
@@ -271,8 +271,8 @@ private const val N_TRACE_END = 0.70f
 
 /**
  * The letter N as a polyline in the marks' 108x108 viewport: up the left stem, down
- * the diagonal, up the right stem. Mirrors `ic_mark_n_neon.xml`'s pathData, so the
- * traced animation and the static art describe the same shape.
+ * the diagonal, up the right stem. Matches the proportions of the N marks in
+ * res/drawable, so the traced animation and the static art describe the same shape.
  */
 private val N_POINTS = listOf(
     Offset(30f, 82f),
