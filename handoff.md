@@ -4174,3 +4174,62 @@ Test (debug APK):
 4. If you were running Neon N when you updated, first launch moves you to
    Classic Green (`LauncherIconSwitcher.sanitize`) rather than leaving you with
    no enabled launcher component.
+
+## 2026-09-03 — Pixel Reveal no longer flashes the answer
+
+Owner report: in Pixel Reveal mode the character image sometimes appeared
+fully sharp for an instant at the start of a round, giving the answer away.
+Exposed by the background prefetch of upcoming rounds.
+
+Three separate causes, all fixed in `GuessingPlayScreen.kt`:
+
+1. **Stale animation across the round boundary.** Without prefetch a round
+   ends → `Preparing` shows → the `when (phase)` branch swaps → the card
+   leaves composition → its `animateFloatAsState` is destroyed and recreated
+   fully pixelated next round. With prefetch the next round goes *straight*
+   to `Playing`, so the card never left composition and `pixelEffect` kept
+   the previous round's final value of `0f` (sharp). The new image drew sharp
+   and then eased *up* into pixelation. Fixed by wrapping the card in
+   `key(phase) { ... }` so it is torn down and rebuilt per round.
+
+2. **Per-round reset ran too late.** `submitted`/`imageReady`/`pixelLevels`
+   were cleared inside `LaunchedEffect(phase)`, which runs only *after* the
+   frame is committed — so the first frame of a new round composed with the
+   previous round's flags. The reset is now a plain `if (stateForPhase !==
+   phase)` block in the composable body, i.e. synchronous with the phase
+   change.
+
+3. **Bytes published before the pixel levels existed.** `fetchedImage` was
+   assigned, then the levels were built at a suspension point, then
+   `imageReady = true`. A composition landing in that gap saw `pixelLevels ==
+   null`, which makes `usePixels` false and silently falls through to the
+   sharp `AsyncImage` branch. The order is now levels → bytes → `imageReady`,
+   so the image is never displayable without its levels.
+
+Blur mode is untouched. A genuine decode failure in pixel mode still falls
+back to the *blur* reveal (the `else` branch carries `Modifier.blur`), never
+to an unobscured image.
+
+### How to test it live
+
+Preconditions: an AI provider configured (Settings → AI Provider) so rounds
+generate, and Settings → Appearance → Guessing Game → **Reveal style =
+Pixel**.
+
+1. Home → **Guessing Game** → pick any topic → difficulty **Easy** (25s gives
+   the longest look).
+2. Round 1: the moment the spinner disappears the portrait must already be a
+   coarse mosaic. Watch it sharpen step by step as the timer runs.
+3. Answer (or let it time out) and wait for the reveal to go fully sharp —
+   this is what used to poison the next round.
+4. Tap **Next Round**. This is the regression: because round 2 was prefetched
+   it appears instantly with no "Preparing" screen. **The portrait must be
+   fully pixelated on its very first visible frame** — no sharp flash, and it
+   must not start sharp and become blocky.
+5. Repeat through rounds 3–5; the prefetch chain is warmest here, so this is
+   where the flash was easiest to reproduce.
+6. Switch Reveal style to **Blur** and play a few rounds to confirm the blur
+   reveal is unchanged (starts heavily blurred, eases sharp).
+
+Tip: record the screen at 60fps and step through the first few frames after
+"Next Round" if you want frame-accurate proof — the old flash was ~2–5 frames.
