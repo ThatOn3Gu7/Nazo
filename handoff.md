@@ -20,6 +20,46 @@ Conventions:
 
 ---
 
+## [2026-09-03 15:30] docs: research report — how to guarantee official character art (owner request)
+
+- Owner asked how the guessing game can get 100% official high-res art every
+  round (and how competitor apps do it). Full research in
+  `docs/official-art-research.md` — every source tested live on 2026-09-03
+  (AniList/MAL/Jikan/Kitsu/Fandom/AniDB/AniDB/Wikidata/Anime-Planet) or
+  verified against official docs; raw evidence in §8.
+- Key findings: (1) no API serves *licensed* art — every store app uses
+  curated DB rows (AniList/MAL/Kitsu/Fandom infoboxes) whose portrait IS
+  official studio art; (2) apps that show official art every round do
+  **ID-grounded retrieval** (AI picks from a known character list, art
+  fetched by ID — no free-text image search); (3) live proof of failure
+  modes: Jikan 504'd 3× (MAL upstream), Kitsu name-filter returned 2,012
+  "Satoru" hits for "Gojo Satoru" with the first image null, Fandom wiki
+  slugs are unpredictable (demon-slayer.fandom.com is dead,
+  kimetsu-no-yaiba.fandom.com works); (4) Fandom infobox images are the
+  highest-res official art measured (Luffy 686×1435, Gojo 717×2345) and
+  parseable via the `|image =` template param across 3 template families;
+  (5) AniList is in a documented degraded state (30 req/min vs 90) and is
+  not accepting rate-limit raises; (6) Wikidata has cross-DB character IDs
+  (Gojo: AniList 127691 / MAL 164471 / Fandom jujutsu-kaisen:Satoru_Gojo)
+  but NO Commons images for anime characters.
+- Recommended build (spec in report §5): local character index built by CI
+  (AniList characters FAVOURITES_DESC, perPage 100), LLM prompt gains
+  `anilist_character_id` (validated against the index), round art from
+  `Character(id:)` (1 call), cast route for same-name disambiguation, new
+  Fandom stage (franchise→wiki map + 3-call infobox recipe), existing
+  ladder stays as fallback, optional top-1–5k offline art pack.
+- No app code touched — research only.
+- How to test it live: nothing to tap — open `docs/official-art-research.md`
+  in the repo. To re-verify the live claims: hit
+  `https://api.jikan.moe/v4/top/anime?limit=1` (watch for 504s),
+  `https://kitsu.io/api/edge/characters?filter%5Bname%5D=Gojo%20Satoru&page%5Blimit%5D=2`
+  (expect "Satoru" hits, count 2012), and
+  `https://jujutsu-kaisen.fandom.com/api.php?action=parse&page=Satoru%20Gojo&prop=wikitext&section=0&format=json`
+  (expect `{{Character_Infobox |image = Satoru Gojo (Anime 2).png|Anime`).
+- Files: docs/official-art-research.md, handoff.md.
+
+---
+
 ## [2026-09-03 03:30] fix: share-card layout overflow; README screenshot grid mapped to owner's shots
 
 - Share card (`ShareResultCard.kt`): the card rect had a hardcoded bottom
