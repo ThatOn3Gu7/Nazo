@@ -4138,3 +4138,12 @@ Test (debug APK):
 4. **Pixel N**: the stepped mosaic reveal, unchanged.
 5. Android 13+ themed icons: all three tint to a clean readable N.
 6. If you were on a retired icon, first launch moves you to Classic Green.
+
+**CI catch (same session):** the first push of this change failed to compile —
+`BUBBLE_POP` / `MYSTERY_REVEAL` were deleted from the `IntroStyle` enum but
+their `when` branches (and a `swayX` case) were left behind in `IntroOverlay`.
+The workflow commented the three `e: Unresolved reference` lines straight onto
+PR #7, which is exactly what that loop exists for. Lesson for future agents:
+when retiring an enum constant, grep for it across `IntroOverlay.kt` and
+`NazoApp.kt` before pushing — a quick declared-vs-used diff catches it without
+spending a CI run.

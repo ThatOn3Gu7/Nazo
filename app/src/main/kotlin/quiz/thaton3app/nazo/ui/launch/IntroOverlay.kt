@@ -134,40 +134,7 @@ fun IntroOverlay(
                 }
             }
 
-            IntroStyle.BUBBLE_POP -> {
-                // Comic-book pop: overshoots past its resting size, settles, then
-                // inflates through the camera like a balloon filling the frame.
-                coroutineScope {
-                    launch { progress.animateTo(1f, tween(760, easing = LinearEasing)) }
-                    launch {
-                        zoomScale.animateTo(1.32f, tween(190, easing = FastOutSlowInEasing))
-                        zoomScale.animateTo(0.94f, tween(120, easing = FastOutSlowInEasing))
-                        zoomScale.animateTo(1.06f, tween(90, easing = FastOutSlowInEasing))
-                        zoomScale.animateTo(20f, tween(360, easing = WarpSpeedEasing))
-                    }
-                    launch {
-                        delay(430)
-                        backgroundAlpha.animateTo(0f, tween(330))
-                    }
-                }
-            }
 
-            IntroStyle.MYSTERY_REVEAL -> {
-                // "Who's that character?": a quick interrogative shake, a beat of
-                // stillness, then the silhouette blows open to reveal the app.
-                coroutineScope {
-                    launch { progress.animateTo(1f, tween(880, easing = LinearEasing)) }
-                    launch {
-                        zoomScale.animateTo(1.06f, tween(300, easing = FastOutSlowInEasing))
-                        delay(120)
-                        zoomScale.animateTo(24f, tween(420, easing = WarpSpeedEasing))
-                    }
-                    launch {
-                        delay(560)
-                        backgroundAlpha.animateTo(0f, tween(320))
-                    }
-                }
-            }
 
             IntroStyle.N_STROKE -> {
                 // Owner's brief: "a line rises up from the bottom, then wing, wing,
@@ -266,18 +233,11 @@ fun IntroOverlay(
                 else -> Unit
             }
 
-            // Horizontal motion per style: the lantern sways as if hanging, the
-            // mystery character shakes side to side like an interrogation. Both damp
-            // out as the animation completes, so nothing jitters at the handoff.
-            val swayX = when (style) {
-                IntroStyle.LANTERN_GLOW -> sin(p * 12f) * (1f - p) * size.width * 0.012f
-                IntroStyle.MYSTERY_REVEAL -> {
-                    // Shake only during the first ~40%, then hold still for the reveal.
-                    val shakeWindow = (1f - (p / 0.4f)).coerceAtLeast(0f)
-                    sin(p * 46f) * shakeWindow * size.width * 0.02f
-                }
-                else -> 0f
-            }
+            // The lantern sways as if hanging, damping out as the animation
+            // completes so nothing jitters at the handoff. Other styles hold still.
+            val swayX = if (style == IntroStyle.LANTERN_GLOW) {
+                sin(p * 12f) * (1f - p) * size.width * 0.012f
+            } else 0f
 
             // N_STROKE carves the letter by hand: the punch-out follows the same
             // polyline the neon art is built from, revealed progressively, so the
