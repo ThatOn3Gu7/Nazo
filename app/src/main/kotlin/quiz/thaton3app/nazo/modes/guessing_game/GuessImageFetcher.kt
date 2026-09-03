@@ -17,32 +17,50 @@ import quiz.thaton3app.nazo.vision.AnimeImageGate
  * Resolves a direct image URL of the round's TARGET ENTITY using keyless
  * public sources, in order:
  *
- *   1. AniList — anime character search (keyless GraphQL; official character
- *      portraits — this is an anime game, so the anime databases lead; they
- *      also keep cosplay photos / random sketches out of character rounds)
- *   2. Jikan (MyAnimeList) — keyless character search, official MAL portraits
- *   3. Kitsu — keyless character search, official portraits (500x600)
- *   4. Wikimedia Commons — exact-phrase file search scoped to the franchise
- *   5. English Wikipedia — exact-phrase article search scoped to the franchise
- *   6. AniList media — anime COVER art when the target is a series, not a
- *      character (character search can't find "One Piece" itself)
- *   7. Openverse — keyless Creative-Commons image search (WordPress index)
- *   8. DuckDuckGo — image endpoint (i.js + vqd token), strictly gated
+ * GROUND STAGES (official art, franchise-anchored — the "100% official"
+ * path from docs/official-art-research.md). The franchise is resolved ONCE
+ * per round into each database's media row (1 call each, outside the
+ * variant loop), then the target is looked up INSIDE that franchise's own
+ * CAST LIST — a same-name-proof way to fetch the character's official
+ * portrait with zero free-text image searching:
  *
- * The three anime databases (1-3) are how competitor quiz apps get a correct
- * anime image every time: a character row in a curated database carries its
- * official portrait, so for characters the web-search stages below almost
- * never run.
+ *   1. AniList cast  — Media(id){characters}: the character IN that anime's
+ *      cast (id-anchored, official AniList portrait, CDN-trusted)
+ *   2. AniList search — character search with franchise ranking (covers
+ *      characters the cast route missed — e.g. franchise string too short)
+ *   3. Jikan (MyAnimeList) cast — /anime/{id}/characters, official MAL art
+ *   4. Jikan search — /characters?q= with bio-based franchise evidence
+ *   5. Kitsu — character search, official portraits (500x600)
+ *   6. Fandom infobox — the franchise's own wiki: page search scoped to
+ *      the wiki, infobox "|image =" template parameter parsed from
+ *      section-0 wikitext (official character-design files, the highest
+ *      resolution of any source — 700-2400px originals measured)
  *
- * SAME-NAME CHARACTERS ("which Sanji?"): the database stages are franchise-
- * aware. Franchise context comes from the AI's image query suffix, or from
- * the game's TOPIC when the query is a bare name. AniList candidates carry
- * the anime they appear in; Jikan/Kitsu candidates their bio text. A
- * candidate matching name AND franchise always outranks a name-only match;
- * a name-only match still wins when nothing franchise-verifies (and logs
- * that it was unverified) — official art of a namesake beats no image.
+ * FALLBACK STAGES (web search, strictly gated, last resort):
  *
- * Stages 1-5 are tried for every name variant: the target name, its
+ *   7. Wikimedia Commons — exact-phrase file search scoped to the franchise
+ *   8. English Wikipedia — exact-phrase article search scoped to the franchise
+ *   9. AniList media — anime COVER art when the target is a series, not a
+ *      character (cast/search can't find "One Piece" itself)
+ *  10. Openverse — keyless Creative-Commons image search (WordPress index)
+ *  11. DuckDuckGo — image endpoint (i.js + vqd token), strictly gated
+ *
+ * The curated anime databases (1-5) are how competitor quiz apps get a
+ * correct official image every time: a character row in a curated database
+ * carries its official portrait, so for characters the web-search stages
+ * almost never run.
+ *
+ * SAME-NAME CHARACTERS ("which Sanji?"): stages 1/3 are cast-based and
+ * therefore franchise-proof by construction. Stages 2/4/5/6 are franchise-
+ * aware another way. Franchise context comes from the AI's image query
+ * suffix, or from the game's TOPIC when the query is a bare name. AniList
+ * candidates carry the anime they appear in; Jikan/Kitsu candidates their
+ * bio text. A candidate matching name AND franchise always outranks a
+ * name-only match; a name-only match still wins when nothing franchise-
+ * verifies (and logs that it was unverified) — official art of a namesake
+ * beats no image.
+ *
+ * Stages 1-8 are tried for every name variant: the target name, its
  * honorific-stripped form ("Dr. Vegapunk" -> "Vegapunk") and any AI alias
  * that shares a content word with the target. EVERY result is relevance-
  * gated: the file/article/character title must score >= 2 against a name
@@ -58,10 +76,11 @@ import quiz.thaton3app.nazo.vision.AnimeImageGate
  * [AnimeImageGate] — photographs of the real world (cosplayers, conventions,
  * statues, live-action stills) are rejected and the search simply CONTINUES
  * with the next source, so a blocked cosplay photo automatically triggers a
- * fresh attempt at a real anime image. AniList CDN images are trusted as
- * official art and skip the check. Verified bytes are kept in a one-slot
- * cache that [fetchImageBytes] consumes, so the image is never downloaded
- * twice.
+ * fresh attempt at a real anime image. AniList / MAL / Kitsu CDN images are
+ * trusted as official art and skip the check; Fandom infobox images are NOT
+ * in the trusted set (community upload) and go through the gate like any
+ * other candidate. Verified bytes are kept in a one-slot cache that
+ * [fetchImageBytes] reuses, so the image is never downloaded twice.
  *
  * FALLBACK LADDER (owner rule: a placeholder is the LAST resort — if no
  * verified anime image exists, show whatever matched the topic): candidates
@@ -107,8 +126,11 @@ object GuessImageFetcher {
 
     /**
      * One-slot cache holding the bytes that passed pixel verification during
-     * the URL search, keyed by URL. [fetchImageBytes] consumes it so the play
-     * screen never downloads the same image twice.
+     * the URL search — or that an earlier [fetchImageBytes] call downloaded —
+     * keyed by URL. Never "consumed": the next fetch of the same URL is
+     * served from the slot, so the image is never downloaded twice (the
+     * round's own pre-warm, the play screen, and the next-round prefetch all
+     * share the same bytes; a different URL simply replaces the slot).
      */
     @Volatile
     private var verifiedBytes: Pair<String, ByteArray>? = null
@@ -135,15 +157,61 @@ object GuessImageFetcher {
             val fallback = Fallback()
             val url: String? = try {
                 withTimeout(TOTAL_BUDGET_MS) {
+                    // GROUND stages, once per round (inside the budget — a
+                    // slow upstream degrades the ladder, it never adds a
+                    // minute to round prep): the franchise resolved into
+                    // each database's MEDIA row, so the cast list can be
+                    // searched for the target by ID (same-name-proof, no
+                    // free-text image search). Null when there is no
+                    // franchise context (bare-name rounds fall straight
+                    // through to the search stages — no regression).
+                    val anilistMediaIds = if (franchise.isNotBlank() &&
+                        budgetLeftMs(deadline) >= MIN_STAGE_BUDGET_MS
+                    ) {
+                        resolveAniListMediaIds(franchise)
+                    } else {
+                        emptyList()
+                    }
+                    // The cast lookups are VARIANT-INDEPENDENT (they score
+                    // every character in the franchise's cast against the
+                    // FULL variant list), so each runs ONCE here — not once
+                    // per variant — and its result keeps its ladder position
+                    // (cast beats search). Both CDNs are trusted, so
+                    // animeVerified is a no-op download-wise.
+                    val anilistCastUrl = if (anilistMediaIds.isNotEmpty() &&
+                        budgetLeftMs(deadline) >= MIN_STAGE_BUDGET_MS
+                    ) {
+                        animeVerified(fromAniListCast(variants.first(), variants, anilistMediaIds), fallback)
+                    } else {
+                        null
+                    }
+                    val jikanAnimeId = if (franchise.isNotBlank() &&
+                        budgetLeftMs(deadline) >= MIN_STAGE_BUDGET_MS
+                    ) {
+                        resolveJikanAnimeId(franchise)
+                    } else {
+                        null
+                    }
+                    val jikanCastUrl = if (jikanAnimeId != null &&
+                        budgetLeftMs(deadline) >= MIN_STAGE_BUDGET_MS
+                    ) {
+                        animeVerified(fromJikanCast(variants.first(), variants, jikanAnimeId), fallback)
+                    } else {
+                        null
+                    }
+                    val fandomWiki = if (franchise.isNotBlank()) FandomWikiMap.domainFor(franchise) else null
                     var found: String? = null
                     for (v in variants) {
                         if (budgetLeftMs(deadline) < MIN_STAGE_BUDGET_MS) break
-                        found = animeVerified(fromAniList(v, variants, franchise), fallback)
+                        found = anilistCastUrl
+                            ?: animeVerified(fromAniList(v, variants, franchise), fallback)
+                            ?: jikanCastUrl
                             ?: animeVerified(fromJikan(v, variants, franchise), fallback)
                             ?: animeVerified(fromKitsu(v, variants, franchise), fallback)
+                            ?: animeVerified(fromFandomInfobox(v, variants, fandomWiki), fallback)
                             ?: animeVerified(fromCommonsPhrase(v, franchise, variants), fallback)
                             ?: animeVerified(fromWikipediaPhrase(v, franchise, variants), fallback)
-                        Log.i(TAG, "anime-dbs+commons+wiki('$v') -> ${found ?: "miss"}")
+                        Log.i(TAG, "cast+dbs+wiki('$v') -> ${found ?: "miss"}")
                         if (found != null) break
                     }
                     if (found == null && budgetLeftMs(deadline) >= MIN_STAGE_BUDGET_MS) {
@@ -279,17 +347,19 @@ object GuessImageFetcher {
      * Plain-HTTP download of the image bytes. Used by the play screen to
      * pre-warm the mystery image BEFORE the countdown starts, so the timer
      * only ever runs against pixels Coil can decode instantly (passed to
-     * AsyncImage as a ByteArray model — no ImageRequest needed).
+     * AsyncImage as a ByteArray model — no ImageRequest needed), and by the
+     * next-round prefetch to pre-warm the NEXT image the same way.
      *
      * When the URL search already downloaded and pixel-verified these exact
-     * bytes, the one-slot cache is consumed instead of re-downloading.
+     * bytes (or an earlier fetcher downloaded them), the one-slot cache
+     * serves them instead of re-downloading.
      */
     fun fetchImageBytes(url: String): ByteArray? {
+        // A cached slot holding exactly this URL is a free instant answer
+        // (the URL search already verified these bytes, or an earlier
+        // fetcher — e.g. the next-round prefetch — downloaded them).
         verifiedBytes?.let { (cachedUrl, cached) ->
-            if (cachedUrl == url) {
-                verifiedBytes = null // one consumer per round; free the slot
-                return cached
-            }
+            if (cachedUrl == url) return cached
         }
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
@@ -299,7 +369,12 @@ object GuessImageFetcher {
         }
         return try {
             if (connection.responseCode !in 200..299) return null
-            connection.inputStream.use { it.readBytes() }
+            val bytes = connection.inputStream.use { it.readBytes() }
+            // Stash the result so the NEXT fetcher of the same URL (the play
+            // screen pre-warm, or a prefetch building ahead of the round)
+            // gets it without another network round-trip.
+            verifiedBytes = url to bytes
+            bytes
         } catch (e: Exception) {
             Log.w(TAG, "image byte fetch failed: $url", e)
             null
@@ -442,6 +517,95 @@ object GuessImageFetcher {
     }
 
     /**
+     * GROUND STAGE — resolve the franchise to the best AniList media row(s)
+     * so [fromAniListCast] can search INSIDE that franchise's cast. The
+     * search string is the franchise with its generic filler dropped
+     * ("Jujutsu Kaisen anime character" -> "Jujutsu Kaisen"), and each
+     * candidate title must pass the relevance gate against it — a media
+     * search for "Sword Art" can't leak "Sword Art: The Perfect Million"
+     * characters into a "Demon Slayer" round. Best TWO media rows are kept
+     * (sequel media carry cast members the first one lacks); the second is
+     * only consulted when the first's cast has no match.
+     */
+    private fun resolveAniListMediaIds(franchise: String): List<Int> {
+        val phrase = franchiseWords(franchise).joinToString(" ").ifBlank { franchise }
+        val query = "query (\$search: String) { Page(perPage: 5) { media(search: \$search, type: ANIME) " +
+            "{ id title { romaji english native } } } }"
+        val body = JSONObject()
+            .put("query", query)
+            .put("variables", JSONObject().put("search", phrase))
+        val json = postJson("https://graphql.anilist.co", body.toString()) ?: return emptyList()
+        val nodes = json.optJSONObject("data")?.optJSONObject("Page")?.optJSONArray("media")
+            ?: return emptyList()
+        val scored = mutableListOf<Triple<Int, Int, String>>() // (id, score, title)
+        for (i in 0 until nodes.length()) {
+            val node = nodes.getJSONObject(i)
+            val id = node.optInt("id", 0)
+            if (id <= 0) continue
+            val title = node.optJSONObject("title") ?: continue
+            val score = maxOf(
+                titleRelevance(title.optString("romaji", ""), phrase),
+                titleRelevance(title.optString("english", ""), phrase),
+                titleRelevance(title.optString("native", ""), phrase),
+            )
+            if (score < MIN_RELEVANCE) continue
+            scored.add(Triple(id, score, title.optString("romaji", "")))
+        }
+        scored.sortByDescending { it.second }
+        val ids = scored.map { it.first }
+        if (ids.size > 1) Log.i(TAG, "anilist: franchise '$phrase' -> media ${ids[0]} (${scored[0].third}), backup ${ids[1]}")
+        return ids.take(2)
+    }
+
+    /**
+     * GROUND STAGE — the same-name-proof core of the whole fetcher: the
+     * target is looked up INSIDE the franchise's own AniList cast list, so
+     * "Sanji" can only be Sanji OF THIS SHOW. The cast is requested 100 per
+     * page (page 2 only when page 1 had no name match — recognizable cast
+     * members rank first); the winning node's `image.large` is the official
+     * AniList portrait and its CDN is in [isTrustedAnimeCdn], so no pixel
+     * check is needed.
+     */
+    private fun fromAniListCast(variant: String, variants: List<String>, mediaIds: List<Int>): String? {
+        if (mediaIds.isEmpty()) return null
+        for (mediaId in mediaIds) {
+            var page = 1
+            while (page <= 2) {
+                val query = "query (\$id: Int, \$page: Int) { Media(id: \$id) { characters(page: \$page, perPage: 100) " +
+                    "{ nodes { id name { full } image { large medium } } pageInfo { hasNextPage } } } }"
+                val body = JSONObject()
+                    .put("query", query)
+                    .put("variables", JSONObject().put("id", mediaId).put("page", page))
+                val json = postJson("https://graphql.anilist.co", body.toString()) ?: return null
+                val collection = json.optJSONObject("data")?.optJSONObject("Media")?.optJSONObject("characters")
+                    ?: return null
+                val nodes = collection.optJSONArray("nodes") ?: return null
+                var bestUrl: String? = null
+                var bestScore = 0
+                for (i in 0 until nodes.length()) {
+                    val node = nodes.getJSONObject(i)
+                    val name = node.optJSONObject("name")?.optString("full", "") ?: ""
+                    val score = titleRelevanceAny(name, variants)
+                    if (score < MIN_RELEVANCE || score < bestScore) continue
+                    val img = node.optJSONObject("image") ?: continue
+                    val url = img.optString("large", "").ifBlank { img.optString("medium", "") }
+                    if (!isUsableImage(url)) continue
+                    bestScore = score
+                    bestUrl = url
+                }
+                if (bestUrl != null) {
+                    Log.i(TAG, "anilist-cast: '$variant' found in media $mediaId page $page")
+                    return bestUrl
+                }
+                val hasNext = collection.optJSONObject("pageInfo")?.optBoolean("hasNextPage", false) ?: false
+                if (nodes.length() < 100 || !hasNext) break
+                page++
+            }
+        }
+        return null
+    }
+
+    /**
      * AniList media search: anime COVER art for rounds whose target is a
      * series/film rather than a character ("guess the anime" style rounds).
      */
@@ -508,6 +672,59 @@ object GuessImageFetcher {
     }
 
     /**
+     * GROUND STAGE — resolve the franchise to the best MAL anime row (via
+     * Jikan) so [fromJikanCast] can search the franchise's own cast. Same
+     * relevance-gated title matching as [resolveAniListMedia].
+     */
+    private fun resolveJikanAnimeId(franchise: String): Int? {
+        val phrase = franchiseWords(franchise).joinToString(" ").ifBlank { franchise }
+        val json = getJson(
+            "https://api.jikan.moe/v4/anime?q=${enc(phrase)}&limit=5",
+        ) ?: return null
+        val results = json.optJSONArray("data") ?: return null
+        var bestId: Int? = null
+        var bestScore = 0
+        for (i in 0 until results.length()) {
+            val r = results.getJSONObject(i)
+            val score = titleRelevance(r.optString("title", ""), phrase)
+            if (score < MIN_RELEVANCE || score < bestScore) continue
+            bestScore = score
+            bestId = r.optInt("mal_id", 0)
+        }
+        return bestId?.takeIf { it > 0 }
+    }
+
+    /**
+     * GROUND STAGE — the target looked up INSIDE the franchise's own MAL
+     * cast list (official MAL portraits from cdn.myanimelist.net, CDN-
+     * trusted). MAL writes cast names "Surname, Given" — the word-based
+     * gate is order-independent, so that still scores full marks.
+     * Jikan is a MAL scraper and can be down (504s observed in research) —
+     * any failure just returns null and the ladder continues.
+     */
+    private fun fromJikanCast(variant: String, variants: List<String>, animeId: Int?): String? {
+        if (animeId == null) return null
+        val json = getJson(
+            "https://api.jikan.moe/v4/anime/$animeId/characters?limit=100",
+        ) ?: return null
+        val results = json.optJSONArray("data") ?: return null
+        var bestUrl: String? = null
+        var bestScore = 0
+        for (i in 0 until results.length()) {
+            val r = results.getJSONObject(i)
+            val score = titleRelevanceAny(r.optString("name", ""), variants)
+            if (score < MIN_RELEVANCE || score < bestScore) continue
+            val url = r.optJSONObject("images")?.optJSONObject("jpg")
+                ?.optString("image_url", "") ?: ""
+            if (!isUsableImage(url) || url.contains("questionmark")) continue
+            bestScore = score
+            bestUrl = url
+        }
+        if (bestUrl != null) Log.i(TAG, "jikan-cast: '$variant' found in anime $animeId")
+        return bestUrl
+    }
+
+    /**
      * Kitsu (keyless JSON:API): character search, official portraits from
      * media.kitsu.app (the `large` rendition is a clean 500x600 PORTRAIT —
      * ideal for the passport crop). Names come back canonical
@@ -558,6 +775,176 @@ object GuessImageFetcher {
         if (words.isEmpty()) return false
         val t = text.lowercase()
         return words.all { t.contains(it) }
+    }
+
+    /**
+     * GROUND STAGE — the FANDOM infobox (see docs/official-art-research.md
+     * §2.5/§5.4). The franchise's own wiki is looked up in [FandomWikiMap],
+     * so the page search is franchise-scoped BY CONSTRUCTION (a "Zoro"
+     * search inside the One Piece wiki can only be One Piece's Zoro) —
+     * and the infobox image on a character page is the official character-
+     * design file, the highest resolution of any source tested (686x1435
+     * and 717x2345 originals measured live in research).
+     *
+     * Three small MediaWiki-API calls (per-wiki api.php — the standard,
+     * low-volume access pattern; Fandom's ToS prohibits HTML scraping, so
+     * the app NEVER fetches wiki pages themselves):
+     *   1. list=search  -> the character's page title (relevance-gated,
+     *      "(Anime)"-suffixed pages preferred — their infobox is the anime
+     *      design)
+     *   2. parse section 0 -> the infobox template's `|image =` parameter
+     *      (works across the Character_Infobox / Character / similar
+     *      template families verified in research); fallback: the page's
+     *      image list, preferring portrait-style file names
+     *   3. imageinfo -> the ORIGINAL file URL + real dimensions (tiny
+     *      icons are dropped)
+     *
+     * Fandom URLs are NOT in [isTrustedAnimeCdn] (community upload) — the
+     * returned candidate still goes through [animeVerified]'s pixel gate
+     * like any other, so a stray real-photo in an infobox cannot win.
+     */
+    private fun fromFandomInfobox(variant: String, variants: List<String>, wiki: String?): String? {
+        if (wiki.isNullOrBlank()) return null
+        // 1. Page search inside the franchise's own wiki.
+        val titles = getJson(
+            "https://$wiki/api.php?action=query&list=search" +
+                "&srsearch=${enc(variant)}&srlimit=5&format=json",
+        ) ?: return null
+        val searchResults = titles.optJSONObject("query")?.optJSONArray("search") ?: return null
+        var bestPage: String? = null
+        var bestScore = 0
+        var bestAnimePage = false
+        for (i in 0 until searchResults.length()) {
+            val title = searchResults.getJSONObject(i).optString("title", "")
+            if (!isCleanTitle(title)) continue
+            val score = titleRelevanceAny(title, variants)
+            if (score < MIN_RELEVANCE) continue
+            val isAnimePage = title.contains("(anime)", ignoreCase = true)
+            if (score > bestScore || (score == bestScore && isAnimePage && !bestAnimePage)) {
+                bestScore = score
+                bestPage = title
+                bestAnimePage = isAnimePage
+            }
+        }
+        val page = bestPage ?: return null
+        // 2. Infobox image file: parse the `|image =` parameter out of the
+        //    section-0 wikitext (template-agnostic — see research), with the
+        //    page-image-list heuristic as the fallback for wikis whose
+        //    infobox is transcluded (One Piece style).
+        val parse = getJson(
+            "https://$wiki/api.php?action=parse&page=${enc(page)}&prop=wikitext&section=0&format=json",
+        ) ?: return null
+        val wikitext = parse.optJSONObject("parse")?.optJSONObject("wikitext")?.optString("*", "") ?: ""
+        val file = fandomInfoboxFile(wikitext, variants)
+            ?: fandomPageImageFile(wiki, page, variants) ?: return null
+        // 3. Original file URL + real dimensions (the Fandom CDN serves the
+        //    original at a /revision/latest path without a file extension —
+        //    isUsableImage whitelists wikia.nocookie.net for that reason,
+        //    and the mime + size gates here are the real check).
+        val info = getJson(
+            "https://$wiki/api.php?action=query&titles=File:${enc(file)}" +
+                "&prop=imageinfo&iiprop=url%7Csize%7Cmime&format=json",
+        ) ?: return null
+        val pages = info.optJSONObject("query")?.optJSONObject("pages") ?: return null
+        for (key in pages.keys()) {
+            val imageinfo = pages.optJSONObject(key)?.optJSONArray("imageinfo") ?: continue
+            if (imageinfo.length() == 0) continue
+            val ii = imageinfo.getJSONObject(0)
+            val url = ii.optString("url", "")
+            if (!isUsableImage(url)) continue
+            val mime = ii.optString("mime", "").lowercase()
+            if (!mime.startsWith("image/")) continue
+            val w = ii.optInt("width", 0)
+            val h = ii.optInt("height", 0)
+            if (w > 0 && h > 0 && maxOf(w, h) < 300) continue // icons, not portraits
+            Log.i(TAG, "fandom: '$variant' -> '$file' on $wiki (${w}x$h)")
+            return url
+        }
+        return null
+    }
+
+    /**
+     * Extracts the infobox image FILE NAME from section-0 wikitext.
+     *
+     * Verified shapes (research, 3 wikis / 3 template families):
+     *   `|image = \n Satoru Gojo (Anime 2).png|Anime \n Satoru Gojo (Full).png|Manga ...}}`
+     *   `|image = \n Tanjiro anime right face.png |Anime \n Tanjiro colored body 6.png|Manga ...}}`
+     * i.e. the parameter value is one "File |Label" line per medium until
+     * the next `|param` or the template's closing `}}`. An "Anime"-labeled
+     * entry wins (the anime character design, not the manga one); gifs are
+     * skipped. A filename that doesn't even contain the target's longest
+     * word (e.g. some wiki's banner file) is treated as a miss.
+     */
+    private fun fandomInfoboxFile(wikitext: String, variants: List<String>): String? {
+        val idx = Regex("""\|\s*image\s*=""").find(wikitext) ?: return null
+        val files = mutableListOf<Pair<String, String>>() // (file, label)
+        for (raw in wikitext.substring(idx.value.length).lines()) {
+            val line = raw.trim()
+            if (line.startsWith("|") || line.startsWith("}}")) break
+            if (line.isEmpty()) continue
+            val parts = line.split("|").map { it.trim() }.filter { it.isNotEmpty() }
+            if (parts.isEmpty()) continue
+            val file = parts[0].removePrefix("File:")
+            if (!file.endsWith(".png") && !file.endsWith(".jpg") && !file.endsWith(".jpeg") &&
+                !file.endsWith(".webp") && !file.endsWith(".gif")
+            ) continue
+            files.add(file to parts.getOrNull(1).orEmpty())
+        }
+        if (files.isEmpty()) return null
+        // The file must actually belong to the page's character (defends
+        // against wikis that park a series banner in the image slot): it
+        // must contain at least the target's LONGEST word — "Tanjiro anime
+        // right face.png" passes for "Tanjiro Kamado", "One Piece Logo.png"
+        // would not.
+        fun belongsToFile(name: String): Boolean {
+            val n = name.lowercase()
+            return variants.any { v ->
+                val words = targetWords(v)
+                val longest = words.maxByOrNull { w -> w.length } ?: return@any false
+                n.contains(longest)
+            }
+        }
+        val pick = files.firstOrNull { it.second.equals("Anime", ignoreCase = true) && !it.first.endsWith(".gif") }
+            ?.first
+            ?: files.firstOrNull { !it.first.endsWith(".gif") }?.first
+            ?: files.first()?.first
+            ?: return null
+        return if (belongsToFile(pick)) pick else null
+    }
+
+    /**
+     * Fallback file picker for wikis whose infobox is transcluded (the
+     * One Piece style: the image list carries "… Infobox.png" files).
+     * Walks the page's image list and takes the best portrait-style name
+     * that passes the relevance gate against the target.
+     */
+    private fun fandomPageImageFile(wiki: String, page: String, variants: List<String>): String? {
+        val json = getJson(
+            "https://$wiki/api.php?action=query&titles=${enc(page)}&prop=images&imlimit=50&format=json",
+        ) ?: return null
+        val pages = json.optJSONObject("query")?.optJSONObject("pages") ?: return null
+        var bestFile: String? = null
+        var bestScore = 0
+        for (key in pages.keys()) {
+            val images = pages.optJSONObject(key)?.optJSONArray("images") ?: continue
+            for (i in 0 until images.length()) {
+                val title = images.getJSONObject(i).optString("title", "")
+                val file = title.removePrefix("File:").removePrefix("ファイル:")
+                if (!isCleanTitle(file)) continue
+                val score = titleRelevanceAny(file, variants)
+                if (score < MIN_RELEVANCE) continue
+                val portraitish = file.contains("infobox", ignoreCase = true) ||
+                    file.contains("character image", ignoreCase = true) ||
+                    file.contains("design", ignoreCase = true) ||
+                    file.contains("anime", ignoreCase = true)
+                val effective = score + (if (portraitish) 1 else 0)
+                if (effective > bestScore) {
+                    bestScore = effective
+                    bestFile = file
+                }
+            }
+        }
+        return bestFile
     }
 
     /**
@@ -704,9 +1091,16 @@ object GuessImageFetcher {
         return u.contains(words.maxByOrNull { it.length }!!) || words.count { u.contains(it) } * 2 > words.size
     }
 
-    /** HTTPS only, and a format Coil can decode (no SVG — the svg module isn't included). */
+    /**
+     * HTTPS only, and a format Coil can decode (no SVG — the svg module
+     * isn't included). Fandom's CDN is the one exception to the extension
+     * rule: it serves originals at `.../NAME.png/revision/latest?cb=...`
+     * (extension-buried path) — those URLs already passed the Fandom
+     * stage's own mime + dimension gates, so they are trusted here.
+     */
     private fun isUsableImage(url: String): Boolean {
         if (!url.startsWith("https://")) return false
+        if (url.contains("wikia.nocookie.net")) return true
         val path = url.substringBefore('?').lowercase()
         return path.endsWith(".jpg") || path.endsWith(".jpeg") || path.endsWith(".png") ||
             path.endsWith(".webp") || path.endsWith(".gif")
