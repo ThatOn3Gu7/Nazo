@@ -21,8 +21,10 @@ import kotlinx.coroutines.withContext
  * Fetched images are often full-body art or wide scenes where the character's
  * face — the thing the player is meant to recognise — is a small fraction of
  * the frame. [toPassportPortrait] finds the face and re-crops the image to a
- * 3:4 head-and-shoulders portrait, like a passport photo, regardless of the
- * source resolution or aspect.
+ * 3:4 portrait in which the face sits in the TOP third while the neck, chest
+ * and upper body stay visible below (owner: an earlier, tighter "passport"
+ * crop zoomed in too far and showed only the face), regardless of the source
+ * resolution or aspect.
  *
  * Detection is a two-stage hybrid, entirely on-device with ZERO new
  * dependencies:
@@ -68,6 +70,31 @@ object PortraitCrop {
 
     /** Passport aspect: width / height. */
     private const val ASPECT = 3f / 4f
+
+    /**
+     * Frame height as a multiple of the detected face height — THE zoom
+     * knob. Bigger = less aggressive (more neck/chest/body visible).
+     * 3.25 puts the face at ~31% of the frame with ~52% below the chin
+     * (owner: 2.25 "still zooms in a lot — shows only the face"; see
+     * [passportFrame] for the full progression).
+     */
+    private const val FRAME_TIMES_FACE = 3.25f
+
+    /**
+     * Fraction of the frame height reserved ABOVE the top of the face
+     * (headroom). The face therefore sits in the top third and the body
+     * fills the lower two thirds.
+     *
+     * NOTE: this is NOT 0 to give the head "breathing room" — the play
+     * screen's image card (full width × 300dp, ContentScale.Crop) center-
+     * crops a 3:4 portrait and clips ~15-21% off the top AND bottom before
+     * the player ever sees it. The detected face rect already includes the
+     * hair (see the heuristic), so face.top is the top of the hair; 0.20
+     * keeps it safely inside the card's visible band across phone widths
+     * (the chin lands around 51% of the frame, so the visible band shows
+     * face + neck + chest + upper body).
+     */
+    private const val TOP_PAD_FRACTION = 0.20f
 
     /**
      * Reframes [bytes] to a 3:4 portrait around the detected face, re-encoded
@@ -286,23 +313,30 @@ object PortraitCrop {
     // ---- framing ---------------------------------------------------------
 
     /**
-     * Builds the 3:4 passport frame around [face]: the face fills a bit
-     * under half the frame height with comfortable headroom (owner feedback:
-     * the original 1.9x frame was "a bit too cropped"), clamped to the
-     * image. Null when the face is too small to trust (< 8% of image
-     * height) or the frame would be ≈ the whole image anyway (nothing to
-     * gain from a crop).
+     * Builds the 3:4 passport frame around [face], clamped to the image.
+     *
+     * The frame HEIGHT is [FRAME_TIMES_FACE] × the face height — the single
+     * knob that controls how "zoomed in" the crop reads. The face sits in
+     * the TOP third (see [TOP_PAD_FRACTION]) and the neck / chest / upper
+     * body fill the rest, so the player recognises the character from the
+     * face but still gets the body context. Progression on owner feedback:
+     *   1.9×  → "a bit too cropped"
+     *   2.25× → "still zooms in a lot — shows only the face, not the body"
+     *   3.25× → current: face ≈ 31% of the frame, ~52% below the chin.
+     *
+     * Null when the face is too small to trust (< 8% of image height) or the
+     * frame would be ≈ the whole image anyway (nothing to gain from a crop).
      */
     private fun passportFrame(face: RectF, w: Int, h: Int): Rect? {
         val faceH = face.height()
         if (faceH < h * 0.08f) return null
-        var frameH = faceH * 2.25f
+        var frameH = faceH * FRAME_TIMES_FACE
         var frameW = frameH * ASPECT
         val fit = min(1f, min(w / frameW, h / frameH))
         frameW *= fit
         frameH *= fit
         val left = (face.centerX() - frameW / 2f).coerceIn(0f, max(0f, w - frameW))
-        val top = (face.top - 0.12f * frameH).coerceIn(0f, max(0f, h - frameH))
+        val top = (face.top - TOP_PAD_FRACTION * frameH).coerceIn(0f, max(0f, h - frameH))
         val r = Rect(
             left.toInt(),
             top.toInt(),

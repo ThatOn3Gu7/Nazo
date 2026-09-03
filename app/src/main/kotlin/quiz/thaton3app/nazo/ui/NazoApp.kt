@@ -20,9 +20,11 @@ import androidx.compose.ui.platform.LocalContext
 import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.data.Question
@@ -67,6 +69,7 @@ import quiz.thaton3app.nazo.data.remote.QuizCache
 import quiz.thaton3app.nazo.ui.screens.GenerationState
 import quiz.thaton3app.nazo.modes.guessing_game.GuessApiClient
 import quiz.thaton3app.nazo.modes.guessing_game.GuessImageFetcher
+import quiz.thaton3app.nazo.modes.guessing_game.GuessPayload
 import quiz.thaton3app.nazo.modes.guessing_game.GuessPhase
 import quiz.thaton3app.nazo.modes.guessing_game.GuessRoundResult
 import quiz.thaton3app.nazo.modes.guessing_game.GuessScoring
@@ -308,6 +311,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var guessPhase by remember { mutableStateOf<GuessPhase>(GuessPhase.Idle) }
     // "blur" | "pixel" — the guessing game's image reveal style (Appearance).
     var guessRevealStyle by remember { mutableStateOf(themePrefs.guessRevealStyle) }
+    // Whether the guessing game auto-crops mystery images to the character's
+    // face + upper body (Appearance → Guessing Game).
+    var guessAutoCrop by remember { mutableStateOf(themePrefs.guessAutoCrop) }
     var guessRound by remember { mutableIntStateOf(1) }
     var guessTotalRounds by remember { mutableIntStateOf(3) }
     var guessScore by remember { mutableIntStateOf(0) }
@@ -322,6 +328,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // In-flight round generation (AI call + image fetch) — cancelled on quit
     // so a stale round can never write into a newer game's state.
     var guessJob by remember { mutableStateOf<Job?>(null) }
+    // Next-round prefetch: while round N is loading / being played, round
+    // N+1's AI answer set + mystery image are already being built in the
+    // background, so "Next Round" is usually instant (see
+    // kickGuessPrefetch / guessNext).
+    //  - [guessPrefetch]    = a finished, not-yet-consumed round
+    //  - [guessPrefetchJob] = the in-flight build; when it completes AFTER
+    //    the player tapped Next, it hands the round straight to Playing
+    var guessPrefetch by remember { mutableStateOf<PrefetchedGuessRound?>(null) }
+    var guessPrefetchJob by remember { mutableStateOf<Job?>(null) }
 
     val scope = rememberCoroutineScope()
     var generationState by remember { mutableStateOf<GenerationState>(GenerationState.Idle) }
@@ -791,6 +806,146 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
 
     // ---- Guessing Game orchestration (all UI lives in modes/guessing_game) ----
 
+    /** Cancels an in-flight next-round prefetch and drops a stored one. */
+    fun clearGuessPrefetch() {
+        guessPrefetchJob?.cancel()
+        guessPrefetchJob = null
+        guessPrefetch = null
+    }
+
+    /**
+     * Starts the next round's AI call + image fetch in the background while
+     * the current round is in play. No visible UI changes when it runs —
+     * the payoff shows up in [guessNext]:
+     *
+     *  - player still in round N when it finishes  → stashed in
+     *    [guessPrefetch]; "Next Round" skips the preparing screen entirely
+     *  - player ALREADY tapped Next when it finishes → handed straight to
+     *    [GuessPhase.Playing] (the preparing screen was only shown briefly)
+     *  - it FAILS while the player is still in N → silent (tapping Next
+     *    regenerates on demand); visible error only when the player is
+     *    already waiting on the preparing screen.
+     *
+     * The avoid list is snapshotted at kick time — round N's target was
+     * recorded by [beginGuessRoundJob] before this is called, so the
+     * prefetched round never repeats it.
+     */
+    fun kickGuessPrefetch(startedRound: Int) {
+        if (startedRound >= guessTotalRounds) return // last round — nothing to build
+        if (guessPrefetchJob != null || guessPrefetch != null) return // already in flight / done
+        if (isOfflineMode) return
+        // Silent provider lookup — a missing key here must NEVER disturb the
+        // round the player is currently playing.
+        val provider = apiKeyStore.getSelectedProvider() ?: apiKeyStore.getActiveProvider() ?: return
+        val key = apiKeyStore.getKey(provider) ?: return
+        val model = apiKeyStore.getModel(provider) ?: return
+        if (key.isBlank() || model.isBlank()) return
+        val avoid = SessionMemory.guessAvoidList()
+        val targetRound = startedRound + 1
+        guessPrefetchJob = scope.launch {
+            // Stays "in flight" until the round is FULLY built (AI + image),
+            // so that:
+            //  - a "Next" tap during this window doesn't double-generate
+            //    the same round (see guessNext's in-flight branch), and
+            //  - quitting the game can cancel the work (clearGuessPrefetch).
+            // generateGuessRound never throws (runCatching) — Result is the
+            // only outcome; a cancellation ends the job, and the CANCELLER
+            // (clearGuessPrefetch) owns the handle in that case.
+            val result = GuessApiClient.generateGuessRound(
+                provider, key, model, guessTopic, guessDifficulty, avoid,
+            )
+            var chainNext = false
+            if (result.isSuccess) {
+                val payload = result.getOrThrow()
+                // Pre-fetch the image BYTES as well: the one-slot cache in
+                // GuessImageFetcher then serves them to the play screen the
+                // instant the round is handed over — no second network
+                // round-trip before the countdown can start.
+                // (fetchImageBytes is a BLOCKING plain-HTTP call — run it on
+                // IO; fetchImageUrl is suspend and hops to IO itself.)
+                val url = GuessImageFetcher.fetchImageUrl(
+                    payload.targetEntity, payload.aliases, payload.imageQuery,
+                    topic = guessTopic,
+                )
+                if (url != null) withContext(Dispatchers.IO) { GuessImageFetcher.fetchImageBytes(url) }
+                // Record for the avoid list of any FUTURE round (this
+                // prefetch's own list was snapshotted before it ran).
+                SessionMemory.recordGuessTarget(payload.displayAnswer())
+                payload.aliases.forEach { SessionMemory.recordGuessTarget(it) }
+                if (guessRound == targetRound) {
+                    // Player already tapped Next — the preparing screen is
+                    // showing; hand the finished round over directly.
+                    guessRoundResult = null
+                    guessPhase = GuessPhase.Playing(payload, url)
+                    // Keep the chain alive: this round was built by the
+                    // prefetch, not beginGuessRoundJob, so kick ITS next
+                    // round — AFTER the handle is cleared below, so the new
+                    // job's handle survives.
+                    chainNext = true
+                } else {
+                    // Still playing the previous round — stash for the
+                    // instant "Next Round".
+                    guessPrefetch = PrefetchedGuessRound(targetRound, payload, url)
+                }
+            } else {
+                if (guessRound == targetRound) {
+                    // Player already tapped Next and is waiting on the
+                    // preparing screen — surface the error so its
+                    // "Try again" path works.
+                    guessPhase = GuessPhase.Error(result.exceptionOrNull()?.message ?: "Something went wrong.", isOffline = false)
+                }
+                // Otherwise silent: the player is still in round N, and
+                // tapping Next regenerates N+1 on demand.
+            }
+            guessPrefetchJob = null
+            if (chainNext) kickGuessPrefetch(targetRound)
+        }
+    }
+
+    /**
+     * The round job: AI answer set, then mystery image, then Playing.
+     * Kicks the NEXT round's background build as soon as the current round's
+     * payload exists (before its image fetch) — see [kickGuessPrefetch].
+     */
+    fun beginGuessRoundJob(provider: String, key: String, model: String) {
+        guessRoundResult = null
+        guessPhase = GuessPhase.Preparing(guessRound)
+        val startedRound = guessRound
+        guessJob?.cancel()
+        guessJob = scope.launch {
+            GuessApiClient.generateGuessRound(
+                provider, key, model, guessTopic, guessDifficulty, SessionMemory.guessAvoidList(),
+            )
+                .onSuccess { payload ->
+                    // A cancelled / stale job (quit, or a newer round started)
+                    // must not write into a different round's state.
+                    if (guessRound != startedRound) return@onSuccess
+                    // Teach ALL later rounds this session (any game) not to
+                    // repeat this round's target or its aliases — BEFORE the
+                    // next-round prefetch snapshots its avoid list.
+                    SessionMemory.recordGuessTarget(payload.displayAnswer())
+                    payload.aliases.forEach { SessionMemory.recordGuessTarget(it) }
+                    // Next-round prefetch: while the image below loads — and
+                    // then while the player plays — build round N+1 in the
+                    // background so "Next Round" is usually instant.
+                    kickGuessPrefetch(startedRound)
+                    // Image URL is best-effort: null just means the play screen
+                    // shows its drawn placeholder instead of a fetched image.
+                    val url = GuessImageFetcher.fetchImageUrl(
+                        payload.targetEntity, payload.aliases, payload.imageQuery,
+                        topic = guessTopic,
+                    )
+                    if (guessRound != startedRound) return@onSuccess
+                    guessPhase = GuessPhase.Playing(payload, url)
+                }
+                .onFailure { e ->
+                    if (guessRound != startedRound) return@onFailure
+                    val msg = e.message ?: "Something went wrong."
+                    guessPhase = GuessPhase.Error(msg, isOffline = false)
+                }
+        }
+    }
+
     fun prepareGuessRound() {
         if (isOfflineMode) {
             guessPhase = GuessPhase.Error(
@@ -809,36 +964,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             )
             return
         }
-        guessRoundResult = null
-        guessPhase = GuessPhase.Preparing(guessRound)
-        val startedRound = guessRound
-        guessJob?.cancel()
-        guessJob = scope.launch {
-            GuessApiClient.generateGuessRound(
-                provider, key, model, guessTopic, guessDifficulty, SessionMemory.guessAvoidList(),
-            )
-                .onSuccess { payload ->
-                    // A cancelled / stale job (quit, or a newer round started)
-                    // must not write into a different round's state.
-                    if (guessRound != startedRound) return@onSuccess
-                    // Image URL is best-effort: null just means the play screen
-                    // shows its drawn placeholder instead of a fetched image.
-                    val url = GuessImageFetcher.fetchImageUrl(
-                        payload.targetEntity, payload.aliases, payload.imageQuery,
-                        topic = guessTopic,
-                    )
-                    // Teach ALL later rounds this session (any game) not to
-                    // repeat this round's target or its aliases.
-                    SessionMemory.recordGuessTarget(payload.displayAnswer())
-                    payload.aliases.forEach { SessionMemory.recordGuessTarget(it) }
-                    guessPhase = GuessPhase.Playing(payload, url)
-                }
-                .onFailure { e ->
-                    if (guessRound != startedRound) return@onFailure
-                    val msg = e.message ?: "Something went wrong."
-                    guessPhase = GuessPhase.Error(msg, isOffline = false)
-                }
-        }
+        // A retry / fresh start invalidates any in-flight or stored prefetch
+        // of the (now stale) next round.
+        clearGuessPrefetch()
+        beginGuessRoundJob(provider, key, model)
     }
 
     fun startGuessing(topic: String, difficulty: String, rounds: Int) {
@@ -885,6 +1014,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         // on; the game ends once the last round is finished.
         val finished = last.round >= guessTotalRounds
         if (finished) {
+            // Game over — drop any lingering prefetch state (defensive: the
+            // last round never kicks one, but a stale job must not outlive
+            // the game).
+            clearGuessPrefetch()
             // Game complete — fold the result into the shared stats, exactly
             // like a finished quiz (level/XP, streak, difficulty, topics).
             val finishedDifficulty = guessDifficulty
@@ -904,7 +1037,30 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             replace(Screen.GuessingResults)
         } else {
             guessRound++
-            prepareGuessRound()
+            guessRoundResult = null
+            val prebuilt = guessPrefetch
+            guessPrefetch = null
+            if (prebuilt != null && prebuilt.round == guessRound) {
+                // The background job already built this round while the
+                // player was playing the last one — straight into the game,
+                // no preparing screen.
+                guessPhase = GuessPhase.Playing(prebuilt.payload, prebuilt.url)
+                // Keep the prefetch chain alive for the round AFTER this one
+                // (guarded: skips on the last round / a missing provider /
+                // an existing in-flight build).
+                kickGuessPrefetch(guessRound)
+            } else if (guessPrefetchJob != null) {
+                // A prefetch is already producing EXACTLY this round — it
+                // will set Playing (or Error) the moment it finishes. Do NOT
+                // start a second generation job (double API cost for the
+                // same round); the preparing screen shows meanwhile, which
+                // is shorter than a cold start because the work is underway.
+                guessPhase = GuessPhase.Preparing(guessRound)
+            } else {
+                // No prefetch in flight (skipped — provider not configured,
+                // last-round guard, or a failed build) — generate now.
+                prepareGuessRound()
+            }
         }
     }
 
@@ -1056,6 +1212,11 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             guessRevealStyle = it
                             themePrefs.guessRevealStyle = it
                         },
+                        guessAutoCrop = guessAutoCrop,
+                        onGuessAutoCropChange = {
+                            guessAutoCrop = it
+                            themePrefs.guessAutoCrop = it
+                        },
                         backgroundStyle = backgroundStyle,
                         onBackgroundStyleChange = {
                             backgroundStyle = it
@@ -1185,10 +1346,12 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         phase = guessPhase,
                         roundResult = guessRoundResult,
                         revealStyle = guessRevealStyle,
+                        autoCrop = guessAutoCrop,
                         onRetryRound = { prepareGuessRound() },
                         onOpenSettings = { navigate(Screen.Settings) },
                         onQuit = {
                             guessJob?.cancel()
+                            clearGuessPrefetch()
                             guessPhase = GuessPhase.Idle
                             goHome()
                         },
@@ -1351,3 +1514,16 @@ private fun formatElapsed(startedAt: Long): String {
 }
 
 
+
+/**
+ * A fully built guessing round produced by the next-round prefetch (the
+ * background job that runs while the previous round is in play): the AI
+ * payload plus its resolved image URL, ready to hand straight to
+ * [GuessPhase.Playing] the moment the player taps "Next Round" — or
+ * immediately, when the prefetch finishes right after the tap.
+ */
+private data class PrefetchedGuessRound(
+    val round: Int,
+    val payload: GuessPayload,
+    val url: String?,
+)

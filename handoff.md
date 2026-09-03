@@ -20,6 +20,46 @@ Conventions:
 
 ---
 
+## [2026-09-03 15:30] docs: research report — how to guarantee official character art (owner request)
+
+- Owner asked how the guessing game can get 100% official high-res art every
+  round (and how competitor apps do it). Full research in
+  `docs/official-art-research.md` — every source tested live on 2026-09-03
+  (AniList/MAL/Jikan/Kitsu/Fandom/AniDB/AniDB/Wikidata/Anime-Planet) or
+  verified against official docs; raw evidence in §8.
+- Key findings: (1) no API serves *licensed* art — every store app uses
+  curated DB rows (AniList/MAL/Kitsu/Fandom infoboxes) whose portrait IS
+  official studio art; (2) apps that show official art every round do
+  **ID-grounded retrieval** (AI picks from a known character list, art
+  fetched by ID — no free-text image search); (3) live proof of failure
+  modes: Jikan 504'd 3× (MAL upstream), Kitsu name-filter returned 2,012
+  "Satoru" hits for "Gojo Satoru" with the first image null, Fandom wiki
+  slugs are unpredictable (demon-slayer.fandom.com is dead,
+  kimetsu-no-yaiba.fandom.com works); (4) Fandom infobox images are the
+  highest-res official art measured (Luffy 686×1435, Gojo 717×2345) and
+  parseable via the `|image =` template param across 3 template families;
+  (5) AniList is in a documented degraded state (30 req/min vs 90) and is
+  not accepting rate-limit raises; (6) Wikidata has cross-DB character IDs
+  (Gojo: AniList 127691 / MAL 164471 / Fandom jujutsu-kaisen:Satoru_Gojo)
+  but NO Commons images for anime characters.
+- Recommended build (spec in report §5): local character index built by CI
+  (AniList characters FAVOURITES_DESC, perPage 100), LLM prompt gains
+  `anilist_character_id` (validated against the index), round art from
+  `Character(id:)` (1 call), cast route for same-name disambiguation, new
+  Fandom stage (franchise→wiki map + 3-call infobox recipe), existing
+  ladder stays as fallback, optional top-1–5k offline art pack.
+- No app code touched — research only.
+- How to test it live: nothing to tap — open `docs/official-art-research.md`
+  in the repo. To re-verify the live claims: hit
+  `https://api.jikan.moe/v4/top/anime?limit=1` (watch for 504s),
+  `https://kitsu.io/api/edge/characters?filter%5Bname%5D=Gojo%20Satoru&page%5Blimit%5D=2`
+  (expect "Satoru" hits, count 2012), and
+  `https://jujutsu-kaisen.fandom.com/api.php?action=parse&page=Satoru%20Gojo&prop=wikitext&section=0&format=json`
+  (expect `{{Character_Infobox |image = Satoru Gojo (Anime 2).png|Anime`).
+- Files: docs/official-art-research.md, handoff.md.
+
+---
+
 ## [2026-09-03 03:30] fix: share-card layout overflow; README screenshot grid mapped to owner's shots
 
 - Share card (`ShareResultCard.kt`): the card rect had a hardcoded bottom
@@ -3605,3 +3645,186 @@ covered by `BUG_AUDIT.md` + this log).
 - NEW root-level `PR-assemble.yml.draft` for the owner to paste into .github/workflows/PR-assemble.yml (agent cannot push workflow files): triggers ONLY on push to arena/** (drops master/testBranch pushes and ALL pull_request triggers); workflow_dispatch kept as manual-only escape hatch; failure→PR-comment step REWRITTEN to look up the open PR by branch name (`gh pr list --head $GITHUB_REF_NAME`) since push events carry no PR context — this preserves the agent's CI-error readback loop (`gh api .../issues/N/comments`). Owner deletes the draft after applying.
 - This closes the long-standing owner-side loose end (PR-only triggers). Remaining owner-side item: release-check.yml.draft regenerate if ever wanted.
 - NOTE for next session: after owner merges + tags v6.0, new sessions branch from post-merge master. This session ends at the merge.
+
+## [2026-09-03 17:35] feat+perf: official-art-first image pipeline and next-round background prefetch (owner request)
+
+Implements the two owner-approved follow-ups to the official-art research
+(`docs/official-art-research.md`): "always find the official artwork first,
+with many fallbacks after" and "pre-fetch the next round in the background
+while the player is playing."
+
+**1. Official art first (`GuessImageFetcher.kt` + new `FandomWikiMap.kt`)**
+- New GROUND stages run before every existing stage and are franchise-
+  anchored (same-name-proof): the franchise is resolved ONCE per round,
+  inside the 20 s budget, into each database's media row (AniList media
+  search, top-2 relevance-gated rows; Jikan `/anime?q=` top-1), then the
+  target is looked up INSIDE that franchise's own cast list — AniList
+  `Media(id){characters(page:1..2, perPage:100)}`, Jikan
+  `/anime/{id}/characters?limit=100`. Both return CDN-trusted official
+  portraits; the cast lookups are variant-independent, so each runs once
+  (not per name variant) while keeping its ladder position.
+- New Fandom infobox stage: `FandomWikiMap` (~100 curated franchise →
+  wiki-domain entries; slugs are unpredictable, verified live in research)
+  scopes the page search to the franchise's own wiki, then section-0
+  wikitext is parsed for the infobox `|image =` template parameter (3
+  template families verified; "Anime"-labeled entry preferred, longest-
+  word filename gate), with the page image-list as fallback (portrait-style
+  heuristic). The original file URL + real dimensions come from
+  `imageinfo` (mime `image/*` + max dimension ≥ 300 gates).
+  `isUsableImage` whitelists `static.wikia.nocookie.net` (Fandom serves
+  originals at `/revision/latest` with no extension); Fandom is NOT in the
+  trusted-CDN set, so the AnimeImageGate pixel check still applies.
+- Existing ladder is demoted to fallback, behavior unchanged: AniList
+  search → Jikan search → Kitsu → Fandom → Commons → Wikipedia → series
+  cover → Openverse → DuckDuckGo; the 20 s budget, the relevance gates,
+  the junk-title filter and the rejected-but-relevant fallback ladder all
+  work exactly as before.
+- `fetchImageBytes` now keeps a non-consuming last-value one-slot cache
+  (previously: consumed on hit, never stored) so prefetch pre-warmed bytes
+  are served instantly and the round's image is never downloaded twice.
+
+**2. Background prefetch of the next round (`NazoApp.kt`)**
+- New state: `guessPrefetch` (finished, not-yet-consumed round) +
+  `guessPrefetchJob` (in-flight build). `prepareGuessRound` now validates,
+  clears stale prefetch state and delegates to the extracted
+  `beginGuessRoundJob`, which kicks `kickGuessPrefetch` as soon as the
+  current round's AI payload exists (BEFORE its image fetch) — the avoid
+  list is snapshotted after the current target is recorded, so a
+  prefetched round can never repeat it.
+- The prefetch job = `generateGuessRound` + `fetchImageUrl` +
+  `fetchImageBytes` (bytes pre-warm on `Dispatchers.IO`). It stays
+  "in flight" until fully built (AI + image), so a "Next Round" tap during
+  that window shows the preparing screen WITHOUT starting a duplicate
+  generation job. On completion: if the player already tapped Next it
+  hands the round straight to `GuessPhase.Playing`; otherwise it is stashed
+  and the next tap consumes it instantly. The chain continues in both
+  handover paths (a `chainNext` kick after the handle is cleared, plus a
+  kick inside `guessNext` on stash consumption), so rounds 2→N are all
+  pre-built while the player plays.
+- Failure handling: silent while the player is still in the current round
+  (tapping Next regenerates on demand); a visible error only when the
+  player is already waiting on the preparing screen (its "Try again" works
+  via `prepareGuessRound`).
+- Cleanup: quitting cancels the prefetch job + drops the slot; game-over
+  and fresh game starts clear it defensively. Round 1 still generates
+  normally (the owner-specified first-round behavior); the last round is
+  never pre-fetched.
+
+Files: `app/src/main/kotlin/quiz/thaton3app/nazo/modes/guessing_game/GuessImageFetcher.kt`,
+`app/src/main/kotlin/quiz/thaton3app/nazo/modes/guessing_game/FandomWikiMap.kt` (new),
+`app/src/main/kotlin/quiz/thaton3app/nazo/ui/NazoApp.kt`,
+`app/src/main/kotlin/quiz/thaton3app/nazo/ui/components/WhatsNew.kt` (v8
+entries), `app/build.gradle.kts` (version bump — separate commit).
+
+Test (debug APK, device): play a 5-round Guessing Game with a specific
+franchise topic (e.g. "One Piece"). Logcat filter `NazoGuessImage`:
+- expect `anilist: franchise '...' -> media N (...)` followed by
+  `anilist-cast: '...' found in media N page 1` — or `jikan-cast:` /
+  `fandom: '...' -> '...' on ...wiki...` when an earlier stage misses — and
+  the chosen URL on anilist.co / cdn.myanimelist.net /
+  static.wikia.nocookie.net (official art, not web search);
+- shortly after round 1's payload arrives (before its image loads), the
+  round-2 AI call + image fetch start in the background;
+- tapping "Next Round" goes straight into the timer with NO preparing
+  screen for rounds 2–4; the final round (5) is never pre-fetched;
+- quitting mid-game produces no further network activity
+  (`clearGuessPrefetch`), and a broken provider key still surfaces the
+  usual retry-able error.
+  NOTE (added later same day): the "release: bump to 8.0" commit was
+  REVERTED per the owner — releases happen only every ~20-30 commits, and
+  v8 is not ready yet. Version is back to 7.0 (versionCode 7); see the
+  "Release cadence" section in AGENTS.md. The WhatsNew CHANGELOG_ID was
+  renamed to a pre-release id ("2026-09-03-next"); the entries themselves
+  stay (the features ship with the next real release).
+
+## [2026-09-03 18:40] chore+fix: revert version to 7.0 (release cadence), soften portrait-crop zoom
+
+**Version revert + release policy (owner decision)**
+- Owner: releases happen roughly every 20-30 commits, so the per-change
+  "release: bump to vN" commit was wrong — v8 is not ready to release.
+  `app/build.gradle.kts` reverted to versionCode 7 / versionName "7.0".
+- `AGENTS.md` gained a "Release cadence (owner rule)" section: never bump
+  versionCode/versionName during feature work; bump ONLY when the owner
+  asks to prepare/ship a version (then as the last commit).
+- `WhatsNew.kt`: CHANGELOG_ID "2026-09-03-v8" → "2026-09-03-next"
+  (pre-release gate; entries kept — they describe shipped-in-branch
+  features and will ride the next real release).
+
+**Portrait crop: much less aggressive (owner feedback: "tends to zoom in a
+lot — shows only the face, not the body; we should see the neck, chest and
+body")**
+- `vision/PortraitCrop.kt` `passportFrame()`: frame height multiplier
+  2.25× face height → **3.25×** (new constant `FRAME_TIMES_FACE`). The
+  face is now ~31% of the 3:4 frame instead of 44%, leaving ~52% below the
+  chin for neck/chest/upper body. History: 1.9× ("a bit too cropped") →
+  2.25× ("still zooms in a lot") → 3.25×.
+- Top headroom 0.12 → **0.20** of frame height (new constant
+  `TOP_PAD_FRACTION`): the play-screen image card (full-width × 300dp,
+  ContentScale.Crop) center-crops the 3:4 portrait and clips ~15-21% off
+  top and bottom before display — 0.20 keeps the top of the hair (the
+  detected rect already includes the hair) safely inside the card's
+  visible band on phone widths; the chin lands at ~51% of the frame, so
+  the visible band shows face + neck + chest + upper body.
+- No behavior changes to detection (framework + anime heuristic), the
+  8% face-size gate, or the 92% "nothing to gain" guard — but note that
+  with the bigger frame the 92% guard now bails out (keeps the original)
+  whenever the face is ≥ ~30% of the image height on 3:4 art (previously
+  ~43%), i.e. more headshot-style images are shown un-cropped, which is
+  intended.
+
+Files: `app/build.gradle.kts`, `AGENTS.md`,
+`app/src/main/kotlin/quiz/thaton3app/nazo/ui/components/WhatsNew.kt`,
+`app/src/main/kotlin/quiz/thaton3app/nazo/vision/PortraitCrop.kt`.
+
+Test (debug APK, device):
+- **Crop**: play a few Guessing Game rounds with full-body character art
+  (Fandom infobox rounds, e.g. "One Piece" / "Jujutsu Kaisen" topics). The
+  mystery card should now show the face in the top third WITH visible
+  neck, chest and upper body below — no more tight head-only framing.
+  Headshot-style rounds (large face) may show the original image
+  un-cropped (intended). Logcat `NazoPortraitCrop` "cropped to passport
+  portrait WxH" for a sanity check of frame sizes.
+- **Version**: Settings → About (or app info) should still read 7.0.
+  The "What's new" sheet (fresh install of the debug APK) shows the two
+  v8-feature entries under the pre-release id.
+
+## [2026-09-03 20:15] feat(settings): user-toggleable auto-crop for guessing mystery images
+
+Owner: the face crop should be a user setting, not fixed behaviour
+("much more efficient and user friendly"). Default stays ON (current
+behaviour), off = original image as fetched.
+
+- `data/settings/ThemePreferences.kt`: new `guessAutoCrop` Boolean
+  (key `guess_auto_crop`, default `true`).
+- `ui/NazoApp.kt`: state `guessAutoCrop`, wired to
+  `GuessingPlayScreen(autoCrop = ...)` and
+  `AppearanceScreen(guessAutoCrop = ..., onGuessAutoCropChange = ...)`.
+- `modes/guessing_game/GuessingPlayScreen.kt`: new
+  `autoCrop: Boolean = true` param; the round-start `LaunchedEffect`
+  only runs `PortraitCrop.toPassportPortrait` when enabled, otherwise
+  the fetched bytes are used as-is. Pixel-level pre-scaling and the
+  reveal pipeline are unchanged (they work on whatever bytes won).
+- `ui/screens/AppearanceScreen.kt`: "GUESSING REVEAL" section renamed to
+  "GUESSING GAME"; new `LayoutToggleRow` under the blur/pixelate rows:
+  "Auto-crop mystery images" — "Reframe each round's image on the
+  character's face and upper body. Off shows the original".
+- `WhatsNew.kt`: new "Crop, your way" entry (top of list);
+  CHANGELOG_ID "2026-09-03-next" → "2026-09-03-next2" so updating
+  devices re-see the sheet.
+
+Files: `app/src/main/kotlin/quiz/thaton3app/nazo/data/settings/ThemePreferences.kt`,
+`app/src/main/kotlin/quiz/thaton3app/nazo/ui/NazoApp.kt`,
+`app/src/main/kotlin/quiz/thaton3app/nazo/modes/guessing_game/GuessingPlayScreen.kt`,
+`app/src/main/kotlin/quiz/thaton3app/nazo/ui/screens/AppearanceScreen.kt`,
+`app/src/main/kotlin/quiz/thaton3app/nazo/ui/components/WhatsNew.kt`,
+`handoff.md`.
+
+Test (debug APK):
+- Settings → Appearance → GUESSING GAME section: new switch
+  "Auto-crop mystery images", ON by default.
+- ON (default): exactly as before — image framed on face + upper body.
+- OFF: the fetched image shows untouched (full original, center-cropped
+  to the card box).
+- Persists across restarts (SharedPreferences `nazo_theme`, key
+  `guess_auto_crop`); mid-game switching takes effect from the next
+  round (flag is read at round start).

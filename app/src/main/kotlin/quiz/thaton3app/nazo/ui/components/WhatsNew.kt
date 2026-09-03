@@ -44,12 +44,39 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 // mark the current id as seen silently — a brand-new user needs no diff.
 // ---------------------------------------------------------------------------
 
-/** Bump this whenever CHANGELOG below gains entries the user should see. */
-const val CHANGELOG_ID = "2026-09-03-v7"
+/**
+ * Bump this whenever CHANGELOG below gains entries the user should see.
+ * NOTE: the id is a unique gate, not the release version — the current id
+ * is a pre-release one (the owner releases every ~20-30 commits, see
+ * AGENTS.md); the next actual release commit will set its own id.
+ */
+const val CHANGELOG_ID = "2026-09-03-next2"
 
 data class ChangeEntry(val title: String, val points: List<String>)
 
 val CHANGELOG: List<ChangeEntry> = listOf(
+    ChangeEntry(
+        "Crop, your way",
+        listOf(
+            "The Guessing Game's auto-crop — which frames each mystery image on the character's face and upper body — is now optional",
+            "Turn it off in Appearance → Guessing Game to see the full original artwork",
+        ),
+    ),
+    ChangeEntry(
+        "Instant next round",
+        listOf(
+            "While you play, the next round's answer set and mystery image load in the background",
+            "\"Next Round\" now skips the waiting screen — tap and play, no generation screen in between",
+        ),
+    ),
+    ChangeEntry(
+        "Official art, every round",
+        listOf(
+            "Guessing Game now fetches the character's official artwork from the anime's own cast lists",
+            "A new Fandom-wiki stage digs out the official character-design files — the highest-resolution art of any source",
+            "Cosplay photos and fan art still can't sneak through — every image is checked before it's shown",
+        ),
+    ),
     ChangeEntry(
         "New game modes",
         listOf(

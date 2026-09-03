@@ -135,6 +135,9 @@ fun GuessingPlayScreen(
     phase: GuessPhase,
     roundResult: GuessRoundResult?,
     revealStyle: String = "pixel",
+    // Appearance → Guessing Game: when off, skip the on-device face crop and
+    // show the image exactly as fetched.
+    autoCrop: Boolean = true,
     onRetryRound: () -> Unit,
     onOpenSettings: () -> Unit,
     onQuit: () -> Unit,
@@ -212,12 +215,13 @@ fun GuessingPlayScreen(
             }.getOrNull()
         }
         imageFetchFailed = bytes == null
-        // Passport-style reframe (vision/PortraitCrop): find the character's
-        // face on-device and crop to a 3:4 head-and-shoulders portrait, so the
-        // player guesses from a FACE instead of a distant full-body shot.
-        // Returns the ORIGINAL bytes whenever no face is found with confidence
-        // — a round can never look worse than before this step existed.
-        val displayBytes = bytes?.let { PortraitCrop.toPassportPortrait(it) }
+        // Passport-style reframe (vision/PortraitCrop), only when the player
+        // has it enabled (Appearance → Guessing Game): find the character's
+        // face on-device and crop to a 3:4 portrait with the face in the top
+        // third and the neck/chest/upper body below. Returns the ORIGINAL
+        // bytes whenever no face is found with confidence — a round can never
+        // look worse than before this step existed.
+        val displayBytes = if (autoCrop) bytes?.let { PortraitCrop.toPassportPortrait(it) } else bytes
         fetchedImage = displayBytes
         // For the pixelated reveal, pre-scale one bitmap per pixel level so
         // the un-pixelating is a cheap draw per frame. A fetch or decode
