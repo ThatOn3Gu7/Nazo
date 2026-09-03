@@ -3916,3 +3916,43 @@ Test (debug APK):
    background) → splash is green again and follows OS dark/light.
 5. Cold start matters: kill the app from recents first, otherwise you get
    a warm start with no splash.
+
+## 2026-09-03 — Starting window (pre-splash frame) follows the app icon too
+
+Follow-up to the splash work above. The previous change colored the
+`SplashScreen` API's splash, but the very first frame of a cold start still
+flashed green.
+
+**What that frame is:** the *starting window* (a.k.a. preview window). The
+system draws it from the launched component's **manifest theme before the app
+process is forked**. No Kotlin can touch it — `onCreate` runs after it's
+already on screen. `setTheme()` was therefore always too late for this frame.
+
+**Fix:** `<activity-alias>` can't declare `android:theme`, but an `<activity>`
+can. So each custom icon is now a real launcher activity instead of an alias:
+
+- `LauncherActivities.kt` (new): `LauncherSakura/Indigo/Bronze/Midnight/Ocean`,
+  trivial subclasses of `MainActivity` adding no behaviour.
+- `MainActivity` is now `open`.
+- `AndroidManifest.xml`: those five `<activity-alias>` entries became
+  `<activity>` entries, each with `android:theme="@style/Theme.Nazo.Splash.*"`.
+  They keep the LAUNCHER filter, the shortcuts meta-data, and gain an
+  ACTION_DAILY filter. `android:launchMode="singleTask"` on all launcher
+  components (incl. MainActivity) so the icon entry and the Daily shortcut
+  can't stack up two task entries.
+- The themed green pair stay as aliases — they intentionally share
+  MainActivity's day/night-aware `Theme.Nazo.Splash`.
+- `MainActivity.applyIconSplashTheme()` is retained as the fallback for entry
+  points that target MainActivity directly (the Daily shortcut).
+
+Test (debug APK):
+1. Appearance → APP ICON → OFF "Match icon to system theme" → **Sakura** →
+   Apply & close. Reinstall/relaunch once so the new component is registered.
+2. Kill from recents, then launch from the home screen and watch the FIRST
+   frame: it is pink immediately — no green flash before the 謎 zoom-through.
+   Previously: green frame → pink splash → pink intro.
+3. **Midnight** is the clearest test (near-black vs green is unmistakable).
+4. Long-press the icon → Daily Challenge shortcut: also pink (via the
+   code-path fallback), and it reuses the same task rather than opening a
+   second Nazo entry in recents.
+5. Re-enable "Match icon to system theme" → back to green, OS-theme aware.

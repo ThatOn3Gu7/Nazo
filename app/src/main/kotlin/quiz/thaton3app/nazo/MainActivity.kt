@@ -12,12 +12,14 @@ import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.LauncherIconSwitcher
 import quiz.thaton3app.nazo.ui.NazoApp
 
-class MainActivity : ComponentActivity() {
+open class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        // The splash theme must be swapped BEFORE installSplashScreen(), which reads
-        // the current theme's windowSplashScreen* attributes. activity-alias cannot
-        // carry android:theme (the starting window always uses the target activity's
-        // theme), so the per-icon splash is applied here from the saved preference.
+        // Fallback for launches that DON'T come from a per-icon launcher activity
+        // (e.g. the Daily Challenge shortcut, which targets MainActivity directly):
+        // re-theme so the splash still matches the chosen icon. The starting window
+        // itself is already correct whenever a Launcher* entry was tapped, since
+        // that component carries the theme in the manifest. Must run before
+        // installSplashScreen(), which reads windowSplashScreen* off the theme.
         applyIconSplashTheme()
         // MUST be the first statement after that (before super.onCreate) so the system
         // splash window is installed and handed off before any content is drawn.
@@ -33,7 +35,12 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Re-themes the window to the splash variant matching the user's chosen app
-     * icon, so the cold-start splash is the same color as the launcher tile.
+     * icon, so the post-process-start splash is the same color as the launcher tile.
+     *
+     * Note this canNOT affect the *starting window* (the frame the system draws
+     * before the process exists) — that comes from the launched component's
+     * manifest theme, which is why each icon has its own Launcher* activity.
+     * This only covers non-icon entry points like the launcher shortcut.
      *
      * Only applies when the icon is NOT following the OS theme — the classic green
      * pair keeps `Theme.Nazo.Splash`, whose background is already day/night aware.

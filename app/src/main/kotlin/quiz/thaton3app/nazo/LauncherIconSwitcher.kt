@@ -9,9 +9,11 @@ import androidx.annotation.StyleRes
 /**
  * One selectable launcher icon.
  *
- * [alias] is the activity-alias suffix declared in AndroidManifest.xml (".LauncherX").
- * Exactly ONE alias is ever enabled at a time; the real MainActivity is never
- * disabled, so the app always stays launchable.
+ * [alias] is the launcher component's class name in AndroidManifest.xml
+ * (".LauncherX"). The themed green pair are `<activity-alias>` entries; the custom
+ * variants are real [MainActivity] subclasses (see LauncherActivities.kt) so they
+ * can each declare their own splash theme. Exactly ONE is ever enabled at a time,
+ * and MainActivity itself is never disabled, so the app always stays launchable.
  */
 data class AppIconOption(
     val id: String,
@@ -24,8 +26,10 @@ data class AppIconOption(
     /** True for the two aliases that back the "match system theme" mode. */
     val themed: Boolean = false,
     /**
-     * Splash theme applied at cold start so the system splash matches this icon.
-     * Null for the [themed] pair, which keeps the day/night-aware default theme.
+     * Splash theme for this icon. Declared on the variant's own launcher activity in
+     * the manifest (so it colors even the pre-process starting window) and re-applied
+     * in code for non-icon entry points like the Daily shortcut. Null for the
+     * [themed] pair, which keeps the day/night-aware default theme.
      */
     @StyleRes val splashTheme: Int? = null,
     /**
