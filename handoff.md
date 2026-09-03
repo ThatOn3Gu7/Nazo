@@ -3787,3 +3787,44 @@ Test (debug APK, device):
 - **Version**: Settings → About (or app info) should still read 7.0.
   The "What's new" sheet (fresh install of the debug APK) shows the two
   v8-feature entries under the pre-release id.
+
+## [2026-09-03 20:15] feat(settings): user-toggleable auto-crop for guessing mystery images
+
+Owner: the face crop should be a user setting, not fixed behaviour
+("much more efficient and user friendly"). Default stays ON (current
+behaviour), off = original image as fetched.
+
+- `data/settings/ThemePreferences.kt`: new `guessAutoCrop` Boolean
+  (key `guess_auto_crop`, default `true`).
+- `ui/NazoApp.kt`: state `guessAutoCrop`, wired to
+  `GuessingPlayScreen(autoCrop = ...)` and
+  `AppearanceScreen(guessAutoCrop = ..., onGuessAutoCropChange = ...)`.
+- `modes/guessing_game/GuessingPlayScreen.kt`: new
+  `autoCrop: Boolean = true` param; the round-start `LaunchedEffect`
+  only runs `PortraitCrop.toPassportPortrait` when enabled, otherwise
+  the fetched bytes are used as-is. Pixel-level pre-scaling and the
+  reveal pipeline are unchanged (they work on whatever bytes won).
+- `ui/screens/AppearanceScreen.kt`: "GUESSING REVEAL" section renamed to
+  "GUESSING GAME"; new `LayoutToggleRow` under the blur/pixelate rows:
+  "Auto-crop mystery images" — "Reframe each round's image on the
+  character's face and upper body. Off shows the original".
+- `WhatsNew.kt`: new "Crop, your way" entry (top of list);
+  CHANGELOG_ID "2026-09-03-next" → "2026-09-03-next2" so updating
+  devices re-see the sheet.
+
+Files: `app/src/main/kotlin/quiz/thaton3app/nazo/data/settings/ThemePreferences.kt`,
+`app/src/main/kotlin/quiz/thaton3app/nazo/ui/NazoApp.kt`,
+`app/src/main/kotlin/quiz/thaton3app/nazo/modes/guessing_game/GuessingPlayScreen.kt`,
+`app/src/main/kotlin/quiz/thaton3app/nazo/ui/screens/AppearanceScreen.kt`,
+`app/src/main/kotlin/quiz/thaton3app/nazo/ui/components/WhatsNew.kt`,
+`handoff.md`.
+
+Test (debug APK):
+- Settings → Appearance → GUESSING GAME section: new switch
+  "Auto-crop mystery images", ON by default.
+- ON (default): exactly as before — image framed on face + upper body.
+- OFF: the fetched image shows untouched (full original, center-cropped
+  to the card box).
+- Persists across restarts (SharedPreferences `nazo_theme`, key
+  `guess_auto_crop`); mid-game switching takes effect from the next
+  round (flag is read at round start).
