@@ -2,5 +2,5 @@
 <!-- Adaptive-icon foreground: the mark scaled into the 66dp safe zone (the outer
      ~18dp of the 108dp canvas can be masked/parallaxed away by the launcher). -->
 <inset xmlns:android="http://schemas.android.com/apk/res/android"
-    android:drawable="@drawable/ic_mark_torii"
+    android:drawable="@drawable/ic_mark_pixel"
     android:inset="16%" />

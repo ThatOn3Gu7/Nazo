@@ -4045,3 +4045,51 @@ Test (debug APK):
    through to the app — no crash. Repeat for Torii Gate and Mystery Scroll.
 3. Re-check Sakura/Midnight/Ocean and the green pair still launch normally
    (they exercise the same new code path).
+
+## 2026-09-03 — Icon concepts redone: quiz/mystery marks, not Japanese scenery
+
+**Owner feedback:** the lantern/torii/scroll didn't relate to the app. Correct —
+they were designed around "Nazo is a Japanese word" (etymology) instead of
+"Nazo is an anime quiz game" (function). The kanji 謎 works because it *means*
+mystery, not because it's Japanese decoration. Also: TORII_PASS and
+SCROLL_UNFURL were weak — they animated sliding background rectangles, not the
+mark. LANTERN_GLOW was liked because it animates the SUBJECT (swell, sway,
+flood). That's the rule for any future intro style.
+
+**Retired:** Torii Gate, Mystery Scroll (+ their themes, colors, activities).
+**Kept:** Paper Lantern (owner liked it).
+**Added**, all depicting what the app actually does:
+- `ic_mark_bubble.xml` — manga speech balloon + "?" (anime + Q&A in one shape).
+- `ic_mark_silhouette_char.xml` — the Guessing Game's blacked-out character
+  bust with a "?": literally a core game mode.
+- `ic_mark_pixel.xml` — a "?" built from an 8x8 pixel grid, dim on the left and
+  bright on the right, i.e. the pixel-reveal mechanic mid-resolve. Generated
+  from a grid definition so the reveal seam lands exactly on a pixel boundary.
+
+**Silhouette gotcha:** for bubble/mystery the "?" is a *different color inside*
+the outer shape, so the naive derive (force everything white) produced a
+featureless blob. Those two now emit a single `android:fillType="evenOdd"` path
+combining outer shape + "?" subpaths, making the "?" a HOLE. The local preview
+renderer was also patched to honour evenOdd — it had been filling every subpath
+solid, i.e. lying about what Android would draw.
+
+**New animations** (all animate the mark itself, per the lesson above):
+- `BUBBLE_POP` — overshoot/settle/overshoot comic pop, then inflates past camera.
+- `MYSTERY_REVEAL` — interrogative side-to-side shake (damped, first ~40% only),
+  a beat of stillness, then blows open.
+- `PIXEL_RESOLVE` — `snapTo` steps (deliberately NOT tweened) through mosaic
+  passes, plus a quantized block-dissolve of the ground in a deterministic
+  scatter, mirroring the Guessing Game reveal.
+
+Test (debug APK):
+1. Appearance → APP ICON: list shows Manga Bubble, Mystery Character, Pixel
+   Reveal, Paper Lantern in full color. Torii/Scroll gone.
+2. **Manga Bubble** → Apply & close → kill from recents → relaunch: green
+   starting window, balloon splash, then the bubble pops and inflates.
+3. **Mystery Character**: amber; the bust shakes, holds, then bursts open.
+4. **Pixel Reveal**: navy; the mark steps through chunky passes and the ground
+   dissolves in blocks (should look deliberately pixelated, not a smooth fade).
+5. Android 13+ themed icons: each mark tints flat and the "?" stays visible as
+   a hole (that's the evenOdd fix).
+6. If you were on Torii/Scroll, first launch moves you to Classic Green
+   (LauncherIconSwitcher.sanitize).

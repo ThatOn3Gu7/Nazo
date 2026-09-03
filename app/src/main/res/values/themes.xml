@@ -31,12 +31,16 @@
         <item name="windowSplashScreenBackground">@color/nazo_splash_background_lantern</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_mark_lantern</item>
     </style>
-    <style name="Theme.Nazo.Splash.Torii" parent="Theme.Nazo.Splash">
-        <item name="windowSplashScreenBackground">@color/nazo_splash_background_torii</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_mark_torii</item>
+    <style name="Theme.Nazo.Splash.Bubble" parent="Theme.Nazo.Splash">
+        <item name="windowSplashScreenBackground">@color/nazo_splash_background_bubble</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_mark_bubble</item>
     </style>
-    <style name="Theme.Nazo.Splash.Scroll" parent="Theme.Nazo.Splash">
-        <item name="windowSplashScreenBackground">@color/nazo_splash_background_scroll</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_mark_scroll</item>
+    <style name="Theme.Nazo.Splash.Mystery" parent="Theme.Nazo.Splash">
+        <item name="windowSplashScreenBackground">@color/nazo_splash_background_mystery</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_mark_silhouette_char</item>
+    </style>
+    <style name="Theme.Nazo.Splash.Pixel" parent="Theme.Nazo.Splash">
+        <item name="windowSplashScreenBackground">@color/nazo_splash_background_pixel</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_mark_pixel</item>
     </style>
 </resources>

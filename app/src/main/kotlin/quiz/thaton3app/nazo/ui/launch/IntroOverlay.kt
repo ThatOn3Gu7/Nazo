@@ -129,16 +129,16 @@ fun IntroOverlay(
                 }
             }
 
-            IntroStyle.TORII_PASS -> {
-                // The gate grows as if you're walking under it; the ground splits
-                // outward through the opening.
+            IntroStyle.BUBBLE_POP -> {
+                // Comic-book pop: overshoots past its resting size, settles, then
+                // inflates through the camera like a balloon filling the frame.
                 coroutineScope {
-                    launch { progress.animateTo(1f, tween(760, easing = FastOutSlowInEasing)) }
+                    launch { progress.animateTo(1f, tween(760, easing = LinearEasing)) }
                     launch {
-                        zoomScale.animateTo(
-                            targetValue = 22f,
-                            animationSpec = tween(760, easing = CubicBezierEasing(0.45f, 0f, 0.2f, 1f)),
-                        )
+                        zoomScale.animateTo(1.32f, tween(190, easing = FastOutSlowInEasing))
+                        zoomScale.animateTo(0.94f, tween(120, easing = FastOutSlowInEasing))
+                        zoomScale.animateTo(1.06f, tween(90, easing = FastOutSlowInEasing))
+                        zoomScale.animateTo(20f, tween(360, easing = WarpSpeedEasing))
                     }
                     launch {
                         delay(430)
@@ -147,21 +147,45 @@ fun IntroOverlay(
                 }
             }
 
-            IntroStyle.SCROLL_UNFURL -> {
-                // The scroll holds still while the ground unrolls vertically away
-                // from it, then the mark itself lifts off.
+            IntroStyle.MYSTERY_REVEAL -> {
+                // "Who's that character?": a quick interrogative shake, a beat of
+                // stillness, then the silhouette blows open to reveal the app.
                 coroutineScope {
-                    launch { progress.animateTo(1f, tween(780, easing = FastOutSlowInEasing)) }
+                    launch { progress.animateTo(1f, tween(880, easing = LinearEasing)) }
                     launch {
-                        delay(240)
-                        zoomScale.animateTo(14f, tween(540, easing = WarpSpeedEasing))
+                        zoomScale.animateTo(1.06f, tween(300, easing = FastOutSlowInEasing))
+                        delay(120)
+                        zoomScale.animateTo(24f, tween(420, easing = WarpSpeedEasing))
                     }
                     launch {
-                        delay(360)
-                        backgroundAlpha.animateTo(0f, tween(400))
+                        delay(560)
+                        backgroundAlpha.animateTo(0f, tween(320))
                     }
                 }
             }
+
+            IntroStyle.PIXEL_RESOLVE -> {
+                // Mirrors the Guessing Game's reveal: the mark jumps through discrete
+                // mosaic steps (no smooth tween) before resolving and zooming out.
+                coroutineScope {
+                    launch { progress.animateTo(1f, tween(820, easing = LinearEasing)) }
+                    launch {
+                        // Stepped scale-up: each hop reads as a coarser->finer pass.
+                        listOf(1.10f, 1.02f, 1.14f, 1.06f).forEach { step ->
+                            zoomScale.snapTo(step)
+                            delay(95)
+                        }
+                        zoomScale.snapTo(1f)
+                        delay(80)
+                        zoomScale.animateTo(19f, tween(380, easing = WarpSpeedEasing))
+                    }
+                    launch {
+                        delay(520)
+                        backgroundAlpha.animateTo(0f, tween(300))
+                    }
+                }
+            }
+
         }
 
         dismissed = true
@@ -192,52 +216,44 @@ fun IntroOverlay(
             // Style-specific ground carving, drawn BEFORE the mark so the mark's
             // punch-out always wins where they overlap.
             when (style) {
-                IntroStyle.TORII_PASS -> {
-                    // Two panels retreat left/right, as if passing through the gate.
-                    val half = size.width / 2f
-                    val slide = half * p
-                    // Left panel exits leftwards, right panel exits rightwards; each
-                    // stays exactly half-width so they meet cleanly at p = 0.
-                    drawRect(
-                        color = Color.Black,
-                        topLeft = Offset(-slide, 0f),
-                        size = Size(half, size.height),
-                        blendMode = BlendMode.DstOut,
-                    )
-                    drawRect(
-                        color = Color.Black,
-                        topLeft = Offset(half + slide, 0f),
-                        size = Size(half, size.height),
-                        blendMode = BlendMode.DstOut,
-                    )
-                }
-
-                IntroStyle.SCROLL_UNFURL -> {
-                    // The ground rolls away from the middle, top and bottom together.
-                    val halfH = size.height / 2f
-                    val open = halfH * p
-                    // Top half rolls up, bottom half rolls down.
-                    drawRect(
-                        color = Color.Black,
-                        topLeft = Offset(0f, -open),
-                        size = Size(size.width, halfH),
-                        blendMode = BlendMode.DstOut,
-                    )
-                    drawRect(
-                        color = Color.Black,
-                        topLeft = Offset(0f, halfH + open),
-                        size = Size(size.width, halfH),
-                        blendMode = BlendMode.DstOut,
-                    )
+                IntroStyle.PIXEL_RESOLVE -> {
+                    // Quantized "mosaic dissolve": chunky blocks drop out of the
+                    // ground in a deterministic scatter, so the reveal itself looks
+                    // pixelated rather than a smooth fade.
+                    val cols = 7
+                    val cell = size.width / cols
+                    val rows = (size.height / cell).toInt() + 1
+                    for (row in 0 until rows) {
+                        for (colIdx in 0 until cols) {
+                            // Deterministic pseudo-random threshold per cell.
+                            val h = (row * 73 + colIdx * 151) % 100 / 100f
+                            if (p > h * 0.85f) {
+                                drawRect(
+                                    color = Color.Black,
+                                    topLeft = Offset(colIdx * cell, row * cell),
+                                    size = Size(cell, cell),
+                                    blendMode = BlendMode.DstOut,
+                                )
+                            }
+                        }
+                    }
                 }
 
                 else -> Unit
             }
 
-            // Lantern sways slightly while it swells — a damped wobble, not a loop.
-            val swayX = if (style == IntroStyle.LANTERN_GLOW) {
-                sin(p * 12f) * (1f - p) * size.width * 0.012f
-            } else 0f
+            // Horizontal motion per style: the lantern sways as if hanging, the
+            // mystery character shakes side to side like an interrogation. Both damp
+            // out as the animation completes, so nothing jitters at the handoff.
+            val swayX = when (style) {
+                IntroStyle.LANTERN_GLOW -> sin(p * 12f) * (1f - p) * size.width * 0.012f
+                IntroStyle.MYSTERY_REVEAL -> {
+                    // Shake only during the first ~40%, then hold still for the reveal.
+                    val shakeWindow = (1f - (p / 0.4f)).coerceAtLeast(0f)
+                    sin(p * 46f) * shakeWindow * size.width * 0.02f
+                }
+                else -> 0f
+            }
 
             val scaledWidth = (logoBitmap.width * scale).toInt()
             val scaledHeight = (logoBitmap.height * scale).toInt()

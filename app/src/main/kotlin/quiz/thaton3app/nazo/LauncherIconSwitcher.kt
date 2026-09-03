@@ -63,10 +63,12 @@ enum class IntroStyle {
     WARP,
     /** Lantern: the mark glows brighter, sways, then the light floods the screen. */
     LANTERN_GLOW,
-    /** Torii: the gate rises and the screen wipes open through it, like walking under. */
-    TORII_PASS,
-    /** Scroll: the ground unrolls vertically away from the mark. */
-    SCROLL_UNFURL,
+    /** Speech bubble: pops in with an overshoot, then inflates past the camera. */
+    BUBBLE_POP,
+    /** Mystery character: shakes as if "who is it?", then the reveal flashes open. */
+    MYSTERY_REVEAL,
+    /** Pixel "?": snaps through coarse mosaic steps before resolving and zooming. */
+    PIXEL_RESOLVE,
 }
 
 /**
@@ -149,30 +151,43 @@ object LauncherIconSwitcher {
             previewMark = R.drawable.ic_mark_lantern,
         ),
         AppIconOption(
-            id = "torii",
-            alias = "LauncherTorii",
-            label = "Torii Gate",
-            blurb = "Illustrated vermilion gate at dusk",
-            startColor = 0xFF1E2A3A,
-            endColor = 0xFF101A28,
-            splashTheme = R.style.Theme_Nazo_Splash_Torii,
-            splashColor = 0xFF172231,
-            introMark = R.drawable.ic_mark_torii_silhouette,
-            introStyle = IntroStyle.TORII_PASS,
-            previewMark = R.drawable.ic_mark_torii,
+            id = "bubble",
+            alias = "LauncherBubble",
+            label = "Manga Bubble",
+            blurb = "Speech balloon with a question mark",
+            startColor = 0xFF1F6F4A,
+            endColor = 0xFF10402B,
+            splashTheme = R.style.Theme_Nazo_Splash_Bubble,
+            splashColor = 0xFF18563A,
+            introMark = R.drawable.ic_mark_bubble_silhouette,
+            introStyle = IntroStyle.BUBBLE_POP,
+            previewMark = R.drawable.ic_mark_bubble,
         ),
         AppIconOption(
-            id = "scroll",
-            alias = "LauncherScroll",
-            label = "Mystery Scroll",
-            blurb = "Illustrated makimono with a wax seal",
-            startColor = 0xFF3B2A16,
-            endColor = 0xFF241806,
-            splashTheme = R.style.Theme_Nazo_Splash_Scroll,
-            splashColor = 0xFF2F210E,
-            introMark = R.drawable.ic_mark_scroll_silhouette,
-            introStyle = IntroStyle.SCROLL_UNFURL,
-            previewMark = R.drawable.ic_mark_scroll,
+            id = "mystery",
+            alias = "LauncherMystery",
+            label = "Mystery Character",
+            blurb = "The Guessing Game's blacked-out silhouette",
+            startColor = 0xFFF0B429,
+            endColor = 0xFFC98A0E,
+            splashTheme = R.style.Theme_Nazo_Splash_Mystery,
+            splashColor = 0xFFDC9F1C,
+            introMark = R.drawable.ic_mark_silhouette_char_silhouette,
+            introStyle = IntroStyle.MYSTERY_REVEAL,
+            previewMark = R.drawable.ic_mark_silhouette_char,
+        ),
+        AppIconOption(
+            id = "pixel",
+            alias = "LauncherPixel",
+            label = "Pixel Reveal",
+            blurb = "Mosaic question mark resolving into focus",
+            startColor = 0xFF2C3A55,
+            endColor = 0xFF161E2E,
+            splashTheme = R.style.Theme_Nazo_Splash_Pixel,
+            splashColor = 0xFF212C42,
+            introMark = R.drawable.ic_mark_pixel_silhouette,
+            introStyle = IntroStyle.PIXEL_RESOLVE,
+            previewMark = R.drawable.ic_mark_pixel,
         ),
     )
 

@@ -50,7 +50,7 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
  * is a pre-release one (the owner releases every ~20-30 commits, see
  * AGENTS.md); the next actual release commit will set its own id.
  */
-const val CHANGELOG_ID = "2026-09-03-next5"
+const val CHANGELOG_ID = "2026-09-03-next6"
 
 data class ChangeEntry(val title: String, val points: List<String>)
 
@@ -58,9 +58,9 @@ val CHANGELOG: List<ChangeEntry> = listOf(
     ChangeEntry(
         "Illustrated app icons",
         listOf(
-            "Three hand-drawn marks join the lineup: Paper Lantern, Torii Gate and Mystery Scroll",
-            "Each one brings its own launch animation — the lantern flares, the gate opens, the scroll unrolls",
-            "The Indigo and Bronze color variants were retired to keep the list tight; if you were using one you'll be moved to Classic Green",
+            "Four hand-drawn marks: Manga Bubble, Mystery Character, Pixel Reveal and Paper Lantern",
+            "Each has its own launch animation — the bubble pops, the mystery shakes then reveals, the pixels resolve, the lantern flares",
+            "Some earlier variants were retired to keep the list tight; if you were using one you'll be moved to Classic Green",
         ),
     ),
     ChangeEntry(

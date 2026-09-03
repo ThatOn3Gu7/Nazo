@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AUTO-DERIVED from ic_mark_pixel.xml: identical geometry with every fill and
+     stroke forced to opaque white on a transparent ground. Used by the intro
+     zoom-through (BlendMode.DstOut punches this alpha out of the background)
+     and by Android 13 themed icons, both of which need a flat mask rather than
+     the full-color art. Keep in sync if the color mark changes. -->
+<!-- Pixel-reveal "?": the Guessing Game's mosaic mid-resolve. The question mark is
+     built from an 8x8 pixel grid; pixels left of the centre line are still dim
+     (unresolved) and those to the right are bright (resolved), so the mark reads as
+     a reveal in progress rather than a static checkerboard. The split is computed on
+     the grid, so the seam lands exactly on a pixel boundary.
+     Flat companion auto-derived into ic_mark_pixel_silhouette.xml. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M34,14 L54,14 L54,24 L34,24 Z M24,24 L44,24 L44,34 L24,34 Z M24,34 L44,34 L44,44 L24,44 Z M44,54 L54,54 L54,64 L44,64 Z M44,64 L54,64 L54,74 L44,74 Z M44,84 L54,84 L54,94 L44,94 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,14 L74,14 L74,24 L54,24 Z M64,24 L84,24 L84,34 L64,34 Z M64,34 L84,34 L84,44 L64,44 Z M54,44 L74,44 L74,54 L54,54 Z M54,54 L64,54 L64,64 L54,64 Z M54,64 L64,64 L64,74 L54,74 Z M54,84 L64,84 L64,94 L54,94 Z" />
+</vector>
