@@ -8,8 +8,11 @@
          gradient, so the splash reads as the same surface as the icon tile. These are
          identical in day and night because the custom icons don't theme-switch. -->
     <color name="nazo_splash_background_sakura">#FFD05A89</color>
-    <color name="nazo_splash_background_indigo">#FF4A5AB6</color>
-    <color name="nazo_splash_background_bronze">#FFAA722F</color>
     <color name="nazo_splash_background_midnight">#FF13161A</color>
     <color name="nazo_splash_background_ocean">#FF1E8C9C</color>
+
+    <!-- Illustrated-mark icons: splash ground matching each mark's icon background. -->
+    <color name="nazo_splash_background_lantern">#FF221729</color>
+    <color name="nazo_splash_background_torii">#FF172231</color>
+    <color name="nazo_splash_background_scroll">#FF2F210E</color>
 </resources>

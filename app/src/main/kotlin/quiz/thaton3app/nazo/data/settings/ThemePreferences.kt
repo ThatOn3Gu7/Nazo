@@ -30,8 +30,10 @@ class ThemePreferences(context: Context) {
         get() = prefs.getBoolean(KEY_ICON_FOLLOWS_OS, true)
         set(value) = prefs.edit().putBoolean(KEY_ICON_FOLLOWS_OS, value).apply()
 
-    /** Which app icon the user picked ("light" | "dark" | "sakura" | ...). Only
-     *  meaningful when [iconFollowsOsTheme] is false. */
+    /** Which app icon the user picked ("light" | "dark" | "sakura" | "lantern" | ...).
+     *  Only meaningful when [iconFollowsOsTheme] is false. May name a retired
+     *  variant after an update — callers should pass it through
+     *  `LauncherIconSwitcher.sanitize`. */
     var appIcon: String
         get() = prefs.getString(KEY_APP_ICON, "light") ?: "light"
         set(value) = prefs.edit().putString(KEY_APP_ICON, value).apply()

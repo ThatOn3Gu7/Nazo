@@ -551,7 +551,7 @@ fun AppearanceScreen(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Pick the icon Nazo shows on your home screen — the startup splash recolors to match it. Applying one closes the app; reopen it and the new icon is there.",
+                    text = "Pick the icon Nazo shows on your home screen. The startup splash and launch animation follow your choice. Applying one closes the app; reopen it and the new icon is there.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = NazoTextSecondary,
                 )
@@ -1406,7 +1406,9 @@ private fun AppIconPreview(
         contentAlignment = Alignment.Center,
     ) {
         androidx.compose.foundation.Image(
-            painter = painterResource(id = R.drawable.ic_launcher_foreground),
+            // Full-color art for the illustrated marks; the kanji foreground for the
+            // color-only variants. Not the silhouette — that's only for the punch-out.
+            painter = painterResource(id = option.previewMark),
             contentDescription = null,
             contentScale = ContentScale.Fit,
             alpha = alpha,

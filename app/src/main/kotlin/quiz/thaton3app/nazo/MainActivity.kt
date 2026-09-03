@@ -48,6 +48,8 @@ open class MainActivity : ComponentActivity() {
     private fun applyIconSplashTheme() {
         val prefs = ThemePreferences(this)
         if (prefs.iconFollowsOsTheme) return
+        // option() already falls back to the classic icon for a retired id, so a
+        // stale pref degrades to the default splash rather than crashing.
         LauncherIconSwitcher.option(prefs.appIcon).splashTheme?.let(::setTheme)
     }
 

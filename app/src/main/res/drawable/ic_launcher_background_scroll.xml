@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Deep, low-key ground so the full-color scroll mark stays the hero. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <gradient
         android:type="linear"
         android:angle="315"
-        android:startColor="#FFC98A3C"
-        android:endColor="#FF8C5A22" />
+        android:startColor="#FF3B2A16"
+        android:endColor="#FF241806" />
 </shape>

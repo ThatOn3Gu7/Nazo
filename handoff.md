@@ -3956,3 +3956,58 @@ Test (debug APK):
    code-path fallback), and it reuses the same task rather than opening a
    second Nazo entry in recents.
 5. Re-enable "Match icon to system theme" → back to green, OS-theme aware.
+
+## 2026-09-03 — Illustrated app icons + per-icon launch animations
+
+The icon list stops being "one wordmark in N paint jobs": three hand-authored
+illustrated marks join it, each with its own splash art and launch animation.
+Indigo and Bronze (color-only) were retired to keep the list tight.
+
+**Art** (`res/drawable/`, hand-written VectorDrawables — sharp at any density):
+- `ic_mark_lantern.xml` (chochin), `ic_mark_torii.xml` (gate), `ic_mark_scroll.xml`
+  (makimono + wax seal) — full color.
+- `ic_mark_*_silhouette.xml` — same geometry, all fills/strokes forced white on
+  transparency. **Required**, because `IntroOverlay` uses `BlendMode.DstOut`:
+  it punches the mark OUT of the ground rather than drawing it, so it needs a
+  flat alpha mask. Same reason `<monochrome>` (themed icons) points here.
+  Keep the two in sync if the art changes.
+- `ic_launcher_foreground_<id>.xml` — `<inset android:inset="16%">` wrappers so
+  each mark sits inside the adaptive icon's 66dp safe zone.
+- Backgrounds are deep/low-key gradients so the color art stays the hero.
+
+**Registry** (`LauncherIconSwitcher.kt`) — still the single source of truth:
+- `AppIconOption` gains `introMark` (silhouette, for the punch-out),
+  `previewMark` (full-color, for the Appearance list only) and `introStyle`.
+- New `IntroStyle` enum: `WARP` (original), `LANTERN_GLOW`, `TORII_PASS`,
+  `SCROLL_UNFURL`.
+- New `sanitize()`: a saved pref naming a retired variant (indigo/bronze) would
+  point at a manifest component that no longer exists, leaving the user with no
+  enabled launcher entry after the next swap. It falls back to Classic Green and
+  re-applies. Called from `NazoApp`; `MainActivity` is safe via `option()`'s
+  existing fallback.
+
+**Animations** (`ui/launch/IntroOverlay.kt`): one Canvas serves all styles; each
+animates a different subset of the shared drivers (`zoomScale`, `backgroundAlpha`,
+`progress`). Ground carving is drawn BEFORE the mark so the mark's punch-out
+always wins where they overlap.
+- LANTERN_GLOW: swells as if the flame catches (with a damped sway), then floods.
+- TORII_PASS: two ground panels slide apart through the gate opening.
+- SCROLL_UNFURL: ground rolls away vertically, then the mark lifts off.
+
+**Manifest**: Indigo/Bronze activities removed; Lantern/Torii/Scroll added, each
+a real `<activity>` (subclass in `LauncherActivities.kt`) carrying its own
+`Theme.Nazo.Splash.*` so the pre-process starting window is themed too.
+
+Test (debug APK):
+1. Appearance → APP ICON → OFF "Match icon to system theme" → sheet now shows
+   the three illustrated marks in FULL COLOR (not the kanji) alongside the
+   remaining color variants. Indigo/Bronze are gone.
+2. Pick **Torii Gate** → Apply & close. Kill from recents, relaunch: starting
+   window is deep blue, the splash shows the gate art, then the ground splits
+   apart left/right through the gate. No green at any point.
+3. **Paper Lantern**: lantern swells and sways, then light floods outward.
+4. **Mystery Scroll**: ground unrolls top/bottom away from the scroll.
+5. Android 13+: long-press home screen → Wallpaper & style → themed icons ON.
+   Each mark tints to a flat, readable silhouette (not a blob).
+6. Upgrade path: if you were on Indigo/Bronze, first launch after update moves
+   you to Classic Green with a working launcher entry.

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Torii gate at dusk. Full-color foreground mark; flat companion in
+     ic_mark_torii_silhouette.xml. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- kasagi (top curved beam) -->
+    <path
+        android:fillColor="#FFD8452F"
+        android:pathData="M22,28 C36,23 72,23 86,28 L86,34 C72,29.5 36,29.5 22,34 Z" />
+    <!-- shimaki (second beam) -->
+    <path
+        android:fillColor="#FFB93724"
+        android:pathData="M28,37 L80,37 L80,43 L28,43 Z" />
+    <!-- nuki (tie beam) -->
+    <path
+        android:fillColor="#FFB93724"
+        android:pathData="M31,52 L77,52 L77,58 L31,58 Z" />
+    <!-- gakuzuka (center post) -->
+    <path
+        android:fillColor="#FFD8452F"
+        android:pathData="M51,43 L57,43 L57,52 L51,52 Z" />
+    <!-- pillars -->
+    <path
+        android:fillColor="#FFD8452F"
+        android:pathData="M33,43 L43,43 L45,88 L35,88 Z" />
+    <path
+        android:fillColor="#FFD8452F"
+        android:pathData="M65,43 L75,43 L73,88 L63,88 Z" />
+</vector>

@@ -27,10 +27,12 @@ package quiz.thaton3app.nazo
  */
 class LauncherSakura : MainActivity()
 
-class LauncherIndigo : MainActivity()
-
-class LauncherBronze : MainActivity()
-
 class LauncherMidnight : MainActivity()
 
 class LauncherOcean : MainActivity()
+
+class LauncherLantern : MainActivity()
+
+class LauncherTorii : MainActivity()
+
+class LauncherScroll : MainActivity()

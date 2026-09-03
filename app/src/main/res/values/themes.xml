@@ -19,16 +19,24 @@
     <style name="Theme.Nazo.Splash.Sakura" parent="Theme.Nazo.Splash">
         <item name="windowSplashScreenBackground">@color/nazo_splash_background_sakura</item>
     </style>
-    <style name="Theme.Nazo.Splash.Indigo" parent="Theme.Nazo.Splash">
-        <item name="windowSplashScreenBackground">@color/nazo_splash_background_indigo</item>
-    </style>
-    <style name="Theme.Nazo.Splash.Bronze" parent="Theme.Nazo.Splash">
-        <item name="windowSplashScreenBackground">@color/nazo_splash_background_bronze</item>
-    </style>
     <style name="Theme.Nazo.Splash.Midnight" parent="Theme.Nazo.Splash">
         <item name="windowSplashScreenBackground">@color/nazo_splash_background_midnight</item>
     </style>
     <style name="Theme.Nazo.Splash.Ocean" parent="Theme.Nazo.Splash">
         <item name="windowSplashScreenBackground">@color/nazo_splash_background_ocean</item>
+    </style>
+
+    <!-- Illustrated marks: the splash shows the mark's own art, not the kanji. -->
+    <style name="Theme.Nazo.Splash.Lantern" parent="Theme.Nazo.Splash">
+        <item name="windowSplashScreenBackground">@color/nazo_splash_background_lantern</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_mark_lantern</item>
+    </style>
+    <style name="Theme.Nazo.Splash.Torii" parent="Theme.Nazo.Splash">
+        <item name="windowSplashScreenBackground">@color/nazo_splash_background_torii</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_mark_torii</item>
+    </style>
+    <style name="Theme.Nazo.Splash.Scroll" parent="Theme.Nazo.Splash">
+        <item name="windowSplashScreenBackground">@color/nazo_splash_background_scroll</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_mark_scroll</item>
     </style>
 </resources>

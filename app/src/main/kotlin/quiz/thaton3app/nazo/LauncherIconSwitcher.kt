@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import androidx.annotation.DrawableRes
 import androidx.annotation.StyleRes
 
 /**
@@ -38,7 +39,35 @@ data class AppIconOption(
      * which keeps its own light/dark greens.
      */
     val splashColor: Long? = null,
+    /**
+     * Silhouette drawable used by the intro zoom-through (BlendMode.DstOut needs a
+     * flat alpha mask, not full-color art) — defaults to the 謎 kanji foreground.
+     */
+    @DrawableRes val introMark: Int = R.drawable.ic_launcher_foreground,
+    /** Which launch animation this icon plays. See [IntroStyle]. */
+    val introStyle: IntroStyle = IntroStyle.WARP,
+    /**
+     * Full-color art shown in the Appearance picker (and nothing else). Defaults to
+     * the 謎 kanji; illustrated variants point at their color mark so the list shows
+     * what actually lands on the home screen.
+     */
+    @DrawableRes val previewMark: Int = R.drawable.ic_launcher_foreground,
 )
+
+/**
+ * Launch animation played by `IntroOverlay` after the system splash hands off.
+ * Each illustrated mark gets its own so the cold start feels specific to the icon.
+ */
+enum class IntroStyle {
+    /** Original: the mark is punched out of the ground and warps past the camera. */
+    WARP,
+    /** Lantern: the mark glows brighter, sways, then the light floods the screen. */
+    LANTERN_GLOW,
+    /** Torii: the gate rises and the screen wipes open through it, like walking under. */
+    TORII_PASS,
+    /** Scroll: the ground unrolls vertically away from the mark. */
+    SCROLL_UNFURL,
+}
 
 /**
  * Swaps which launcher activity-alias is enabled, i.e. which app icon the
@@ -87,26 +116,6 @@ object LauncherIconSwitcher {
             splashColor = 0xFFD05A89,
         ),
         AppIconOption(
-            id = "indigo",
-            alias = "LauncherIndigo",
-            label = "Indigo",
-            blurb = "Cool night-blue gradient",
-            startColor = 0xFF5C6BC0,
-            endColor = 0xFF3949AB,
-            splashTheme = R.style.Theme_Nazo_Splash_Indigo,
-            splashColor = 0xFF4A5AB6,
-        ),
-        AppIconOption(
-            id = "bronze",
-            alias = "LauncherBronze",
-            label = "Bronze",
-            blurb = "Warm metallic amber",
-            startColor = 0xFFC98A3C,
-            endColor = 0xFF8C5A22,
-            splashTheme = R.style.Theme_Nazo_Splash_Bronze,
-            splashColor = 0xFFAA722F,
-        ),
-        AppIconOption(
             id = "midnight",
             alias = "LauncherMidnight",
             label = "Midnight",
@@ -126,10 +135,64 @@ object LauncherIconSwitcher {
             splashTheme = R.style.Theme_Nazo_Splash_Ocean,
             splashColor = 0xFF1E8C9C,
         ),
+        AppIconOption(
+            id = "lantern",
+            alias = "LauncherLantern",
+            label = "Paper Lantern",
+            blurb = "Illustrated chochin glowing in the dark",
+            startColor = 0xFF2B1D2E,
+            endColor = 0xFF1A1020,
+            splashTheme = R.style.Theme_Nazo_Splash_Lantern,
+            splashColor = 0xFF221729,
+            introMark = R.drawable.ic_mark_lantern_silhouette,
+            introStyle = IntroStyle.LANTERN_GLOW,
+            previewMark = R.drawable.ic_mark_lantern,
+        ),
+        AppIconOption(
+            id = "torii",
+            alias = "LauncherTorii",
+            label = "Torii Gate",
+            blurb = "Illustrated vermilion gate at dusk",
+            startColor = 0xFF1E2A3A,
+            endColor = 0xFF101A28,
+            splashTheme = R.style.Theme_Nazo_Splash_Torii,
+            splashColor = 0xFF172231,
+            introMark = R.drawable.ic_mark_torii_silhouette,
+            introStyle = IntroStyle.TORII_PASS,
+            previewMark = R.drawable.ic_mark_torii,
+        ),
+        AppIconOption(
+            id = "scroll",
+            alias = "LauncherScroll",
+            label = "Mystery Scroll",
+            blurb = "Illustrated makimono with a wax seal",
+            startColor = 0xFF3B2A16,
+            endColor = 0xFF241806,
+            splashTheme = R.style.Theme_Nazo_Splash_Scroll,
+            splashColor = 0xFF2F210E,
+            introMark = R.drawable.ic_mark_scroll_silhouette,
+            introStyle = IntroStyle.SCROLL_UNFURL,
+            previewMark = R.drawable.ic_mark_scroll,
+        ),
     )
 
     fun option(id: String): AppIconOption =
         OPTIONS.firstOrNull { it.id == id } ?: OPTIONS.first()
+
+    /**
+     * Repairs a saved preference that names an icon which no longer exists (the
+     * Indigo/Bronze color variants were retired in favour of the illustrated
+     * marks). Their manifest components are gone, so a stale pref would leave the
+     * user with no enabled launcher entry after the next swap. Falls back to the
+     * classic light icon and re-applies it.
+     *
+     * Returns the id actually in effect.
+     */
+    fun sanitize(context: Context, savedId: String): String {
+        if (OPTIONS.any { it.id == savedId }) return savedId
+        select(context, ID_LIGHT)
+        return ID_LIGHT
+    }
 
     private fun component(context: Context, option: AppIconOption): ComponentName =
         ComponentName(context.packageName, "${context.packageName}.${option.alias}")

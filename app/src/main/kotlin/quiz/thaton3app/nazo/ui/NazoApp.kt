@@ -38,7 +38,9 @@ import quiz.thaton3app.nazo.data.settings.MissedQuestionsStore
 import quiz.thaton3app.nazo.data.settings.ProfilePreferences
 import quiz.thaton3app.nazo.data.settings.QuestionHistoryStore
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
+import quiz.thaton3app.nazo.IntroStyle
 import quiz.thaton3app.nazo.LauncherIconSwitcher
+import quiz.thaton3app.nazo.R
 import quiz.thaton3app.nazo.records.RecordsStore
 import quiz.thaton3app.nazo.daily.DailyChallenge
 import quiz.thaton3app.nazo.daily.DailyStore
@@ -200,7 +202,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var navBarFloating by remember { mutableStateOf(themePrefs.floatingNavBar) }
     var backgroundStyle by remember { mutableStateOf(themePrefs.backgroundStyle) }
     var celebrationStyle by remember { mutableStateOf(themePrefs.celebrationStyle) }
-    var appIcon by remember { mutableStateOf(themePrefs.appIcon) }
+    // sanitize(): an update can retire an icon variant, leaving the saved pref
+    // pointing at a manifest component that no longer exists.
+    var appIcon by remember {
+        mutableStateOf(
+            LauncherIconSwitcher.sanitize(context, themePrefs.appIcon)
+                .also { if (it != themePrefs.appIcon) themePrefs.appIcon = it }
+        )
+    }
 
     // Launcher-icon theme sync now happens silently when the app is backgrounded
     // (see MainActivity.onStop); no in-app prompt is shown. The Appearance toggle
@@ -1522,10 +1531,13 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // its flat splash color carries into the zoom-through, so there's no
             // color jump between the two. The follow-OS-theme pair passes null and
             // keeps the original light/dark greens.
+            val introIcon = if (themePrefs.iconFollowsOsTheme) null
+            else LauncherIconSwitcher.option(appIcon)
             IntroOverlay(
                 isDark = isDark,
-                backgroundColor = if (themePrefs.iconFollowsOsTheme) null
-                else LauncherIconSwitcher.option(appIcon).splashColor?.let { Color(it) },
+                backgroundColor = introIcon?.splashColor?.let { Color(it) },
+                mark = introIcon?.introMark ?: R.drawable.ic_launcher_foreground,
+                style = introIcon?.introStyle ?: IntroStyle.WARP,
             )
         }
     }
