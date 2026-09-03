@@ -3,4 +3,13 @@
     <!-- Splash background = the launcher icon's DARK background green
          (ic_launcher_background_dark.xml). Sampled exactly — do not adjust. -->
     <color name="nazo_splash_background">#FF246D4C</color>
+
+    <!-- Per-icon splash backgrounds: the midpoint of each variant's adaptive-icon
+         gradient, so the splash reads as the same surface as the icon tile. These are
+         identical in day and night because the custom icons don't theme-switch. -->
+    <color name="nazo_splash_background_sakura">#FFD05A89</color>
+    <color name="nazo_splash_background_indigo">#FF4A5AB6</color>
+    <color name="nazo_splash_background_bronze">#FFAA722F</color>
+    <color name="nazo_splash_background_midnight">#FF13161A</color>
+    <color name="nazo_splash_background_ocean">#FF1E8C9C</color>
 </resources>

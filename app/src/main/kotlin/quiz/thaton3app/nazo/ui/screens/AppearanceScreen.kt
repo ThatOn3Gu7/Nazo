@@ -551,7 +551,7 @@ fun AppearanceScreen(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Pick the icon Nazo shows on your home screen. Applying one closes the app — reopen it and the new icon is there.",
+                    text = "Pick the icon Nazo shows on your home screen — the startup splash recolors to match it. Applying one closes the app; reopen it and the new icon is there.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = NazoTextSecondary,
                 )

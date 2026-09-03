@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import androidx.annotation.StyleRes
 
 /**
  * One selectable launcher icon.
@@ -22,6 +23,17 @@ data class AppIconOption(
     val endColor: Long,
     /** True for the two aliases that back the "match system theme" mode. */
     val themed: Boolean = false,
+    /**
+     * Splash theme applied at cold start so the system splash matches this icon.
+     * Null for the [themed] pair, which keeps the day/night-aware default theme.
+     */
+    @StyleRes val splashTheme: Int? = null,
+    /**
+     * Flat background used by the in-app intro overlay, matching [splashTheme]'s
+     * color (the midpoint of the icon gradient). Null for the [themed] pair,
+     * which keeps its own light/dark greens.
+     */
+    val splashColor: Long? = null,
 )
 
 /**
@@ -67,6 +79,8 @@ object LauncherIconSwitcher {
             blurb = "Soft pink blossom gradient",
             startColor = 0xFFE86A9A,
             endColor = 0xFFB84A78,
+            splashTheme = R.style.Theme_Nazo_Splash_Sakura,
+            splashColor = 0xFFD05A89,
         ),
         AppIconOption(
             id = "indigo",
@@ -75,6 +89,8 @@ object LauncherIconSwitcher {
             blurb = "Cool night-blue gradient",
             startColor = 0xFF5C6BC0,
             endColor = 0xFF3949AB,
+            splashTheme = R.style.Theme_Nazo_Splash_Indigo,
+            splashColor = 0xFF4A5AB6,
         ),
         AppIconOption(
             id = "bronze",
@@ -83,6 +99,8 @@ object LauncherIconSwitcher {
             blurb = "Warm metallic amber",
             startColor = 0xFFC98A3C,
             endColor = 0xFF8C5A22,
+            splashTheme = R.style.Theme_Nazo_Splash_Bronze,
+            splashColor = 0xFFAA722F,
         ),
         AppIconOption(
             id = "midnight",
@@ -91,6 +109,8 @@ object LauncherIconSwitcher {
             blurb = "Near-black stealth icon",
             startColor = 0xFF1B1F24,
             endColor = 0xFF0B0D10,
+            splashTheme = R.style.Theme_Nazo_Splash_Midnight,
+            splashColor = 0xFF13161A,
         ),
         AppIconOption(
             id = "ocean",
@@ -99,6 +119,8 @@ object LauncherIconSwitcher {
             blurb = "Teal-to-deep-sea gradient",
             startColor = 0xFF2CA8B8,
             endColor = 0xFF11707F,
+            splashTheme = R.style.Theme_Nazo_Splash_Ocean,
+            splashColor = 0xFF1E8C9C,
         ),
     )
 

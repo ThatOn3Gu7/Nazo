@@ -9,4 +9,26 @@
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
         <item name="postSplashScreenTheme">@style/Theme.ComposeEmptyActivity</item>
     </style>
+
+    <!-- Per-app-icon splash themes. One per launcher variant, selected at runtime
+         (SplashTheme.kt) so the cold-start splash matches whichever icon the user
+         picked. The classic green pair keeps @color/nazo_splash_background, which
+         is day/night aware; the custom variants are a single flat color (the
+         midpoint of their icon gradient) in both themes, because the icon itself
+         doesn't change with the OS theme. -->
+    <style name="Theme.Nazo.Splash.Sakura" parent="Theme.Nazo.Splash">
+        <item name="windowSplashScreenBackground">@color/nazo_splash_background_sakura</item>
+    </style>
+    <style name="Theme.Nazo.Splash.Indigo" parent="Theme.Nazo.Splash">
+        <item name="windowSplashScreenBackground">@color/nazo_splash_background_indigo</item>
+    </style>
+    <style name="Theme.Nazo.Splash.Bronze" parent="Theme.Nazo.Splash">
+        <item name="windowSplashScreenBackground">@color/nazo_splash_background_bronze</item>
+    </style>
+    <style name="Theme.Nazo.Splash.Midnight" parent="Theme.Nazo.Splash">
+        <item name="windowSplashScreenBackground">@color/nazo_splash_background_midnight</item>
+    </style>
+    <style name="Theme.Nazo.Splash.Ocean" parent="Theme.Nazo.Splash">
+        <item name="windowSplashScreenBackground">@color/nazo_splash_background_ocean</item>
+    </style>
 </resources>

@@ -50,7 +50,7 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
  * is a pre-release one (the owner releases every ~20-30 commits, see
  * AGENTS.md); the next actual release commit will set its own id.
  */
-const val CHANGELOG_ID = "2026-09-03-next3"
+const val CHANGELOG_ID = "2026-09-03-next4"
 
 data class ChangeEntry(val title: String, val points: List<String>)
 
@@ -60,6 +60,7 @@ val CHANGELOG: List<ChangeEntry> = listOf(
         listOf(
             "Seven launcher icons to choose from — Classic Green, Deep Green, Sakura, Indigo, Bronze, Midnight and Ocean",
             "Turn off \"Match icon to system theme\" in Appearance → App Icon, then tap \"Choose app icon\"",
+            "The cold-start splash recolors to match the icon you picked, so launch feels like one continuous surface",
             "Applying an icon closes Nazo (Android requires it); reopen from the new icon on your home screen",
         ),
     ),

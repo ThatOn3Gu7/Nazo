@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
@@ -1517,7 +1518,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // true first launch the (opaque) tour covered it and the splash
             // zoom-through animation played invisibly underneath — the classic
             // "intro only works after setup" bug.
-            IntroOverlay(isDark = isDark)
+            // Continue the system splash's color: when a custom app icon is active
+            // its flat splash color carries into the zoom-through, so there's no
+            // color jump between the two. The follow-OS-theme pair passes null and
+            // keeps the original light/dark greens.
+            IntroOverlay(
+                isDark = isDark,
+                backgroundColor = if (themePrefs.iconFollowsOsTheme) null
+                else LauncherIconSwitcher.option(appIcon).splashColor?.let { Color(it) },
+            )
         }
     }
 }

@@ -3875,3 +3875,44 @@ Test (debug APK):
 5. Re-enable "Match icon to system theme", background the app, flip the
    device OS theme, reopen/background again → the icon returns to the
    green light/dark pair (old behaviour intact).
+
+## 2026-09-03 — Splash screen follows the chosen app icon
+
+The cold-start splash (and the in-app zoom-through intro) now recolor to
+match whichever launcher icon is active, so launching reads as one
+continuous surface instead of a pink icon flashing into a green splash.
+
+Key constraint: **`<activity-alias>` cannot carry `android:theme`** — the
+starting window always uses the *target activity's* theme. So the splash
+cannot be attached to the aliases; it's applied at runtime instead.
+
+- `res/values/themes.xml`: five `Theme.Nazo.Splash.<Variant>` styles, each
+  inheriting `Theme.Nazo.Splash` and overriding only
+  `windowSplashScreenBackground`. The animated icon and
+  `postSplashScreenTheme` are inherited, so there's one place to change them.
+- `res/values/colors.xml` + `values-night/colors.xml`: `nazo_splash_background_<id>`
+  = the midpoint of that icon's gradient (e.g. sakura `#FFD05A89`). Identical
+  in day and night, because the custom icons don't theme-switch; only the
+  classic green pair keeps the day/night-aware `nazo_splash_background`.
+- `LauncherIconSwitcher.AppIconOption`: new `splashTheme: Int?` (@StyleRes)
+  and `splashColor: Long?`. Null for the themed light/dark pair. The registry
+  is now the single source of truth for icon + splash + intro color.
+- `MainActivity.applyIconSplashTheme()`: called **before**
+  `installSplashScreen()` (which reads the theme's `windowSplashScreen*`
+  attrs — after is too late). No-ops while `iconFollowsOsTheme` is on.
+- `ui/launch/IntroOverlay.kt`: new `backgroundColor: Color? = null` param,
+  defaulting to the existing green pair.
+- `NazoApp.kt`: passes the active icon's `splashColor` into `IntroOverlay`.
+- Sheet copy + `WhatsNew.kt` mention the recolor; CHANGELOG_ID → `2026-09-03-next4`.
+
+Test (debug APK):
+1. Appearance → APP ICON → turn OFF "Match icon to system theme" → choose
+   **Sakura** → Apply & close.
+2. Relaunch from the home screen and watch the cold start: the splash is
+   pink (`#D05A89`), matching the icon tile, and the 謎 zoom-through that
+   follows is the SAME pink — no green flash between the two.
+3. Repeat with **Midnight** → near-black splash. Good OLED check.
+4. Re-enable "Match icon to system theme" (icon reverts to green on next
+   background) → splash is green again and follows OS dark/light.
+5. Cold start matters: kill the app from recents first, otherwise you get
+   a warm start with no splash.

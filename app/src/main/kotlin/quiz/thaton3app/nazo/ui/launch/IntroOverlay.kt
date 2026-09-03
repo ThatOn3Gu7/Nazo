@@ -35,8 +35,13 @@ private val IntroBackgroundDark = Color(0xFF246D4C)
 // Slow initial swell, then rapid acceleration past the camera
 private val WarpSpeedEasing = CubicBezierEasing(0.7f, 0f, 0.15f, 1f)
 
+/**
+ * @param backgroundColor overrides the default green pair — passed when the user
+ *   picked a custom app icon, so the intro continues the system splash's color
+ *   instead of cutting from (say) pink to green mid-animation.
+ */
 @Composable
-fun IntroOverlay(isDark: Boolean) {
+fun IntroOverlay(isDark: Boolean, backgroundColor: Color? = null) {
     var dismissed by remember { mutableStateOf(false) }
     if (dismissed) return
 
@@ -73,7 +78,8 @@ fun IntroOverlay(isDark: Boolean) {
         dismissed = true
     }
 
-    val bgColor = if (isDark) IntroBackgroundDark else IntroBackgroundLight
+    val bgColor = backgroundColor
+        ?: if (isDark) IntroBackgroundDark else IntroBackgroundLight
 
     Box(
         modifier = Modifier
