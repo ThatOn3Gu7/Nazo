@@ -311,6 +311,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var guessPhase by remember { mutableStateOf<GuessPhase>(GuessPhase.Idle) }
     // "blur" | "pixel" — the guessing game's image reveal style (Appearance).
     var guessRevealStyle by remember { mutableStateOf(themePrefs.guessRevealStyle) }
+    // Whether the guessing game auto-crops mystery images to the character's
+    // face + upper body (Appearance → Guessing Game).
+    var guessAutoCrop by remember { mutableStateOf(themePrefs.guessAutoCrop) }
     var guessRound by remember { mutableIntStateOf(1) }
     var guessTotalRounds by remember { mutableIntStateOf(3) }
     var guessScore by remember { mutableIntStateOf(0) }
@@ -1209,6 +1212,11 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             guessRevealStyle = it
                             themePrefs.guessRevealStyle = it
                         },
+                        guessAutoCrop = guessAutoCrop,
+                        onGuessAutoCropChange = {
+                            guessAutoCrop = it
+                            themePrefs.guessAutoCrop = it
+                        },
                         backgroundStyle = backgroundStyle,
                         onBackgroundStyleChange = {
                             backgroundStyle = it
@@ -1338,6 +1346,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         phase = guessPhase,
                         roundResult = guessRoundResult,
                         revealStyle = guessRevealStyle,
+                        autoCrop = guessAutoCrop,
                         onRetryRound = { prepareGuessRound() },
                         onOpenSettings = { navigate(Screen.Settings) },
                         onQuit = {
