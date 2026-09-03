@@ -37,6 +37,7 @@ import quiz.thaton3app.nazo.data.settings.MissedQuestionsStore
 import quiz.thaton3app.nazo.data.settings.ProfilePreferences
 import quiz.thaton3app.nazo.data.settings.QuestionHistoryStore
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
+import quiz.thaton3app.nazo.LauncherIconSwitcher
 import quiz.thaton3app.nazo.records.RecordsStore
 import quiz.thaton3app.nazo.daily.DailyChallenge
 import quiz.thaton3app.nazo.daily.DailyStore
@@ -198,6 +199,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var navBarFloating by remember { mutableStateOf(themePrefs.floatingNavBar) }
     var backgroundStyle by remember { mutableStateOf(themePrefs.backgroundStyle) }
     var celebrationStyle by remember { mutableStateOf(themePrefs.celebrationStyle) }
+    var appIcon by remember { mutableStateOf(themePrefs.appIcon) }
 
     // Launcher-icon theme sync now happens silently when the app is backgrounded
     // (see MainActivity.onStop); no in-app prompt is shown. The Appearance toggle
@@ -1232,6 +1234,19 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             // Just persist the preference; the actual swap happens silently
                             // when the app is backgrounded (MainActivity.onStop).
                             themePrefs.iconFollowsOsTheme = enabled
+                        },
+                        appIcon = appIcon,
+                        onAppIconChange = { id ->
+                            appIcon = id
+                            themePrefs.appIcon = id
+                            // A custom icon and "follow the OS theme" are mutually
+                            // exclusive — picking one turns the automatic mode off.
+                            themePrefs.iconFollowsOsTheme = false
+                            LauncherIconSwitcher.select(context, id)
+                            // Disabling the alias that launched this task makes Android
+                            // tear the task down; finishing ourselves makes that graceful
+                            // and predictable instead of looking like a crash.
+                            (context as? Activity)?.finishAndRemoveTask()
                         },
                         onBackClick = { goBack() },
                         onHomeClick = { goHome() },

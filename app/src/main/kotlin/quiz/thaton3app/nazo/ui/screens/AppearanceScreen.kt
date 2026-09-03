@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.ModeNight
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Celebration
+import androidx.compose.material.icons.outlined.AppShortcut
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -52,6 +53,12 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.Brush
+import quiz.thaton3app.nazo.R
+import quiz.thaton3app.nazo.AppIconOption
+import quiz.thaton3app.nazo.LauncherIconSwitcher
 import quiz.thaton3app.nazo.ui.theme.Accents
 import quiz.thaton3app.nazo.ui.theme.previewColors
 import quiz.thaton3app.nazo.ui.components.Haptics
@@ -90,6 +97,9 @@ fun AppearanceScreen(
     onAccentChange: (String) -> Unit = {},
     iconFollowsOsTheme: Boolean = true,
     onIconFollowsOsThemeChange: (Boolean) -> Unit = {},
+    appIcon: String = LauncherIconSwitcher.ID_LIGHT,
+    /** Called with the chosen icon id once the user confirms the app restart. */
+    onAppIconChange: (String) -> Unit = {},
     floatingNavBar: Boolean = false,
     onFloatingNavBarChange: (Boolean) -> Unit = {},
     revealStyle: String = "pixel",
@@ -118,6 +128,10 @@ fun AppearanceScreen(
     val effectsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showCelebrationSheet by remember { mutableStateOf(false) }
     val celebrationSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var showIconSheet by remember { mutableStateOf(false) }
+    val iconSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    // Icon awaiting the "the app will close" confirmation, or null.
+    var pendingIcon by remember { mutableStateOf<AppIconOption?>(null) }
 
 
     Column(
@@ -265,7 +279,57 @@ fun AppearanceScreen(
                     onCheckedChange = {
                         iconFollowsOsThemeChecked = it
                         onIconFollowsOsThemeChange(it)
+                        // Turning the automatic mode back on overrides any custom
+                        // pick, so the custom row below is disabled while it's on.
                     }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Custom icon picker — only meaningful when the icon is NOT following
+            // the OS theme, so the row dims and stops responding while that's on.
+            val pickerEnabled = !iconFollowsOsThemeChecked
+            val selectedIcon = LauncherIconSwitcher.option(appIcon)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(NazoSurface)
+                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
+                    .then(
+                        if (pickerEnabled) Modifier.clickable {
+                            Haptics.soft(context)
+                            showIconSheet = true
+                        } else Modifier
+                    )
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AppIconPreview(
+                    option = selectedIcon,
+                    size = 40.dp,
+                    alpha = if (pickerEnabled) 1f else 0.4f,
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Choose app icon",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = NazoTextPrimary.copy(alpha = if (pickerEnabled) 1f else 0.4f),
+                    )
+                    Text(
+                        text = if (pickerEnabled) "Currently: ${selectedIcon.label}"
+                        else "Turn off \"Match icon to system theme\" to pick your own",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = NazoTextSecondary.copy(alpha = if (pickerEnabled) 1f else 0.6f),
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = NazoTextSecondary.copy(alpha = if (pickerEnabled) 0.5f else 0.2f),
+                    modifier = Modifier.size(24.dp),
                 )
             }
 
@@ -432,6 +496,119 @@ fun AppearanceScreen(
 
             Spacer(modifier = Modifier.height(40.dp))
         }
+    }
+
+    // --- APP ICON SHEET ---
+    // Every launcher icon variant is drawn exactly as the adaptive icon renders
+    // it (gradient background + the shared foreground mark), so what you see in
+    // the list is what lands on the home screen. Picking one only stages it:
+    // Android kills the task when the active launcher alias is swapped, so the
+    // change is confirmed through a dialog that spells out the restart.
+    if (showIconSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showIconSheet = false },
+            sheetState = iconSheetState,
+            containerColor = NazoSurface,
+            dragHandle = {
+                Box(
+                    modifier = Modifier
+                        .padding(top = 16.dp, bottom = 8.dp)
+                        .size(width = 36.dp, height = 4.dp)
+                        .clip(CircleShape)
+                        .background(NazoTextSecondary.copy(alpha = 0.3f))
+                )
+            }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 10.dp)
+                    .navigationBarsPadding()
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(NazoPrimary.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.AppShortcut,
+                            contentDescription = null,
+                            tint = NazoPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "App icon",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = NazoTextPrimary,
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Pick the icon Nazo shows on your home screen. Applying one closes the app — reopen it and the new icon is there.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NazoTextSecondary,
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                LauncherIconSwitcher.OPTIONS.forEach { option ->
+                    AppIconOptionCard(
+                        option = option,
+                        selected = appIcon == option.id,
+                        onClick = {
+                            Haptics.soft(context)
+                            if (appIcon != option.id) pendingIcon = option
+                        },
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+        }
+    }
+
+    pendingIcon?.let { option ->
+        AlertDialog(
+            onDismissRequest = { pendingIcon = null },
+            containerColor = NazoSurface,
+            icon = { AppIconPreview(option = option, size = 48.dp) },
+            title = {
+                Text(
+                    text = "Use the ${option.label} icon?",
+                    color = NazoTextPrimary,
+                    fontWeight = FontWeight.Bold,
+                )
+            },
+            text = {
+                Text(
+                    text = "Android has to close Nazo to swap the launcher icon. Your progress is already saved — just tap the new icon to come back.",
+                    color = NazoTextSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    Haptics.soft(context)
+                    val chosen = option.id
+                    pendingIcon = null
+                    showIconSheet = false
+                    onAppIconChange(chosen)
+                }) {
+                    Text("Apply & close", color = NazoPrimary, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingIcon = null }) {
+                    Text("Cancel", color = NazoTextSecondary)
+                }
+            },
+        )
     }
 
     // --- BACKGROUND EFFECTS SHEET ---
@@ -1204,4 +1381,98 @@ private fun DrawScope.drawMoonTransit(p: Float, rowColor: Color) {
     drawCircle(Color(0xFFCDD8F2), r, c)
     // Crescent bite in the row's own colour
     drawCircle(rowColor, r * 0.82f, Offset(c.x + r * 0.52f, c.y - r * 0.40f))
+}
+
+/**
+ * Miniature of an adaptive launcher icon: the variant's background gradient
+ * clipped to the launcher's squircle-ish shape, with the shared foreground
+ * mark on top at the same 72/108 inset Android uses.
+ */
+@Composable
+private fun AppIconPreview(
+    option: AppIconOption,
+    size: androidx.compose.ui.unit.Dp,
+    alpha: Float = 1f,
+) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(RoundedCornerShape(size * 0.28f))
+            .background(
+                Brush.linearGradient(
+                    listOf(Color(option.startColor), Color(option.endColor))
+                )
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.foundation.Image(
+            painter = painterResource(id = R.drawable.ic_launcher_foreground),
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            alpha = alpha,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+}
+
+/** One selectable launcher icon in the App icon sheet. */
+@Composable
+private fun AppIconOptionCard(
+    option: AppIconOption,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(NazoSurfaceVariant)
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.12f),
+                shape = RoundedCornerShape(18.dp),
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AppIconPreview(option = option, size = 48.dp)
+        Spacer(modifier = Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = option.label,
+                style = MaterialTheme.typography.titleMedium,
+                color = NazoTextPrimary,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = option.blurb,
+                style = MaterialTheme.typography.bodySmall,
+                color = NazoTextSecondary,
+                maxLines = 2,
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .clip(CircleShape)
+                .background(if (selected) NazoPrimary else Color.Transparent)
+                .border(
+                    width = 2.dp,
+                    color = if (selected) Color.Transparent else NazoTextSecondary.copy(alpha = 0.4f),
+                    shape = CircleShape,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Outlined.Check,
+                    contentDescription = "Selected",
+                    tint = NazoOnPrimary,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+        }
+    }
 }

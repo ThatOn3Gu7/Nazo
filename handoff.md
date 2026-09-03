@@ -3828,3 +3828,50 @@ Test (debug APK):
 - Persists across restarts (SharedPreferences `nazo_theme`, key
   `guess_auto_crop`); mid-game switching takes effect from the next
   round (flag is read at round start).
+
+## 2026-09-03 — Selectable app icons (7 launcher variants)
+
+The launcher icon is now user-choosable, not just OS-theme-driven.
+
+- `AndroidManifest.xml`: five new disabled `activity-alias` entries
+  (`.LauncherSakura`, `.LauncherIndigo`, `.LauncherBronze`,
+  `.LauncherMidnight`, `.LauncherOcean`) alongside the existing
+  `.LauncherLight` / `.LauncherDark`. All target `.MainActivity`, carry the
+  LAUNCHER intent-filter and the shortcuts meta-data, so long-press
+  shortcuts keep working whichever icon is active. MainActivity itself is
+  never disabled.
+- `res/mipmap-anydpi-v26/ic_launcher_<id>.xml` + `_round_<id>.xml` and
+  `res/drawable/ic_launcher_background_<id>.xml`: one adaptive icon per
+  variant — gradient background + the shared `ic_launcher_foreground`
+  (also used as `monochrome`, so themed icons still work).
+- `LauncherIconSwitcher.kt`: now registry-driven. `AppIconOption` describes
+  each variant (id, alias, label, blurb, gradient colors); `OPTIONS` lists
+  all seven; `select(context, id)` enables the target alias FIRST then
+  disables all others (launcher never sees zero entries); `currentId()`
+  replaces the old two-state check, and `appliedNight()` is kept as a thin
+  wrapper so the existing follow-OS-theme path (MainActivity.onStop) is
+  unchanged.
+- `ThemePreferences.appIcon` (key `app_icon`, default `light`) persists the
+  pick. A custom pick and `iconFollowsOsTheme` are mutually exclusive —
+  choosing an icon sets `iconFollowsOsTheme = false`.
+- `AppearanceScreen.kt`: APP ICON section gains a "Choose app icon" row
+  (dimmed/inert while "Match icon to system theme" is on) opening a
+  ModalBottomSheet with all seven variants, each rendered as a live
+  squircle preview of the real adaptive icon. Selecting raises an
+  AlertDialog ("Apply & close") explaining the restart.
+- `NazoApp.kt`: on confirm — persist, `LauncherIconSwitcher.select(...)`,
+  then `finishAndRemoveTask()` so the forced teardown is graceful.
+- `WhatsNew.kt`: new "Pick your app icon" entry; CHANGELOG_ID → `2026-09-03-next3`.
+
+Test (debug APK):
+1. Settings → Appearance → APP ICON. The "Choose app icon" row is greyed
+   out while "Match icon to system theme" is ON.
+2. Toggle that switch OFF → the row lights up, showing "Currently: Classic Green".
+3. Tap it → sheet with 7 previews. Tap "Sakura" → dialog "Use the Sakura
+   icon?" → "Apply & close": the app disappears from screen and recents.
+4. Home screen: the Nazo icon is now pink. Long-press it — the Daily
+   Challenge shortcut is still there. Launch it: app opens normally and
+   Appearance shows "Currently: Sakura".
+5. Re-enable "Match icon to system theme", background the app, flip the
+   device OS theme, reopen/background again → the icon returns to the
+   green light/dark pair (old behaviour intact).
