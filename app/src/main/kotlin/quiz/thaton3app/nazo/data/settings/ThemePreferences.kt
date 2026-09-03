@@ -47,6 +47,13 @@ class ThemePreferences(context: Context) {
         get() = prefs.getString(KEY_GUESS_REVEAL_STYLE, "pixel") ?: "pixel"
         set(value) = prefs.edit().putString(KEY_GUESS_REVEAL_STYLE, value).apply()
 
+    /** Whether the Guessing Game auto-crops each round's mystery image to the
+     *  character's face + upper body (vision/PortraitCrop). When off, the
+     *  original (un-cropped) image is shown as fetched. */
+    var guessAutoCrop: Boolean
+        get() = prefs.getBoolean(KEY_GUESS_AUTO_CROP, true)
+        set(value) = prefs.edit().putBoolean(KEY_GUESS_AUTO_CROP, value).apply()
+
     /** Ambient background style variant ("shapes" | "constellation" | "rain" | "orbs"). */
     var backgroundStyle: String
         get() = prefs.getString(KEY_BG_STYLE, "shapes") ?: "shapes"
@@ -71,6 +78,7 @@ class ThemePreferences(context: Context) {
         const val KEY_FLOATING_NAV = "floating_nav"
         const val KEY_LAST_MODE = "last_game_mode"
         const val KEY_GUESS_REVEAL_STYLE = "guess_reveal_style"
+        const val KEY_GUESS_AUTO_CROP = "guess_auto_crop"
         const val KEY_BG_STYLE = "background_style"
         const val KEY_CELEBRATION_STYLE = "celebration_style"
         const val KEY_TOUCH_RIPPLES = "touch_ripples_enabled"

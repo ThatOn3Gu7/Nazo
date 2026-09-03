@@ -50,11 +50,18 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
  * is a pre-release one (the owner releases every ~20-30 commits, see
  * AGENTS.md); the next actual release commit will set its own id.
  */
-const val CHANGELOG_ID = "2026-09-03-next"
+const val CHANGELOG_ID = "2026-09-03-next2"
 
 data class ChangeEntry(val title: String, val points: List<String>)
 
 val CHANGELOG: List<ChangeEntry> = listOf(
+    ChangeEntry(
+        "Crop, your way",
+        listOf(
+            "The Guessing Game's auto-crop — which frames each mystery image on the character's face and upper body — is now optional",
+            "Turn it off in Appearance → Guessing Game to see the full original artwork",
+        ),
+    ),
     ChangeEntry(
         "Instant next round",
         listOf(

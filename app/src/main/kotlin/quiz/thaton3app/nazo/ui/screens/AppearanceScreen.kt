@@ -94,6 +94,8 @@ fun AppearanceScreen(
     onFloatingNavBarChange: (Boolean) -> Unit = {},
     revealStyle: String = "pixel",
     onRevealStyleChange: (String) -> Unit = {},
+    guessAutoCrop: Boolean = true,
+    onGuessAutoCropChange: (Boolean) -> Unit = {},
     backgroundStyle: String = "shapes",
     onBackgroundStyleChange: (String) -> Unit = {},
     celebrationStyle: String = "burst",
@@ -111,6 +113,7 @@ fun AppearanceScreen(
 
     var iconFollowsOsThemeChecked by remember { mutableStateOf(iconFollowsOsTheme) }
     var floatingNavBarChecked by remember { mutableStateOf(floatingNavBar) }
+    var guessAutoCropChecked by remember { mutableStateOf(guessAutoCrop) }
     var showEffectsSheet by remember { mutableStateOf(false) }
     val effectsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showCelebrationSheet by remember { mutableStateOf(false) }
@@ -388,8 +391,8 @@ fun AppearanceScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // --- GUESSING REVEAL SECTION ---
-            SectionHeader("GUESSING REVEAL")
+            // --- GUESSING GAME SECTION ---
+            SectionHeader("GUESSING GAME")
 
             ThemeModeRow(
                 icon = Icons.Outlined.BlurOn,
@@ -406,6 +409,24 @@ fun AppearanceScreen(
                 isSelected = revealStyle == "pixel",
                 onClick = { Haptics.soft(context); onRevealStyleChange("pixel") }
             )
+            Spacer(modifier = Modifier.height(8.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(NazoSurface)
+                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
+            ) {
+                LayoutToggleRow(
+                    title = "Auto-crop mystery images",
+                    subtitle = "Reframe each round's image on the character's face and upper body. Off shows the original",
+                    isChecked = guessAutoCropChecked,
+                    onCheckedChange = {
+                        guessAutoCropChecked = it
+                        onGuessAutoCropChange(it)
+                    }
+                )
+            }
 
             Spacer(modifier = Modifier.height(32.dp))
 
