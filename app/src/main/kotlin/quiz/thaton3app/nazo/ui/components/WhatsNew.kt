@@ -44,8 +44,13 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 // mark the current id as seen silently — a brand-new user needs no diff.
 // ---------------------------------------------------------------------------
 
-/** Bump this whenever CHANGELOG below gains entries the user should see. */
-const val CHANGELOG_ID = "2026-09-03-v8"
+/**
+ * Bump this whenever CHANGELOG below gains entries the user should see.
+ * NOTE: the id is a unique gate, not the release version — the current id
+ * is a pre-release one (the owner releases every ~20-30 commits, see
+ * AGENTS.md); the next actual release commit will set its own id.
+ */
+const val CHANGELOG_ID = "2026-09-03-next"
 
 data class ChangeEntry(val title: String, val points: List<String>)
 

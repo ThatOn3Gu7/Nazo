@@ -3730,3 +3730,60 @@ franchise topic (e.g. "One Piece"). Logcat filter `NazoGuessImage`:
 - quitting mid-game produces no further network activity
   (`clearGuessPrefetch`), and a broken provider key still surfaces the
   usual retry-able error.
+  NOTE (added later same day): the "release: bump to 8.0" commit was
+  REVERTED per the owner — releases happen only every ~20-30 commits, and
+  v8 is not ready yet. Version is back to 7.0 (versionCode 7); see the
+  "Release cadence" section in AGENTS.md. The WhatsNew CHANGELOG_ID was
+  renamed to a pre-release id ("2026-09-03-next"); the entries themselves
+  stay (the features ship with the next real release).
+
+## [2026-09-03 18:40] chore+fix: revert version to 7.0 (release cadence), soften portrait-crop zoom
+
+**Version revert + release policy (owner decision)**
+- Owner: releases happen roughly every 20-30 commits, so the per-change
+  "release: bump to vN" commit was wrong — v8 is not ready to release.
+  `app/build.gradle.kts` reverted to versionCode 7 / versionName "7.0".
+- `AGENTS.md` gained a "Release cadence (owner rule)" section: never bump
+  versionCode/versionName during feature work; bump ONLY when the owner
+  asks to prepare/ship a version (then as the last commit).
+- `WhatsNew.kt`: CHANGELOG_ID "2026-09-03-v8" → "2026-09-03-next"
+  (pre-release gate; entries kept — they describe shipped-in-branch
+  features and will ride the next real release).
+
+**Portrait crop: much less aggressive (owner feedback: "tends to zoom in a
+lot — shows only the face, not the body; we should see the neck, chest and
+body")**
+- `vision/PortraitCrop.kt` `passportFrame()`: frame height multiplier
+  2.25× face height → **3.25×** (new constant `FRAME_TIMES_FACE`). The
+  face is now ~31% of the 3:4 frame instead of 44%, leaving ~52% below the
+  chin for neck/chest/upper body. History: 1.9× ("a bit too cropped") →
+  2.25× ("still zooms in a lot") → 3.25×.
+- Top headroom 0.12 → **0.20** of frame height (new constant
+  `TOP_PAD_FRACTION`): the play-screen image card (full-width × 300dp,
+  ContentScale.Crop) center-crops the 3:4 portrait and clips ~15-21% off
+  top and bottom before display — 0.20 keeps the top of the hair (the
+  detected rect already includes the hair) safely inside the card's
+  visible band on phone widths; the chin lands at ~51% of the frame, so
+  the visible band shows face + neck + chest + upper body.
+- No behavior changes to detection (framework + anime heuristic), the
+  8% face-size gate, or the 92% "nothing to gain" guard — but note that
+  with the bigger frame the 92% guard now bails out (keeps the original)
+  whenever the face is ≥ ~30% of the image height on 3:4 art (previously
+  ~43%), i.e. more headshot-style images are shown un-cropped, which is
+  intended.
+
+Files: `app/build.gradle.kts`, `AGENTS.md`,
+`app/src/main/kotlin/quiz/thaton3app/nazo/ui/components/WhatsNew.kt`,
+`app/src/main/kotlin/quiz/thaton3app/nazo/vision/PortraitCrop.kt`.
+
+Test (debug APK, device):
+- **Crop**: play a few Guessing Game rounds with full-body character art
+  (Fandom infobox rounds, e.g. "One Piece" / "Jujutsu Kaisen" topics). The
+  mystery card should now show the face in the top third WITH visible
+  neck, chest and upper body below — no more tight head-only framing.
+  Headshot-style rounds (large face) may show the original image
+  un-cropped (intended). Logcat `NazoPortraitCrop` "cropped to passport
+  portrait WxH" for a sanity check of frame sizes.
+- **Version**: Settings → About (or app info) should still read 7.0.
+  The "What's new" sheet (fresh install of the debug APK) shows the two
+  v8-feature entries under the pre-release id.
