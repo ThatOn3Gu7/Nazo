@@ -45,11 +45,26 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 // ---------------------------------------------------------------------------
 
 /** Bump this whenever CHANGELOG below gains entries the user should see. */
-const val CHANGELOG_ID = "2026-09-03-v7"
+const val CHANGELOG_ID = "2026-09-03-v8"
 
 data class ChangeEntry(val title: String, val points: List<String>)
 
 val CHANGELOG: List<ChangeEntry> = listOf(
+    ChangeEntry(
+        "Instant next round",
+        listOf(
+            "While you play, the next round's answer set and mystery image load in the background",
+            "\"Next Round\" now skips the waiting screen — tap and play, no generation screen in between",
+        ),
+    ),
+    ChangeEntry(
+        "Official art, every round",
+        listOf(
+            "Guessing Game now fetches the character's official artwork from the anime's own cast lists",
+            "A new Fandom-wiki stage digs out the official character-design files — the highest-resolution art of any source",
+            "Cosplay photos and fan art still can't sneak through — every image is checked before it's shown",
+        ),
+    ),
     ChangeEntry(
         "New game modes",
         listOf(
