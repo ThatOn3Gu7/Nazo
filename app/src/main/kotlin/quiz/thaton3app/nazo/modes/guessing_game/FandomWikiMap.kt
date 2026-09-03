@@ -147,7 +147,7 @@ object FandomWikiMap {
     private class Entry(val words: Set<String>, val slug: String, val domain: String)
 
     private val ENTRIES: List<Entry> = RAW.map { (key, domain) ->
-        Entry(normWords(key), slug(key), domain)
+        Entry(normWords(key).toSet(), slug(key), domain)
     }
 
     /**
