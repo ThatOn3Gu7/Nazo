@@ -3645,3 +3645,88 @@ covered by `BUG_AUDIT.md` + this log).
 - NEW root-level `PR-assemble.yml.draft` for the owner to paste into .github/workflows/PR-assemble.yml (agent cannot push workflow files): triggers ONLY on push to arena/** (drops master/testBranch pushes and ALL pull_request triggers); workflow_dispatch kept as manual-only escape hatch; failure→PR-comment step REWRITTEN to look up the open PR by branch name (`gh pr list --head $GITHUB_REF_NAME`) since push events carry no PR context — this preserves the agent's CI-error readback loop (`gh api .../issues/N/comments`). Owner deletes the draft after applying.
 - This closes the long-standing owner-side loose end (PR-only triggers). Remaining owner-side item: release-check.yml.draft regenerate if ever wanted.
 - NOTE for next session: after owner merges + tags v6.0, new sessions branch from post-merge master. This session ends at the merge.
+
+## [2026-09-03 17:35] feat+perf: official-art-first image pipeline and next-round background prefetch (owner request)
+
+Implements the two owner-approved follow-ups to the official-art research
+(`docs/official-art-research.md`): "always find the official artwork first,
+with many fallbacks after" and "pre-fetch the next round in the background
+while the player is playing."
+
+**1. Official art first (`GuessImageFetcher.kt` + new `FandomWikiMap.kt`)**
+- New GROUND stages run before every existing stage and are franchise-
+  anchored (same-name-proof): the franchise is resolved ONCE per round,
+  inside the 20 s budget, into each database's media row (AniList media
+  search, top-2 relevance-gated rows; Jikan `/anime?q=` top-1), then the
+  target is looked up INSIDE that franchise's own cast list — AniList
+  `Media(id){characters(page:1..2, perPage:100)}`, Jikan
+  `/anime/{id}/characters?limit=100`. Both return CDN-trusted official
+  portraits; the cast lookups are variant-independent, so each runs once
+  (not per name variant) while keeping its ladder position.
+- New Fandom infobox stage: `FandomWikiMap` (~100 curated franchise →
+  wiki-domain entries; slugs are unpredictable, verified live in research)
+  scopes the page search to the franchise's own wiki, then section-0
+  wikitext is parsed for the infobox `|image =` template parameter (3
+  template families verified; "Anime"-labeled entry preferred, longest-
+  word filename gate), with the page image-list as fallback (portrait-style
+  heuristic). The original file URL + real dimensions come from
+  `imageinfo` (mime `image/*` + max dimension ≥ 300 gates).
+  `isUsableImage` whitelists `static.wikia.nocookie.net` (Fandom serves
+  originals at `/revision/latest` with no extension); Fandom is NOT in the
+  trusted-CDN set, so the AnimeImageGate pixel check still applies.
+- Existing ladder is demoted to fallback, behavior unchanged: AniList
+  search → Jikan search → Kitsu → Fandom → Commons → Wikipedia → series
+  cover → Openverse → DuckDuckGo; the 20 s budget, the relevance gates,
+  the junk-title filter and the rejected-but-relevant fallback ladder all
+  work exactly as before.
+- `fetchImageBytes` now keeps a non-consuming last-value one-slot cache
+  (previously: consumed on hit, never stored) so prefetch pre-warmed bytes
+  are served instantly and the round's image is never downloaded twice.
+
+**2. Background prefetch of the next round (`NazoApp.kt`)**
+- New state: `guessPrefetch` (finished, not-yet-consumed round) +
+  `guessPrefetchJob` (in-flight build). `prepareGuessRound` now validates,
+  clears stale prefetch state and delegates to the extracted
+  `beginGuessRoundJob`, which kicks `kickGuessPrefetch` as soon as the
+  current round's AI payload exists (BEFORE its image fetch) — the avoid
+  list is snapshotted after the current target is recorded, so a
+  prefetched round can never repeat it.
+- The prefetch job = `generateGuessRound` + `fetchImageUrl` +
+  `fetchImageBytes` (bytes pre-warm on `Dispatchers.IO`). It stays
+  "in flight" until fully built (AI + image), so a "Next Round" tap during
+  that window shows the preparing screen WITHOUT starting a duplicate
+  generation job. On completion: if the player already tapped Next it
+  hands the round straight to `GuessPhase.Playing`; otherwise it is stashed
+  and the next tap consumes it instantly. The chain continues in both
+  handover paths (a `chainNext` kick after the handle is cleared, plus a
+  kick inside `guessNext` on stash consumption), so rounds 2→N are all
+  pre-built while the player plays.
+- Failure handling: silent while the player is still in the current round
+  (tapping Next regenerates on demand); a visible error only when the
+  player is already waiting on the preparing screen (its "Try again" works
+  via `prepareGuessRound`).
+- Cleanup: quitting cancels the prefetch job + drops the slot; game-over
+  and fresh game starts clear it defensively. Round 1 still generates
+  normally (the owner-specified first-round behavior); the last round is
+  never pre-fetched.
+
+Files: `app/src/main/kotlin/quiz/thaton3app/nazo/modes/guessing_game/GuessImageFetcher.kt`,
+`app/src/main/kotlin/quiz/thaton3app/nazo/modes/guessing_game/FandomWikiMap.kt` (new),
+`app/src/main/kotlin/quiz/thaton3app/nazo/ui/NazoApp.kt`,
+`app/src/main/kotlin/quiz/thaton3app/nazo/ui/components/WhatsNew.kt` (v8
+entries), `app/build.gradle.kts` (version bump — separate commit).
+
+Test (debug APK, device): play a 5-round Guessing Game with a specific
+franchise topic (e.g. "One Piece"). Logcat filter `NazoGuessImage`:
+- expect `anilist: franchise '...' -> media N (...)` followed by
+  `anilist-cast: '...' found in media N page 1` — or `jikan-cast:` /
+  `fandom: '...' -> '...' on ...wiki...` when an earlier stage misses — and
+  the chosen URL on anilist.co / cdn.myanimelist.net /
+  static.wikia.nocookie.net (official art, not web search);
+- shortly after round 1's payload arrives (before its image loads), the
+  round-2 AI call + image fetch start in the background;
+- tapping "Next Round" goes straight into the timer with NO preparing
+  screen for rounds 2–4; the final round (5) is never pre-fetched;
+- quitting mid-game produces no further network activity
+  (`clearGuessPrefetch`), and a broken provider key still surfaces the
+  usual retry-able error.
