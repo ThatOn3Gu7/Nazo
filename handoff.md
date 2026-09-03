@@ -4233,3 +4233,57 @@ Pixel**.
 
 Tip: record the screen at 60fps and step through the first few frames after
 "Next Round" if you want frame-accurate proof — the old flash was ~2–5 frames.
+
+## 2026-09-03 — Dark-theme contrast fix in Review Answers
+
+Owner report (screenshot): on the dark theme the correct/wrong answer pills in
+Review Answers were bright pastel green/pink, and the option text on them was
+unreadable.
+
+`ReviewAnswersScreen.kt` hardcoded four light-theme literals — `0xFFD4E7D5`
+(correct pill), `0xFFF2D5D5` (wrong pill), `0xFF2E7D32` and `0xFFC62828` (icon
+circles) — which ignore the active palette entirely. On dark, that painted a
+near-white pill under `NazoTextPrimary`, which is also near-white:
+
+| pill | text contrast (dark) |
+|---|---|
+| correct, before | **1.13:1** |
+| wrong, before | **1.20:1** |
+| correct, after | 10.64:1 |
+| wrong, after | 12.60:1 |
+
+(WCAG AA body text needs 4.5:1. Verified across mint and mono, light and dark;
+the worst case after the fix is 9.29:1.)
+
+Replaced with the semantic palette roles `NazoSuccessBg` / `NazoErrorBg` for the
+pills and `NazoSuccess` / `NazoError` for the icon circles — exactly how
+`ActiveQuizScreen` already renders the identical correct/wrong states.
+
+Also **applied the border that was already being computed**: `borderColor` was
+assigned and then never used. This matters because the dark palette defines
+`successBg` and `surfaceVariant` as the *same* color (`0xFF1E3B2B`) — without
+the outline, a correct answer is indistinguishable from an untouched option.
+
+**Audited the whole app** for the same class of bug. The only other hardcoded
+colors are deliberately theme-independent and were left alone: the streak flame
+(`HomeScreen`), confetti/orb particles (`AmbientBackground`), the onboarding
+Survival amber, the app-icon art (`AppearanceScreen`), and the intro overlay
+backgrounds. `ReviewAnswersScreen` now contains no `Color(0x...)` literals.
+
+### How to test it live
+
+1. Settings → Appearance → Theme = **Dark**.
+2. Play any quiz to the end (Home → Quick Quiz is fastest) — deliberately get
+   at least one question wrong and one right.
+3. On the results screen tap **Review Answers**.
+4. Expected: the correct option is a *dark* green pill with a green outline and
+   a green check circle; your wrong pick is a *dark* red pill with a red outline
+   and a red ✗. **All option text is clearly readable** — no washed-out
+   near-white pills.
+5. Scroll through several questions; unanswered/other options stay plain
+   `surfaceVariant` with no outline.
+6. Switch Theme back to **Light** and re-open Review Answers — the pastel look
+   is unchanged from before.
+7. Optional: Appearance → Accent → try **Mono** and a couple of hues in dark
+   mode. Success/error stay green/red by design (semantic colors are not
+   hue-shifted) and remain readable.

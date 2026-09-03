@@ -46,6 +46,14 @@ The repo has `.github/workflows/PR-assemble.yml`, built specifically for you:
    since a stale green run from an earlier commit proves nothing.
 
 ### Notes / gotchas
+- **Never push a docs-only commit on its own.** Every push to `arena/**` starts
+  a full `assembleDebug` run, so a commit that only touches `handoff.md`,
+  `AGENTS.md`, or other markdown burns ~2 minutes of Actions time to compile
+  code that did not change. Fold the `handoff.md` entry (and any other doc
+  updates) **into the same commit as the code change it documents** — amend
+  before pushing rather than adding a follow-up "Document ..." commit. If docs
+  are genuinely the only thing changing in the whole session, batch them into a
+  single push at the end.
 - **You cannot push workflow files.** The Arena GitHub token lacks the
   `workflow` scope, so any commit touching `.github/workflows/**` is rejected
   on push. If a workflow needs changing, write the new file as a
