@@ -4011,3 +4011,37 @@ Test (debug APK):
    Each mark tints to a flat, readable silhouette (not a blob).
 6. Upgrade path: if you were on Indigo/Bronze, first launch after update moves
    you to Classic Green with a working launcher entry.
+
+## 2026-09-03 — FIX: crash on launch with the illustrated icons
+
+**Symptom:** picking Paper Lantern / Torii Gate / Mystery Scroll made the app
+crash immediately after the starting window. The earlier color-only icons
+(Sakura/Midnight/Ocean) were fine, which made it look like a manifest or
+activity-alias problem. It wasn't.
+
+**Cause:** `IntroOverlay` loaded its mark with
+`ImageBitmap.imageResource(mark)`. That helper decodes **raster** assets only
+(BitmapFactory under the hood) and throws on a VectorDrawable. The legacy
+`ic_launcher_foreground` is a 512px PNG, so it had always worked; the new
+illustrated marks are VectorDrawable XML, so the first composition of the
+intro threw every time. The starting window is drawn from the manifest theme
+before any of our code runs, which is exactly why it appeared correctly one
+frame before the crash — a red herring pointing at the manifest.
+
+**Fix:** rasterize through the drawable pipeline instead, which handles vectors
+and bitmaps alike:
+`ContextCompat.getDrawable(context, mark)!!.toBitmap(512, 512).asImageBitmap()`,
+wrapped in `remember(mark)` so it happens once per mark rather than per frame.
+DstOut only samples alpha, so 512px is ample.
+
+**Checked for the same assumption elsewhere:** `AppearanceScreen` uses
+`painterResource`, which supports vectors natively — that's why the picker
+previews rendered fine. The remaining `BitmapFactory` uses (PixelReveal,
+AnimeImageGate, PortraitCrop) all decode network bytes, not resources.
+
+Test (debug APK):
+1. Appearance → APP ICON → **Paper Lantern** → Apply & close.
+2. Kill from recents, relaunch: the lantern splash appears AND the intro plays
+   through to the app — no crash. Repeat for Torii Gate and Mystery Scroll.
+3. Re-check Sakura/Midnight/Ocean and the green pair still launch normally
+   (they exercise the same new code path).

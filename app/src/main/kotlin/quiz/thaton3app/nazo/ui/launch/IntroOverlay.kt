@@ -23,17 +23,23 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.res.imageResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.sin
 import quiz.thaton3app.nazo.IntroStyle
 import quiz.thaton3app.nazo.R
+
+/** Raster size for the punched-out mark. Matches the legacy 512px PNG foreground. */
+private const val MARK_RASTER_PX = 512
 
 private val IntroBackgroundLight = Color(0xFF36A06F)
 private val IntroBackgroundDark = Color(0xFF246D4C)
@@ -66,7 +72,19 @@ fun IntroOverlay(
     var dismissed by remember { mutableStateOf(false) }
     if (dismissed) return
 
-    val logoBitmap = ImageBitmap.imageResource(mark)
+    // Rasterize through the DRAWABLE pipeline, not ImageBitmap.imageResource():
+    // that helper only decodes raster assets (BitmapFactory) and throws on a
+    // VectorDrawable, which is what the illustrated marks are. Going via
+    // ContextCompat.getDrawable().toBitmap() handles vectors and PNGs alike.
+    // Rendered once per mark at a fixed size; the zoom is applied at draw time,
+    // and DstOut only samples alpha, so this resolution is ample.
+    val context = LocalContext.current
+    val logoBitmap: ImageBitmap = remember(mark) {
+        val drawable = checkNotNull(ContextCompat.getDrawable(context, mark)) {
+            "Intro mark drawable $mark could not be loaded"
+        }
+        drawable.toBitmap(width = MARK_RASTER_PX, height = MARK_RASTER_PX).asImageBitmap()
+    }
 
     // Shared drivers. Each style animates a different subset; unused ones simply
     // stay at their initial value, so one Canvas can serve every style.
