@@ -4287,3 +4287,51 @@ backgrounds. `ReviewAnswersScreen` now contains no `Color(0x...)` literals.
 7. Optional: Appearance → Accent → try **Mono** and a couple of hues in dark
    mode. Success/error stay green/red by design (semantic colors are not
    hue-shifted) and remain readable.
+
+## 2026-09-04 — Bottom nav on the Settings screen
+
+Owner: the Home↔Settings tab transition was impossible to evaluate, because
+with only two tabs and no nav bar on Settings you never saw the destination
+tab animate.
+
+`NazoBottomNav` already had a `NazoTab.Settings` value and `NazoApp` already
+passed `onHomeClick = { goHome() }` to `SettingsScreen` — the screen simply
+never rendered the component. Only `HomeScreen` did.
+
+Change in `SettingsScreen.kt`:
+- Root `Column` → `Box`, with `NazoBottomNav(selected = NazoTab.Settings)`
+  aligned `BottomCenter`. This is the same structure `HomeScreen` uses, so the
+  bar **overlays** the content instead of taking a layout slot above it.
+- Scroll column: `.weight(1f)` → `.fillMaxSize()` and bottom padding
+  `12.dp` → `96.dp`, matching Home so the last settings row can still be
+  scrolled clear of the overlaid bar.
+
+The bar is **opaque**, exactly as on Home — `NazoBottomNav` paints
+`NazoNavBar` as a solid background in both floating and anchored modes. Content
+scrolls behind it; nothing shows through it. Both the floating-pill and
+anchored variants work, since the change is purely about where the component is
+placed.
+
+**Submenus deliberately unchanged.** Appearance, About, AI Provider, Statistics
+and Backup & Restore stay full-screen with no nav bar. Those files had a stale
+`NazoBottomNav` import but never called it; the imports were left alone as
+they're harmless and out of scope.
+
+### How to test it live
+
+1. Launch the app on Home — nav bar visible, **Home** tab is the filled accent
+   pill.
+2. Tap **Settings** in the nav bar (or the gear in the header). The bar stays
+   on screen and the selected pill animates across to **Settings** — this is
+   the transition that was previously invisible.
+3. Tap **Home** in the bar: `goHome()` returns you to Home and the pill
+   animates back.
+4. Scroll the Settings list to the bottom. Content passes **behind** the bar,
+   the bar stays fully opaque (nothing bleeds through), and the last row
+   ("About") can still be scrolled clear of it.
+5. Open any submenu — Settings → **Appearance** — and confirm there is **no**
+   nav bar; it's full-screen. Same for About / AI Provider / Statistics /
+   Backup & Restore. Back returns to Settings with the bar restored.
+6. Appearance → Layout → toggle **Floating nav bar** on and off, then revisit
+   Settings: both the floating pill and the anchored bar render correctly and
+   stay opaque.
