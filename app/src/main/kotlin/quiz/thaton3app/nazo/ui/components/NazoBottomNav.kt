@@ -10,7 +10,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -38,6 +43,9 @@ import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 
 enum class NazoTab { Home, Settings }
+
+/** Shared duration for the floating bar's tab transition (tint + label expand). */
+private const val TAB_ANIM_MS = 280
 
 @Composable
 fun NazoBottomNav(
@@ -116,10 +124,13 @@ private fun NazoNavItem(
 ) {
     val targetTint = if (selected) NazoOnPrimary else NazoTextSecondary
     val targetBg = if (selected) NazoPrimary else Color.Transparent
-    
-    val animatedTint by animateColorAsState(targetValue = targetTint, label = "nav_tint")
-    val animatedBg by animateColorAsState(targetValue = targetBg, label = "nav_bg")
-    
+
+    // One shared duration so the colour fade and the label expand/collapse finish
+    // together — otherwise the pill keeps growing after it has finished tinting.
+    val spec = tween<Color>(TAB_ANIM_MS, easing = FastOutSlowInEasing)
+    val animatedTint by animateColorAsState(targetValue = targetTint, animationSpec = spec, label = "nav_tint")
+    val animatedBg by animateColorAsState(targetValue = targetBg, animationSpec = spec, label = "nav_bg")
+
     val currentTint = if (isFloating) animatedTint else targetTint
     val currentBg = if (isFloating) animatedBg else targetBg
 
@@ -133,8 +144,7 @@ private fun NazoNavItem(
                 Haptics.light(context)
                 onClick()
             }
-            .padding(horizontal = 18.dp, vertical = 9.dp)
-            .let { if (isFloating) it.animateContentSize() else it },
+            .padding(horizontal = 18.dp, vertical = 9.dp),
     ) {
         Icon(
             imageVector = icon, 
@@ -143,12 +153,29 @@ private fun NazoNavItem(
             modifier = Modifier.size(18.dp)
         )
         
-        // --- THE FIX ---
-        // Replace the static 'if' block with AnimatedVisibility
+        // In floating mode only the SELECTED tab shows its label, so the pill
+        // expands as it gains the tab and collapses to a bare icon as it loses it.
+        //
+        // The enter/exit must be HORIZONTAL. AnimatedVisibility defaults to
+        // expandVertically/shrinkVertically, which grew the label from zero
+        // HEIGHT — on a short horizontal pill that reads as a vertical squash,
+        // not an expand. expandHorizontally + the shared duration gives the
+        // sideways grow/shrink this is meant to be.
+        //
+        // This also replaces animateContentSize() on the Row: AnimatedVisibility
+        // already animates the size it contributes, so having both meant two
+        // animators fighting over the same width.
         AnimatedVisibility(
-            visible = !isFloating || selected
+            visible = !isFloating || selected,
+            enter = expandHorizontally(
+                animationSpec = tween(TAB_ANIM_MS, easing = FastOutSlowInEasing),
+                expandFrom = Alignment.Start,
+            ) + fadeIn(animationSpec = tween(TAB_ANIM_MS)),
+            exit = shrinkHorizontally(
+                animationSpec = tween(TAB_ANIM_MS, easing = FastOutSlowInEasing),
+                shrinkTowards = Alignment.Start,
+            ) + fadeOut(animationSpec = tween(TAB_ANIM_MS / 2)),
         ) {
-            // Wrap the Spacer and Text in a Row so they animate as a single unit
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.width(7.dp))
                 Text(

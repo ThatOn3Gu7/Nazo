@@ -3,8 +3,6 @@ package quiz.thaton3app.nazo.ui.screens
 import quiz.thaton3app.nazo.BuildConfig
 import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 import quiz.thaton3app.nazo.ui.components.Haptics
-import quiz.thaton3app.nazo.ui.components.NazoBottomNav
-import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.ui.theme.*
 
 import android.Manifest
@@ -56,9 +54,9 @@ fun SettingsScreen(
     remindersEnabled: Boolean = false,
     onRemindersEnabledChange: (Boolean) -> Unit = {},
 ) {
-    // Box (not Column) so the bottom nav OVERLAYS the content the same way it
-    // does on Home — the scrolling list passes behind the bar rather than being
-    // squeezed above it. The bar is opaque; only the list scrolls under it.
+    // Box (not Column) so the content can scroll UNDER the bottom nav, which is
+    // drawn by NazoApp on top of this screen. The bottom padding below reserves
+    // room for it so the last row is always reachable.
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -187,12 +185,6 @@ fun SettingsScreen(
             
             Spacer(Modifier.height(32.dp))
         }
-
-        NazoBottomNav(
-            selected = NazoTab.Settings,
-            onHomeClick = onHomeClick,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
     }
 }
 

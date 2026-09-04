@@ -44,8 +44,6 @@ import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.daily.DailyChallengeCard
 import quiz.thaton3app.nazo.ui.components.Haptics
-import quiz.thaton3app.nazo.ui.components.NazoBottomNav
-import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
 import quiz.thaton3app.nazo.ui.theme.*
 
@@ -346,12 +344,6 @@ fun HomeScreen(
             )
             Spacer(Modifier.height(16.dp))
         }
-
-        NazoBottomNav(
-            selected = NazoTab.Home,
-            onSettingsClick = onSettingsClick,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
 
         if (showProviderSheet) {
             ModalBottomSheet(

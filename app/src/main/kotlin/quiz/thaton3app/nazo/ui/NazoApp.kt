@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.blur
@@ -47,6 +48,8 @@ import quiz.thaton3app.nazo.daily.DailyStore
 import quiz.thaton3app.nazo.achievements.AchievementEngine
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
+import quiz.thaton3app.nazo.ui.components.NazoBottomNav
+import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.ui.components.OfflineWarningDialog
 import quiz.thaton3app.nazo.ui.components.AiMissingDialog
 import quiz.thaton3app.nazo.ui.components.AmbientBackground
@@ -1401,6 +1404,41 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     )
                 }
             }
+
+            // The bottom nav lives OUTSIDE AnimatedContent, for the same reason
+            // AmbientBackground does: anything inside gets torn down and rebuilt
+            // on every screen change, so its animation state is destroyed.
+            //
+            // It used to be rendered by HomeScreen and SettingsScreen separately.
+            // Those are two DIFFERENT composables that never coexist — switching
+            // tabs disposed one and created the other, so animateColorAsState /
+            // animateContentSize always started at their target value and the
+            // expand/collapse transition could never be seen. One shared instance
+            // here survives the swap, so the pill genuinely animates between tabs.
+            //
+            // Only the two tab destinations show it; submenus stay full-screen.
+            val navTab = when (currentScreen) {
+                Screen.Home -> NazoTab.Home
+                Screen.Settings -> NazoTab.Settings
+                else -> null
+            }
+            if (navTab != null && !showOnboarding) {
+                NazoBottomNav(
+                    selected = navTab,
+                    onHomeClick = { if (currentScreen != Screen.Home) goHome() },
+                    onSettingsClick = { if (currentScreen != Screen.Settings) navigate(Screen.Settings) },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        // Match the blur AnimatedContent gets behind a startup
+                        // dialog; the bar used to be inside a screen and so was
+                        // blurred with it.
+                        .then(
+                            if (startupDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp)
+                            else Modifier
+                        ),
+                )
+            }
+
 
             if (startupDialogMode != null) {
                 OfflineWarningDialog(

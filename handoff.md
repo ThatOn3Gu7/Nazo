@@ -4335,3 +4335,73 @@ they're harmless and out of scope.
 6. Appearance → Layout → toggle **Floating nav bar** on and off, then revisit
    Settings: both the floating pill and the anchored bar render correctly and
    stay opaque.
+
+## 2026-09-04 — Make the floating nav bar's tab transition actually visible
+
+Owner added tint/label animations to `NazoBottomNav` (commit `513a879`) but
+could never see them, and suspected the nav bar was being recreated per screen
+rather than persisting across a tab switch. **That diagnosis was correct**, and
+it was the primary bug — no amount of tuning the animation code could have
+fixed it.
+
+### Root cause 1 — the bar was two different composables
+
+`NazoApp` swaps screens inside an `AnimatedContent` (line ~1103). `HomeScreen`
+and `SettingsScreen` each rendered their **own** `NazoBottomNav` *inside* their
+own bodies, i.e. inside that `AnimatedContent`.
+
+So Home's bar and Settings' bar were two distinct composables that never
+coexisted. Switching tabs disposed one subtree and created the other, which
+destroys all `remember`ed animation state. `animateColorAsState` and
+`animateContentSize` capture their initial value from the first composition —
+on a freshly created composable that initial value *is* the target, so they had
+nothing to animate from. The bar simply appeared already-final, and the 220ms
+cross-fade of the screen swap hid the swap itself.
+
+Fix: render `NazoBottomNav` **once in `NazoApp`, outside `AnimatedContent`** —
+the same treatment `AmbientBackground` already gets, and for the same stated
+reason. One instance now survives the screen swap, so its animations run.
+
+- Removed the `NazoBottomNav` call (and now-unused imports) from `HomeScreen`
+  and `SettingsScreen`.
+- `NazoApp` maps `currentScreen` → tab and shows the bar only for
+  `Screen.Home` / `Screen.Settings`, so **submenus stay full-screen** as before.
+- Clicks are no-ops on the current tab; Settings→Home uses `goHome()` and
+  Home→Settings uses `navigate(Screen.Settings)`, preserving the back stack
+  behaviour each screen had.
+- The bar mirrors the `blur(16.dp)` that `AnimatedContent` gets behind a
+  startup dialog — previously it was inside a screen and so was blurred with it.
+- `SettingsScreen`/`HomeScreen` keep their `Box` root and 96.dp bottom inset;
+  content still scrolls *under* the (opaque) bar.
+
+### Root cause 2 — the label animated on the wrong axis
+
+Even with a persistent bar, the expand/collapse would have looked wrong:
+`AnimatedVisibility` defaults to `expandVertically`/`shrinkVertically`, so the
+label grew from zero **height**. On a short horizontal pill that reads as a
+vertical squash, not a sideways expand. Replaced with `expandHorizontally` /
+`shrinkHorizontally` (+ fade), anchored `Alignment.Start`.
+
+Also removed `animateContentSize()` from the same Row: `AnimatedVisibility`
+already animates the size its child contributes, so the two were competing over
+the pill's width. All parts now share one `TAB_ANIM_MS = 280` duration with
+`FastOutSlowInEasing`, so the tint fade and the width change land together.
+
+### How to test it live
+
+1. Settings → Appearance → Layout → turn **Floating nav bar ON**.
+2. Go Home. The bar is a centred pill: **Home** is a filled accent pill with
+   icon + label, **Settings** is a bare icon with no label.
+3. Tap **Settings** in the bar. Watch the pill itself — the Home tab's label
+   should shrink away horizontally while the Settings tab's label expands
+   sideways, with the accent fill sliding tint between them. The bar must stay
+   on screen throughout; it should not blink or restart.
+4. Tap **Home** and watch it play in reverse.
+5. Tap the tab you are already on — nothing should happen (no re-navigation).
+6. Turn **Floating nav bar OFF** and repeat: the anchored bar keeps both labels
+   visible at all times and switches instantly, which is intentional
+   (`isFloating` gates the animation).
+7. Settings → **Appearance** (a submenu): no nav bar, full-screen. Back returns
+   to Settings with the bar present.
+8. Scroll Settings to the bottom: content passes behind the bar and the last
+   row still clears it.
