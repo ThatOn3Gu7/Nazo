@@ -4405,3 +4405,64 @@ the pill's width. All parts now share one `TAB_ANIM_MS = 280` duration with
    to Settings with the bar present.
 8. Scroll Settings to the bottom: content passes behind the bar and the last
    row still clears it.
+
+## 2026-09-04 — Rebalanced giveaway answers in the local question bank
+
+Owner: many offline questions were trivially guessable because the correct
+answer was far longer than its distractors — "all the other three options are
+one to three letters and the answer is ten to fifteen". Especially One Piece.
+
+Measured before touching anything (`LocalQuestionBank.kt`, 985 questions).
+Option order is already shuffled at runtime, so position was never the tell —
+**length** was. Three distinct failure families:
+
+1. **100 "Otaku Master" essay answers.** The answer was a full sentence with a
+   semicolon and the three distractors were throwaways. Worst case ratio
+   **7.2x**: an 79-char answer against "He is Luffy" / "He is Roger" / "He is a
+   god". Many weren't real questions either — the answer was literally "its
+   nature is a mystery". Replaced with concrete, checkable questions.
+2. **75 "All of the above" answers.** Always correct, and the other three
+   options were usually synonyms of each other. Rewritten into real questions
+   with plausible, mutually exclusive distractors.
+3. **~75 shorter but still lopsided items.** Kept the question, upgraded the
+   weak distractors so all four read as the same kind of thing
+   (e.g. "Brook" / "Nami" / "Robin" → "Brook the Musician" / "Nico Robin" /
+   "Jinbe the Helmsman" against "Tony Tony Chopper").
+
+Also repaired one genuinely corrupt entry: the `86` question had its fields
+shifted into the options list, leaving `correctAnswer = ""`, a blank option and
+an empty explanation. It could never have been answered correctly.
+
+Result across all 985 questions:
+
+| metric | before | after |
+|---|---|---|
+| answer ≥2x longest distractor | 157 | **0** |
+| answer ≥1.8x | 175 | **0** |
+| worst single ratio | 7.2x | **1.77x** |
+| mean ratio | — | 0.96 |
+| "All of the above" answers | 75 | **0** |
+| essay-style answers | 100 | **0** |
+| integrity failures | 1 | **0** |
+
+Question count is unchanged at 985, no duplicate questions were introduced,
+every `correctAnswer` still appears in its own `options`, and every question
+has exactly four distinct non-blank options. A mean ratio of 0.96 means the
+correct answer is now, on average, very slightly *shorter* than the longest
+distractor — so length carries no signal.
+
+### How to test it live
+
+1. Settings → AI Provider: make sure no provider is active (or Settings →
+   **Force offline** on) so the local bank is used.
+2. Home → topic **One Piece** → difficulty **Otaku Master** → Generate Quiz.
+3. Read each question without knowing the answer: all four options should be
+   the same *kind* of thing and roughly the same length. There should be no
+   single obviously-long option, and no "All of the above".
+4. Repeat at **Easy** and **Medium** for One Piece, then try Attack on Titan,
+   My Hero Academia, Jujutsu Kaisen and Neon Genesis Evangelion — those had the
+   most rewrites.
+5. Answer a few wrong on purpose and open **Review Answers** to confirm the
+   explanations still match their questions (they were rewritten together).
+6. Play the **Daily Challenge** once: it draws from the same bank with its own
+   shuffle, so it should look equally balanced.
