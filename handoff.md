@@ -4791,3 +4791,54 @@ Implementation notes:
 `sparkleStyle`/`onSparkleStyleChange` to `OnboardingScreen`, which shares the
 `celebrationStyle = ...` argument shape with `AppearanceScreen`. When patching
 by matching an argument block, confirm which composable encloses the match.
+
+---
+
+## App-icon sheet still juddered at the top — real fix: cap the height
+
+The previous attempt (status-bar `contentWindowInsets`) did **not** fix this;
+the owner confirmed the sheet still oscillated rapidly when dragged into the
+camera cutout.
+
+**Why the first fix failed.** Padding moves content but does not bound the
+sheet's *height*. With nine icon cards (~914dp of content) the sheet still grew
+to the full display height, so the sheet's own drag and the inner
+`verticalScroll` kept trading the same upward gesture — scroll consumes it,
+sheet re-expands, repeat. That handoff is the judder.
+
+**The actual fix,** as the owner originally suggested: give scrollable sheet
+content a hard height cap so it cannot be dragged higher than it already is.
+`NazoSheetColumn(scrollable = true)` now applies
+`heightIn(max = screenHeight * 0.78)`. The sheet settles at a fixed height,
+scrolling happens inside a container whose size never changes, and the two
+gestures can no longer compete.
+
+Clearance above the sheet at 0.78 on common screens (all well clear of the
+status bar / cutout):
+
+| Screen | Height | Cap | Gap above |
+|---|---|---|---|
+| small 5in | 640dp | 499dp | 141dp |
+| Pixel 4a | 740dp | 577dp | 163dp |
+| Galaxy S23 | 780dp | 608dp | 172dp |
+| Pixel 7 | 808dp | 630dp | 178dp |
+| tall 20:9 | 891dp | 695dp | 196dp |
+
+Only affects `scrollable = true` sheets (app icon, What's New). Short sheets
+still size to their content.
+
+**Lesson:** for a sheet/scroll gesture conflict, bound the height. Insets and
+padding do not.
+
+### How to test it live
+
+1. Settings → Appearance → **App icon**.
+2. Drag the sheet upward hard and repeatedly, trying to push it into the camera
+   cutout. Also flick the icon list to the very top and keep dragging up.
+   **Expected:** the sheet stops at roughly three-quarters of the screen and
+   stays there — completely still, with a clear gap above it. The list scrolls
+   to the first icon and stops. **Before:** it juddered up/down very fast.
+3. Scroll down to the last icon and release. **Expected:** smooth, no bounce-fight.
+4. Swipe down on the sheet. **Expected:** it still dismisses normally.
+5. Check a short sheet — Appearance → **Background effects**.
+   **Expected:** unchanged; it still hugs its content rather than jumping to the cap.

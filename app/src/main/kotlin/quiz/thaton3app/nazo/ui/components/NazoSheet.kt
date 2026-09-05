@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -32,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.node.DelegatableNode
 import androidx.compose.ui.node.DrawModifierNode
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -50,12 +52,17 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
  *     content ran to the very top of the display. [NazoModalSheet] pins the
  *     content to the status-bar inset instead.
  *
- *  2. **Scrollable sheet content had no upper bound.** With no top inset the
- *     sheet's expanded height ran past the status bar, so a scrollable child
- *     (the icon list) and the sheet's own drag could keep trading the gesture
- *     near the top edge and the sheet oscillated instead of settling. Fixing
- *     the inset gives the sheet a stable maximum height; scrolling inside it
- *     via [NazoSheetColumn] then behaves normally and simply stops at the top.
+ *  2. **A scrollable sheet could judder violently when dragged to the top.**
+ *     Content taller than the screen (the nine app-icon cards) let
+ *     `ModalBottomSheet` grow to the full display height. The sheet's drag and
+ *     the inner `verticalScroll` then fought over the same upward gesture,
+ *     producing a rapid up/down/up/down oscillation against the camera cutout.
+ *     [NazoSheetColumn] now caps scrollable content at
+ *     [SHEET_MAX_HEIGHT_FRACTION] of the screen, so the sheet settles at a
+ *     fixed height and cannot be dragged any higher.
+ *
+ *     Note the status-bar inset alone did NOT fix this — padding moves content
+ *     but never bounds the sheet's height. The cap is what matters.
  *
  *  3. **Pressing the drag handle flashed a dark rounded block** — an
  *     indication ripple sized to the handle's touch target, behind a 36x4dp
@@ -78,6 +85,13 @@ private object NoIndication : IndicationNodeFactory {
 
     override fun equals(other: Any?): Boolean = other === this
 }
+
+/**
+ * Tallest a scrollable sheet may grow, as a fraction of the screen. Keeps the
+ * sheet clear of the status bar / camera cutout and, more importantly, gives it
+ * a fixed height so its drag cannot fight the content's scroll.
+ */
+private const val SHEET_MAX_HEIGHT_FRACTION = 0.78f
 
 /** Top inset shared by every Nazo sheet: never draw under the status bar. */
 val NazoSheetInsets: WindowInsets
@@ -177,12 +191,33 @@ fun NazoSheetColumn(
     scrollable: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val scrollModifier =
-        if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier
+    // A scrollable sheet must be given a HARD height cap.
+    //
+    // Without one the content (nine icon cards) is taller than the screen, so
+    // ModalBottomSheet grows to the full display height. At that point the
+    // sheet's own drag and the inner verticalScroll both want the upward
+    // gesture: the scroll consumes it, the sheet re-expands, the scroll
+    // consumes it again — the rapid up/down/up/down judder against the camera
+    // cutout. Status-bar padding alone does NOT fix this; padding shifts
+    // content but does not bound the sheet's height.
+    //
+    // Capping the column stops the sheet growing past the cap, so it settles
+    // at a fixed height and simply cannot be dragged higher. Scrolling then
+    // happens purely inside a container whose size never changes.
+    val maxSheetHeight = LocalConfiguration.current.screenHeightDp.dp * SHEET_MAX_HEIGHT_FRACTION
+
+    val sizeModifier =
+        if (scrollable) {
+            Modifier
+                .heightIn(max = maxSheetHeight)
+                .verticalScroll(rememberScrollState())
+        } else {
+            Modifier
+        }
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .then(scrollModifier)
+            .then(sizeModifier)
             .padding(horizontal = 20.dp, vertical = 10.dp)
             .navigationBarsPadding(),
         content = content,
