@@ -4466,3 +4466,65 @@ distractor — so length carries no signal.
    explanations still match their questions (they were rewritten together).
 6. Play the **Daily Challenge** once: it draws from the same bank with its own
    shuffle, so it should look equally balanced.
+
+---
+
+## Audit triage: four real defects fixed (Kimi `report.md`)
+
+Triaged all 15 BUG / 5 SEC / 7 PERF findings against the actual code on this
+branch. Most were false positives or already-fixed; four were real and are
+fixed here. `report.md` was a temporary hand-off file and is deleted.
+
+### Fixed
+
+| ID | File | Fix |
+|---|---|---|
+| BUG-004 | `data/remote/ApiClient.kt` | `QuizCache` was a bare `LinkedHashMap` mutated from `Dispatchers.IO` by concurrent quiz builds + prefetch. Now guarded by `synchronized(lock)` on `get`/`put`. |
+| BUG-006 | `ui/NazoApp.kt`, `ui/screens/ActiveQuizScreen.kt` | Quiz duration and the Blitz deadline used wall-clock `System.currentTimeMillis()`; an NTP sync or manual clock edit mid-quiz produced absurd/negative times. Both writer and reader moved to monotonic `SystemClock.elapsedRealtime()`. |
+| BUG-012 | `ui/screens/ActiveQuizScreen.kt` | `enabled = !reveal` only flips on the next recomposition, so two taps in one frame both registered. Added an early-return idempotence guard. |
+| BUG-013 | `ui/NazoApp.kt` | `AchievementEngine.compute()` ran inline as a parameter, re-walking every rule + hitting the records/daily stores on every recomposition of Statistics. Wrapped in `remember(quizStats, dailiesCompleted)`. |
+
+### Rejected (verified against real code)
+
+- **BUG-001** connection leaks — false. Connections are built before `try` and
+  `disconnect()`ed in `finally`; the report's suggested "fix" is invalid Kotlin.
+- **BUG-002** prefetch race — already guarded; `guessRound == targetRound` checks
+  exist at `NazoApp.kt:890` and `:906`.
+- **BUG-007** unbounded image cache — it is a deliberate *one-slot* cache.
+- **BUG-009** P1 score leak — the handoff screen never renders it; the code
+  explicitly keeps it secret.
+- **BUG-010** daily seed not salted — by design; a daily challenge must be
+  identical for all players to be comparable.
+- **BUG-015** deprecated `NetworkInfo` — already uses `getNetworkCapabilities`.
+- **SEC-001** keys in `EncryptedSharedPreferences` — actually raw Android
+  Keystore AES/GCM (the modern replacement); no key is logged anywhere.
+- **BUG-003** "4,000+ questions" — the bank holds 985.
+- **PERF-003** `AmbientBackground` — already hoisted outside `AnimatedContent`.
+
+Still genuinely open, not attempted here: **TEST-001/002** (no test source set
+at all) and the architecture items (ViewModels, splitting `NazoApp.kt`).
+
+### How to test it live
+
+1. **Timer correctness (BUG-006).** Home → Start Quiz → any difficulty. Answer
+   one question, then pull down the system shade → Settings → System → Date &
+   time, turn *Set time automatically* off and move the clock forward an hour.
+   Return to the quiz and finish it. **Expected:** the "Time" figure on the
+   results screen shows your real elapsed minutes (a minute or two), *not* ~60m.
+   Before this fix it reported the clock jump. Re-enable automatic time after.
+2. **Blitz timer (BUG-006).** Home → Blitz. **Expected:** the 60s countdown ticks
+   down smoothly to 0 and ends the round; changing the system clock mid-round
+   does not skip or freeze it.
+3. **Double-tap guard (BUG-012).** Start any quiz and tap two *different* answer
+   options as fast as you can, near-simultaneously with two fingers.
+   **Expected:** exactly one option lights up, one sound plays, and the quiz
+   advances by exactly one question. Previously a fast double-tap could play two
+   sounds and skip a question in Blitz.
+4. **Statistics smoothness (BUG-013).** Play at least one quiz, then Home →
+   Profile → Statistics and scroll the achievements list up and down quickly.
+   **Expected:** scrolling is smooth and the unlocked/locked badges are stable;
+   no flicker or stutter while scrolling.
+5. **Cache safety (BUG-004).** Requires an AI provider key: Settings → AI
+   Provider, then start an AI quiz and immediately background/foreground the app
+   so a prefetch overlaps the build. **Expected:** no crash; quizzes load
+   normally and repeated identical requests return instantly from cache.

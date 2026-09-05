@@ -65,6 +65,11 @@ The repo has `.github/workflows/PR-assemble.yml`, built specifically for you:
   still mandatory (see below).
 
 ## Commit conventions
+- **Every commit subject must start with a conventional-commit tag carrying a
+  topic scope**: `fix(topic): ...`, `feat(topic): ...`, `docs(topic): ...`,
+  `refactor(topic): ...`, `chore(topic): ...`. The scope names the area touched
+  (`fix(quiz-bank): ...`, `feat(icons): ...`, `fix(nav): ...`). An untagged
+  subject like "Rebalance giveaway answers" is not acceptable.
 - Group related changes into separate, categorized commits; do not lump everything into one commit.
 - The commit subject (first line) should describe the **most impactful** change in that commit.
 - Lesser-impact changes bundled in the same commit go into the commit body as a description.

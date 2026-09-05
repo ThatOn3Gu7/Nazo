@@ -1,5 +1,6 @@
 package quiz.thaton3app.nazo.ui
 
+import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
@@ -461,7 +462,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         // assignments, so offline quizzes inherited the PREVIOUS game's
         // difficulty (wrong timer/hints/stats/records) and a stale start time.
         quizDifficulty = difficulty
-        quizStartedAt = System.currentTimeMillis()
+        quizStartedAt = SystemClock.elapsedRealtime()
         // Offline mode: skip any API attempt and go straight to the local bank
         // (stats still record normally in `answer`).
         if (isOfflineMode) {
@@ -500,7 +501,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         quizDifficulty = "Daily"
         isDailyQuiz = true
         quizMode = "normal"
-        quizStartedAt = System.currentTimeMillis()
+        quizStartedAt = SystemClock.elapsedRealtime()
         navigate(Screen.Quiz)
     }
 
@@ -522,7 +523,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         quizDifficulty = "Practice"
         isDailyQuiz = false
         quizMode = "normal"
-        quizStartedAt = System.currentTimeMillis()
+        quizStartedAt = SystemClock.elapsedRealtime()
         navigate(Screen.Quiz)
     }
 
@@ -607,7 +608,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         survivalWrongs = 0
         survivalFetching = false
         quizDifficulty = difficulty
-        quizStartedAt = System.currentTimeMillis()
+        quizStartedAt = SystemClock.elapsedRealtime()
         if (isOfflineMode) {
             runLocal(topic, difficulty, 5)
             return
@@ -650,7 +651,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         isDailyQuiz = false
         quizMode = "blitz"
         quizDifficulty = "Blitz"
-        quizStartedAt = System.currentTimeMillis()
+        quizStartedAt = SystemClock.elapsedRealtime()
         // Blitz is instant + offline by design: a big local-bank pool, unseen
         // questions first. The chosen difficulty picks the pool.
         val pool = LocalQuestionBank.getQuestions(80, topic, difficulty)
@@ -663,7 +664,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         score = 0
         aiGenerated = false
         generationState = GenerationState.Idle
-        blitzDeadline = System.currentTimeMillis() + 60_000L
+        blitzDeadline = SystemClock.elapsedRealtime() + 60_000L
         navigate(Screen.Quiz)
     }
 
@@ -675,7 +676,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         versusP1Score = 0
         versusP1Answers = emptyList()
         quizDifficulty = difficulty
-        quizStartedAt = System.currentTimeMillis()
+        quizStartedAt = SystemClock.elapsedRealtime()
         if (isOfflineMode) {
             runLocal(topic, difficulty, count)
             return
@@ -1199,18 +1200,30 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onSaved = { goBack() },
                     )
 
-                    Screen.Statistics -> StatisticsScreen(
-                        stats = quizStats,
-                        bonusXp = dailyStore.totalBonusXp(),
-                        achievements = AchievementEngine.compute(
+                    Screen.Statistics -> {
+                        // Memoised: this walks every achievement rule and hits
+                        // the records/daily stores on each call. Inline as a
+                        // parameter it re-ran on every recomposition of the
+                        // screen (scrolling, theme change). The inputs only
+                        // change when a quiz is recorded, so key on those.
+                        val dailiesCompleted = dailyStore.completedCount()
+                        val bonusXp = dailyStore.totalBonusXp()
+                        val achievements = remember(quizStats, dailiesCompleted) {
+                            AchievementEngine.compute(
+                                stats = quizStats,
+                                hasPerfectQuiz = listOf("Easy", "Medium", "Hard", "Otaku Master", "Daily")
+                                    .any { recordsStore.quizBestPercent(it) >= 100 },
+                                dailiesCompleted = dailiesCompleted,
+                            )
+                        }
+                        StatisticsScreen(
                             stats = quizStats,
-                            hasPerfectQuiz = listOf("Easy", "Medium", "Hard", "Otaku Master", "Daily")
-                                .any { recordsStore.quizBestPercent(it) >= 100 },
-                            dailiesCompleted = dailyStore.completedCount(),
-                        ),
-                        onBackClick = { goBack() },
-                        onHomeClick = { goHome() },
-                    )
+                            bonusXp = bonusXp,
+                            achievements = achievements,
+                            onBackClick = { goBack() },
+                            onHomeClick = { goHome() },
+                        )
+                    }
 
                     Screen.Appearance -> AppearanceScreen(
                         currentMode = themeMode,
@@ -1583,7 +1596,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
 
 private fun formatElapsed(startedAt: Long): String {
     if (startedAt == 0L) return "0m 0s"
-    val secs = ((System.currentTimeMillis() - startedAt) / 1000).toInt().coerceAtLeast(0)
+    // elapsedRealtime(), not currentTimeMillis(): a monotonic clock that can't
+    // jump. Wall time moves when the OS does an NTP sync or the user edits the
+    // date mid-quiz, which produced absurd or negative durations.
+    val secs = ((SystemClock.elapsedRealtime() - startedAt) / 1000).toInt().coerceAtLeast(0)
     return "${secs / 60}m ${secs % 60}s"
 }
 
