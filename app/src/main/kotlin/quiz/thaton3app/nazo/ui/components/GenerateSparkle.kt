@@ -62,12 +62,10 @@ fun DrawScope.drawTwinklingStars(
     boxSize: Size,
 ) {
     STARS.forEach { star ->
-        // Each star runs the same curve, shifted, so they pop in sequence
-        // rather than pulsing as one blob.
         val local = ((progress - star.phase) / (1f - star.phase)).coerceIn(0f, 1f)
-        // Up then back down: peaks at the middle of the star's own window.
         val pulse = sin(local * PI.toFloat())
-        val scale = star.scale * (1f + 0.55f * pulse)
+        // Reduced the scale multiplier so it doesn't grow too huge
+        val scale = star.scale * (1f + 0.55f * pulse) 
         val color = lerpColor(baseColor, ShineColor, pulse)
 
         val cx = star.x * boxSize.width
@@ -76,29 +74,72 @@ fun DrawScope.drawTwinklingStars(
 
         translate(cx, cy) {
             drawPath(path = fourPointStar(radius), color = color)
-            // A crossing glint at the peak sells the "shine".
-            if (pulse > 0.35f) {
-                val glint = (pulse - 0.35f) / 0.65f
-                val len = radius * (1.7f + glint)
-                val alpha = glint * 0.9f
-                rotate(degrees = 45f, pivot = Offset.Zero) {
-                    drawLine(
-                        color = ShineColor.copy(alpha = alpha),
-                        start = Offset(-len, 0f),
-                        end = Offset(len, 0f),
-                        strokeWidth = radius * 0.13f,
-                    )
-                    drawLine(
-                        color = ShineColor.copy(alpha = alpha * 0.7f),
-                        start = Offset(0f, -len * 0.7f),
-                        end = Offset(0f, len * 0.7f),
-                        strokeWidth = radius * 0.11f,
-                    )
-                }
+            
+            if (pulse > 0.15f) {
+                val glint = (pulse - 0.15f) / 0.85f
+                // Reduced the reach multiplier from 1.8f to 1.3f so it stays contained
+                val len = radius * (1.3f + glint * 0.6f) 
+                val alpha = glint * 0.95f
+                
+                drawLine(
+                    color = ShineColor.copy(alpha = alpha),
+                    start = Offset(-len, 0f),
+                    end = Offset(len, 0f),
+                    strokeWidth = radius * 0.25f, 
+                )
+                drawLine(
+                    color = ShineColor.copy(alpha = alpha * 0.8f),
+                    start = Offset(0f, -len * 0.8f),
+                    end = Offset(0f, len * 0.8f),
+                    strokeWidth = radius * 0.25f,
+                )
             }
         }
     }
 }
+
+// fun DrawScope.drawTwinklingStars(
+//     progress: Float,
+//     baseColor: Color,
+//     boxSize: Size,
+// ) {
+//     STARS.forEach { star ->
+//         val local = ((progress - star.phase) / (1f - star.phase)).coerceIn(0f, 1f)
+//         val pulse = sin(local * PI.toFloat())
+//         // Increased the scale multiplier slightly for more 'pop'
+//         val scale = star.scale * (1f + 0.75f * pulse) 
+//         val color = lerpColor(baseColor, ShineColor, pulse)
+//
+//         val cx = star.x * boxSize.width
+//         val cy = star.y * boxSize.height
+//         val radius = boxSize.minDimension * 0.30f * scale
+//
+//         translate(cx, cy) {
+//             drawPath(path = fourPointStar(radius), color = color)
+//
+//             // Start the glint earlier and make it thicker
+//             if (pulse > 0.15f) {
+//                 val glint = (pulse - 0.15f) / 0.85f
+//                 val len = radius * (1.8f + glint * 1.2f) // Longer reach
+//                 val alpha = glint * 0.95f
+//
+//                 // REMOVED the 45-degree rotation so it aligns with the star points
+//                 drawLine(
+//                     color = ShineColor.copy(alpha = alpha),
+//                     start = Offset(-len, 0f),
+//                     end = Offset(len, 0f),
+//                     strokeWidth = radius * 0.25f, // Thicker rays
+//                 )
+//                 drawLine(
+//                     color = ShineColor.copy(alpha = alpha * 0.8f),
+//                     start = Offset(0f, -len * 0.8f),
+//                     end = Offset(0f, len * 0.8f),
+//                     strokeWidth = radius * 0.25f,
+//                 )
+//             }
+//         }
+//     }
+// }
 
 /** One meteor: where it starts (relative to the button), and how it flies. */
 private data class Meteor(
@@ -116,18 +157,33 @@ private data class Meteor(
  */
 private val METEORS: List<Meteor> = run {
     val rng = Random(7)
-    List(11) {
+    List(12) {
         Meteor(
-            // Start off the right edge, spread across (and slightly above) the button.
-            startX = 1.02f + rng.nextFloat() * 0.55f,
-            startY = -0.15f + rng.nextFloat() * 1.05f,
-            delay = rng.nextFloat() * 0.45f,
-            speed = 1.15f + rng.nextFloat() * 0.75f,
-            length = 0.14f + rng.nextFloat() * 0.22f,
-            thickness = 1.2f + rng.nextFloat() * 1.6f,
+            // Spread the starting X coordinates across the entire width of the button
+            startX = 0.2f + rng.nextFloat() * 1.8f, 
+            // Spread out the vertical starting points a bit more too
+            startY = -0.2f + rng.nextFloat() * 1.2f,
+            delay = rng.nextFloat() * 0.35f,
+            speed = 1.0f + rng.nextFloat() * 0.8f,
+            length = 0.25f + rng.nextFloat() * 0.35f,
+            thickness = 4.0f + rng.nextFloat() * 6.0f,
         )
     }
 }
+
+// private val METEORS: List<Meteor> = run {
+//     val rng = Random(7)
+//     List(12) { // Bumped up to 12 for a slightly denser shower
+//         Meteor(
+//             startX = 1.02f + rng.nextFloat() * 0.55f,
+//             startY = -0.15f + rng.nextFloat() * 1.05f,
+//             delay = rng.nextFloat() * 0.35f, // Clustered the start times a bit more
+//             speed = 1.0f + rng.nextFloat() * 0.8f,
+//             length = 0.25f + rng.nextFloat() * 0.35f, // Much longer tails
+//             thickness = 4.0f + rng.nextFloat() * 6.0f, // Drastically thicker streaks!
+//         )
+//     }
+// }
 
 /** Meteors travel down-left at this angle, in radians. */
 private const val METEOR_ANGLE = 2.60f
@@ -153,14 +209,15 @@ fun DrawScope.drawMeteorShower(
         if (local <= 0f || local >= 1f) return@forEach
 
         // Fade in quickly, fade out over the second half of the flight.
+                // Fade in quickly, hold full opacity longer, then fade out
         val alpha = when {
-            local < 0.15f -> local / 0.15f
-            local > 0.55f -> ((1f - local) / 0.45f).coerceIn(0f, 1f)
+            local < 0.1f -> local / 0.1f
+            local > 0.65f -> ((1f - local) / 0.35f).coerceIn(0f, 1f)
             else -> 1f
         }
         if (alpha <= 0f) return@forEach
 
-        val travelled = local * diag * 1.25f
+        val travelled = local * diag * 2.0f
         val headX = m.startX * buttonSize.width + dx * travelled
         val headY = m.startY * buttonSize.height + dy * travelled
         val tailLen = m.length * diag
