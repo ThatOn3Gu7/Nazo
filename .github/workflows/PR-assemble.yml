@@ -132,27 +132,49 @@ jobs:
       # so they're readable via the API even when the raw run log isn't
       # downloadable. Push events carry no PR context, so the PR is looked
       # up from the branch name.
-      - name: Report failure to PR
+      # Surfaces compiler errors two ways, because the Arena agent often
+      # cannot download raw run logs from its sandbox:
+      #   * the job summary (always readable via `gh run view --json`),
+      #   * a comment on the branch's open PR.
+      # This step must NEVER swallow a failure silently - if no `e:` lines were
+      # matched it falls back to the log tail, so there is always something to
+      # read.
+      - name: Report failure
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          ERRORS=$( { grep -E '^e: ' gradle-build.log | head -60; \
+                      grep -A 12 'What went wrong' gradle-build.log | head -30; \
+                      grep -E 'FAILED$|FAILURE:' gradle-build.log | head -20; } 2>/dev/null | head -100)
+          if [ -z "$ERRORS" ]; then
+            # Nothing matched the usual patterns (OOM, daemon crash, a Gradle
+            # error with a different shape). The tail is better than nothing.
+            ERRORS="$(tail -80 gradle-build.log 2>/dev/null || echo 'No build log was produced.')"
+          fi
+
+          # 1. Job summary - always available through the API.
+          {
+            echo "### :x: Debug build failed"
+            echo ""
+            echo '```'
+            echo "$ERRORS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # 2. PR comment, when a PR exists for this branch.
           PR_NUMBER=$(gh pr list --repo "${{ github.repository }}" \
             --head "${GITHUB_REF_NAME}" --state open \
             --json number --jq '.[0].number' 2>/dev/null)
           if [ -z "$PR_NUMBER" ]; then
-            echo "No open PR for ${GITHUB_REF_NAME}; skipping comment."
+            echo "No open PR for ${GITHUB_REF_NAME}; summary only."
             exit 0
           fi
-          ERRORS=$( { grep -E '^e: ' gradle-build.log | head -60; \
-                      grep -A 12 'What went wrong' gradle-build.log | head -30; \
-                      grep -E 'FAILED$|FAILURE:' gradle-build.log | head -20; } 2>/dev/null | head -100)
-          if [ -n "$ERRORS" ]; then
-            gh pr comment "$PR_NUMBER" \
-              --repo "${{ github.repository }}" \
-              --body "### :x: Debug build failed (auto-report)
+          gh pr comment "$PR_NUMBER" \
+            --repo "${{ github.repository }}" \
+            --body "### :x: Debug build failed (auto-report)
+
           \`\`\`
           $ERRORS
           \`\`\`
           Full log: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" || true
-          fi
