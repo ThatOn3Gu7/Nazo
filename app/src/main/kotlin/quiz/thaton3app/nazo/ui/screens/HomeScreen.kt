@@ -3,6 +3,7 @@ package quiz.thaton3app.nazo.ui.screens
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -44,6 +45,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -54,6 +56,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.daily.DailyChallengeCard
 import quiz.thaton3app.nazo.data.LocalQuestionBank
@@ -994,8 +1000,18 @@ private fun PillButton(
 }
 
 @Composable
+/** Directions (degrees) the twinkle sparks fly in; uneven so it looks organic. */
+private val SPARK_ANGLES = listOf(-90f, -35f, 20f, 90f, 145f, -145f)
+
 private fun GenerateButton(label: String, onClick: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // Tap sequence: the sparkle twinkles, then navigation fires a beat later so
+    // the animation is actually seen. `launching` also guards against a second
+    // tap queueing a second quiz while the beat plays.
+    var launching by remember { mutableStateOf(false) }
+    val twinkle = remember { Animatable(0f) }
 
     // The button used to give no visual feedback at all — only haptics — so a
     // press was invisible. Three layers now respond to touch:
@@ -1096,15 +1112,72 @@ private fun GenerateButton(label: String, onClick: () -> Unit) {
                 // clash with the sheen.
                 indication = null,
             ) {
+                if (launching) return@clickable
+                launching = true
                 Haptics.light(context)
-                onClick()
+                scope.launch {
+                    twinkle.snapTo(0f)
+                    // ~420ms of twinkle, then a short beat so the animation
+                    // lands before the screen changes. Deliberately brief —
+                    // this is a flourish, not a loading screen.
+                    twinkle.animateTo(
+                        targetValue = 1f,
+                        animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
+                    )
+                    delay(90)
+                    onClick()
+                    // Reset so returning Home shows a clean, untwinkled icon.
+                    twinkle.snapTo(0f)
+                    launching = false
+                }
             },
     ) {
+        // The sparkle twinkles on tap: a quick spin with a scale pop and a
+        // brightness flash. `twinkle` runs 0 -> 1 once per tap.
+        val t = twinkle.value
+        // Two-stage pop: overshoot to 1.35x by the midpoint, settle back to 1x.
+        val popScale = if (t <= 0.5f) 1f + (t / 0.5f) * 0.35f
+                       else 1.35f - ((t - 0.5f) / 0.5f) * 0.35f
         Icon(
             imageVector = if (label.startsWith("Start")) Icons.Filled.ImageSearch else Icons.Filled.AutoAwesome,
             contentDescription = null,
             tint = NazoOnPrimary,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier
+                .size(20.dp)
+                // Sparks are drawn from the icon's own centre (no clipping in
+                // Compose, so they can fly outside the 20dp box) and must sit
+                // OUTSIDE graphicsLayer, or they would spin with the icon.
+                .drawWithContent {
+                    drawContent()
+                    if (t > 0f) {
+                        val origin = Offset(size.width / 2f, size.height / 2f)
+                        // Ease out: shoot quickly, then decelerate while fading.
+                        val travel = 1f - (1f - t) * (1f - t)
+                        val fade = (1f - t).coerceIn(0f, 1f)
+                        SPARK_ANGLES.forEachIndexed { i, deg ->
+                            val rad = deg * PI.toFloat() / 180f
+                            // Alternating reach/size keeps it from looking
+                            // like a perfect mechanical ring.
+                            val reach = if (i % 2 == 0) 26f else 18f
+                            val radius = (if (i % 2 == 0) 2.2f else 1.5f) * fade
+                            if (radius > 0f) {
+                                drawCircle(
+                                    color = NazoOnPrimary.copy(alpha = 0.85f * fade),
+                                    radius = radius,
+                                    center = origin + Offset(
+                                        cos(rad) * travel * reach,
+                                        sin(rad) * travel * reach,
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                }
+                .graphicsLayer {
+                    rotationZ = t * 180f
+                    scaleX = popScale
+                    scaleY = popScale
+                },
         )
         Spacer(Modifier.width(10.dp))
         Text(

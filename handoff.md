@@ -4675,3 +4675,52 @@ travels parent→child and would have eaten the tabs' own clicks. Do not do that
 5. Turn the floating bar back **on** and tap beside the pill.
    **Expected:** the element behind it still responds — the floating bar only
    blocks the pill's own footprint.
+
+---
+
+## Generate button: sparkle twinkles on tap
+
+Follow-up to the touch-feedback work. The `AutoAwesome` sparkle in
+`GenerateButton` (`HomeScreen.kt`) now animates when the button is tapped, and
+navigation is held back briefly so the animation is actually seen.
+
+Driven by a single `Animatable` (`twinkle`, 0 → 1 over 420ms, `FastOutSlowInEasing`):
+
+| Element | Behaviour |
+|---|---|
+| Spin | The icon rotates 180° across the tap. |
+| Pop | Scales up to 1.35x at the midpoint, then settles back to 1x. |
+| Spark burst | Six dots fly outward from the icon's centre along uneven angles, with alternating reach (26/18) and size (2.2/1.5), fading as they travel. |
+
+Sequence on tap: haptic → 420ms twinkle → 90ms beat → `onClick()`. Roughly half
+a second total, deliberately short — a flourish, not a loading screen.
+
+Two implementation details worth keeping:
+- The spark `drawWithContent` sits **before** `.graphicsLayer` in the modifier
+  chain, so the sparks do **not** inherit the icon's rotation/scale. Reversing
+  the order makes the whole burst spin with the icon.
+- A `launching` flag ignores taps while the sequence plays, so a double-tap
+  cannot queue two quizzes during the delay window. `twinkle` is reset after
+  `onClick()` so returning Home shows a clean icon.
+
+Sparks are drawn from the icon's own centre rather than a computed offset from
+the button centre. An earlier version measured the label width with
+`rememberTextMeasurer` to locate the icon — unnecessary, and it broke whenever
+the label changed (the button has five different labels by mode).
+
+### How to test it live
+
+1. Open Home. The mode selector should be on the default quiz mode, so the
+   button reads **Generate AI Quiz** (or **Generate Quiz** offline) and shows
+   the four-point sparkle on its left.
+2. Tap the button once and **watch the sparkle**.
+   **Expected:** it spins and pops larger while six small dots shoot outward and
+   fade, then the quiz screen appears a moment later — you should have time to
+   see the animation before the screen changes.
+3. Tap and immediately tap again as fast as you can.
+   **Expected:** exactly one quiz starts; the second tap is ignored.
+4. Come back Home. **Expected:** the sparkle is back to its normal size and
+   orientation, with no leftover rotation.
+5. Switch to Guessing/Survival/Blitz/Versus mode (the button label and icon
+   change to a magnifier). **Expected:** the same twinkle plays on tap, centred
+   on that icon.
