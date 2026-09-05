@@ -224,6 +224,13 @@ This means **a `docs:` commit is now safe to push on its own** — it appears in
 Actions as a near-instant skipped run rather than a 2-minute compile. Check the
 run summary for the gate's decision and reason.
 
+> **Gotcha:** never write the literal marker `[skip` `ci]` (or `[ci skip]`)
+> anywhere in a commit message — **including the body** — unless you mean it.
+> GitHub honours that marker itself and suppresses the workflow entirely, so
+> **no run is created at all**, not even a skipped one, and the PR gets no
+> status. This bit once while *documenting* the feature. Refer to the marker
+> indirectly in commit messages; in files like this one it is harmless.
+
 ### Still batch your work
 
 The gate removes the *cost* of a stray docs push, not the reason to be tidy:
