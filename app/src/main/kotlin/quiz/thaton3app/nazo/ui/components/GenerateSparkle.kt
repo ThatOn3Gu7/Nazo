@@ -98,49 +98,6 @@ fun DrawScope.drawTwinklingStars(
     }
 }
 
-// fun DrawScope.drawTwinklingStars(
-//     progress: Float,
-//     baseColor: Color,
-//     boxSize: Size,
-// ) {
-//     STARS.forEach { star ->
-//         val local = ((progress - star.phase) / (1f - star.phase)).coerceIn(0f, 1f)
-//         val pulse = sin(local * PI.toFloat())
-//         // Increased the scale multiplier slightly for more 'pop'
-//         val scale = star.scale * (1f + 0.75f * pulse) 
-//         val color = lerpColor(baseColor, ShineColor, pulse)
-//
-//         val cx = star.x * boxSize.width
-//         val cy = star.y * boxSize.height
-//         val radius = boxSize.minDimension * 0.30f * scale
-//
-//         translate(cx, cy) {
-//             drawPath(path = fourPointStar(radius), color = color)
-//
-//             // Start the glint earlier and make it thicker
-//             if (pulse > 0.15f) {
-//                 val glint = (pulse - 0.15f) / 0.85f
-//                 val len = radius * (1.8f + glint * 1.2f) // Longer reach
-//                 val alpha = glint * 0.95f
-//
-//                 // REMOVED the 45-degree rotation so it aligns with the star points
-//                 drawLine(
-//                     color = ShineColor.copy(alpha = alpha),
-//                     start = Offset(-len, 0f),
-//                     end = Offset(len, 0f),
-//                     strokeWidth = radius * 0.25f, // Thicker rays
-//                 )
-//                 drawLine(
-//                     color = ShineColor.copy(alpha = alpha * 0.8f),
-//                     start = Offset(0f, -len * 0.8f),
-//                     end = Offset(0f, len * 0.8f),
-//                     strokeWidth = radius * 0.25f,
-//                 )
-//             }
-//         }
-//     }
-// }
-
 /** One meteor: where it starts (relative to the button), and how it flies. */
 private data class Meteor(
     val startX: Float,
@@ -170,20 +127,6 @@ private val METEORS: List<Meteor> = run {
         )
     }
 }
-
-// private val METEORS: List<Meteor> = run {
-//     val rng = Random(7)
-//     List(12) { // Bumped up to 12 for a slightly denser shower
-//         Meteor(
-//             startX = 1.02f + rng.nextFloat() * 0.55f,
-//             startY = -0.15f + rng.nextFloat() * 1.05f,
-//             delay = rng.nextFloat() * 0.35f, // Clustered the start times a bit more
-//             speed = 1.0f + rng.nextFloat() * 0.8f,
-//             length = 0.25f + rng.nextFloat() * 0.35f, // Much longer tails
-//             thickness = 4.0f + rng.nextFloat() * 6.0f, // Drastically thicker streaks!
-//         )
-//     }
-// }
 
 /** Meteors travel down-left at this angle, in radians. */
 private const val METEOR_ANGLE = 2.60f
