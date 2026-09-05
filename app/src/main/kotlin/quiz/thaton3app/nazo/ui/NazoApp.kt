@@ -1,5 +1,6 @@
 package quiz.thaton3app.nazo.ui
 
+import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
@@ -13,10 +14,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -37,12 +43,17 @@ import quiz.thaton3app.nazo.data.settings.MissedQuestionsStore
 import quiz.thaton3app.nazo.data.settings.ProfilePreferences
 import quiz.thaton3app.nazo.data.settings.QuestionHistoryStore
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
+import quiz.thaton3app.nazo.IntroStyle
+import quiz.thaton3app.nazo.LauncherIconSwitcher
+import quiz.thaton3app.nazo.R
 import quiz.thaton3app.nazo.records.RecordsStore
 import quiz.thaton3app.nazo.daily.DailyChallenge
 import quiz.thaton3app.nazo.daily.DailyStore
 import quiz.thaton3app.nazo.achievements.AchievementEngine
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
+import quiz.thaton3app.nazo.ui.components.NazoBottomNav
+import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.ui.components.OfflineWarningDialog
 import quiz.thaton3app.nazo.ui.components.AiMissingDialog
 import quiz.thaton3app.nazo.ui.components.AmbientBackground
@@ -173,10 +184,35 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var pendingQuizRequest by remember { mutableStateOf<Triple<String, String, Int>?>(null) }
     val isOfflineMode = forceOffline || detectedOffline
 
-    LaunchedEffect(Unit) {
-        detectedOffline = !Connectivity.isOnline(context)
-        // Only block with a popup when offline — the "you're online" notice is no longer needed.
-        startupDialogMode = if (detectedOffline) StartupMode.OFFLINE else null
+    // `detectedOffline` used to be written ONLY by a run-once startup probe, so
+    // once the app launched without a network it stayed true for the whole
+    // process. Because isOfflineMode is `forceOffline || detectedOffline`,
+    // flipping the Settings switch off left the app offline and the Home pill
+    // stuck on "Offline mode" no matter how many times it was toggled.
+    // Bumping this counter re-runs the probe; it is the only way the flag can
+    // ever clear without a restart.
+    var connectivityProbe by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(connectivityProbe) {
+        val offline = !Connectivity.isOnline(context)
+        detectedOffline = offline
+        // The startup popup is a first-probe concern only — later re-probes
+        // must never resurrect it, or returning to the app would nag.
+        if (connectivityProbe == 0) {
+            // Only block with a popup when offline — the "you're online" notice is no longer needed.
+            startupDialogMode = if (offline) StartupMode.OFFLINE else null
+        }
+    }
+
+    // Re-probe whenever the app returns to the foreground: the usual way
+    // connectivity comes back is the user leaving to fix Wi-Fi and returning.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) connectivityProbe++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // In-app changelog: one-time "What's new" sheet after an update. A true
@@ -198,6 +234,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var navBarFloating by remember { mutableStateOf(themePrefs.floatingNavBar) }
     var backgroundStyle by remember { mutableStateOf(themePrefs.backgroundStyle) }
     var celebrationStyle by remember { mutableStateOf(themePrefs.celebrationStyle) }
+    var sparkleStyle by remember { mutableStateOf(themePrefs.sparkleStyle) }
+    // sanitize(): an update can retire an icon variant, leaving the saved pref
+    // pointing at a manifest component that no longer exists.
+    var appIcon by remember {
+        mutableStateOf(
+            LauncherIconSwitcher.sanitize(context, themePrefs.appIcon)
+                .also { if (it != themePrefs.appIcon) themePrefs.appIcon = it }
+        )
+    }
 
     // Launcher-icon theme sync now happens silently when the app is backgrounded
     // (see MainActivity.onStop); no in-app prompt is shown. The Appearance toggle
@@ -446,7 +491,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         // assignments, so offline quizzes inherited the PREVIOUS game's
         // difficulty (wrong timer/hints/stats/records) and a stale start time.
         quizDifficulty = difficulty
-        quizStartedAt = System.currentTimeMillis()
+        quizStartedAt = SystemClock.elapsedRealtime()
         // Offline mode: skip any API attempt and go straight to the local bank
         // (stats still record normally in `answer`).
         if (isOfflineMode) {
@@ -485,7 +530,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         quizDifficulty = "Daily"
         isDailyQuiz = true
         quizMode = "normal"
-        quizStartedAt = System.currentTimeMillis()
+        quizStartedAt = SystemClock.elapsedRealtime()
         navigate(Screen.Quiz)
     }
 
@@ -507,7 +552,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         quizDifficulty = "Practice"
         isDailyQuiz = false
         quizMode = "normal"
-        quizStartedAt = System.currentTimeMillis()
+        quizStartedAt = SystemClock.elapsedRealtime()
         navigate(Screen.Quiz)
     }
 
@@ -592,7 +637,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         survivalWrongs = 0
         survivalFetching = false
         quizDifficulty = difficulty
-        quizStartedAt = System.currentTimeMillis()
+        quizStartedAt = SystemClock.elapsedRealtime()
         if (isOfflineMode) {
             runLocal(topic, difficulty, 5)
             return
@@ -635,7 +680,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         isDailyQuiz = false
         quizMode = "blitz"
         quizDifficulty = "Blitz"
-        quizStartedAt = System.currentTimeMillis()
+        quizStartedAt = SystemClock.elapsedRealtime()
         // Blitz is instant + offline by design: a big local-bank pool, unseen
         // questions first. The chosen difficulty picks the pool.
         val pool = LocalQuestionBank.getQuestions(80, topic, difficulty)
@@ -648,7 +693,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         score = 0
         aiGenerated = false
         generationState = GenerationState.Idle
-        blitzDeadline = System.currentTimeMillis() + 60_000L
+        blitzDeadline = SystemClock.elapsedRealtime() + 60_000L
         navigate(Screen.Quiz)
     }
 
@@ -660,7 +705,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         versusP1Score = 0
         versusP1Answers = emptyList()
         quizDifficulty = difficulty
-        quizStartedAt = System.currentTimeMillis()
+        quizStartedAt = SystemClock.elapsedRealtime()
         if (isOfflineMode) {
             runLocal(topic, difficulty, count)
             return
@@ -1103,6 +1148,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         apiKeyActive = apiKeyStore.hasAnyActiveKey(),
                         activeProvider = activeProvider,
                         offline = isOfflineMode,
+                        sparkleStyle = sparkleStyle,
                         configuredProviders = configuredProviders,
                         onSelectProvider = { id ->
                             apiKeyStore.saveSelectedProvider(id)
@@ -1147,7 +1193,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onOpenBackupRestore = { navigate(Screen.BackupRestore) },
                         onOpenAbout = { navigate(Screen.About) },
                     forceOffline = forceOffline,
-                    onForceOfflineChange = { v -> forceOffline = v },
+                    onForceOfflineChange = { v ->
+                        forceOffline = v
+                        // Turning the switch OFF must also clear a stale
+                        // detectedOffline from the startup probe, otherwise
+                        // isOfflineMode stays true and the Home pill never
+                        // leaves "Offline mode".
+                        if (!v) connectivityProbe++
+                    },
                     soundEnabled = soundEnabled,
                     onSoundEnabledChange = { v ->
                         soundEnabled = v
@@ -1184,18 +1237,30 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onSaved = { goBack() },
                     )
 
-                    Screen.Statistics -> StatisticsScreen(
-                        stats = quizStats,
-                        bonusXp = dailyStore.totalBonusXp(),
-                        achievements = AchievementEngine.compute(
+                    Screen.Statistics -> {
+                        // Memoised: this walks every achievement rule and hits
+                        // the records/daily stores on each call. Inline as a
+                        // parameter it re-ran on every recomposition of the
+                        // screen (scrolling, theme change). The inputs only
+                        // change when a quiz is recorded, so key on those.
+                        val dailiesCompleted = dailyStore.completedCount()
+                        val bonusXp = dailyStore.totalBonusXp()
+                        val achievements = remember(quizStats, dailiesCompleted) {
+                            AchievementEngine.compute(
+                                stats = quizStats,
+                                hasPerfectQuiz = listOf("Easy", "Medium", "Hard", "Otaku Master", "Daily")
+                                    .any { recordsStore.quizBestPercent(it) >= 100 },
+                                dailiesCompleted = dailiesCompleted,
+                            )
+                        }
+                        StatisticsScreen(
                             stats = quizStats,
-                            hasPerfectQuiz = listOf("Easy", "Medium", "Hard", "Otaku Master", "Daily")
-                                .any { recordsStore.quizBestPercent(it) >= 100 },
-                            dailiesCompleted = dailyStore.completedCount(),
-                        ),
-                        onBackClick = { goBack() },
-                        onHomeClick = { goHome() },
-                    )
+                            bonusXp = bonusXp,
+                            achievements = achievements,
+                            onBackClick = { goBack() },
+                            onHomeClick = { goHome() },
+                        )
+                    }
 
                     Screen.Appearance -> AppearanceScreen(
                         currentMode = themeMode,
@@ -1227,11 +1292,29 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             celebrationStyle = it
                             themePrefs.celebrationStyle = it
                         },
+                        sparkleStyle = sparkleStyle,
+                        onSparkleStyleChange = {
+                            sparkleStyle = it
+                            themePrefs.sparkleStyle = it
+                        },
                         iconFollowsOsTheme = themePrefs.iconFollowsOsTheme,
                         onIconFollowsOsThemeChange = { enabled ->
                             // Just persist the preference; the actual swap happens silently
                             // when the app is backgrounded (MainActivity.onStop).
                             themePrefs.iconFollowsOsTheme = enabled
+                        },
+                        appIcon = appIcon,
+                        onAppIconChange = { id ->
+                            appIcon = id
+                            themePrefs.appIcon = id
+                            // A custom icon and "follow the OS theme" are mutually
+                            // exclusive — picking one turns the automatic mode off.
+                            themePrefs.iconFollowsOsTheme = false
+                            LauncherIconSwitcher.select(context, id)
+                            // Disabling the alias that launched this task makes Android
+                            // tear the task down; finishing ourselves makes that graceful
+                            // and predictable instead of looking like a crash.
+                            (context as? Activity)?.finishAndRemoveTask()
                         },
                         onBackClick = { goBack() },
                         onHomeClick = { goHome() },
@@ -1377,6 +1460,41 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 }
             }
 
+            // The bottom nav lives OUTSIDE AnimatedContent, for the same reason
+            // AmbientBackground does: anything inside gets torn down and rebuilt
+            // on every screen change, so its animation state is destroyed.
+            //
+            // It used to be rendered by HomeScreen and SettingsScreen separately.
+            // Those are two DIFFERENT composables that never coexist — switching
+            // tabs disposed one and created the other, so animateColorAsState /
+            // animateContentSize always started at their target value and the
+            // expand/collapse transition could never be seen. One shared instance
+            // here survives the swap, so the pill genuinely animates between tabs.
+            //
+            // Only the two tab destinations show it; submenus stay full-screen.
+            val navTab = when (currentScreen) {
+                Screen.Home -> NazoTab.Home
+                Screen.Settings -> NazoTab.Settings
+                else -> null
+            }
+            if (navTab != null && !showOnboarding) {
+                NazoBottomNav(
+                    selected = navTab,
+                    onHomeClick = { if (currentScreen != Screen.Home) goHome() },
+                    onSettingsClick = { if (currentScreen != Screen.Settings) navigate(Screen.Settings) },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        // Match the blur AnimatedContent gets behind a startup
+                        // dialog; the bar used to be inside a screen and so was
+                        // blurred with it.
+                        .then(
+                            if (startupDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp)
+                            else Modifier
+                        ),
+                )
+            }
+
+
             if (startupDialogMode != null) {
                 OfflineWarningDialog(
                     mode = startupDialogMode!!,
@@ -1464,7 +1582,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         ReminderScheduler.setEnabled(context.applicationContext, v)
                     },
                     forceOffline = forceOffline,
-                    onForceOfflineChange = { v -> forceOffline = v },
+                    onForceOfflineChange = { v ->
+                        forceOffline = v
+                        // Turning the switch OFF must also clear a stale
+                        // detectedOffline from the startup probe, otherwise
+                        // isOfflineMode stays true and the Home pill never
+                        // leaves "Offline mode".
+                        if (!v) connectivityProbe++
+                    },
                     onProvidersChanged = {
                         selectedProvider = apiKeyStore.getSelectedProvider()
                     },
@@ -1502,14 +1627,28 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // true first launch the (opaque) tour covered it and the splash
             // zoom-through animation played invisibly underneath — the classic
             // "intro only works after setup" bug.
-            IntroOverlay(isDark = isDark)
+            // Continue the system splash's color: when a custom app icon is active
+            // its flat splash color carries into the zoom-through, so there's no
+            // color jump between the two. The follow-OS-theme pair passes null and
+            // keeps the original light/dark greens.
+            val introIcon = if (themePrefs.iconFollowsOsTheme) null
+            else LauncherIconSwitcher.option(appIcon)
+            IntroOverlay(
+                isDark = isDark,
+                backgroundColor = introIcon?.splashColor?.let { Color(it) },
+                mark = introIcon?.introMark ?: R.drawable.ic_launcher_foreground,
+                style = introIcon?.introStyle ?: IntroStyle.WARP,
+            )
         }
     }
 }
 
 private fun formatElapsed(startedAt: Long): String {
     if (startedAt == 0L) return "0m 0s"
-    val secs = ((System.currentTimeMillis() - startedAt) / 1000).toInt().coerceAtLeast(0)
+    // elapsedRealtime(), not currentTimeMillis(): a monotonic clock that can't
+    // jump. Wall time moves when the OS does an NTP sync or the user edits the
+    // date mid-quiz, which produced absurd or negative durations.
+    val secs = ((SystemClock.elapsedRealtime() - startedAt) / 1000).toInt().coerceAtLeast(0)
     return "${secs / 60}m ${secs % 60}s"
 }
 

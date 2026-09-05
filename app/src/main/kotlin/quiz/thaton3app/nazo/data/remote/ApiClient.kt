@@ -303,15 +303,20 @@ Hard rules:
 
 /** In-memory cache of generated quizzes for the current app session (keyed by request params). */
 object QuizCache {
+    // Guarded by [lock]: generateQuiz runs on Dispatchers.IO and several
+    // requests can be in flight at once (a quiz build plus a prefetch), so an
+    // unsynchronised LinkedHashMap could interleave a put() resize with a
+    // read and corrupt the map or throw ConcurrentModificationException.
+    private val lock = Any()
     private val map = LinkedHashMap<String, List<Question>>()
     private const val MAX = 20
 
     fun key(provider: String, model: String, topic: String, difficulty: String, count: Int): String =
         "$provider:$model:$topic:$difficulty:$count"
 
-    fun get(key: String): List<Question>? = map[key]
+    fun get(key: String): List<Question>? = synchronized(lock) { map[key] }
 
-    fun put(key: String, value: List<Question>) {
+    fun put(key: String, value: List<Question>) = synchronized(lock) {
         map.remove(key)
         map[key] = value
         while (map.size > MAX) map.remove(map.keys.first())

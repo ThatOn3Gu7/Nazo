@@ -4,6 +4,11 @@ name: PR Assemble (compile check)
 # errors are reported back onto the branch's open PR. Nothing else triggers
 # this workflow. A successful run also uploads the debug APK as a
 # downloadable artifact (Actions -> Run -> Artifacts).
+#
+# Docs-only pushes are skipped: the `gate` job below inspects the head commit
+# and short-circuits the build when nothing compilable changed, so a
+# `docs:` / `chore:` commit no longer burns ~2 minutes compiling unchanged
+# code. See AGENTS.md Part 2.
 on:
   push:
     branches:
@@ -13,7 +18,93 @@ permissions:
   contents: read
   pull-requests: write
 jobs:
+  # ---------------------------------------------------------------------
+  # Decides whether the push is worth compiling.
+  #
+  # Two independent signals, and BOTH must say "docs" for the build to skip:
+  #   1. the head commit's conventional-commit tag is a non-code type
+  #      (docs/chore/style/ci) or carries [skip ci] / [ci skip];
+  #   2. the push actually changed no compilable files.
+  #
+  # Requiring both is deliberate and fail-safe. A mistagged commit that does
+  # touch Kotlin/Gradle/resources still gets compiled, so a wrong tag can
+  # never let a broken build through unnoticed. Manual workflow_dispatch
+  # always builds.
+  # ---------------------------------------------------------------------
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.decide.outputs.should_build }}
+      reason: ${{ steps.decide.outputs.reason }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Decide whether to build
+        id: decide
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "reason=manual dispatch" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          SUBJECT="$(git log -1 --pretty=%s)"
+          echo "Head commit subject: $SUBJECT"
+
+          # Signal 1: does the tag / marker claim this is a non-code change?
+          TAG_SAYS_DOCS=false
+          if printf '%s' "$SUBJECT" | grep -qiE '^(docs|chore|style|ci)(\([^)]*\))?!?:'; then
+            TAG_SAYS_DOCS=true
+          fi
+          if printf '%s' "$SUBJECT" | grep -qiE '\[(skip ci|ci skip)\]'; then
+            TAG_SAYS_DOCS=true
+          fi
+
+          # Signal 2: did the push actually touch anything compilable?
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            # New branch or unreachable base: diff the head commit alone.
+            CHANGED="$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git show --pretty=format: --name-only HEAD)"
+          else
+            CHANGED="$(git diff --name-only "$BEFORE" HEAD)"
+          fi
+          echo "Changed files:"
+          printf '%s\n' "$CHANGED"
+
+          CODE_CHANGED=false
+          if printf '%s\n' "$CHANGED" | grep -qE '\.(kt|kts|java|xml|pro|gradle|properties|json|png|jpg|jpeg|webp|svg|ttf|otf|ogg|mp3|wav)$'; then
+            CODE_CHANGED=true
+          fi
+          # gradlew / wrapper / lockfiles have no extension match above.
+          if printf '%s\n' "$CHANGED" | grep -qE '(^|/)(gradlew|gradlew\.bat|gradle/wrapper/.*|settings\.gradle.*|build\.gradle.*)$'; then
+            CODE_CHANGED=true
+          fi
+
+          if [ "$TAG_SAYS_DOCS" = true ] && [ "$CODE_CHANGED" = false ]; then
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+            echo "reason=docs-only commit ('${SUBJECT}') with no compilable changes" >> "$GITHUB_OUTPUT"
+          elif [ "$TAG_SAYS_DOCS" = true ] && [ "$CODE_CHANGED" = true ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "reason=tagged as docs/chore but compilable files changed - building anyway (check the tag)" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "reason=code change" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Summary
+        run: |
+          echo "### Build gate" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Build:** \`${{ steps.decide.outputs.should_build }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Reason:** ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
+
   assemble-debug:
+    needs: gate
+    if: needs.gate.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -41,27 +132,49 @@ jobs:
       # so they're readable via the API even when the raw run log isn't
       # downloadable. Push events carry no PR context, so the PR is looked
       # up from the branch name.
-      - name: Report failure to PR
+      # Surfaces compiler errors two ways, because the Arena agent often
+      # cannot download raw run logs from its sandbox:
+      #   * the job summary (always readable via `gh run view --json`),
+      #   * a comment on the branch's open PR.
+      # This step must NEVER swallow a failure silently - if no `e:` lines were
+      # matched it falls back to the log tail, so there is always something to
+      # read.
+      - name: Report failure
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          ERRORS=$( { grep -E '^e: ' gradle-build.log | head -60; \
+                      grep -A 12 'What went wrong' gradle-build.log | head -30; \
+                      grep -E 'FAILED$|FAILURE:' gradle-build.log | head -20; } 2>/dev/null | head -100)
+          if [ -z "$ERRORS" ]; then
+            # Nothing matched the usual patterns (OOM, daemon crash, a Gradle
+            # error with a different shape). The tail is better than nothing.
+            ERRORS="$(tail -80 gradle-build.log 2>/dev/null || echo 'No build log was produced.')"
+          fi
+
+          # 1. Job summary - always available through the API.
+          {
+            echo "### :x: Debug build failed"
+            echo ""
+            echo '```'
+            echo "$ERRORS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # 2. PR comment, when a PR exists for this branch.
           PR_NUMBER=$(gh pr list --repo "${{ github.repository }}" \
             --head "${GITHUB_REF_NAME}" --state open \
             --json number --jq '.[0].number' 2>/dev/null)
           if [ -z "$PR_NUMBER" ]; then
-            echo "No open PR for ${GITHUB_REF_NAME}; skipping comment."
+            echo "No open PR for ${GITHUB_REF_NAME}; summary only."
             exit 0
           fi
-          ERRORS=$( { grep -E '^e: ' gradle-build.log | head -60; \
-                      grep -A 12 'What went wrong' gradle-build.log | head -30; \
-                      grep -E 'FAILED$|FAILURE:' gradle-build.log | head -20; } 2>/dev/null | head -100)
-          if [ -n "$ERRORS" ]; then
-            gh pr comment "$PR_NUMBER" \
-              --repo "${{ github.repository }}" \
-              --body "### :x: Debug build failed (auto-report)
+          gh pr comment "$PR_NUMBER" \
+            --repo "${{ github.repository }}" \
+            --body "### :x: Debug build failed (auto-report)
+
           \`\`\`
           $ERRORS
           \`\`\`
           Full log: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" || true
-          fi

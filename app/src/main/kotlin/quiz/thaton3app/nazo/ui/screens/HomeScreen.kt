@@ -3,8 +3,17 @@ package quiz.thaton3app.nazo.ui.screens
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -12,9 +21,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -30,9 +42,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -40,13 +56,20 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.PI
+import kotlin.math.sin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.daily.DailyChallengeCard
+import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.ui.components.Haptics
-import quiz.thaton3app.nazo.ui.components.NazoBottomNav
-import quiz.thaton3app.nazo.ui.components.NazoTab
+import quiz.thaton3app.nazo.ui.components.NazoModalSheet
+import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
+import quiz.thaton3app.nazo.ui.components.SPARKLE_METEORS
+import quiz.thaton3app.nazo.ui.components.SPARKLE_TWINKLE
+import quiz.thaton3app.nazo.ui.components.drawMeteorShower
+import quiz.thaton3app.nazo.ui.components.drawTwinklingStars
 import quiz.thaton3app.nazo.ui.theme.*
 
 enum class Difficulty(val label: String) {
@@ -71,6 +94,8 @@ fun HomeScreen(
     apiKeyActive: Boolean,
     activeProvider: String? = null,
     offline: Boolean = false,
+    /** Generate-button tap effect: SPARKLE_TWINKLE or SPARKLE_METEORS. */
+    sparkleStyle: String = SPARKLE_TWINKLE,
     onSettingsClick: () -> Unit = {},
     profileName: String = "",
     profilePictureUri: String? = null,
@@ -327,6 +352,7 @@ fun HomeScreen(
             Spacer(Modifier.height(28.dp))
 
             GenerateButton(
+                sparkleStyle = sparkleStyle,
                 label = when (nazoMode) {
                     NazoMode.GUESSING -> "Start Guessing Game"
                     NazoMode.SURVIVAL -> "Start Survival Run"
@@ -347,33 +373,12 @@ fun HomeScreen(
             Spacer(Modifier.height(16.dp))
         }
 
-        NazoBottomNav(
-            selected = NazoTab.Home,
-            onSettingsClick = onSettingsClick,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
-
         if (showProviderSheet) {
-            ModalBottomSheet(
+            NazoModalSheet(
                 onDismissRequest = { showProviderSheet = false },
                 sheetState = sheetState,
-                containerColor = NazoSurface,
-                dragHandle = {
-                    Box(
-                        modifier = Modifier
-                            .padding(top = 16.dp, bottom = 8.dp)
-                            .size(width = 36.dp, height = 4.dp)
-                            .clip(CircleShape)
-                            .background(NazoTextSecondary.copy(alpha = 0.3f))
-                    )
-                }
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 10.dp)
-                        .navigationBarsPadding(),
-                ) {
+                NazoSheetColumn {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
@@ -1001,8 +1006,63 @@ private fun PillButton(
 }
 
 @Composable
-private fun GenerateButton(label: String, onClick: () -> Unit) {
+private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // Tap sequence: the sparkle twinkles, then navigation fires a beat later so
+    // the animation is actually seen. `launching` also guards against a second
+    // tap queueing a second quiz while the beat plays.
+    var launching by remember { mutableStateOf(false) }
+    val twinkle = remember { Animatable(0f) }
+
+    // The button used to give no visual feedback at all — only haptics — so a
+    // press was invisible. Three layers now respond to touch:
+    //   1. a spring scale-down while held (the "physical" press),
+    //   2. a brightening overlay + lifted elevation that track the press,
+    //   3. a slow sheen that sweeps across the face, hinting it is tappable.
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.97f else 1f,
+        // Springy on release so it feels responsive rather than sluggish.
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "generate_press_scale",
+    )
+    val pressOverlay by animateFloatAsState(
+        targetValue = if (pressed) 0.16f else 0f,
+        animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
+        label = "generate_press_overlay",
+    )
+    val elevation by animateDpAsState(
+        targetValue = if (pressed) 1.dp else 8.dp,
+        animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
+        label = "generate_press_elevation",
+    )
+
+    // Idle sheen: a soft highlight that travels left-to-right on a long loop,
+    // with a pause between sweeps so it reads as a gentle shine, not a spinner.
+    val sheen = rememberInfiniteTransition(label = "generate_sheen")
+    val sheenX by sheen.animateFloat(
+        initialValue = -0.35f,
+        targetValue = 1.35f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes<Float> {
+                durationMillis = 4200
+                // Dwell off-screen, sweep across, then hold before repeating.
+                (-0.35f) at 0
+                (-0.35f) at 1400
+                1.35f at 3000 using LinearEasing
+                1.35f at 4200
+            },
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "generate_sheen_x",
+    )
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -1010,19 +1070,111 @@ private fun GenerateButton(label: String, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .height(58.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .shadow(
+                elevation = elevation,
+                shape = RoundedCornerShape(18.dp),
+                ambientColor = NazoPrimary,
+                spotColor = NazoPrimary,
+            )
             .clip(RoundedCornerShape(18.dp))
             .background(NazoPrimary)
-            .clickable {
+            // Sheen sits above the fill but below the label, and is skipped
+            // while pressed so the two effects never overlap.
+            .drawWithContent {
+                drawContent()
+                if (!pressed) {
+                    val bandWidth = size.width * 0.38f
+                    val center = size.width * sheenX
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                NazoOnPrimary.copy(alpha = 0.14f),
+                                Color.Transparent,
+                            ),
+                            startX = center - bandWidth / 2f,
+                            endX = center + bandWidth / 2f,
+                        ),
+                    )
+                }
+            }
+            // Press brightening, drawn over everything.
+            .drawWithContent {
+                drawContent()
+                if (pressOverlay > 0f) {
+                    drawRect(color = NazoOnPrimary.copy(alpha = pressOverlay))
+                }
+                // The shower sweeps the full button, so it is drawn here rather
+                // than on the icon. Clipped by the button's rounded shape.
+                if (sparkleStyle == SPARKLE_METEORS && twinkle.value > 0f) {
+                    drawMeteorShower(
+                        progress = twinkle.value,
+                        buttonSize = size,
+                        tint = NazoOnPrimary,
+                    )
+                }
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                // The scale + brighten IS the feedback; a ripple on top would
+                // clash with the sheen.
+                indication = null,
+            ) {
+                if (launching) return@clickable
+                launching = true
                 Haptics.light(context)
-                onClick()
+                scope.launch {
+                    twinkle.snapTo(0f)
+                    // ~420ms of twinkle, then a short beat so the animation
+                    // lands before the screen changes. Deliberately brief —
+                    // this is a flourish, not a loading screen.
+                    // Meteors need longer to cross the button than the stars
+                    // need to pulse, so the shower gets a wider window.
+                    val duration = if (sparkleStyle == SPARKLE_METEORS) 720 else 460
+                    twinkle.animateTo(
+                        targetValue = 1f,
+                        animationSpec = tween(durationMillis = duration, easing = LinearEasing),
+                    )
+                    delay(70)
+                    onClick()
+                    // Reset so returning Home shows a clean, untwinkled icon.
+                    twinkle.snapTo(0f)
+                    launching = false
+                }
             },
     ) {
-        Icon(
-            imageVector = if (label.startsWith("Start")) Icons.Filled.ImageSearch else Icons.Filled.AutoAwesome,
-            contentDescription = null,
-            tint = NazoOnPrimary,
-            modifier = Modifier.size(20.dp),
-        )
+        // "Start ..." modes keep the magnifier; the quiz modes get the
+        // sparkle, which is drawn on a Canvas so each star can twinkle on its
+        // own schedule (a plain Icon can only be transformed as a whole).
+        val t = twinkle.value
+        if (label.startsWith("Start")) {
+            // Same pulse, applied to the single glyph.
+            val pulse = sin(t * PI.toFloat())
+            val iconScale = 1f + 0.25f * pulse
+            Icon(
+                imageVector = Icons.Filled.ImageSearch,
+                contentDescription = null,
+                tint = NazoOnPrimary,
+                modifier = Modifier
+                    .size(20.dp)
+                    .graphicsLayer {
+                        scaleX = iconScale
+                        scaleY = iconScale
+                    },
+            )
+        } else {
+            Canvas(modifier = Modifier.size(20.dp)) {
+                drawTwinklingStars(
+                    progress = t,
+                    baseColor = NazoOnPrimary,
+                    boxSize = size,
+                )
+            }
+        }
         Spacer(Modifier.width(10.dp))
         Text(
             text = label,

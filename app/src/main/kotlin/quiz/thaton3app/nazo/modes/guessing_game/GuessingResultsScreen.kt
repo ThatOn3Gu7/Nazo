@@ -51,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -422,16 +423,20 @@ private fun ScoreCard(
                     style = Stroke(width = 12.dp.toPx(), cap = StrokeCap.Round)
                 )
             }
-            Canvas(modifier = Modifier.fillMaxSize()) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .rotate(-90f)
+            ) {
                 drawArc(
                     brush = Brush.sweepGradient(
                         colors = listOf(
                             NazoPrimary.copy(alpha = 0.4f),
                             NazoPrimary,
-                            NazoPrimary.copy(alpha = 0.8f)
+                            NazoPrimary.copy(alpha = 0.4f)
                         )
                     ),
-                    startAngle = -90f,
+                    startAngle = 0f,
                     sweepAngle = 360f * progressAnim,
                     useCenter = false,
                     style = Stroke(width = 12.dp.toPx(), cap = StrokeCap.Round)

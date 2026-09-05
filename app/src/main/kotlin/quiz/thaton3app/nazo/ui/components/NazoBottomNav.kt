@@ -3,11 +3,21 @@ package quiz.thaton3app.nazo.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -24,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -35,6 +46,23 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 
 enum class NazoTab { Home, Settings }
 
+/**
+ * Makes the bar's whole surface an opaque hit target.
+ *
+ * The bar is a plain [Row]: only the two tab pills were interactive, so taps on
+ * the bar's padding, its rounded shoulders, or the gap between the pills fell
+ * straight through to whatever sat behind it (mode cards, the Generate button).
+ *
+ * `detectTapGestures {}` registers the entire Row as a pointer-input node and
+ * consumes taps that land on it. The tabs keep working because they are
+ * descendants, and Compose hit-tests descendants before their parent.
+ */
+private fun Modifier.blockTouchThrough(): Modifier =
+    this.pointerInput(Unit) { detectTapGestures { /* absorb: not a tab */ } }
+
+/** Shared duration for the floating bar's tab transition (tint + label expand). */
+private const val TAB_ANIM_MS = 280
+
 @Composable
 fun NazoBottomNav(
     selected: NazoTab,
@@ -42,11 +70,6 @@ fun NazoBottomNav(
     onHomeClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
 ) {
-    // Floating mode is a user preference (Appearance → Layout). In floating mode
-    // the bar is a compact centred pill in the app's pill design language —
-    // wrap-content width, solid surface, subtle border — so it reads like the
-    // rest of the UI instead of a detached slab. The caller (Home) positions it
-    // via `modifier` (e.g. align(BottomCenter)) so it overlays.
     val floating = ThemePreferences(LocalContext.current).floatingNavBar
 
     if (floating) {
@@ -54,6 +77,9 @@ fun NazoBottomNav(
             modifier = modifier
                 .navigationBarsPadding()
                 .padding(bottom = 14.dp)
+                // Only the pill itself blocks touches; the transparent area
+                // beside it stays interactive, which is the point of floating.
+                .blockTouchThrough()
                 .shadow(elevation = 6.dp, shape = RoundedCornerShape(50), clip = false)
                 .background(NazoNavBar, RoundedCornerShape(50))
                 .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(50))
@@ -61,19 +87,17 @@ fun NazoBottomNav(
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            NavItems(selected = selected, onHomeClick = onHomeClick, onSettingsClick = onSettingsClick)
+            NavItems(selected = selected, isFloating = true, onHomeClick = onHomeClick, onSettingsClick = onSettingsClick)
         }
     } else {
-        // Anchored "tombstone" bar: it wraps the tabs instead of spanning the screen.
-        // Replaced the custom elliptical path with a standard Compose RoundedCornerShape.
-        // This ensures mathematically perfect circular corners that match the rest of 
-        // the app's UI elements (buttons/pills), while still providing the required 
-        // straight vertical drop on the sides.
         val cornerRadius = 24.dp
         val overhang = 14.dp 
         
         Row(
             modifier = modifier
+                // The docked bar spans the full width and is opaque, so nothing
+                // behind it should be reachable — see blockTouchThrough().
+                .blockTouchThrough()
                 .background(
                     color = NazoNavBar, 
                     shape = RoundedCornerShape(topStart = cornerRadius, topEnd = cornerRadius)
@@ -84,7 +108,7 @@ fun NazoBottomNav(
             horizontalArrangement = Arrangement.spacedBy(32.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            NavItems(selected = selected, onHomeClick = onHomeClick, onSettingsClick = onSettingsClick)
+            NavItems(selected = selected, isFloating = false, onHomeClick = onHomeClick, onSettingsClick = onSettingsClick)
         }
     }
 }
@@ -92,6 +116,7 @@ fun NazoBottomNav(
 @Composable
 private fun NavItems(
     selected: NazoTab,
+    isFloating: Boolean,
     onHomeClick: () -> Unit,
     onSettingsClick: () -> Unit,
 ) {
@@ -99,12 +124,14 @@ private fun NavItems(
         icon = Icons.Filled.Home,
         label = "Home",
         selected = selected == NazoTab.Home,
+        isFloating = isFloating,
         onClick = onHomeClick,
     )
     NazoNavItem(
         icon = Icons.Filled.Settings,
         label = "Settings",
         selected = selected == NazoTab.Settings,
+        isFloating = isFloating,
         onClick = onSettingsClick,
     )
 }
@@ -114,241 +141,72 @@ private fun NazoNavItem(
     icon: ImageVector,
     label: String,
     selected: Boolean,
+    isFloating: Boolean,
     onClick: () -> Unit,
 ) {
-    // Same pill language as the rest of the app (mode/difficulty pills):
-    // the selected tab is a solid accent pill with icon + label side by side,
-    // the unselected tab is quiet text. Much slimmer than icon-over-label.
-    val tint = if (selected) NazoOnPrimary else NazoTextSecondary
+    val targetTint = if (selected) NazoOnPrimary else NazoTextSecondary
+    val targetBg = if (selected) NazoPrimary else Color.Transparent
+
+    // One shared duration so the colour fade and the label expand/collapse finish
+    // together — otherwise the pill keeps growing after it has finished tinting.
+    val spec = tween<Color>(TAB_ANIM_MS, easing = FastOutSlowInEasing)
+    val animatedTint by animateColorAsState(targetValue = targetTint, animationSpec = spec, label = "nav_tint")
+    val animatedBg by animateColorAsState(targetValue = targetBg, animationSpec = spec, label = "nav_bg")
+
+    val currentTint = if (isFloating) animatedTint else targetTint
+    val currentBg = if (isFloating) animatedBg else targetBg
+
     val context = LocalContext.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .clip(RoundedCornerShape(50))
-            .background(if (selected) NazoPrimary else Color.Transparent)
+            .background(currentBg)
             .clickable {
                 Haptics.light(context)
                 onClick()
             }
             .padding(horizontal = 18.dp, vertical = 9.dp),
     ) {
-        Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(7.dp))
-        Text(
-            text = label,
-            color = tint,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+        Icon(
+            imageVector = icon, 
+            contentDescription = label, 
+            tint = currentTint, 
+            modifier = Modifier.size(18.dp)
         )
+        
+        // In floating mode only the SELECTED tab shows its label, so the pill
+        // expands as it gains the tab and collapses to a bare icon as it loses it.
+        //
+        // The enter/exit must be HORIZONTAL. AnimatedVisibility defaults to
+        // expandVertically/shrinkVertically, which grew the label from zero
+        // HEIGHT — on a short horizontal pill that reads as a vertical squash,
+        // not an expand. expandHorizontally + the shared duration gives the
+        // sideways grow/shrink this is meant to be.
+        //
+        // This also replaces animateContentSize() on the Row: AnimatedVisibility
+        // already animates the size it contributes, so having both meant two
+        // animators fighting over the same width.
+        AnimatedVisibility(
+            visible = !isFloating || selected,
+            enter = expandHorizontally(
+                animationSpec = tween(TAB_ANIM_MS, easing = FastOutSlowInEasing),
+                expandFrom = Alignment.Start,
+            ) + fadeIn(animationSpec = tween(TAB_ANIM_MS)),
+            exit = shrinkHorizontally(
+                animationSpec = tween(TAB_ANIM_MS, easing = FastOutSlowInEasing),
+                shrinkTowards = Alignment.Start,
+            ) + fadeOut(animationSpec = tween(TAB_ANIM_MS / 2)),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.width(7.dp))
+                Text(
+                    text = label,
+                    color = currentTint,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                )
+            }
+        }
     }
 }
-// package quiz.thaton3app.nazo.ui.components
-//
-// import androidx.compose.foundation.background
-// import androidx.compose.foundation.border
-// import androidx.compose.foundation.clickable
-// import androidx.compose.ui.draw.clip
-// import androidx.compose.ui.draw.shadow
-// import androidx.compose.ui.platform.LocalContext
-// import androidx.compose.foundation.layout.Arrangement
-// import androidx.compose.foundation.layout.Row
-// import androidx.compose.foundation.layout.Spacer
-// import androidx.compose.foundation.layout.navigationBarsPadding
-// import androidx.compose.foundation.layout.padding
-// import androidx.compose.foundation.layout.size
-// import androidx.compose.foundation.layout.width
-// import androidx.compose.foundation.shape.RoundedCornerShape
-// import androidx.compose.material.icons.Icons
-// import androidx.compose.material.icons.filled.Home
-// import androidx.compose.material.icons.filled.Settings
-// import androidx.compose.material3.Icon
-// import androidx.compose.material3.MaterialTheme
-// import androidx.compose.material3.Text
-// import androidx.compose.runtime.Composable
-// import androidx.compose.runtime.remember
-// import androidx.compose.ui.Alignment
-// import androidx.compose.ui.Modifier
-// import androidx.compose.ui.geometry.Size
-// import androidx.compose.ui.graphics.Color
-// import androidx.compose.ui.graphics.Outline
-// import androidx.compose.ui.graphics.Path
-// import androidx.compose.ui.graphics.Shape
-// import androidx.compose.ui.graphics.vector.ImageVector
-// import androidx.compose.ui.text.font.FontWeight
-// import androidx.compose.ui.unit.Density
-// import androidx.compose.ui.unit.Dp
-// import androidx.compose.ui.unit.LayoutDirection
-// import androidx.compose.ui.unit.dp
-// import quiz.thaton3app.nazo.data.settings.ThemePreferences
-// import quiz.thaton3app.nazo.ui.theme.NazoNavBar
-// import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
-// import quiz.thaton3app.nazo.ui.theme.NazoPrimary
-// import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
-//
-// enum class NazoTab { Home, Settings }
-//
-// /**
-//  * Builds the OPEN edge silhouette of the anchored bottom bar. The bar no
-//  * longer spans the screen: it wraps the tabs, so the silhouette is a
-//  * "tombstone" — flat plateau over the tabs, ONE steep shoulder per side
-//  * (starting just past the tab, per the owner's 2026-09-02 red-dot doodle),
-//  * then a STRAIGHT vertical drop into the bottom of the screen. No second
-//  * curve, ever. [ceiling] mirrors it vertically (unused; kept for symmetry).
-//  */
-// fun curvedBarEdgePath(size: Size, rampPx: Float, ceiling: Boolean): Path {
-//     val w = size.width
-//     val h = size.height
-//     val ramp = rampPx.coerceAtMost(w * 0.25f)
-//     // Vertical extent of the single shoulder bend — noticeably taller than it
-//     // is wide, so the edge dives steeply; everything below it is a straight
-//     // vertical drop into the screen bottom.
-//     val bend = (h * 0.42f).coerceAtLeast(ramp)
-//     return Path().apply {
-//         if (ceiling) {
-//             moveTo(0f, 0f)
-//             lineTo(0f, h - bend)
-//             cubicTo(0f, h - bend * 0.45f, ramp * 0.45f, h, ramp, h)
-//             lineTo(w - ramp, h)
-//             cubicTo(w - ramp * 0.45f, h, w, h - bend * 0.45f, w, h - bend)
-//             lineTo(w, 0f)
-//         } else {
-//             // Up the left side, ONE bend onto the plateau (vertical tangent
-//             // at the side, horizontal at the plateau), flat across the tabs,
-//             // one bend down, then straight down into the screen bottom.
-//             moveTo(0f, h)
-//             lineTo(0f, bend)
-//             cubicTo(0f, bend * 0.45f, ramp * 0.45f, 0f, ramp, 0f)
-//             lineTo(w - ramp, 0f)
-//             cubicTo(w - ramp * 0.45f, 0f, w, bend * 0.45f, w, bend)
-//             lineTo(w, h)
-//         }
-//     }
-// }
-//
-// /**
-//  * Filled variant of the same silhouette, used as the bottom nav's shape.
-//  * The edge already includes the straight vertical sides, so closing it just
-//  * runs along the screen edge (bottom for the nav, top for the ceiling).
-//  */
-// class CurvedBarShape(
-//     private val rampWidth: Dp,
-//     private val ceiling: Boolean,
-// ) : Shape {
-//     override fun createOutline(
-//         size: Size,
-//         layoutDirection: LayoutDirection,
-//         density: Density,
-//     ): Outline {
-//         val path = curvedBarEdgePath(size, with(density) { rampWidth.toPx() }, ceiling)
-//         path.close()
-//         return Outline.Generic(path)
-//     }
-// }
-//
-// @Composable
-// fun NazoBottomNav(
-//     selected: NazoTab,
-//     modifier: Modifier = Modifier,
-//     onHomeClick: () -> Unit = {},
-//     onSettingsClick: () -> Unit = {},
-// ) {
-//     // Floating mode is a user preference (Appearance → Layout). In floating mode
-//     // the bar is a compact centred pill in the app's pill design language —
-//     // wrap-content width, solid surface, subtle border — so it reads like the
-//     // rest of the UI instead of a detached slab. The caller (Home) positions it
-//     // via `modifier` (e.g. align(BottomCenter)) so it overlays.
-//     val floating = ThemePreferences(LocalContext.current).floatingNavBar
-//
-//     if (floating) {
-//         Row(
-//             modifier = modifier
-//                 .navigationBarsPadding()
-//                 .padding(bottom = 14.dp)
-//                 .shadow(elevation = 6.dp, shape = RoundedCornerShape(50), clip = false)
-//                 .background(NazoNavBar, RoundedCornerShape(50))
-//                 .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(50))
-//                 .padding(4.dp),
-//             horizontalArrangement = Arrangement.spacedBy(2.dp),
-//             verticalAlignment = Alignment.CenterVertically,
-//         ) {
-//             NavItems(selected = selected, onHomeClick = onHomeClick, onSettingsClick = onSettingsClick)
-//         }
-//     } else {
-//         // Anchored "tombstone" bar (owner's red-dot doodle): it wraps the
-//         // tabs instead of spanning the screen. The plateau extends a small
-//         // overhang past each tab, then the edge takes ONE steep shoulder
-//         // bend and drops STRAIGHT down into the bottom of the screen —
-//         // the screen corners stay uncovered. The caller aligns it
-//         // BottomCenter, so dropping fillMaxWidth centres it automatically.
-//         // The background is applied BEFORE the navigation-bar padding so
-//         // the bar also covers the system gesture area.
-//         val ramp = 18.dp      // horizontal width of the shoulder bend
-//         val overhang = 14.dp  // flat plateau past the tab before the bend ("~15px later")
-//         val curve = remember { CurvedBarShape(rampWidth = ramp, ceiling = false) }
-//         Row(
-//             modifier = modifier
-//                 .background(NazoNavBar, curve)
-//                 .navigationBarsPadding()
-//                 .padding(horizontal = ramp + overhang)
-//                 .padding(top = 12.dp, bottom = 4.dp),
-//             horizontalArrangement = Arrangement.spacedBy(32.dp),
-//             verticalAlignment = Alignment.CenterVertically,
-//         ) {
-//             NavItems(selected = selected, onHomeClick = onHomeClick, onSettingsClick = onSettingsClick)
-//         }
-//     }
-// }
-//
-// @Composable
-// private fun NavItems(
-//     selected: NazoTab,
-//     onHomeClick: () -> Unit,
-//     onSettingsClick: () -> Unit,
-// ) {
-//     NazoNavItem(
-//         icon = Icons.Filled.Home,
-//         label = "Home",
-//         selected = selected == NazoTab.Home,
-//         onClick = onHomeClick,
-//     )
-//     NazoNavItem(
-//         icon = Icons.Filled.Settings,
-//         label = "Settings",
-//         selected = selected == NazoTab.Settings,
-//         onClick = onSettingsClick,
-//     )
-// }
-//
-// @Composable
-// private fun NazoNavItem(
-//     icon: ImageVector,
-//     label: String,
-//     selected: Boolean,
-//     onClick: () -> Unit,
-// ) {
-//     // Same pill language as the rest of the app (mode/difficulty pills):
-//     // the selected tab is a solid accent pill with icon + label side by side,
-//     // the unselected tab is quiet text. Much slimmer than icon-over-label.
-//     val tint = if (selected) NazoOnPrimary else NazoTextSecondary
-//     val context = LocalContext.current
-//     Row(
-//         verticalAlignment = Alignment.CenterVertically,
-//         modifier = Modifier
-//             .clip(RoundedCornerShape(50))
-//             .background(if (selected) NazoPrimary else Color.Transparent)
-//             .clickable {
-//                 Haptics.light(context)
-//                 onClick()
-//             }
-//             .padding(horizontal = 18.dp, vertical = 9.dp),
-//     ) {
-//         Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.size(18.dp))
-//         Spacer(Modifier.width(7.dp))
-//         Text(
-//             text = label,
-//             color = tint,
-//             style = MaterialTheme.typography.bodyMedium,
-//             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-//         )
-//     }
-// }

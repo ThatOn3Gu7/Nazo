@@ -3828,3 +3828,1017 @@ Test (debug APK):
 - Persists across restarts (SharedPreferences `nazo_theme`, key
   `guess_auto_crop`); mid-game switching takes effect from the next
   round (flag is read at round start).
+
+## 2026-09-03 — Selectable app icons (7 launcher variants)
+
+The launcher icon is now user-choosable, not just OS-theme-driven.
+
+- `AndroidManifest.xml`: five new disabled `activity-alias` entries
+  (`.LauncherSakura`, `.LauncherIndigo`, `.LauncherBronze`,
+  `.LauncherMidnight`, `.LauncherOcean`) alongside the existing
+  `.LauncherLight` / `.LauncherDark`. All target `.MainActivity`, carry the
+  LAUNCHER intent-filter and the shortcuts meta-data, so long-press
+  shortcuts keep working whichever icon is active. MainActivity itself is
+  never disabled.
+- `res/mipmap-anydpi-v26/ic_launcher_<id>.xml` + `_round_<id>.xml` and
+  `res/drawable/ic_launcher_background_<id>.xml`: one adaptive icon per
+  variant — gradient background + the shared `ic_launcher_foreground`
+  (also used as `monochrome`, so themed icons still work).
+- `LauncherIconSwitcher.kt`: now registry-driven. `AppIconOption` describes
+  each variant (id, alias, label, blurb, gradient colors); `OPTIONS` lists
+  all seven; `select(context, id)` enables the target alias FIRST then
+  disables all others (launcher never sees zero entries); `currentId()`
+  replaces the old two-state check, and `appliedNight()` is kept as a thin
+  wrapper so the existing follow-OS-theme path (MainActivity.onStop) is
+  unchanged.
+- `ThemePreferences.appIcon` (key `app_icon`, default `light`) persists the
+  pick. A custom pick and `iconFollowsOsTheme` are mutually exclusive —
+  choosing an icon sets `iconFollowsOsTheme = false`.
+- `AppearanceScreen.kt`: APP ICON section gains a "Choose app icon" row
+  (dimmed/inert while "Match icon to system theme" is on) opening a
+  ModalBottomSheet with all seven variants, each rendered as a live
+  squircle preview of the real adaptive icon. Selecting raises an
+  AlertDialog ("Apply & close") explaining the restart.
+- `NazoApp.kt`: on confirm — persist, `LauncherIconSwitcher.select(...)`,
+  then `finishAndRemoveTask()` so the forced teardown is graceful.
+- `WhatsNew.kt`: new "Pick your app icon" entry; CHANGELOG_ID → `2026-09-03-next3`.
+
+Test (debug APK):
+1. Settings → Appearance → APP ICON. The "Choose app icon" row is greyed
+   out while "Match icon to system theme" is ON.
+2. Toggle that switch OFF → the row lights up, showing "Currently: Classic Green".
+3. Tap it → sheet with 7 previews. Tap "Sakura" → dialog "Use the Sakura
+   icon?" → "Apply & close": the app disappears from screen and recents.
+4. Home screen: the Nazo icon is now pink. Long-press it — the Daily
+   Challenge shortcut is still there. Launch it: app opens normally and
+   Appearance shows "Currently: Sakura".
+5. Re-enable "Match icon to system theme", background the app, flip the
+   device OS theme, reopen/background again → the icon returns to the
+   green light/dark pair (old behaviour intact).
+
+## 2026-09-03 — Splash screen follows the chosen app icon
+
+The cold-start splash (and the in-app zoom-through intro) now recolor to
+match whichever launcher icon is active, so launching reads as one
+continuous surface instead of a pink icon flashing into a green splash.
+
+Key constraint: **`<activity-alias>` cannot carry `android:theme`** — the
+starting window always uses the *target activity's* theme. So the splash
+cannot be attached to the aliases; it's applied at runtime instead.
+
+- `res/values/themes.xml`: five `Theme.Nazo.Splash.<Variant>` styles, each
+  inheriting `Theme.Nazo.Splash` and overriding only
+  `windowSplashScreenBackground`. The animated icon and
+  `postSplashScreenTheme` are inherited, so there's one place to change them.
+- `res/values/colors.xml` + `values-night/colors.xml`: `nazo_splash_background_<id>`
+  = the midpoint of that icon's gradient (e.g. sakura `#FFD05A89`). Identical
+  in day and night, because the custom icons don't theme-switch; only the
+  classic green pair keeps the day/night-aware `nazo_splash_background`.
+- `LauncherIconSwitcher.AppIconOption`: new `splashTheme: Int?` (@StyleRes)
+  and `splashColor: Long?`. Null for the themed light/dark pair. The registry
+  is now the single source of truth for icon + splash + intro color.
+- `MainActivity.applyIconSplashTheme()`: called **before**
+  `installSplashScreen()` (which reads the theme's `windowSplashScreen*`
+  attrs — after is too late). No-ops while `iconFollowsOsTheme` is on.
+- `ui/launch/IntroOverlay.kt`: new `backgroundColor: Color? = null` param,
+  defaulting to the existing green pair.
+- `NazoApp.kt`: passes the active icon's `splashColor` into `IntroOverlay`.
+- Sheet copy + `WhatsNew.kt` mention the recolor; CHANGELOG_ID → `2026-09-03-next4`.
+
+Test (debug APK):
+1. Appearance → APP ICON → turn OFF "Match icon to system theme" → choose
+   **Sakura** → Apply & close.
+2. Relaunch from the home screen and watch the cold start: the splash is
+   pink (`#D05A89`), matching the icon tile, and the 謎 zoom-through that
+   follows is the SAME pink — no green flash between the two.
+3. Repeat with **Midnight** → near-black splash. Good OLED check.
+4. Re-enable "Match icon to system theme" (icon reverts to green on next
+   background) → splash is green again and follows OS dark/light.
+5. Cold start matters: kill the app from recents first, otherwise you get
+   a warm start with no splash.
+
+## 2026-09-03 — Starting window (pre-splash frame) follows the app icon too
+
+Follow-up to the splash work above. The previous change colored the
+`SplashScreen` API's splash, but the very first frame of a cold start still
+flashed green.
+
+**What that frame is:** the *starting window* (a.k.a. preview window). The
+system draws it from the launched component's **manifest theme before the app
+process is forked**. No Kotlin can touch it — `onCreate` runs after it's
+already on screen. `setTheme()` was therefore always too late for this frame.
+
+**Fix:** `<activity-alias>` can't declare `android:theme`, but an `<activity>`
+can. So each custom icon is now a real launcher activity instead of an alias:
+
+- `LauncherActivities.kt` (new): `LauncherSakura/Indigo/Bronze/Midnight/Ocean`,
+  trivial subclasses of `MainActivity` adding no behaviour.
+- `MainActivity` is now `open`.
+- `AndroidManifest.xml`: those five `<activity-alias>` entries became
+  `<activity>` entries, each with `android:theme="@style/Theme.Nazo.Splash.*"`.
+  They keep the LAUNCHER filter, the shortcuts meta-data, and gain an
+  ACTION_DAILY filter. `android:launchMode="singleTask"` on all launcher
+  components (incl. MainActivity) so the icon entry and the Daily shortcut
+  can't stack up two task entries.
+- The themed green pair stay as aliases — they intentionally share
+  MainActivity's day/night-aware `Theme.Nazo.Splash`.
+- `MainActivity.applyIconSplashTheme()` is retained as the fallback for entry
+  points that target MainActivity directly (the Daily shortcut).
+
+Test (debug APK):
+1. Appearance → APP ICON → OFF "Match icon to system theme" → **Sakura** →
+   Apply & close. Reinstall/relaunch once so the new component is registered.
+2. Kill from recents, then launch from the home screen and watch the FIRST
+   frame: it is pink immediately — no green flash before the 謎 zoom-through.
+   Previously: green frame → pink splash → pink intro.
+3. **Midnight** is the clearest test (near-black vs green is unmistakable).
+4. Long-press the icon → Daily Challenge shortcut: also pink (via the
+   code-path fallback), and it reuses the same task rather than opening a
+   second Nazo entry in recents.
+5. Re-enable "Match icon to system theme" → back to green, OS-theme aware.
+
+## 2026-09-03 — Illustrated app icons + per-icon launch animations
+
+The icon list stops being "one wordmark in N paint jobs": three hand-authored
+illustrated marks join it, each with its own splash art and launch animation.
+Indigo and Bronze (color-only) were retired to keep the list tight.
+
+**Art** (`res/drawable/`, hand-written VectorDrawables — sharp at any density):
+- `ic_mark_lantern.xml` (chochin), `ic_mark_torii.xml` (gate), `ic_mark_scroll.xml`
+  (makimono + wax seal) — full color.
+- `ic_mark_*_silhouette.xml` — same geometry, all fills/strokes forced white on
+  transparency. **Required**, because `IntroOverlay` uses `BlendMode.DstOut`:
+  it punches the mark OUT of the ground rather than drawing it, so it needs a
+  flat alpha mask. Same reason `<monochrome>` (themed icons) points here.
+  Keep the two in sync if the art changes.
+- `ic_launcher_foreground_<id>.xml` — `<inset android:inset="16%">` wrappers so
+  each mark sits inside the adaptive icon's 66dp safe zone.
+- Backgrounds are deep/low-key gradients so the color art stays the hero.
+
+**Registry** (`LauncherIconSwitcher.kt`) — still the single source of truth:
+- `AppIconOption` gains `introMark` (silhouette, for the punch-out),
+  `previewMark` (full-color, for the Appearance list only) and `introStyle`.
+- New `IntroStyle` enum: `WARP` (original), `LANTERN_GLOW`, `TORII_PASS`,
+  `SCROLL_UNFURL`.
+- New `sanitize()`: a saved pref naming a retired variant (indigo/bronze) would
+  point at a manifest component that no longer exists, leaving the user with no
+  enabled launcher entry after the next swap. It falls back to Classic Green and
+  re-applies. Called from `NazoApp`; `MainActivity` is safe via `option()`'s
+  existing fallback.
+
+**Animations** (`ui/launch/IntroOverlay.kt`): one Canvas serves all styles; each
+animates a different subset of the shared drivers (`zoomScale`, `backgroundAlpha`,
+`progress`). Ground carving is drawn BEFORE the mark so the mark's punch-out
+always wins where they overlap.
+- LANTERN_GLOW: swells as if the flame catches (with a damped sway), then floods.
+- TORII_PASS: two ground panels slide apart through the gate opening.
+- SCROLL_UNFURL: ground rolls away vertically, then the mark lifts off.
+
+**Manifest**: Indigo/Bronze activities removed; Lantern/Torii/Scroll added, each
+a real `<activity>` (subclass in `LauncherActivities.kt`) carrying its own
+`Theme.Nazo.Splash.*` so the pre-process starting window is themed too.
+
+Test (debug APK):
+1. Appearance → APP ICON → OFF "Match icon to system theme" → sheet now shows
+   the three illustrated marks in FULL COLOR (not the kanji) alongside the
+   remaining color variants. Indigo/Bronze are gone.
+2. Pick **Torii Gate** → Apply & close. Kill from recents, relaunch: starting
+   window is deep blue, the splash shows the gate art, then the ground splits
+   apart left/right through the gate. No green at any point.
+3. **Paper Lantern**: lantern swells and sways, then light floods outward.
+4. **Mystery Scroll**: ground unrolls top/bottom away from the scroll.
+5. Android 13+: long-press home screen → Wallpaper & style → themed icons ON.
+   Each mark tints to a flat, readable silhouette (not a blob).
+6. Upgrade path: if you were on Indigo/Bronze, first launch after update moves
+   you to Classic Green with a working launcher entry.
+
+## 2026-09-03 — FIX: crash on launch with the illustrated icons
+
+**Symptom:** picking Paper Lantern / Torii Gate / Mystery Scroll made the app
+crash immediately after the starting window. The earlier color-only icons
+(Sakura/Midnight/Ocean) were fine, which made it look like a manifest or
+activity-alias problem. It wasn't.
+
+**Cause:** `IntroOverlay` loaded its mark with
+`ImageBitmap.imageResource(mark)`. That helper decodes **raster** assets only
+(BitmapFactory under the hood) and throws on a VectorDrawable. The legacy
+`ic_launcher_foreground` is a 512px PNG, so it had always worked; the new
+illustrated marks are VectorDrawable XML, so the first composition of the
+intro threw every time. The starting window is drawn from the manifest theme
+before any of our code runs, which is exactly why it appeared correctly one
+frame before the crash — a red herring pointing at the manifest.
+
+**Fix:** rasterize through the drawable pipeline instead, which handles vectors
+and bitmaps alike:
+`ContextCompat.getDrawable(context, mark)!!.toBitmap(512, 512).asImageBitmap()`,
+wrapped in `remember(mark)` so it happens once per mark rather than per frame.
+DstOut only samples alpha, so 512px is ample.
+
+**Checked for the same assumption elsewhere:** `AppearanceScreen` uses
+`painterResource`, which supports vectors natively — that's why the picker
+previews rendered fine. The remaining `BitmapFactory` uses (PixelReveal,
+AnimeImageGate, PortraitCrop) all decode network bytes, not resources.
+
+Test (debug APK):
+1. Appearance → APP ICON → **Paper Lantern** → Apply & close.
+2. Kill from recents, relaunch: the lantern splash appears AND the intro plays
+   through to the app — no crash. Repeat for Torii Gate and Mystery Scroll.
+3. Re-check Sakura/Midnight/Ocean and the green pair still launch normally
+   (they exercise the same new code path).
+
+## 2026-09-03 — Icon concepts redone: quiz/mystery marks, not Japanese scenery
+
+**Owner feedback:** the lantern/torii/scroll didn't relate to the app. Correct —
+they were designed around "Nazo is a Japanese word" (etymology) instead of
+"Nazo is an anime quiz game" (function). The kanji 謎 works because it *means*
+mystery, not because it's Japanese decoration. Also: TORII_PASS and
+SCROLL_UNFURL were weak — they animated sliding background rectangles, not the
+mark. LANTERN_GLOW was liked because it animates the SUBJECT (swell, sway,
+flood). That's the rule for any future intro style.
+
+**Retired:** Torii Gate, Mystery Scroll (+ their themes, colors, activities).
+**Kept:** Paper Lantern (owner liked it).
+**Added**, all depicting what the app actually does:
+- `ic_mark_bubble.xml` — manga speech balloon + "?" (anime + Q&A in one shape).
+- `ic_mark_silhouette_char.xml` — the Guessing Game's blacked-out character
+  bust with a "?": literally a core game mode.
+- `ic_mark_pixel.xml` — a "?" built from an 8x8 pixel grid, dim on the left and
+  bright on the right, i.e. the pixel-reveal mechanic mid-resolve. Generated
+  from a grid definition so the reveal seam lands exactly on a pixel boundary.
+
+**Silhouette gotcha:** for bubble/mystery the "?" is a *different color inside*
+the outer shape, so the naive derive (force everything white) produced a
+featureless blob. Those two now emit a single `android:fillType="evenOdd"` path
+combining outer shape + "?" subpaths, making the "?" a HOLE. The local preview
+renderer was also patched to honour evenOdd — it had been filling every subpath
+solid, i.e. lying about what Android would draw.
+
+**New animations** (all animate the mark itself, per the lesson above):
+- `BUBBLE_POP` — overshoot/settle/overshoot comic pop, then inflates past camera.
+- `MYSTERY_REVEAL` — interrogative side-to-side shake (damped, first ~40% only),
+  a beat of stillness, then blows open.
+- `PIXEL_RESOLVE` — `snapTo` steps (deliberately NOT tweened) through mosaic
+  passes, plus a quantized block-dissolve of the ground in a deterministic
+  scatter, mirroring the Guessing Game reveal.
+
+Test (debug APK):
+1. Appearance → APP ICON: list shows Manga Bubble, Mystery Character, Pixel
+   Reveal, Paper Lantern in full color. Torii/Scroll gone.
+2. **Manga Bubble** → Apply & close → kill from recents → relaunch: green
+   starting window, balloon splash, then the bubble pops and inflates.
+3. **Mystery Character**: amber; the bust shakes, holds, then bursts open.
+4. **Pixel Reveal**: navy; the mark steps through chunky passes and the ground
+   dissolves in blocks (should look deliberately pixelated, not a smooth fade).
+5. Android 13+ themed icons: each mark tints flat and the "?" stays visible as
+   a hole (that's the evenOdd fix).
+6. If you were on Torii/Scroll, first launch moves you to Classic Green
+   (LauncherIconSwitcher.sanitize).
+
+## 2026-09-03 — "N" icon set + self-drawing stroke animation
+
+**Owner direction:** use the app's initial in English (as a counterpart to the
+謎 kanji), with an animation where "a line rises up from the bottom, then wing,
+wing, wing, turns into N". Also: the bubble / mystery-character / pixel-"?"
+marks were disliked — but PIXEL_RESOLVE (the *animation*) was a favourite and
+had to survive.
+
+**Retired:** Manga Bubble, Mystery Character, Pixel "?" (+ themes, colors,
+activities, BUBBLE_POP and MYSTERY_REVEAL styles).
+**Kept:** Paper Lantern, and PIXEL_RESOLVE — now reused by Pixel N.
+**Added:**
+- `ic_mark_n_neon.xml` — one polyline stroked 3x at decreasing width
+  (haze / glow / hot core) for a neon-tube look.
+- `ic_mark_n_brush.xml` — sumi-e inked N with uneven edges + dry-brush splatter,
+  on a warm paper ground.
+- `ic_mark_n_pixel.xml` — 8x8 grid N, dim left / bright right, same construction
+  as the pixel "?" the owner liked; keeps PIXEL_RESOLVE.
+
+**N_STROKE animation** (`IntroOverlay.drawNStroke`): the punch-out is a Path
+stroked along `N_POINTS` — the SAME polyline `ic_mark_n_neon.xml` is built from,
+so art and animation can't drift. Walked **by arc length**, not per-segment, or
+the two short stems would whip past while the long diagonal crawled. The traced
+line IS the reveal for the first 70% (`N_TRACE_END`); only after that does the
+solid mark punch through, so the two never double up. Verified by simulating
+the exact math offline and rendering a 9-frame strip.
+
+**Silhouette note:** the neon/brush masks are a hand-authored solid N, NOT
+auto-derived — the neon art's three overlapping glow strokes would flatten into
+an unreadably fat letter under DstOut/themed icons.
+
+**Preview-renderer note:** it now honours `android:fillType="evenOdd"`; before
+that it filled every subpath solid and was lying about what Android draws.
+
+Test (debug APK):
+1. Appearance → APP ICON: Neon N, Brush N, Pixel N, Paper Lantern + the color
+   variants. Bubble/Mystery/Pixel-"?" gone.
+2. **Neon N** → Apply & close → kill from recents → relaunch: near-black start,
+   neon splash, then a line rises from the floor and traces left stem → diagonal
+   → right stem into an N, which flares and warps away.
+3. **Brush N**: cream/paper ground, same trace.
+4. **Pixel N**: the stepped mosaic reveal, unchanged.
+5. Android 13+ themed icons: all three tint to a clean readable N.
+6. If you were on a retired icon, first launch moves you to Classic Green.
+
+**CI catch (same session):** the first push of this change failed to compile —
+`BUBBLE_POP` / `MYSTERY_REVEAL` were deleted from the `IntroStyle` enum but
+their `when` branches (and a `swayX` case) were left behind in `IntroOverlay`.
+The workflow commented the three `e: Unresolved reference` lines straight onto
+PR #7, which is exactly what that loop exists for. Lesson for future agents:
+when retiring an enum constant, grep for it across `IntroOverlay.kt` and
+`NazoApp.kt` before pushing — a quick declared-vs-used diff catches it without
+spending a CI run.
+
+## 2026-09-03 — Dropped the Neon N
+
+Owner: the neon treatment clashed with the app's aesthetic. Removed Neon N
+only; Brush N and Pixel N stay.
+
+Removed: `ic_mark_n_neon.xml`, `ic_mark_n_neon_silhouette.xml`, its background /
+foreground / mipmap wrappers, `Theme.Nazo.Splash.Neon`,
+`nazo_splash_background_nneon`, the `.LauncherNeon` manifest activity and its
+`LauncherActivities.kt` class, and the `nneon` registry entry.
+
+**Kept deliberately:** `IntroStyle.N_STROKE` — Brush N still uses the
+self-drawing trace, so the animation and `drawNStroke`/`N_POINTS` stay. Only the
+doc comments changed, since they used to describe the polyline as mirroring the
+*neon* art; they now reference the N marks generally.
+
+Final icon list (8): Classic Green, Deep Green (the themed OS pair), Sakura,
+Midnight, Ocean, Paper Lantern, Brush N, Pixel N.
+
+Test (debug APK):
+1. Appearance → APP ICON: no Neon N. Brush N and Pixel N present.
+2. **Brush N** → Apply & close → kill from recents → relaunch: cream/paper
+   starting window, inked N splash, then the line traces itself into the N.
+3. **Pixel N**: stepped mosaic reveal, unchanged.
+4. If you were running Neon N when you updated, first launch moves you to
+   Classic Green (`LauncherIconSwitcher.sanitize`) rather than leaving you with
+   no enabled launcher component.
+
+## 2026-09-03 — Pixel Reveal no longer flashes the answer
+
+Owner report: in Pixel Reveal mode the character image sometimes appeared
+fully sharp for an instant at the start of a round, giving the answer away.
+Exposed by the background prefetch of upcoming rounds.
+
+Three separate causes, all fixed in `GuessingPlayScreen.kt`:
+
+1. **Stale animation across the round boundary.** Without prefetch a round
+   ends → `Preparing` shows → the `when (phase)` branch swaps → the card
+   leaves composition → its `animateFloatAsState` is destroyed and recreated
+   fully pixelated next round. With prefetch the next round goes *straight*
+   to `Playing`, so the card never left composition and `pixelEffect` kept
+   the previous round's final value of `0f` (sharp). The new image drew sharp
+   and then eased *up* into pixelation. Fixed by wrapping the card in
+   `key(phase) { ... }` so it is torn down and rebuilt per round.
+
+2. **Per-round reset ran too late.** `submitted`/`imageReady`/`pixelLevels`
+   were cleared inside `LaunchedEffect(phase)`, which runs only *after* the
+   frame is committed — so the first frame of a new round composed with the
+   previous round's flags. The reset is now a plain `if (stateForPhase !==
+   phase)` block in the composable body, i.e. synchronous with the phase
+   change.
+
+3. **Bytes published before the pixel levels existed.** `fetchedImage` was
+   assigned, then the levels were built at a suspension point, then
+   `imageReady = true`. A composition landing in that gap saw `pixelLevels ==
+   null`, which makes `usePixels` false and silently falls through to the
+   sharp `AsyncImage` branch. The order is now levels → bytes → `imageReady`,
+   so the image is never displayable without its levels.
+
+Blur mode is untouched. A genuine decode failure in pixel mode still falls
+back to the *blur* reveal (the `else` branch carries `Modifier.blur`), never
+to an unobscured image.
+
+### How to test it live
+
+Preconditions: an AI provider configured (Settings → AI Provider) so rounds
+generate, and Settings → Appearance → Guessing Game → **Reveal style =
+Pixel**.
+
+1. Home → **Guessing Game** → pick any topic → difficulty **Easy** (25s gives
+   the longest look).
+2. Round 1: the moment the spinner disappears the portrait must already be a
+   coarse mosaic. Watch it sharpen step by step as the timer runs.
+3. Answer (or let it time out) and wait for the reveal to go fully sharp —
+   this is what used to poison the next round.
+4. Tap **Next Round**. This is the regression: because round 2 was prefetched
+   it appears instantly with no "Preparing" screen. **The portrait must be
+   fully pixelated on its very first visible frame** — no sharp flash, and it
+   must not start sharp and become blocky.
+5. Repeat through rounds 3–5; the prefetch chain is warmest here, so this is
+   where the flash was easiest to reproduce.
+6. Switch Reveal style to **Blur** and play a few rounds to confirm the blur
+   reveal is unchanged (starts heavily blurred, eases sharp).
+
+Tip: record the screen at 60fps and step through the first few frames after
+"Next Round" if you want frame-accurate proof — the old flash was ~2–5 frames.
+
+## 2026-09-03 — Dark-theme contrast fix in Review Answers
+
+Owner report (screenshot): on the dark theme the correct/wrong answer pills in
+Review Answers were bright pastel green/pink, and the option text on them was
+unreadable.
+
+`ReviewAnswersScreen.kt` hardcoded four light-theme literals — `0xFFD4E7D5`
+(correct pill), `0xFFF2D5D5` (wrong pill), `0xFF2E7D32` and `0xFFC62828` (icon
+circles) — which ignore the active palette entirely. On dark, that painted a
+near-white pill under `NazoTextPrimary`, which is also near-white:
+
+| pill | text contrast (dark) |
+|---|---|
+| correct, before | **1.13:1** |
+| wrong, before | **1.20:1** |
+| correct, after | 10.64:1 |
+| wrong, after | 12.60:1 |
+
+(WCAG AA body text needs 4.5:1. Verified across mint and mono, light and dark;
+the worst case after the fix is 9.29:1.)
+
+Replaced with the semantic palette roles `NazoSuccessBg` / `NazoErrorBg` for the
+pills and `NazoSuccess` / `NazoError` for the icon circles — exactly how
+`ActiveQuizScreen` already renders the identical correct/wrong states.
+
+Also **applied the border that was already being computed**: `borderColor` was
+assigned and then never used. This matters because the dark palette defines
+`successBg` and `surfaceVariant` as the *same* color (`0xFF1E3B2B`) — without
+the outline, a correct answer is indistinguishable from an untouched option.
+
+**Audited the whole app** for the same class of bug. The only other hardcoded
+colors are deliberately theme-independent and were left alone: the streak flame
+(`HomeScreen`), confetti/orb particles (`AmbientBackground`), the onboarding
+Survival amber, the app-icon art (`AppearanceScreen`), and the intro overlay
+backgrounds. `ReviewAnswersScreen` now contains no `Color(0x...)` literals.
+
+### How to test it live
+
+1. Settings → Appearance → Theme = **Dark**.
+2. Play any quiz to the end (Home → Quick Quiz is fastest) — deliberately get
+   at least one question wrong and one right.
+3. On the results screen tap **Review Answers**.
+4. Expected: the correct option is a *dark* green pill with a green outline and
+   a green check circle; your wrong pick is a *dark* red pill with a red outline
+   and a red ✗. **All option text is clearly readable** — no washed-out
+   near-white pills.
+5. Scroll through several questions; unanswered/other options stay plain
+   `surfaceVariant` with no outline.
+6. Switch Theme back to **Light** and re-open Review Answers — the pastel look
+   is unchanged from before.
+7. Optional: Appearance → Accent → try **Mono** and a couple of hues in dark
+   mode. Success/error stay green/red by design (semantic colors are not
+   hue-shifted) and remain readable.
+
+## 2026-09-04 — Bottom nav on the Settings screen
+
+Owner: the Home↔Settings tab transition was impossible to evaluate, because
+with only two tabs and no nav bar on Settings you never saw the destination
+tab animate.
+
+`NazoBottomNav` already had a `NazoTab.Settings` value and `NazoApp` already
+passed `onHomeClick = { goHome() }` to `SettingsScreen` — the screen simply
+never rendered the component. Only `HomeScreen` did.
+
+Change in `SettingsScreen.kt`:
+- Root `Column` → `Box`, with `NazoBottomNav(selected = NazoTab.Settings)`
+  aligned `BottomCenter`. This is the same structure `HomeScreen` uses, so the
+  bar **overlays** the content instead of taking a layout slot above it.
+- Scroll column: `.weight(1f)` → `.fillMaxSize()` and bottom padding
+  `12.dp` → `96.dp`, matching Home so the last settings row can still be
+  scrolled clear of the overlaid bar.
+
+The bar is **opaque**, exactly as on Home — `NazoBottomNav` paints
+`NazoNavBar` as a solid background in both floating and anchored modes. Content
+scrolls behind it; nothing shows through it. Both the floating-pill and
+anchored variants work, since the change is purely about where the component is
+placed.
+
+**Submenus deliberately unchanged.** Appearance, About, AI Provider, Statistics
+and Backup & Restore stay full-screen with no nav bar. Those files had a stale
+`NazoBottomNav` import but never called it; the imports were left alone as
+they're harmless and out of scope.
+
+### How to test it live
+
+1. Launch the app on Home — nav bar visible, **Home** tab is the filled accent
+   pill.
+2. Tap **Settings** in the nav bar (or the gear in the header). The bar stays
+   on screen and the selected pill animates across to **Settings** — this is
+   the transition that was previously invisible.
+3. Tap **Home** in the bar: `goHome()` returns you to Home and the pill
+   animates back.
+4. Scroll the Settings list to the bottom. Content passes **behind** the bar,
+   the bar stays fully opaque (nothing bleeds through), and the last row
+   ("About") can still be scrolled clear of it.
+5. Open any submenu — Settings → **Appearance** — and confirm there is **no**
+   nav bar; it's full-screen. Same for About / AI Provider / Statistics /
+   Backup & Restore. Back returns to Settings with the bar restored.
+6. Appearance → Layout → toggle **Floating nav bar** on and off, then revisit
+   Settings: both the floating pill and the anchored bar render correctly and
+   stay opaque.
+
+## 2026-09-04 — Make the floating nav bar's tab transition actually visible
+
+Owner added tint/label animations to `NazoBottomNav` (commit `513a879`) but
+could never see them, and suspected the nav bar was being recreated per screen
+rather than persisting across a tab switch. **That diagnosis was correct**, and
+it was the primary bug — no amount of tuning the animation code could have
+fixed it.
+
+### Root cause 1 — the bar was two different composables
+
+`NazoApp` swaps screens inside an `AnimatedContent` (line ~1103). `HomeScreen`
+and `SettingsScreen` each rendered their **own** `NazoBottomNav` *inside* their
+own bodies, i.e. inside that `AnimatedContent`.
+
+So Home's bar and Settings' bar were two distinct composables that never
+coexisted. Switching tabs disposed one subtree and created the other, which
+destroys all `remember`ed animation state. `animateColorAsState` and
+`animateContentSize` capture their initial value from the first composition —
+on a freshly created composable that initial value *is* the target, so they had
+nothing to animate from. The bar simply appeared already-final, and the 220ms
+cross-fade of the screen swap hid the swap itself.
+
+Fix: render `NazoBottomNav` **once in `NazoApp`, outside `AnimatedContent`** —
+the same treatment `AmbientBackground` already gets, and for the same stated
+reason. One instance now survives the screen swap, so its animations run.
+
+- Removed the `NazoBottomNav` call (and now-unused imports) from `HomeScreen`
+  and `SettingsScreen`.
+- `NazoApp` maps `currentScreen` → tab and shows the bar only for
+  `Screen.Home` / `Screen.Settings`, so **submenus stay full-screen** as before.
+- Clicks are no-ops on the current tab; Settings→Home uses `goHome()` and
+  Home→Settings uses `navigate(Screen.Settings)`, preserving the back stack
+  behaviour each screen had.
+- The bar mirrors the `blur(16.dp)` that `AnimatedContent` gets behind a
+  startup dialog — previously it was inside a screen and so was blurred with it.
+- `SettingsScreen`/`HomeScreen` keep their `Box` root and 96.dp bottom inset;
+  content still scrolls *under* the (opaque) bar.
+
+### Root cause 2 — the label animated on the wrong axis
+
+Even with a persistent bar, the expand/collapse would have looked wrong:
+`AnimatedVisibility` defaults to `expandVertically`/`shrinkVertically`, so the
+label grew from zero **height**. On a short horizontal pill that reads as a
+vertical squash, not a sideways expand. Replaced with `expandHorizontally` /
+`shrinkHorizontally` (+ fade), anchored `Alignment.Start`.
+
+Also removed `animateContentSize()` from the same Row: `AnimatedVisibility`
+already animates the size its child contributes, so the two were competing over
+the pill's width. All parts now share one `TAB_ANIM_MS = 280` duration with
+`FastOutSlowInEasing`, so the tint fade and the width change land together.
+
+### How to test it live
+
+1. Settings → Appearance → Layout → turn **Floating nav bar ON**.
+2. Go Home. The bar is a centred pill: **Home** is a filled accent pill with
+   icon + label, **Settings** is a bare icon with no label.
+3. Tap **Settings** in the bar. Watch the pill itself — the Home tab's label
+   should shrink away horizontally while the Settings tab's label expands
+   sideways, with the accent fill sliding tint between them. The bar must stay
+   on screen throughout; it should not blink or restart.
+4. Tap **Home** and watch it play in reverse.
+5. Tap the tab you are already on — nothing should happen (no re-navigation).
+6. Turn **Floating nav bar OFF** and repeat: the anchored bar keeps both labels
+   visible at all times and switches instantly, which is intentional
+   (`isFloating` gates the animation).
+7. Settings → **Appearance** (a submenu): no nav bar, full-screen. Back returns
+   to Settings with the bar present.
+8. Scroll Settings to the bottom: content passes behind the bar and the last
+   row still clears it.
+
+## 2026-09-04 — Rebalanced giveaway answers in the local question bank
+
+Owner: many offline questions were trivially guessable because the correct
+answer was far longer than its distractors — "all the other three options are
+one to three letters and the answer is ten to fifteen". Especially One Piece.
+
+Measured before touching anything (`LocalQuestionBank.kt`, 985 questions).
+Option order is already shuffled at runtime, so position was never the tell —
+**length** was. Three distinct failure families:
+
+1. **100 "Otaku Master" essay answers.** The answer was a full sentence with a
+   semicolon and the three distractors were throwaways. Worst case ratio
+   **7.2x**: an 79-char answer against "He is Luffy" / "He is Roger" / "He is a
+   god". Many weren't real questions either — the answer was literally "its
+   nature is a mystery". Replaced with concrete, checkable questions.
+2. **75 "All of the above" answers.** Always correct, and the other three
+   options were usually synonyms of each other. Rewritten into real questions
+   with plausible, mutually exclusive distractors.
+3. **~75 shorter but still lopsided items.** Kept the question, upgraded the
+   weak distractors so all four read as the same kind of thing
+   (e.g. "Brook" / "Nami" / "Robin" → "Brook the Musician" / "Nico Robin" /
+   "Jinbe the Helmsman" against "Tony Tony Chopper").
+
+Also repaired one genuinely corrupt entry: the `86` question had its fields
+shifted into the options list, leaving `correctAnswer = ""`, a blank option and
+an empty explanation. It could never have been answered correctly.
+
+Result across all 985 questions:
+
+| metric | before | after |
+|---|---|---|
+| answer ≥2x longest distractor | 157 | **0** |
+| answer ≥1.8x | 175 | **0** |
+| worst single ratio | 7.2x | **1.77x** |
+| mean ratio | — | 0.96 |
+| "All of the above" answers | 75 | **0** |
+| essay-style answers | 100 | **0** |
+| integrity failures | 1 | **0** |
+
+Question count is unchanged at 985, no duplicate questions were introduced,
+every `correctAnswer` still appears in its own `options`, and every question
+has exactly four distinct non-blank options. A mean ratio of 0.96 means the
+correct answer is now, on average, very slightly *shorter* than the longest
+distractor — so length carries no signal.
+
+### How to test it live
+
+1. Settings → AI Provider: make sure no provider is active (or Settings →
+   **Force offline** on) so the local bank is used.
+2. Home → topic **One Piece** → difficulty **Otaku Master** → Generate Quiz.
+3. Read each question without knowing the answer: all four options should be
+   the same *kind* of thing and roughly the same length. There should be no
+   single obviously-long option, and no "All of the above".
+4. Repeat at **Easy** and **Medium** for One Piece, then try Attack on Titan,
+   My Hero Academia, Jujutsu Kaisen and Neon Genesis Evangelion — those had the
+   most rewrites.
+5. Answer a few wrong on purpose and open **Review Answers** to confirm the
+   explanations still match their questions (they were rewritten together).
+6. Play the **Daily Challenge** once: it draws from the same bank with its own
+   shuffle, so it should look equally balanced.
+
+---
+
+## Audit triage: four real defects fixed (Kimi `report.md`)
+
+Triaged all 15 BUG / 5 SEC / 7 PERF findings against the actual code on this
+branch. Most were false positives or already-fixed; four were real and are
+fixed here. `report.md` was a temporary hand-off file and is deleted.
+
+### Fixed
+
+| ID | File | Fix |
+|---|---|---|
+| BUG-004 | `data/remote/ApiClient.kt` | `QuizCache` was a bare `LinkedHashMap` mutated from `Dispatchers.IO` by concurrent quiz builds + prefetch. Now guarded by `synchronized(lock)` on `get`/`put`. |
+| BUG-006 | `ui/NazoApp.kt`, `ui/screens/ActiveQuizScreen.kt` | Quiz duration and the Blitz deadline used wall-clock `System.currentTimeMillis()`; an NTP sync or manual clock edit mid-quiz produced absurd/negative times. Both writer and reader moved to monotonic `SystemClock.elapsedRealtime()`. |
+| BUG-012 | `ui/screens/ActiveQuizScreen.kt` | `enabled = !reveal` only flips on the next recomposition, so two taps in one frame both registered. Added an early-return idempotence guard. |
+| BUG-013 | `ui/NazoApp.kt` | `AchievementEngine.compute()` ran inline as a parameter, re-walking every rule + hitting the records/daily stores on every recomposition of Statistics. Wrapped in `remember(quizStats, dailiesCompleted)`. |
+
+### Rejected (verified against real code)
+
+- **BUG-001** connection leaks — false. Connections are built before `try` and
+  `disconnect()`ed in `finally`; the report's suggested "fix" is invalid Kotlin.
+- **BUG-002** prefetch race — already guarded; `guessRound == targetRound` checks
+  exist at `NazoApp.kt:890` and `:906`.
+- **BUG-007** unbounded image cache — it is a deliberate *one-slot* cache.
+- **BUG-009** P1 score leak — the handoff screen never renders it; the code
+  explicitly keeps it secret.
+- **BUG-010** daily seed not salted — by design; a daily challenge must be
+  identical for all players to be comparable.
+- **BUG-015** deprecated `NetworkInfo` — already uses `getNetworkCapabilities`.
+- **SEC-001** keys in `EncryptedSharedPreferences` — actually raw Android
+  Keystore AES/GCM (the modern replacement); no key is logged anywhere.
+- **BUG-003** "4,000+ questions" — the bank holds 985.
+- **PERF-003** `AmbientBackground` — already hoisted outside `AnimatedContent`.
+
+Still genuinely open, not attempted here: **TEST-001/002** (no test source set
+at all) and the architecture items (ViewModels, splitting `NazoApp.kt`).
+
+### How to test it live
+
+1. **Timer correctness (BUG-006).** Home → Start Quiz → any difficulty. Answer
+   one question, then pull down the system shade → Settings → System → Date &
+   time, turn *Set time automatically* off and move the clock forward an hour.
+   Return to the quiz and finish it. **Expected:** the "Time" figure on the
+   results screen shows your real elapsed minutes (a minute or two), *not* ~60m.
+   Before this fix it reported the clock jump. Re-enable automatic time after.
+2. **Blitz timer (BUG-006).** Home → Blitz. **Expected:** the 60s countdown ticks
+   down smoothly to 0 and ends the round; changing the system clock mid-round
+   does not skip or freeze it.
+3. **Double-tap guard (BUG-012).** Start any quiz and tap two *different* answer
+   options as fast as you can, near-simultaneously with two fingers.
+   **Expected:** exactly one option lights up, one sound plays, and the quiz
+   advances by exactly one question. Previously a fast double-tap could play two
+   sounds and skip a question in Blitz.
+4. **Statistics smoothness (BUG-013).** Play at least one quiz, then Home →
+   Profile → Statistics and scroll the achievements list up and down quickly.
+   **Expected:** scrolling is smooth and the unlocked/locked badges are stable;
+   no flicker or stutter while scrolling.
+5. **Cache safety (BUG-004).** Requires an AI provider key: Settings → AI
+   Provider, then start an AI quiz and immediately background/foreground the app
+   so a prefetch overlaps the build. **Expected:** no crash; quizzes load
+   normally and repeated identical requests return instantly from cache.
+
+---
+
+## Bottom-sheet drag glitch, drag-handle ripple, and stuck "Offline mode" pill
+
+Three reported bugs. The first two shared a root cause and are fixed once, in a
+new shared component; the third was unrelated.
+
+### 1 + 2. Sheets: unbounded height and the dark block on the handle
+
+New `ui/components/NazoSheet.kt` owns the app's single sheet style, and all
+**six** sheets now use it (app icon, background effects, celebrations, Home
+provider switcher, What's New, About→updates).
+
+- **Glitch:** `ModalBottomSheet` consumes no top window inset by default, so an
+  expanded sheet had no stable maximum height and ran to the top of the
+  display. On the app-icon sheet — the only one with content tall enough to
+  scroll — the inner `verticalScroll` and the sheet's own drag then traded the
+  gesture near the status bar / camera cutout and the sheet oscillated. Fixed
+  with `contentWindowInsets = { WindowInsets.statusBars }`, giving the sheet a
+  bounded height; the inner scroll now simply stops at the top.
+- **Dark block:** the sheet wraps its drag-handle slot in a `clickable` for the
+  a11y expand/collapse action, and *that* ripple painted a rounded block behind
+  the 36x4dp line. The handle subtree now provides a no-op `IndicationNodeFactory`
+  via `LocalIndication`. The long-press **"Drag handle" tooltip is kept**, as is
+  the TalkBack label and the a11y action — only the ripple is gone.
+
+Sheet content should use `NazoSheetColumn` (`scrollable = true` only where the
+content can outgrow the screen). Do not nest another `verticalScroll`.
+
+### 3. "Offline mode" pill never cleared
+
+`isOfflineMode = forceOffline || detectedOffline`, but `detectedOffline` was
+written **only** by a run-once startup probe. If the app launched with no
+network the flag stayed true for the entire process, so toggling the Settings
+switch off left `isOfflineMode` true and the Home pill stuck on "Offline mode"
+forever — and, importantly, the app really was still offline, so AI generation
+would also have kept refusing.
+
+The probe is now re-runnable (`connectivityProbe` counter) and re-runs when:
+- the switch is turned **off**, and
+- the app returns to the **foreground** (`ON_RESUME`), which is how
+  connectivity usually comes back — the user leaves to fix Wi-Fi and returns.
+
+The startup popup is suppressed on re-probes (`connectivityProbe == 0` guard)
+so returning to the app never re-nags. Added the
+`androidx.lifecycle:lifecycle-runtime-compose` dependency for
+`LocalLifecycleOwner`.
+
+### How to test it live
+
+**Sheet drag glitch (the big one)**
+1. Settings → Appearance → **App icon**. The sheet slides up.
+2. Drag the sheet upward hard, repeatedly, trying to push it past the status
+   bar / camera cutout. Also flick the icon list to its top and keep dragging up.
+3. **Expected:** the sheet stops cleanly at the status bar and stays there. The
+   list scrolls to its first item and stops. **Before:** the sheet jittered up
+   and down and could not settle.
+4. Repeat on Home → the provider pill → **Switch API key**, and on Settings →
+   Appearance → **Background effects** / **Victory confetti**. All behave the same.
+
+**Drag-handle press**
+1. Open any sheet and **press and hold** the small line at the top.
+2. **Expected:** the "Drag handle" tooltip still appears, and **no dark/grey
+   rounded block** appears behind the line at any point — during press, hold, or
+   release. **Before:** a dark rounded rectangle flashed behind it.
+
+**Offline pill** (needs a real network toggle)
+1. Turn the device fully offline (airplane mode) and cold-start Nazo. Accept the
+   offline prompt. Home shows the grey **"Offline mode"** pill.
+2. Turn airplane mode **off** and wait for Wi-Fi/data to reconnect.
+3. Go to Settings, toggle **Offline mode** off, and return Home.
+   **Expected:** the pill now shows your active provider (e.g. "Gemini") in the
+   accent colour, or "API Key inactive" if no key is set — **not** "Offline mode".
+4. Alternative path: with the switch already off, background the app, reconnect,
+   then reopen it. **Expected:** the pill updates on its own.
+5. **Before:** the pill stayed "Offline mode" no matter how often you toggled.
+
+---
+
+## Generate button touch feedback + nav bar swallowing touches
+
+### 1. The Generate button reacts to touch
+
+`GenerateButton` in `HomeScreen.kt` previously had a bare `clickable` with no
+`indication`, so the only feedback on press was haptic — visually nothing moved.
+It now has three layers:
+
+| Layer | Behaviour |
+|---|---|
+| Press scale | Springs down to 0.97 while held, bounces back on release (`DampingRatioMediumBouncy`). |
+| Press brightness + lift | A 16% white overlay fades in over 120ms and the shadow drops 8dp → 1dp, so the button reads as pushed *into* the surface. |
+| Idle sheen | A soft highlight sweeps left→right on a 4.2s loop with a dwell between passes, hinting the button is interactive. Suppressed while pressed so the two effects never overlap. |
+
+`indication = null` is deliberate: the scale + brighten *is* the feedback, and a
+Material ripple on top fought the sheen. The shadow is tinted with `NazoPrimary`
+so the lift picks up the accent colour.
+
+Note there is no true "hover" on touch devices — press/hold is the hover
+equivalent, and both are covered by `collectIsPressedAsState()`.
+
+### 2. Nav bar no longer passes touches through
+
+`NazoBottomNav` is a plain `Row`; only the two tab pills were interactive. Every
+other part of the bar — its padding, the rounded shoulders, the 32dp gap between
+Home and Settings — was not a hit target, so taps went straight through to
+whatever sat behind (mode cards, the Generate button). Pressing "through" the
+bar could start a quiz.
+
+Fixed with a `blockTouchThrough()` modifier (`pointerInput` + `detectTapGestures {}`)
+that makes the bar's own surface an opaque hit target. The tabs still work
+because Compose hit-tests descendants before the parent.
+
+Applied to **both** variants, with an intentional difference:
+- **Docked bar:** the modifier wraps the full-width opaque surface, so nothing
+  behind the bar is reachable.
+- **Floating bar:** applied to the pill only. The transparent area either side
+  stays interactive — that is the point of a floating bar.
+
+An earlier attempt consumed events on `PointerEventPass.Initial`; that pass
+travels parent→child and would have eaten the tabs' own clicks. Do not do that.
+
+### How to test it live
+
+**Generate button**
+1. Open Home.
+2. Watch the big **Generate AI Quiz** button without touching it.
+   **Expected:** every few seconds a soft light sweep travels across it.
+3. Press and **hold** it.
+   **Expected:** it shrinks slightly, brightens, and its shadow flattens — you
+   can clearly see it is being pressed. **Before:** nothing moved at all.
+4. Release. **Expected:** it springs back with a slight bounce and the quiz starts.
+5. Press and hold, then slide your finger off before releasing.
+   **Expected:** it returns to normal and no quiz starts.
+
+**Nav bar pass-through** (docked mode)
+1. Settings → Appearance → make sure **Floating nav bar** is **off**.
+2. Go Home and scroll so a mode card or the Generate button sits directly
+   behind the bottom bar.
+3. Tap the bar's empty areas: the gap between the Home and Settings icons, the
+   padding above/below them, and the rounded corners at the far left/right.
+   **Expected:** nothing happens — no quiz starts, no card selects.
+   **Before:** the tap activated whatever was behind the bar.
+4. Tap the Home and Settings icons themselves. **Expected:** they still navigate.
+5. Turn the floating bar back **on** and tap beside the pill.
+   **Expected:** the element behind it still responds — the floating bar only
+   blocks the pill's own footprint.
+
+---
+
+## Generate button: sparkle twinkles on tap
+
+Follow-up to the touch-feedback work. The `AutoAwesome` sparkle in
+`GenerateButton` (`HomeScreen.kt`) now animates when the button is tapped, and
+navigation is held back briefly so the animation is actually seen.
+
+Driven by a single `Animatable` (`twinkle`, 0 → 1 over 420ms, `FastOutSlowInEasing`):
+
+| Element | Behaviour |
+|---|---|
+| Spin | The icon rotates 180° across the tap. |
+| Pop | Scales up to 1.35x at the midpoint, then settles back to 1x. |
+| Spark burst | Six dots fly outward from the icon's centre along uneven angles, with alternating reach (26/18) and size (2.2/1.5), fading as they travel. |
+
+Sequence on tap: haptic → 420ms twinkle → 90ms beat → `onClick()`. Roughly half
+a second total, deliberately short — a flourish, not a loading screen.
+
+Two implementation details worth keeping:
+- The spark `drawWithContent` sits **before** `.graphicsLayer` in the modifier
+  chain, so the sparks do **not** inherit the icon's rotation/scale. Reversing
+  the order makes the whole burst spin with the icon.
+- A `launching` flag ignores taps while the sequence plays, so a double-tap
+  cannot queue two quizzes during the delay window. `twinkle` is reset after
+  `onClick()` so returning Home shows a clean icon.
+
+Sparks are drawn from the icon's own centre rather than a computed offset from
+the button centre. An earlier version measured the label width with
+`rememberTextMeasurer` to locate the icon — unnecessary, and it broke whenever
+the label changed (the button has five different labels by mode).
+
+### How to test it live
+
+1. Open Home. The mode selector should be on the default quiz mode, so the
+   button reads **Generate AI Quiz** (or **Generate Quiz** offline) and shows
+   the four-point sparkle on its left.
+2. Tap the button once and **watch the sparkle**.
+   **Expected:** it spins and pops larger while six small dots shoot outward and
+   fade, then the quiz screen appears a moment later — you should have time to
+   see the animation before the screen changes.
+3. Tap and immediately tap again as fast as you can.
+   **Expected:** exactly one quiz starts; the second tap is ignored.
+4. Come back Home. **Expected:** the sparkle is back to its normal size and
+   orientation, with no leftover rotation.
+5. Switch to Guessing/Survival/Blitz/Versus mode (the button label and icon
+   change to a magnifier). **Expected:** the same twinkle plays on tap, centred
+   on that icon.
+
+**Build fix:** the first push of this change was red. Inserting the
+`SPARK_ANGLES` constant directly above `GenerateButton` placed it *between* the
+existing `@Composable` annotation and the function, so the annotation attached
+to the property instead — producing 14 cascading
+"@Composable invocations can only happen from the context of a @Composable
+function" errors. When inserting a top-level declaration before a function,
+always check whether the insertion point is under an annotation.
+
+---
+
+## Generate button spark: Twinkle + Meteor Shower, switchable in Appearance
+
+Replaces the earlier spin-the-whole-icon twinkle, which rotated the glyph as a
+single unit and did not read as stars twinkling. New file
+`ui/components/GenerateSparkle.kt` draws both effects on Canvas.
+
+**Why Canvas:** a Material `Icon` can only be transformed as a whole, so the
+three stars in `AutoAwesome` could never pulse independently. The sparkle is now
+drawn as three separate four-point star paths, each on its own schedule.
+
+| Style | id | Behaviour |
+|---|---|---|
+| Twinkle | `twinkle` | Each of the three stars scales up ~55% and back on a phase-shifted sine, tinting from the button's `onPrimary` toward a warm `#FFD75E`, with a four-point glint crossing it at the peak. |
+| Meteor Shower | `meteors` | Everything Twinkle does, plus 11 meteors streaking down-left across the whole button on staggered delays, each a gradient streak with a bright head, fading as it crosses. |
+
+Chosen in **Settings → Appearance → Generate button spark**; persisted as
+`ThemePreferences.sparkleStyle` (default `twinkle`). The sheet previews both on
+a miniature Generate button driven by a looping clock, so the choice is literal
+rather than described.
+
+Timing differs per style: meteors get a 720ms window (they must cross the
+button), twinkle 460ms, then a 70ms beat before navigating.
+
+Implementation notes:
+- The star path uses quadratic curves with control points near the centre; this
+  was verified numerically (points at full radius, waist pinched to ~45%) before
+  wiring it up, since a wrong control point yields a blob rather than a sparkle.
+- `METEORS` is a fixed seeded list built once at class-init, not per tap, so no
+  allocation happens per frame.
+- Meteors are drawn in the button's `drawWithContent` (full width, clipped to
+  the rounded shape); stars are drawn in the icon slot's own Canvas.
+- The "Start ..." modes (Guessing/Survival/Blitz/Versus) keep the magnifier
+  icon and just get a scale pulse — a magnifier has no stars to twinkle.
+
+### How to test it live
+
+1. **Pick a style.** Settings → Appearance → scroll to **Generate button spark**.
+   The row shows the current choice. Tap it.
+   **Expected:** a sheet with two cards, each showing a small live Generate
+   button — one twinkling, one with meteors crossing it, both looping.
+2. Choose **Twinkle**, go Home, and tap **Generate AI Quiz**, watching the icon.
+   **Expected:** the three stars pulse in sequence (large one first), flashing
+   warm yellow with a cross-glint, then the quiz loads.
+3. Go back, switch to **Meteor Shower**, and tap Generate again.
+   **Expected:** the same star twinkle *plus* yellow meteors streaking
+   down-left across the button, and a slightly longer beat before the quiz opens.
+4. Force-close and reopen the app, then re-check the Appearance row.
+   **Expected:** your choice persisted.
+5. Switch the mode selector to **Guessing Game** and tap Start.
+   **Expected:** the magnifier icon pulses (no stars) — and with Meteor Shower
+   selected, meteors still cross the button.
+
+**Build fix:** the first push was red — a blind text replacement added
+`sparkleStyle`/`onSparkleStyleChange` to `OnboardingScreen`, which shares the
+`celebrationStyle = ...` argument shape with `AppearanceScreen`. When patching
+by matching an argument block, confirm which composable encloses the match.
+
+---
+
+## App-icon sheet still juddered at the top — real fix: cap the height
+
+The previous attempt (status-bar `contentWindowInsets`) did **not** fix this;
+the owner confirmed the sheet still oscillated rapidly when dragged into the
+camera cutout.
+
+**Why the first fix failed.** Padding moves content but does not bound the
+sheet's *height*. With nine icon cards (~914dp of content) the sheet still grew
+to the full display height, so the sheet's own drag and the inner
+`verticalScroll` kept trading the same upward gesture — scroll consumes it,
+sheet re-expands, repeat. That handoff is the judder.
+
+**The actual fix,** as the owner originally suggested: give scrollable sheet
+content a hard height cap so it cannot be dragged higher than it already is.
+`NazoSheetColumn(scrollable = true)` now applies
+`heightIn(max = screenHeight * 0.78)`. The sheet settles at a fixed height,
+scrolling happens inside a container whose size never changes, and the two
+gestures can no longer compete.
+
+Clearance above the sheet at 0.78 on common screens (all well clear of the
+status bar / cutout):
+
+| Screen | Height | Cap | Gap above |
+|---|---|---|---|
+| small 5in | 640dp | 499dp | 141dp |
+| Pixel 4a | 740dp | 577dp | 163dp |
+| Galaxy S23 | 780dp | 608dp | 172dp |
+| Pixel 7 | 808dp | 630dp | 178dp |
+| tall 20:9 | 891dp | 695dp | 196dp |
+
+Only affects `scrollable = true` sheets (app icon, What's New). Short sheets
+still size to their content.
+
+**Lesson:** for a sheet/scroll gesture conflict, bound the height. Insets and
+padding do not.
+
+### How to test it live
+
+1. Settings → Appearance → **App icon**.
+2. Drag the sheet upward hard and repeatedly, trying to push it into the camera
+   cutout. Also flick the icon list to the very top and keep dragging up.
+   **Expected:** the sheet stops at roughly three-quarters of the screen and
+   stays there — completely still, with a clear gap above it. The list scrolls
+   to the first icon and stops. **Before:** it juddered up/down very fast.
+3. Scroll down to the last icon and release. **Expected:** smooth, no bounce-fight.
+4. Swipe down on the sheet. **Expected:** it still dismisses normally.
+5. Check a short sheet — Appearance → **Background effects**.
+   **Expected:** unchanged; it still hugs its content rather than jumping to the cap.

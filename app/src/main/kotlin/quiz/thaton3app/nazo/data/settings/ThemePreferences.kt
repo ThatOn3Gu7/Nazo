@@ -30,6 +30,14 @@ class ThemePreferences(context: Context) {
         get() = prefs.getBoolean(KEY_ICON_FOLLOWS_OS, true)
         set(value) = prefs.edit().putBoolean(KEY_ICON_FOLLOWS_OS, value).apply()
 
+    /** Which app icon the user picked ("light" | "dark" | "sakura" | "lantern" | ...).
+     *  Only meaningful when [iconFollowsOsTheme] is false. May name a retired
+     *  variant after an update — callers should pass it through
+     *  `LauncherIconSwitcher.sanitize`. */
+    var appIcon: String
+        get() = prefs.getString(KEY_APP_ICON, "light") ?: "light"
+        set(value) = prefs.edit().putString(KEY_APP_ICON, value).apply()
+
     /** Whether the bottom navigation bar floats as an elevated pill (true) or is a
      *  solid bar that covers the system gesture area (false). */
     var floatingNavBar: Boolean
@@ -65,6 +73,11 @@ class ThemePreferences(context: Context) {
         get() = prefs.getString(KEY_CELEBRATION_STYLE, "burst") ?: "burst"
         set(value) = prefs.edit().putString(KEY_CELEBRATION_STYLE, value).apply()
 
+    /** Tap effect on the Home screen's Generate button: "twinkle" | "meteors". */
+    var sparkleStyle: String
+        get() = prefs.getString(KEY_SPARKLE_STYLE, "twinkle") ?: "twinkle"
+        set(value) = prefs.edit().putString(KEY_SPARKLE_STYLE, value).apply()
+
     /** Whether tapping anywhere in the app spawns interactive touch ripple bursts. */
     var touchRipples: Boolean
         get() = prefs.getBoolean(KEY_TOUCH_RIPPLES, false)
@@ -75,6 +88,7 @@ class ThemePreferences(context: Context) {
         const val KEY_ACCENT = "theme_accent"
         const val KEY_LAUNCHER_NIGHT = "launcher_night"
         const val KEY_ICON_FOLLOWS_OS = "icon_follows_os"
+        const val KEY_APP_ICON = "app_icon"
         const val KEY_FLOATING_NAV = "floating_nav"
         const val KEY_LAST_MODE = "last_game_mode"
         const val KEY_GUESS_REVEAL_STYLE = "guess_reveal_style"
@@ -82,5 +96,6 @@ class ThemePreferences(context: Context) {
         const val KEY_BG_STYLE = "background_style"
         const val KEY_CELEBRATION_STYLE = "celebration_style"
         const val KEY_TOUCH_RIPPLES = "touch_ripples_enabled"
+        const val KEY_SPARKLE_STYLE = "generate_sparkle_style"
     }
 }

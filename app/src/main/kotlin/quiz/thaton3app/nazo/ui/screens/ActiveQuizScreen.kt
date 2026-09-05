@@ -1,5 +1,6 @@
 package quiz.thaton3app.nazo.ui.screens
 
+import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -144,7 +145,9 @@ fun ActiveQuizScreen(
     if (blitzDeadlineMs != null) {
         LaunchedEffect(blitzDeadlineMs) {
             while (true) {
-                val left = ((blitzDeadlineMs - System.currentTimeMillis() + 999) / 1000L)
+                // Monotonic clock — matches how blitzDeadlineMs is produced
+                // in NazoApp, so an NTP sync mid-round cannot warp the timer.
+                val left = ((blitzDeadlineMs - SystemClock.elapsedRealtime() + 999) / 1000L)
                     .coerceAtLeast(0L).toInt()
                 if (left != remainingSeconds) {
                     remainingSeconds = left
@@ -451,6 +454,12 @@ fun ActiveQuizScreen(
                             .background(bgColor)
                             .border(1.dp, borderColor, RoundedCornerShape(50))
                             .clickable(enabled = !reveal && !isHiddenByHint) {
+                                // Idempotence guard: `reveal` only flips on the
+                                // next recomposition, so two taps landing in the
+                                // same frame both pass `enabled`. Without this
+                                // the second tap re-fires feedback and (in Blitz)
+                                // can queue a second onNextQuestion.
+                                if (selectedAnswer != null) return@clickable
                                 if (optionText == q.correctAnswer) {
                                     Haptics.light(context)
                                     Sounds.correct(context)

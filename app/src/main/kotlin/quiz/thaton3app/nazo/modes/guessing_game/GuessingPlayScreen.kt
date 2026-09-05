@@ -67,6 +67,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -165,6 +166,24 @@ fun GuessingPlayScreen(
     var remainingMs by remember { mutableLongStateOf(durationMs) }
     var showQuitDialog by remember { mutableStateOf(false) }
 
+    // Round identity for the state below. Assigning these DURING composition (not
+    // in a LaunchedEffect, which runs only after the frame is committed) is what
+    // guarantees no frame is ever drawn with the previous round's flags — an
+    // effect-based reset let one sharp frame of the NEW image slip through.
+    var stateForPhase by remember { mutableStateOf<Any?>(null) }
+    if (stateForPhase !== phase) {
+        stateForPhase = phase
+        submitted = null
+        timedOut = false
+        remainingMs = durationMs
+        imageFetchFailed = false
+        pixelLevels = null
+        fetchedImage = null
+        // Nothing is displayable until the fetch AND (in pixel mode) the level
+        // build finish, so the card shows the spinner rather than a raw image.
+        imageReady = false
+    }
+
     // Lifelines (Phase 4): supply is shared across the whole game (this screen
     // stays composed for every round); the revealed letters reset each round.
     // Each use uncovers 2 more leading letters of the target's name.
@@ -198,17 +217,16 @@ fun GuessingPlayScreen(
     // that are actually on screen. A failed / timed-out pre-fetch falls back to
     // the drawn placeholder instead of blocking the round.
     LaunchedEffect(phase) {
-        submitted = null
-        timedOut = false
-        remainingMs = durationMs
-        imageFetchFailed = false
-        pixelLevels = null
-        imageReady = imageUrl == null // no URL at all → straight to the placeholder
-        if (imageUrl == null) return@LaunchedEffect
+        // Per-round state is already reset synchronously during composition above,
+        // so nothing here needs to clear it (doing so in an effect is exactly what
+        // allowed a sharp frame to leak).
+        if (imageUrl == null) {
+            imageReady = true // no URL at all → straight to the placeholder
+            return@LaunchedEffect
+        }
         // Pre-fetch the image BYTES over plain HTTP so the countdown only ever
         // runs against pixels Coil can decode instantly (ByteArray model).
         // A failed / timed-out fetch falls back to the drawn placeholder.
-        fetchedImage = null
         val bytes = withContext(Dispatchers.IO) {
             runCatching {
                 withTimeout(20_000L) { GuessImageFetcher.fetchImageBytes(imageUrl) }
@@ -222,15 +240,20 @@ fun GuessingPlayScreen(
         // bytes whenever no face is found with confidence — a round can never
         // look worse than before this step existed.
         val displayBytes = if (autoCrop) bytes?.let { PortraitCrop.toPassportPortrait(it) } else bytes
-        fetchedImage = displayBytes
         // For the pixelated reveal, pre-scale one bitmap per pixel level so
         // the un-pixelating is a cheap draw per frame. A fetch or decode
         // failure leaves this null → the card falls back to the blur reveal.
-        if (revealStyle == "pixel") {
-            pixelLevels = displayBytes?.let { b ->
-                withContext(Dispatchers.IO) { buildPixelLevels(b) }
-            }
-        }
+        //
+        // ORDER MATTERS: the levels are built BEFORE the bytes are published and
+        // before imageReady flips. If fetchedImage were set first, the card would
+        // become displayable while pixelLevels was still null, and pixel mode
+        // would fall through to the sharp AsyncImage branch for those frames —
+        // the "character flashes unpixelated" bug.
+        val levels = if (revealStyle == "pixel" && displayBytes != null) {
+            withContext(Dispatchers.IO) { buildPixelLevels(displayBytes) }
+        } else null
+        pixelLevels = levels
+        fetchedImage = displayBytes
         imageReady = true
     }
 
@@ -407,20 +430,28 @@ fun GuessingPlayScreen(
                         .navigationBarsPadding()
                         .padding(bottom = 24.dp),
                 ) {
-                    MysteryImageCard(
-                        imageUrl = phase.imageUrl,
-                        imageReady = imageReady,
-                        imageFetchFailed = imageFetchFailed,
-                        imageBytes = fetchedImage,
-                        query = phase.payload.imageQuery.ifBlank { topic },
-                        round = round,
-                        progress = timerFrac,
-                        revealed = revealed,
-                        revealStyle = revealStyle,
-                        startFraction = startFraction,
-                        pixelLevels = pixelLevels,
-                        imageLoader = imageLoader,
-                    )
+                    // key(phase): the prefetch path goes straight from one Playing
+                    // round to the next WITHOUT passing through Preparing, so this
+                    // card would otherwise stay composed across the boundary and
+                    // keep the previous round's reveal animation state (which ends
+                    // at 0 = fully sharp). Keying tears it down so every round
+                    // starts from a fresh, fully-obscured animation.
+                    key(phase) {
+                        MysteryImageCard(
+                            imageUrl = phase.imageUrl,
+                            imageReady = imageReady,
+                            imageFetchFailed = imageFetchFailed,
+                            imageBytes = fetchedImage,
+                            query = phase.payload.imageQuery.ifBlank { topic },
+                            round = round,
+                            progress = timerFrac,
+                            revealed = revealed,
+                            revealStyle = revealStyle,
+                            startFraction = startFraction,
+                            pixelLevels = pixelLevels,
+                            imageLoader = imageLoader,
+                        )
+                    }
                     Spacer(Modifier.height(20.dp))
                     // Lifeline row (Phase 4): masked name grows in from the left as
                     // letters get revealed; hint button on the right, greyed once spent
@@ -553,6 +584,9 @@ private fun MysteryImageCard(
     // either one eases to fully sharp, so the player actually sees who it
     // was instead of just reading the name. A decode failure in pixel mode
     // (pixelLevels == null) silently falls back to the blur.
+    // When the decode fails (pixelLevels == null) this stays false and the BLUR
+    // reveal drives instead — pixel mode must never fall through to the bare
+    // AsyncImage branch, which is fully sharp and would expose the character.
     val usePixels = revealStyle == "pixel" && pixelLevels != null
     // [progress] is a deferred read of the per-frame timer. Both animation
     // targets below are QUANTIZED derivedStateOf values (whole blur dp / pixel

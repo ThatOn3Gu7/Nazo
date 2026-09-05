@@ -1,67 +1,88 @@
 package quiz.thaton3app.nazo.ui.screens
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.outlined.AppShortcut
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.BlurOn
+import androidx.compose.material.icons.outlined.Celebration
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.DesktopMac
+import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LightMode
-import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.ModeNight
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.Celebration
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Path
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
-import quiz.thaton3app.nazo.ui.theme.Accents
-import quiz.thaton3app.nazo.ui.theme.previewColors
-import quiz.thaton3app.nazo.ui.components.Haptics
-import quiz.thaton3app.nazo.ui.components.rememberHapticBack
-import quiz.thaton3app.nazo.ui.components.NazoBottomNav
-import quiz.thaton3app.nazo.ui.components.NazoTab
+import quiz.thaton3app.nazo.AppIconOption
+import quiz.thaton3app.nazo.LauncherIconSwitcher
+import quiz.thaton3app.nazo.R
 import quiz.thaton3app.nazo.ui.components.CELEBRATION_STYLES
 import quiz.thaton3app.nazo.ui.components.CelebrationStyle
+import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.NazoBottomNav
+import quiz.thaton3app.nazo.ui.components.NazoModalSheet
+import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
+import quiz.thaton3app.nazo.ui.components.NazoTab
+import quiz.thaton3app.nazo.ui.components.SPARKLE_METEORS
+import quiz.thaton3app.nazo.ui.components.SPARKLE_STYLES
+import quiz.thaton3app.nazo.ui.components.SPARKLE_TWINKLE
+import quiz.thaton3app.nazo.ui.components.SparkleStyle
 import quiz.thaton3app.nazo.ui.components.drawCelebrationPreview
+import quiz.thaton3app.nazo.ui.components.drawMeteorShower
+import quiz.thaton3app.nazo.ui.components.drawTwinklingStars
+import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 import quiz.thaton3app.nazo.ui.theme.*
+import quiz.thaton3app.nazo.ui.theme.Accents
+import quiz.thaton3app.nazo.ui.theme.previewColors
 
 // Mock data enums for the prototype state
 private enum class ThemeMode(val mode: String) {
@@ -90,6 +111,9 @@ fun AppearanceScreen(
     onAccentChange: (String) -> Unit = {},
     iconFollowsOsTheme: Boolean = true,
     onIconFollowsOsThemeChange: (Boolean) -> Unit = {},
+    appIcon: String = LauncherIconSwitcher.ID_LIGHT,
+    /** Called with the chosen icon id once the user confirms the app restart. */
+    onAppIconChange: (String) -> Unit = {},
     floatingNavBar: Boolean = false,
     onFloatingNavBarChange: (Boolean) -> Unit = {},
     revealStyle: String = "pixel",
@@ -100,6 +124,8 @@ fun AppearanceScreen(
     onBackgroundStyleChange: (String) -> Unit = {},
     celebrationStyle: String = "burst",
     onCelebrationStyleChange: (String) -> Unit = {},
+    sparkleStyle: String = SPARKLE_TWINKLE,
+    onSparkleStyleChange: (String) -> Unit = {},
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
 ) {
@@ -118,6 +144,12 @@ fun AppearanceScreen(
     val effectsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showCelebrationSheet by remember { mutableStateOf(false) }
     val celebrationSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var showIconSheet by remember { mutableStateOf(false) }
+    var showSparkleSheet by remember { mutableStateOf(false) }
+    val iconSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sparkleSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    // Icon awaiting the "the app will close" confirmation, or null.
+    var pendingIcon by remember { mutableStateOf<AppIconOption?>(null) }
 
 
     Column(
@@ -265,7 +297,57 @@ fun AppearanceScreen(
                     onCheckedChange = {
                         iconFollowsOsThemeChecked = it
                         onIconFollowsOsThemeChange(it)
+                        // Turning the automatic mode back on overrides any custom
+                        // pick, so the custom row below is disabled while it's on.
                     }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Custom icon picker — only meaningful when the icon is NOT following
+            // the OS theme, so the row dims and stops responding while that's on.
+            val pickerEnabled = !iconFollowsOsThemeChecked
+            val selectedIcon = LauncherIconSwitcher.option(appIcon)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(NazoSurface)
+                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
+                    .then(
+                        if (pickerEnabled) Modifier.clickable {
+                            Haptics.soft(context)
+                            showIconSheet = true
+                        } else Modifier
+                    )
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AppIconPreview(
+                    option = selectedIcon,
+                    size = 40.dp,
+                    alpha = if (pickerEnabled) 1f else 0.4f,
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Choose app icon",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = NazoTextPrimary.copy(alpha = if (pickerEnabled) 1f else 0.4f),
+                    )
+                    Text(
+                        text = if (pickerEnabled) "Currently: ${selectedIcon.label}"
+                        else "Turn off \"Match icon to system theme\" to pick your own",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = NazoTextSecondary.copy(alpha = if (pickerEnabled) 1f else 0.6f),
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = NazoTextSecondary.copy(alpha = if (pickerEnabled) 0.5f else 0.2f),
+                    modifier = Modifier.size(24.dp),
                 )
             }
 
@@ -366,6 +448,49 @@ fun AppearanceScreen(
                 )
             }
 
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // --- GENERATE BUTTON SPARK ---
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(NazoSurface)
+                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
+                    .clickable {
+                        Haptics.soft(context)
+                        showSparkleSheet = true
+                    }
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.AutoAwesome,
+                    contentDescription = null,
+                    tint = NazoTextPrimary,
+                    modifier = Modifier.size(24.dp),
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Generate button spark",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = NazoTextPrimary,
+                    )
+                    Text(
+                        text = "Currently: " + (SPARKLE_STYLES.firstOrNull { it.id == sparkleStyle }?.label ?: "Twinkle"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = NazoTextSecondary,
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = NazoTextSecondary.copy(alpha = 0.5f),
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+
             Spacer(modifier = Modifier.height(32.dp))
 
             // --- LAYOUT SECTION ---
@@ -434,6 +559,176 @@ fun AppearanceScreen(
         }
     }
 
+    // --- APP ICON SHEET ---
+    // Every launcher icon variant is drawn exactly as the adaptive icon renders
+    // it (gradient background + the shared foreground mark), so what you see in
+    // the list is what lands on the home screen. Picking one only stages it:
+    // Android kills the task when the active launcher alias is swapped, so the
+    // change is confirmed through a dialog that spells out the restart.
+    if (showIconSheet) {
+        NazoModalSheet(
+            onDismissRequest = { showIconSheet = false },
+            sheetState = iconSheetState,
+        ) {
+            NazoSheetColumn(scrollable = true) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(NazoPrimary.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.AppShortcut,
+                            contentDescription = null,
+                            tint = NazoPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "App icon",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = NazoTextPrimary,
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Pick the icon Nazo shows on your home screen. The startup splash and launch animation follow your choice. Applying one closes the app; reopen it and the new icon is there.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NazoTextSecondary,
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                LauncherIconSwitcher.OPTIONS.forEach { option ->
+                    AppIconOptionCard(
+                        option = option,
+                        selected = appIcon == option.id,
+                        onClick = {
+                            Haptics.soft(context)
+                            if (appIcon != option.id) pendingIcon = option
+                        },
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+        }
+    }
+
+    // --- GENERATE SPARK SHEET ---
+    // Each card previews its effect on a miniature Generate button, looping on
+    // a shared clock so both styles can be compared before choosing.
+    if (showSparkleSheet) {
+        NazoModalSheet(
+            onDismissRequest = { showSparkleSheet = false },
+            sheetState = sparkleSheetState,
+        ) {
+            val loop = rememberInfiniteTransition(label = "sparkle_preview")
+            val previewProgress by loop.animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = keyframes<Float> {
+                        durationMillis = 2200
+                        0f at 0
+                        1f at 900 using LinearEasing
+                        1f at 2200            // rest between plays
+                    },
+                    repeatMode = RepeatMode.Restart,
+                ),
+                label = "sparkle_preview_progress",
+            )
+
+            NazoSheetColumn {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(NazoPrimary.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.AutoAwesome,
+                            contentDescription = null,
+                            tint = NazoPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "Generate button spark",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = NazoTextPrimary,
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "What plays when you tap Generate on the home screen.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NazoTextSecondary,
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                SPARKLE_STYLES.forEach { style ->
+                    SparkleOptionCard(
+                        style = style,
+                        selected = sparkleStyle == style.id,
+                        progress = previewProgress,
+                        onClick = {
+                            Haptics.soft(context)
+                            onSparkleStyleChange(style.id)
+                        },
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+        }
+    }
+
+    pendingIcon?.let { option ->
+        AlertDialog(
+            onDismissRequest = { pendingIcon = null },
+            containerColor = NazoSurface,
+            icon = { AppIconPreview(option = option, size = 48.dp) },
+            title = {
+                Text(
+                    text = "Use the ${option.label} icon?",
+                    color = NazoTextPrimary,
+                    fontWeight = FontWeight.Bold,
+                )
+            },
+            text = {
+                Text(
+                    text = "Android has to close Nazo to swap the launcher icon. Your progress is already saved — just tap the new icon to come back.",
+                    color = NazoTextSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    Haptics.soft(context)
+                    val chosen = option.id
+                    pendingIcon = null
+                    showIconSheet = false
+                    onAppIconChange(chosen)
+                }) {
+                    Text("Apply & close", color = NazoPrimary, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingIcon = null }) {
+                    Text("Cancel", color = NazoTextSecondary)
+                }
+            },
+        )
+    }
+
     // --- BACKGROUND EFFECTS SHEET ---
     // Slides up from the bottom (same ModalBottomSheet pattern as the Home
     // provider switcher). Every option card plays a LIVE miniature of its
@@ -441,19 +736,9 @@ fun AppearanceScreen(
     // once without committing. Selecting applies instantly and keeps the
     // sheet open for comparison; outside tap / back / swipe-down dismisses.
     if (showEffectsSheet) {
-        ModalBottomSheet(
+        NazoModalSheet(
             onDismissRequest = { showEffectsSheet = false },
             sheetState = effectsSheetState,
-            containerColor = NazoSurface,
-            dragHandle = {
-                Box(
-                    modifier = Modifier
-                        .padding(top = 16.dp, bottom = 8.dp)
-                        .size(width = 36.dp, height = 4.dp)
-                        .clip(CircleShape)
-                        .background(NazoTextSecondary.copy(alpha = 0.3f))
-                )
-            }
         ) {
             // One shared frame clock drives every preview card; unbounded and
             // monotonic (same seamless-loop principle as AmbientBackground).
@@ -468,12 +753,7 @@ fun AppearanceScreen(
                 }
             }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 10.dp)
-                    .navigationBarsPadding(),
-            ) {
+            NazoSheetColumn {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
@@ -528,19 +808,9 @@ fun AppearanceScreen(
     // real game-completion celebration behaves), driven by one shared clock.
     // Selecting applies instantly and keeps the sheet open for comparison.
     if (showCelebrationSheet) {
-        ModalBottomSheet(
+        NazoModalSheet(
             onDismissRequest = { showCelebrationSheet = false },
             sheetState = celebrationSheetState,
-            containerColor = NazoSurface,
-            dragHandle = {
-                Box(
-                    modifier = Modifier
-                        .padding(top = 16.dp, bottom = 8.dp)
-                        .size(width = 36.dp, height = 4.dp)
-                        .clip(CircleShape)
-                        .background(NazoTextSecondary.copy(alpha = 0.3f))
-                )
-            }
         ) {
             val previewTime = remember { mutableFloatStateOf(0f) }
             LaunchedEffect(Unit) {
@@ -552,12 +822,7 @@ fun AppearanceScreen(
                 }
             }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 10.dp)
-                    .navigationBarsPadding(),
-            ) {
+            NazoSheetColumn {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
@@ -967,6 +1232,108 @@ private fun CelebrationOptionCard(
 }
 
 
+/**
+ * Preview card for a Generate-button spark style: renders a miniature of the
+ * real button (accent fill, twinkling stars, label) so the choice is literal
+ * rather than described.
+ */
+@Composable
+private fun SparkleOptionCard(
+    style: SparkleStyle,
+    selected: Boolean,
+    progress: Float,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(NazoSurfaceVariant)
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.12f),
+                shape = RoundedCornerShape(18.dp),
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = style.label,
+                style = MaterialTheme.typography.titleMedium,
+                color = NazoTextPrimary,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = style.blurb,
+                style = MaterialTheme.typography.bodySmall,
+                color = NazoTextSecondary,
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            // Miniature Generate button running this style on a loop.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(NazoPrimary)
+                    .drawWithContent {
+                        drawContent()
+                        if (style.id == SPARKLE_METEORS) {
+                            drawMeteorShower(
+                                progress = progress,
+                                buttonSize = size,
+                                tint = NazoOnPrimary,
+                            )
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Canvas(modifier = Modifier.size(16.dp)) {
+                        drawTwinklingStars(
+                            progress = progress,
+                            baseColor = NazoOnPrimary,
+                            boxSize = size,
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Generate",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = NazoOnPrimary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .clip(CircleShape)
+                .background(if (selected) NazoPrimary else Color.Transparent)
+                .border(
+                    width = 2.dp,
+                    color = if (selected) Color.Transparent else NazoTextSecondary.copy(alpha = 0.4f),
+                    shape = CircleShape,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Outlined.Check,
+                    contentDescription = "Selected",
+                    tint = NazoOnPrimary,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+        }
+    }
+}
+
+
 // Constellation preview stars (fractional base positions + drift velocities).
 // Top-level so nothing is allocated per frame; the position buffers below are
 // reused every draw (UI-thread only, so sharing them across cards is safe).
@@ -1204,4 +1571,100 @@ private fun DrawScope.drawMoonTransit(p: Float, rowColor: Color) {
     drawCircle(Color(0xFFCDD8F2), r, c)
     // Crescent bite in the row's own colour
     drawCircle(rowColor, r * 0.82f, Offset(c.x + r * 0.52f, c.y - r * 0.40f))
+}
+
+/**
+ * Miniature of an adaptive launcher icon: the variant's background gradient
+ * clipped to the launcher's squircle-ish shape, with the shared foreground
+ * mark on top at the same 72/108 inset Android uses.
+ */
+@Composable
+private fun AppIconPreview(
+    option: AppIconOption,
+    size: androidx.compose.ui.unit.Dp,
+    alpha: Float = 1f,
+) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(RoundedCornerShape(size * 0.28f))
+            .background(
+                Brush.linearGradient(
+                    listOf(Color(option.startColor), Color(option.endColor))
+                )
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.foundation.Image(
+            // Full-color art for the illustrated marks; the kanji foreground for the
+            // color-only variants. Not the silhouette — that's only for the punch-out.
+            painter = painterResource(id = option.previewMark),
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            alpha = alpha,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+}
+
+/** One selectable launcher icon in the App icon sheet. */
+@Composable
+private fun AppIconOptionCard(
+    option: AppIconOption,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(NazoSurfaceVariant)
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.12f),
+                shape = RoundedCornerShape(18.dp),
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AppIconPreview(option = option, size = 48.dp)
+        Spacer(modifier = Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = option.label,
+                style = MaterialTheme.typography.titleMedium,
+                color = NazoTextPrimary,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = option.blurb,
+                style = MaterialTheme.typography.bodySmall,
+                color = NazoTextSecondary,
+                maxLines = 2,
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .clip(CircleShape)
+                .background(if (selected) NazoPrimary else Color.Transparent)
+                .border(
+                    width = 2.dp,
+                    color = if (selected) Color.Transparent else NazoTextSecondary.copy(alpha = 0.4f),
+                    shape = CircleShape,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Outlined.Check,
+                    contentDescription = "Selected",
+                    tint = NazoOnPrimary,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+        }
+    }
 }

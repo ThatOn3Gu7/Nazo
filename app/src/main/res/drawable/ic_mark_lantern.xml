@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Chochin (paper lantern). Full-color mark used as the adaptive-icon foreground
+     and the splash animated icon. The flat companion silhouette lives in
+     ic_mark_lantern_silhouette.xml (intro punch-out + themed icons). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- hanger -->
+    <path
+        android:strokeColor="#FF6D4C2F"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M54,20 L54,27" />
+    <!-- top rim -->
+    <path
+        android:fillColor="#FFB3372A"
+        android:pathData="M41,26 L67,26 A2,2 0 0 1 67,34 L41,34 A2,2 0 0 1 41,26 Z" />
+    <!-- paper body -->
+    <path
+        android:fillColor="#FFF6E3C0"
+        android:pathData="M41,34 C30,45 30,64 41,75 L67,75 C78,64 78,45 67,34 Z" />
+    <!-- warm inner glow -->
+    <path
+        android:fillColor="#FFF0C27A"
+        android:pathData="M46,34 C38,45 38,64 46,75 L62,75 C70,64 70,45 62,34 Z" />
+    <!-- paper ribs -->
+    <path
+        android:strokeColor="#FFD9B478"
+        android:strokeWidth="1.6"
+        android:pathData="M33.5,44 L74.5,44 M31.5,54.5 L76.5,54.5 M33.5,65 L74.5,65" />
+    <!-- bottom rim -->
+    <path
+        android:fillColor="#FFB3372A"
+        android:pathData="M41,75 L67,75 A2,2 0 0 1 67,82 L41,82 A2,2 0 0 1 41,75 Z" />
+    <!-- tassel -->
+    <path
+        android:fillColor="#FFD64545"
+        android:pathData="M51,82 L57,82 L55.5,92 L52.5,92 Z" />
+</vector>

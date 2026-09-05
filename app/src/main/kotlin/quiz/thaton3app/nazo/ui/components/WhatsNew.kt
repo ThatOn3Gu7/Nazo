@@ -8,20 +8,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -50,11 +46,29 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
  * is a pre-release one (the owner releases every ~20-30 commits, see
  * AGENTS.md); the next actual release commit will set its own id.
  */
-const val CHANGELOG_ID = "2026-09-03-next2"
+const val CHANGELOG_ID = "2026-09-03-next8"
 
 data class ChangeEntry(val title: String, val points: List<String>)
 
 val CHANGELOG: List<ChangeEntry> = listOf(
+    ChangeEntry(
+        "The N icons",
+        listOf(
+            "Nazo's initial, two ways: Brush N and Pixel N",
+            "The N marks draw themselves at launch — a line rises from the floor and traces out the letter before it flares away",
+            "Pixel N keeps the stepped mosaic reveal; Paper Lantern stays too",
+            "Some earlier variants were retired; if you were using one you'll be moved to Classic Green",
+        ),
+    ),
+    ChangeEntry(
+        "Pick your app icon",
+        listOf(
+            "Seven launcher icons to choose from — Classic Green, Deep Green, Sakura, Indigo, Bronze, Midnight and Ocean",
+            "Turn off \"Match icon to system theme\" in Appearance → App Icon, then tap \"Choose app icon\"",
+            "The cold-start splash recolors to match the icon you picked, so launch feels like one continuous surface",
+            "Applying an icon closes Nazo (Android requires it); reopen from the new icon on your home screen",
+        ),
+    ),
     ChangeEntry(
         "Crop, your way",
         listOf(
@@ -131,27 +145,11 @@ class WhatsNewStore(context: Context) {
 @Composable
 fun WhatsNewSheet(onDismiss: () -> Unit) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
+    NazoModalSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = NazoSurface,
-        dragHandle = {
-            Box(
-                modifier = Modifier
-                    .padding(top = 16.dp, bottom = 8.dp)
-                    .size(width = 36.dp, height = 4.dp)
-                    .clip(CircleShape)
-                    .background(NazoTextSecondary.copy(alpha = 0.3f))
-            )
-        },
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 10.dp)
-                .navigationBarsPadding(),
-        ) {
+        NazoSheetColumn(scrollable = true) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
