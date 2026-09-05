@@ -73,6 +73,11 @@ class ThemePreferences(context: Context) {
         get() = prefs.getString(KEY_CELEBRATION_STYLE, "burst") ?: "burst"
         set(value) = prefs.edit().putString(KEY_CELEBRATION_STYLE, value).apply()
 
+    /** Tap effect on the Home screen's Generate button: "twinkle" | "meteors". */
+    var sparkleStyle: String
+        get() = prefs.getString(KEY_SPARKLE_STYLE, "twinkle") ?: "twinkle"
+        set(value) = prefs.edit().putString(KEY_SPARKLE_STYLE, value).apply()
+
     /** Whether tapping anywhere in the app spawns interactive touch ripple bursts. */
     var touchRipples: Boolean
         get() = prefs.getBoolean(KEY_TOUCH_RIPPLES, false)
@@ -91,5 +96,6 @@ class ThemePreferences(context: Context) {
         const val KEY_BG_STYLE = "background_style"
         const val KEY_CELEBRATION_STYLE = "celebration_style"
         const val KEY_TOUCH_RIPPLES = "touch_ripples_enabled"
+        const val KEY_SPARKLE_STYLE = "generate_sparkle_style"
     }
 }

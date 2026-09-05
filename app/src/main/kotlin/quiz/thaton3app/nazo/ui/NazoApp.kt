@@ -234,6 +234,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var navBarFloating by remember { mutableStateOf(themePrefs.floatingNavBar) }
     var backgroundStyle by remember { mutableStateOf(themePrefs.backgroundStyle) }
     var celebrationStyle by remember { mutableStateOf(themePrefs.celebrationStyle) }
+    var sparkleStyle by remember { mutableStateOf(themePrefs.sparkleStyle) }
     // sanitize(): an update can retire an icon variant, leaving the saved pref
     // pointing at a manifest component that no longer exists.
     var appIcon by remember {
@@ -1147,6 +1148,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         apiKeyActive = apiKeyStore.hasAnyActiveKey(),
                         activeProvider = activeProvider,
                         offline = isOfflineMode,
+                        sparkleStyle = sparkleStyle,
                         configuredProviders = configuredProviders,
                         onSelectProvider = { id ->
                             apiKeyStore.saveSelectedProvider(id)
@@ -1289,6 +1291,11 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onCelebrationStyleChange = {
                             celebrationStyle = it
                             themePrefs.celebrationStyle = it
+                        },
+                        sparkleStyle = sparkleStyle,
+                        onSparkleStyleChange = {
+                            sparkleStyle = it
+                            themePrefs.sparkleStyle = it
                         },
                         iconFollowsOsTheme = themePrefs.iconFollowsOsTheme,
                         onIconFollowsOsThemeChange = { enabled ->
@@ -1552,6 +1559,11 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     onCelebrationStyleChange = {
                         celebrationStyle = it
                         themePrefs.celebrationStyle = it
+                    },
+                    sparkleStyle = sparkleStyle,
+                    onSparkleStyleChange = {
+                        sparkleStyle = it
+                        themePrefs.sparkleStyle = it
                     },
                     floatingNavBar = navBarFloating,
                     onFloatingNavBarChange = {

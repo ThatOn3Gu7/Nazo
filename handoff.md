@@ -4732,3 +4732,57 @@ to the property instead — producing 14 cascading
 "@Composable invocations can only happen from the context of a @Composable
 function" errors. When inserting a top-level declaration before a function,
 always check whether the insertion point is under an annotation.
+
+---
+
+## Generate button spark: Twinkle + Meteor Shower, switchable in Appearance
+
+Replaces the earlier spin-the-whole-icon twinkle, which rotated the glyph as a
+single unit and did not read as stars twinkling. New file
+`ui/components/GenerateSparkle.kt` draws both effects on Canvas.
+
+**Why Canvas:** a Material `Icon` can only be transformed as a whole, so the
+three stars in `AutoAwesome` could never pulse independently. The sparkle is now
+drawn as three separate four-point star paths, each on its own schedule.
+
+| Style | id | Behaviour |
+|---|---|---|
+| Twinkle | `twinkle` | Each of the three stars scales up ~55% and back on a phase-shifted sine, tinting from the button's `onPrimary` toward a warm `#FFD75E`, with a four-point glint crossing it at the peak. |
+| Meteor Shower | `meteors` | Everything Twinkle does, plus 11 meteors streaking down-left across the whole button on staggered delays, each a gradient streak with a bright head, fading as it crosses. |
+
+Chosen in **Settings → Appearance → Generate button spark**; persisted as
+`ThemePreferences.sparkleStyle` (default `twinkle`). The sheet previews both on
+a miniature Generate button driven by a looping clock, so the choice is literal
+rather than described.
+
+Timing differs per style: meteors get a 720ms window (they must cross the
+button), twinkle 460ms, then a 70ms beat before navigating.
+
+Implementation notes:
+- The star path uses quadratic curves with control points near the centre; this
+  was verified numerically (points at full radius, waist pinched to ~45%) before
+  wiring it up, since a wrong control point yields a blob rather than a sparkle.
+- `METEORS` is a fixed seeded list built once at class-init, not per tap, so no
+  allocation happens per frame.
+- Meteors are drawn in the button's `drawWithContent` (full width, clipped to
+  the rounded shape); stars are drawn in the icon slot's own Canvas.
+- The "Start ..." modes (Guessing/Survival/Blitz/Versus) keep the magnifier
+  icon and just get a scale pulse — a magnifier has no stars to twinkle.
+
+### How to test it live
+
+1. **Pick a style.** Settings → Appearance → scroll to **Generate button spark**.
+   The row shows the current choice. Tap it.
+   **Expected:** a sheet with two cards, each showing a small live Generate
+   button — one twinkling, one with meteors crossing it, both looping.
+2. Choose **Twinkle**, go Home, and tap **Generate AI Quiz**, watching the icon.
+   **Expected:** the three stars pulse in sequence (large one first), flashing
+   warm yellow with a cross-glint, then the quiz loads.
+3. Go back, switch to **Meteor Shower**, and tap Generate again.
+   **Expected:** the same star twinkle *plus* yellow meteors streaking
+   down-left across the button, and a slightly longer beat before the quiz opens.
+4. Force-close and reopen the app, then re-check the Appearance row.
+   **Expected:** your choice persisted.
+5. Switch the mode selector to **Guessing Game** and tap Start.
+   **Expected:** the magnifier icon pulses (no stars) — and with Meteor Shower
+   selected, meteors still cross the button.

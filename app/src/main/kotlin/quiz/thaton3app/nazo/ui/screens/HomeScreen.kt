@@ -21,6 +21,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -45,7 +46,6 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -57,7 +57,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.PI
-import kotlin.math.cos
 import kotlin.math.sin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -67,6 +66,10 @@ import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoModalSheet
 import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
+import quiz.thaton3app.nazo.ui.components.SPARKLE_METEORS
+import quiz.thaton3app.nazo.ui.components.SPARKLE_TWINKLE
+import quiz.thaton3app.nazo.ui.components.drawMeteorShower
+import quiz.thaton3app.nazo.ui.components.drawTwinklingStars
 import quiz.thaton3app.nazo.ui.theme.*
 
 enum class Difficulty(val label: String) {
@@ -91,6 +94,8 @@ fun HomeScreen(
     apiKeyActive: Boolean,
     activeProvider: String? = null,
     offline: Boolean = false,
+    /** Generate-button tap effect: SPARKLE_TWINKLE or SPARKLE_METEORS. */
+    sparkleStyle: String = SPARKLE_TWINKLE,
     onSettingsClick: () -> Unit = {},
     profileName: String = "",
     profilePictureUri: String? = null,
@@ -347,6 +352,7 @@ fun HomeScreen(
             Spacer(Modifier.height(28.dp))
 
             GenerateButton(
+                sparkleStyle = sparkleStyle,
                 label = when (nazoMode) {
                     NazoMode.GUESSING -> "Start Guessing Game"
                     NazoMode.SURVIVAL -> "Start Survival Run"
@@ -999,11 +1005,8 @@ private fun PillButton(
     }
 }
 
-/** Directions (degrees) the twinkle sparks fly in; uneven so it looks organic. */
-private val SPARK_ANGLES = listOf(-90f, -35f, 20f, 90f, 145f, -145f)
-
 @Composable
-private fun GenerateButton(label: String, onClick: () -> Unit) {
+private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -1105,6 +1108,15 @@ private fun GenerateButton(label: String, onClick: () -> Unit) {
                 if (pressOverlay > 0f) {
                     drawRect(color = NazoOnPrimary.copy(alpha = pressOverlay))
                 }
+                // The shower sweeps the full button, so it is drawn here rather
+                // than on the icon. Clipped by the button's rounded shape.
+                if (sparkleStyle == SPARKLE_METEORS && twinkle.value > 0f) {
+                    drawMeteorShower(
+                        progress = twinkle.value,
+                        buttonSize = size,
+                        tint = NazoOnPrimary,
+                    )
+                }
             }
             .clickable(
                 interactionSource = interactionSource,
@@ -1120,11 +1132,14 @@ private fun GenerateButton(label: String, onClick: () -> Unit) {
                     // ~420ms of twinkle, then a short beat so the animation
                     // lands before the screen changes. Deliberately brief —
                     // this is a flourish, not a loading screen.
+                    // Meteors need longer to cross the button than the stars
+                    // need to pulse, so the shower gets a wider window.
+                    val duration = if (sparkleStyle == SPARKLE_METEORS) 720 else 460
                     twinkle.animateTo(
                         targetValue = 1f,
-                        animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
+                        animationSpec = tween(durationMillis = duration, easing = LinearEasing),
                     )
-                    delay(90)
+                    delay(70)
                     onClick()
                     // Reset so returning Home shows a clean, untwinkled icon.
                     twinkle.snapTo(0f)
@@ -1132,53 +1147,34 @@ private fun GenerateButton(label: String, onClick: () -> Unit) {
                 }
             },
     ) {
-        // The sparkle twinkles on tap: a quick spin with a scale pop and a
-        // brightness flash. `twinkle` runs 0 -> 1 once per tap.
+        // "Start ..." modes keep the magnifier; the quiz modes get the
+        // sparkle, which is drawn on a Canvas so each star can twinkle on its
+        // own schedule (a plain Icon can only be transformed as a whole).
         val t = twinkle.value
-        // Two-stage pop: overshoot to 1.35x by the midpoint, settle back to 1x.
-        val popScale = if (t <= 0.5f) 1f + (t / 0.5f) * 0.35f
-                       else 1.35f - ((t - 0.5f) / 0.5f) * 0.35f
-        Icon(
-            imageVector = if (label.startsWith("Start")) Icons.Filled.ImageSearch else Icons.Filled.AutoAwesome,
-            contentDescription = null,
-            tint = NazoOnPrimary,
-            modifier = Modifier
-                .size(20.dp)
-                // Sparks are drawn from the icon's own centre (no clipping in
-                // Compose, so they can fly outside the 20dp box) and must sit
-                // OUTSIDE graphicsLayer, or they would spin with the icon.
-                .drawWithContent {
-                    drawContent()
-                    if (t > 0f) {
-                        val origin = Offset(size.width / 2f, size.height / 2f)
-                        // Ease out: shoot quickly, then decelerate while fading.
-                        val travel = 1f - (1f - t) * (1f - t)
-                        val fade = (1f - t).coerceIn(0f, 1f)
-                        SPARK_ANGLES.forEachIndexed { i, deg ->
-                            val rad = deg * PI.toFloat() / 180f
-                            // Alternating reach/size keeps it from looking
-                            // like a perfect mechanical ring.
-                            val reach = if (i % 2 == 0) 26f else 18f
-                            val radius = (if (i % 2 == 0) 2.2f else 1.5f) * fade
-                            if (radius > 0f) {
-                                drawCircle(
-                                    color = NazoOnPrimary.copy(alpha = 0.85f * fade),
-                                    radius = radius,
-                                    center = origin + Offset(
-                                        cos(rad) * travel * reach,
-                                        sin(rad) * travel * reach,
-                                    ),
-                                )
-                            }
-                        }
-                    }
-                }
-                .graphicsLayer {
-                    rotationZ = t * 180f
-                    scaleX = popScale
-                    scaleY = popScale
-                },
-        )
+        if (label.startsWith("Start")) {
+            // Same pulse, applied to the single glyph.
+            val pulse = sin(t * PI.toFloat())
+            val iconScale = 1f + 0.25f * pulse
+            Icon(
+                imageVector = Icons.Filled.ImageSearch,
+                contentDescription = null,
+                tint = NazoOnPrimary,
+                modifier = Modifier
+                    .size(20.dp)
+                    .graphicsLayer {
+                        scaleX = iconScale
+                        scaleY = iconScale
+                    },
+            )
+        } else {
+            Canvas(modifier = Modifier.size(20.dp)) {
+                drawTwinklingStars(
+                    progress = t,
+                    baseColor = NazoOnPrimary,
+                    boxSize = size,
+                )
+            }
+        }
         Spacer(Modifier.width(10.dp))
         Text(
             text = label,
