@@ -4786,3 +4786,8 @@ Implementation notes:
 5. Switch the mode selector to **Guessing Game** and tap Start.
    **Expected:** the magnifier icon pulses (no stars) — and with Meteor Shower
    selected, meteors still cross the button.
+
+**Build fix:** the first push was red — a blind text replacement added
+`sparkleStyle`/`onSparkleStyleChange` to `OnboardingScreen`, which shares the
+`celebrationStyle = ...` argument shape with `AppearanceScreen`. When patching
+by matching an argument block, confirm which composable encloses the match.

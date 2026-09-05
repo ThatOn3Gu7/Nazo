@@ -1560,11 +1560,6 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         celebrationStyle = it
                         themePrefs.celebrationStyle = it
                     },
-                    sparkleStyle = sparkleStyle,
-                    onSparkleStyleChange = {
-                        sparkleStyle = it
-                        themePrefs.sparkleStyle = it
-                    },
                     floatingNavBar = navBarFloating,
                     onFloatingNavBarChange = {
                         navBarFloating = it
