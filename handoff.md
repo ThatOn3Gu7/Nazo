@@ -4724,3 +4724,11 @@ the label changed (the button has five different labels by mode).
 5. Switch to Guessing/Survival/Blitz/Versus mode (the button label and icon
    change to a magnifier). **Expected:** the same twinkle plays on tap, centred
    on that icon.
+
+**Build fix:** the first push of this change was red. Inserting the
+`SPARK_ANGLES` constant directly above `GenerateButton` placed it *between* the
+existing `@Composable` annotation and the function, so the annotation attached
+to the property instead — producing 14 cascading
+"@Composable invocations can only happen from the context of a @Composable
+function" errors. When inserting a top-level declaration before a function,
+always check whether the insertion point is under an annotation.

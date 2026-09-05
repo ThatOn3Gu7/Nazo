@@ -999,10 +999,10 @@ private fun PillButton(
     }
 }
 
-@Composable
 /** Directions (degrees) the twinkle sparks fly in; uneven so it looks organic. */
 private val SPARK_ANGLES = listOf(-90f, -35f, 20f, 90f, 145f, -145f)
 
+@Composable
 private fun GenerateButton(label: String, onClick: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
