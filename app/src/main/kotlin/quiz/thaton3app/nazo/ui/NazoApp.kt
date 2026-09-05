@@ -20,6 +20,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -181,10 +184,35 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var pendingQuizRequest by remember { mutableStateOf<Triple<String, String, Int>?>(null) }
     val isOfflineMode = forceOffline || detectedOffline
 
-    LaunchedEffect(Unit) {
-        detectedOffline = !Connectivity.isOnline(context)
-        // Only block with a popup when offline — the "you're online" notice is no longer needed.
-        startupDialogMode = if (detectedOffline) StartupMode.OFFLINE else null
+    // `detectedOffline` used to be written ONLY by a run-once startup probe, so
+    // once the app launched without a network it stayed true for the whole
+    // process. Because isOfflineMode is `forceOffline || detectedOffline`,
+    // flipping the Settings switch off left the app offline and the Home pill
+    // stuck on "Offline mode" no matter how many times it was toggled.
+    // Bumping this counter re-runs the probe; it is the only way the flag can
+    // ever clear without a restart.
+    var connectivityProbe by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(connectivityProbe) {
+        val offline = !Connectivity.isOnline(context)
+        detectedOffline = offline
+        // The startup popup is a first-probe concern only — later re-probes
+        // must never resurrect it, or returning to the app would nag.
+        if (connectivityProbe == 0) {
+            // Only block with a popup when offline — the "you're online" notice is no longer needed.
+            startupDialogMode = if (offline) StartupMode.OFFLINE else null
+        }
+    }
+
+    // Re-probe whenever the app returns to the foreground: the usual way
+    // connectivity comes back is the user leaving to fix Wi-Fi and returning.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) connectivityProbe++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // In-app changelog: one-time "What's new" sheet after an update. A true
@@ -1163,7 +1191,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onOpenBackupRestore = { navigate(Screen.BackupRestore) },
                         onOpenAbout = { navigate(Screen.About) },
                     forceOffline = forceOffline,
-                    onForceOfflineChange = { v -> forceOffline = v },
+                    onForceOfflineChange = { v ->
+                        forceOffline = v
+                        // Turning the switch OFF must also clear a stale
+                        // detectedOffline from the startup probe, otherwise
+                        // isOfflineMode stays true and the Home pill never
+                        // leaves "Offline mode".
+                        if (!v) connectivityProbe++
+                    },
                     soundEnabled = soundEnabled,
                     onSoundEnabledChange = { v ->
                         soundEnabled = v
@@ -1540,7 +1575,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         ReminderScheduler.setEnabled(context.applicationContext, v)
                     },
                     forceOffline = forceOffline,
-                    onForceOfflineChange = { v -> forceOffline = v },
+                    onForceOfflineChange = { v ->
+                        forceOffline = v
+                        // Turning the switch OFF must also clear a stale
+                        // detectedOffline from the startup probe, otherwise
+                        // isOfflineMode stays true and the Home pill never
+                        // leaves "Offline mode".
+                        if (!v) connectivityProbe++
+                    },
                     onProvidersChanged = {
                         selectedProvider = apiKeyStore.getSelectedProvider()
                     },

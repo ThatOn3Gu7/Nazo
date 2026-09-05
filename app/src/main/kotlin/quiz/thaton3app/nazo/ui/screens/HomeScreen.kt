@@ -44,6 +44,8 @@ import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.daily.DailyChallengeCard
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.NazoModalSheet
+import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
 import quiz.thaton3app.nazo.ui.theme.*
 
@@ -346,26 +348,11 @@ fun HomeScreen(
         }
 
         if (showProviderSheet) {
-            ModalBottomSheet(
+            NazoModalSheet(
                 onDismissRequest = { showProviderSheet = false },
                 sheetState = sheetState,
-                containerColor = NazoSurface,
-                dragHandle = {
-                    Box(
-                        modifier = Modifier
-                            .padding(top = 16.dp, bottom = 8.dp)
-                            .size(width = 36.dp, height = 4.dp)
-                            .clip(CircleShape)
-                            .background(NazoTextSecondary.copy(alpha = 0.3f))
-                    )
-                }
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 10.dp)
-                        .navigationBarsPadding(),
-                ) {
+                NazoSheetColumn {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier

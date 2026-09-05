@@ -1,6 +1,7 @@
 package quiz.thaton3app.nazo.ui.screens
 
 import androidx.compose.ui.platform.LocalContext
+import quiz.thaton3app.nazo.ui.components.NazoModalSheet
 import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 
 import android.Manifest
@@ -81,7 +82,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -361,10 +361,9 @@ fun AboutScreen(
     }
 
     if (showUpdate) {
-        ModalBottomSheet(
+        NazoModalSheet(
             onDismissRequest = { showUpdate = false },
-            containerColor = NazoSurface,
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         ) {
             UpdateMenuContent(
                 state = updateState,

@@ -4528,3 +4528,80 @@ at all) and the architecture items (ViewModels, splitting `NazoApp.kt`).
    Provider, then start an AI quiz and immediately background/foreground the app
    so a prefetch overlaps the build. **Expected:** no crash; quizzes load
    normally and repeated identical requests return instantly from cache.
+
+---
+
+## Bottom-sheet drag glitch, drag-handle ripple, and stuck "Offline mode" pill
+
+Three reported bugs. The first two shared a root cause and are fixed once, in a
+new shared component; the third was unrelated.
+
+### 1 + 2. Sheets: unbounded height and the dark block on the handle
+
+New `ui/components/NazoSheet.kt` owns the app's single sheet style, and all
+**six** sheets now use it (app icon, background effects, celebrations, Home
+provider switcher, What's New, About→updates).
+
+- **Glitch:** `ModalBottomSheet` consumes no top window inset by default, so an
+  expanded sheet had no stable maximum height and ran to the top of the
+  display. On the app-icon sheet — the only one with content tall enough to
+  scroll — the inner `verticalScroll` and the sheet's own drag then traded the
+  gesture near the status bar / camera cutout and the sheet oscillated. Fixed
+  with `contentWindowInsets = { WindowInsets.statusBars }`, giving the sheet a
+  bounded height; the inner scroll now simply stops at the top.
+- **Dark block:** the sheet wraps its drag-handle slot in a `clickable` for the
+  a11y expand/collapse action, and *that* ripple painted a rounded block behind
+  the 36x4dp line. The handle subtree now provides a no-op `IndicationNodeFactory`
+  via `LocalIndication`. The long-press **"Drag handle" tooltip is kept**, as is
+  the TalkBack label and the a11y action — only the ripple is gone.
+
+Sheet content should use `NazoSheetColumn` (`scrollable = true` only where the
+content can outgrow the screen). Do not nest another `verticalScroll`.
+
+### 3. "Offline mode" pill never cleared
+
+`isOfflineMode = forceOffline || detectedOffline`, but `detectedOffline` was
+written **only** by a run-once startup probe. If the app launched with no
+network the flag stayed true for the entire process, so toggling the Settings
+switch off left `isOfflineMode` true and the Home pill stuck on "Offline mode"
+forever — and, importantly, the app really was still offline, so AI generation
+would also have kept refusing.
+
+The probe is now re-runnable (`connectivityProbe` counter) and re-runs when:
+- the switch is turned **off**, and
+- the app returns to the **foreground** (`ON_RESUME`), which is how
+  connectivity usually comes back — the user leaves to fix Wi-Fi and returns.
+
+The startup popup is suppressed on re-probes (`connectivityProbe == 0` guard)
+so returning to the app never re-nags. Added the
+`androidx.lifecycle:lifecycle-runtime-compose` dependency for
+`LocalLifecycleOwner`.
+
+### How to test it live
+
+**Sheet drag glitch (the big one)**
+1. Settings → Appearance → **App icon**. The sheet slides up.
+2. Drag the sheet upward hard, repeatedly, trying to push it past the status
+   bar / camera cutout. Also flick the icon list to its top and keep dragging up.
+3. **Expected:** the sheet stops cleanly at the status bar and stays there. The
+   list scrolls to its first item and stops. **Before:** the sheet jittered up
+   and down and could not settle.
+4. Repeat on Home → the provider pill → **Switch API key**, and on Settings →
+   Appearance → **Background effects** / **Victory confetti**. All behave the same.
+
+**Drag-handle press**
+1. Open any sheet and **press and hold** the small line at the top.
+2. **Expected:** the "Drag handle" tooltip still appears, and **no dark/grey
+   rounded block** appears behind the line at any point — during press, hold, or
+   release. **Before:** a dark rounded rectangle flashed behind it.
+
+**Offline pill** (needs a real network toggle)
+1. Turn the device fully offline (airplane mode) and cold-start Nazo. Accept the
+   offline prompt. Home shows the grey **"Offline mode"** pill.
+2. Turn airplane mode **off** and wait for Wi-Fi/data to reconnect.
+3. Go to Settings, toggle **Offline mode** off, and return Home.
+   **Expected:** the pill now shows your active provider (e.g. "Gemini") in the
+   accent colour, or "API Key inactive" if no key is set — **not** "Offline mode".
+4. Alternative path: with the switch already off, background the app, reconnect,
+   then reopen it. **Expected:** the pill updates on its own.
+5. **Before:** the pill stayed "Offline mode" no matter how often you toggled.

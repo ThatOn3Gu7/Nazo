@@ -62,6 +62,8 @@ import quiz.thaton3app.nazo.LauncherIconSwitcher
 import quiz.thaton3app.nazo.ui.theme.Accents
 import quiz.thaton3app.nazo.ui.theme.previewColors
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.NazoModalSheet
+import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
 import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoTab
@@ -505,27 +507,11 @@ fun AppearanceScreen(
     // Android kills the task when the active launcher alias is swapped, so the
     // change is confirmed through a dialog that spells out the restart.
     if (showIconSheet) {
-        ModalBottomSheet(
+        NazoModalSheet(
             onDismissRequest = { showIconSheet = false },
             sheetState = iconSheetState,
-            containerColor = NazoSurface,
-            dragHandle = {
-                Box(
-                    modifier = Modifier
-                        .padding(top = 16.dp, bottom = 8.dp)
-                        .size(width = 36.dp, height = 4.dp)
-                        .clip(CircleShape)
-                        .background(NazoTextSecondary.copy(alpha = 0.3f))
-                )
-            }
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 10.dp)
-                    .navigationBarsPadding()
-                    .verticalScroll(rememberScrollState()),
-            ) {
+            NazoSheetColumn(scrollable = true) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
@@ -618,19 +604,9 @@ fun AppearanceScreen(
     // once without committing. Selecting applies instantly and keeps the
     // sheet open for comparison; outside tap / back / swipe-down dismisses.
     if (showEffectsSheet) {
-        ModalBottomSheet(
+        NazoModalSheet(
             onDismissRequest = { showEffectsSheet = false },
             sheetState = effectsSheetState,
-            containerColor = NazoSurface,
-            dragHandle = {
-                Box(
-                    modifier = Modifier
-                        .padding(top = 16.dp, bottom = 8.dp)
-                        .size(width = 36.dp, height = 4.dp)
-                        .clip(CircleShape)
-                        .background(NazoTextSecondary.copy(alpha = 0.3f))
-                )
-            }
         ) {
             // One shared frame clock drives every preview card; unbounded and
             // monotonic (same seamless-loop principle as AmbientBackground).
@@ -645,12 +621,7 @@ fun AppearanceScreen(
                 }
             }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 10.dp)
-                    .navigationBarsPadding(),
-            ) {
+            NazoSheetColumn {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
@@ -705,19 +676,9 @@ fun AppearanceScreen(
     // real game-completion celebration behaves), driven by one shared clock.
     // Selecting applies instantly and keeps the sheet open for comparison.
     if (showCelebrationSheet) {
-        ModalBottomSheet(
+        NazoModalSheet(
             onDismissRequest = { showCelebrationSheet = false },
             sheetState = celebrationSheetState,
-            containerColor = NazoSurface,
-            dragHandle = {
-                Box(
-                    modifier = Modifier
-                        .padding(top = 16.dp, bottom = 8.dp)
-                        .size(width = 36.dp, height = 4.dp)
-                        .clip(CircleShape)
-                        .background(NazoTextSecondary.copy(alpha = 0.3f))
-                )
-            }
         ) {
             val previewTime = remember { mutableFloatStateOf(0f) }
             LaunchedEffect(Unit) {
@@ -729,12 +690,7 @@ fun AppearanceScreen(
                 }
             }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 10.dp)
-                    .navigationBarsPadding(),
-            ) {
+            NazoSheetColumn {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
