@@ -3,8 +3,16 @@ package quiz.thaton3app.nazo.ui.screens
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -15,6 +23,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -30,9 +40,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -41,8 +55,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
-import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.daily.DailyChallengeCard
+import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoModalSheet
 import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
@@ -983,15 +997,105 @@ private fun PillButton(
 private fun GenerateButton(label: String, onClick: () -> Unit) {
     val context = LocalContext.current
 
+    // The button used to give no visual feedback at all — only haptics — so a
+    // press was invisible. Three layers now respond to touch:
+    //   1. a spring scale-down while held (the "physical" press),
+    //   2. a brightening overlay + lifted elevation that track the press,
+    //   3. a slow sheen that sweeps across the face, hinting it is tappable.
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.97f else 1f,
+        // Springy on release so it feels responsive rather than sluggish.
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "generate_press_scale",
+    )
+    val pressOverlay by animateFloatAsState(
+        targetValue = if (pressed) 0.16f else 0f,
+        animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
+        label = "generate_press_overlay",
+    )
+    val elevation by animateDpAsState(
+        targetValue = if (pressed) 1.dp else 8.dp,
+        animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
+        label = "generate_press_elevation",
+    )
+
+    // Idle sheen: a soft highlight that travels left-to-right on a long loop,
+    // with a pause between sweeps so it reads as a gentle shine, not a spinner.
+    val sheen = rememberInfiniteTransition(label = "generate_sheen")
+    val sheenX by sheen.animateFloat(
+        initialValue = -0.35f,
+        targetValue = 1.35f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes<Float> {
+                durationMillis = 4200
+                // Dwell off-screen, sweep across, then hold before repeating.
+                (-0.35f) at 0
+                (-0.35f) at 1400
+                1.35f at 3000 using LinearEasing
+                1.35f at 4200
+            },
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "generate_sheen_x",
+    )
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
         modifier = Modifier
             .fillMaxWidth()
             .height(58.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .shadow(
+                elevation = elevation,
+                shape = RoundedCornerShape(18.dp),
+                ambientColor = NazoPrimary,
+                spotColor = NazoPrimary,
+            )
             .clip(RoundedCornerShape(18.dp))
             .background(NazoPrimary)
-            .clickable {
+            // Sheen sits above the fill but below the label, and is skipped
+            // while pressed so the two effects never overlap.
+            .drawWithContent {
+                drawContent()
+                if (!pressed) {
+                    val bandWidth = size.width * 0.38f
+                    val center = size.width * sheenX
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                NazoOnPrimary.copy(alpha = 0.14f),
+                                Color.Transparent,
+                            ),
+                            startX = center - bandWidth / 2f,
+                            endX = center + bandWidth / 2f,
+                        ),
+                    )
+                }
+            }
+            // Press brightening, drawn over everything.
+            .drawWithContent {
+                drawContent()
+                if (pressOverlay > 0f) {
+                    drawRect(color = NazoOnPrimary.copy(alpha = pressOverlay))
+                }
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                // The scale + brighten IS the feedback; a ripple on top would
+                // clash with the sheen.
+                indication = null,
+            ) {
                 Haptics.light(context)
                 onClick()
             },

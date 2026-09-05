@@ -3,6 +3,7 @@ package quiz.thaton3app.nazo.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.LocalContext
@@ -33,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -43,6 +45,20 @@ import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 
 enum class NazoTab { Home, Settings }
+
+/**
+ * Makes the bar's whole surface an opaque hit target.
+ *
+ * The bar is a plain [Row]: only the two tab pills were interactive, so taps on
+ * the bar's padding, its rounded shoulders, or the gap between the pills fell
+ * straight through to whatever sat behind it (mode cards, the Generate button).
+ *
+ * `detectTapGestures {}` registers the entire Row as a pointer-input node and
+ * consumes taps that land on it. The tabs keep working because they are
+ * descendants, and Compose hit-tests descendants before their parent.
+ */
+private fun Modifier.blockTouchThrough(): Modifier =
+    this.pointerInput(Unit) { detectTapGestures { /* absorb: not a tab */ } }
 
 /** Shared duration for the floating bar's tab transition (tint + label expand). */
 private const val TAB_ANIM_MS = 280
@@ -61,6 +77,9 @@ fun NazoBottomNav(
             modifier = modifier
                 .navigationBarsPadding()
                 .padding(bottom = 14.dp)
+                // Only the pill itself blocks touches; the transparent area
+                // beside it stays interactive, which is the point of floating.
+                .blockTouchThrough()
                 .shadow(elevation = 6.dp, shape = RoundedCornerShape(50), clip = false)
                 .background(NazoNavBar, RoundedCornerShape(50))
                 .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(50))
@@ -76,6 +95,9 @@ fun NazoBottomNav(
         
         Row(
             modifier = modifier
+                // The docked bar spans the full width and is opaque, so nothing
+                // behind it should be reachable — see blockTouchThrough().
+                .blockTouchThrough()
                 .background(
                     color = NazoNavBar, 
                     shape = RoundedCornerShape(topStart = cornerRadius, topEnd = cornerRadius)

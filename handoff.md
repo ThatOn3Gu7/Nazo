@@ -4605,3 +4605,73 @@ so returning to the app never re-nags. Added the
 4. Alternative path: with the switch already off, background the app, reconnect,
    then reopen it. **Expected:** the pill updates on its own.
 5. **Before:** the pill stayed "Offline mode" no matter how often you toggled.
+
+---
+
+## Generate button touch feedback + nav bar swallowing touches
+
+### 1. The Generate button reacts to touch
+
+`GenerateButton` in `HomeScreen.kt` previously had a bare `clickable` with no
+`indication`, so the only feedback on press was haptic — visually nothing moved.
+It now has three layers:
+
+| Layer | Behaviour |
+|---|---|
+| Press scale | Springs down to 0.97 while held, bounces back on release (`DampingRatioMediumBouncy`). |
+| Press brightness + lift | A 16% white overlay fades in over 120ms and the shadow drops 8dp → 1dp, so the button reads as pushed *into* the surface. |
+| Idle sheen | A soft highlight sweeps left→right on a 4.2s loop with a dwell between passes, hinting the button is interactive. Suppressed while pressed so the two effects never overlap. |
+
+`indication = null` is deliberate: the scale + brighten *is* the feedback, and a
+Material ripple on top fought the sheen. The shadow is tinted with `NazoPrimary`
+so the lift picks up the accent colour.
+
+Note there is no true "hover" on touch devices — press/hold is the hover
+equivalent, and both are covered by `collectIsPressedAsState()`.
+
+### 2. Nav bar no longer passes touches through
+
+`NazoBottomNav` is a plain `Row`; only the two tab pills were interactive. Every
+other part of the bar — its padding, the rounded shoulders, the 32dp gap between
+Home and Settings — was not a hit target, so taps went straight through to
+whatever sat behind (mode cards, the Generate button). Pressing "through" the
+bar could start a quiz.
+
+Fixed with a `blockTouchThrough()` modifier (`pointerInput` + `detectTapGestures {}`)
+that makes the bar's own surface an opaque hit target. The tabs still work
+because Compose hit-tests descendants before the parent.
+
+Applied to **both** variants, with an intentional difference:
+- **Docked bar:** the modifier wraps the full-width opaque surface, so nothing
+  behind the bar is reachable.
+- **Floating bar:** applied to the pill only. The transparent area either side
+  stays interactive — that is the point of a floating bar.
+
+An earlier attempt consumed events on `PointerEventPass.Initial`; that pass
+travels parent→child and would have eaten the tabs' own clicks. Do not do that.
+
+### How to test it live
+
+**Generate button**
+1. Open Home.
+2. Watch the big **Generate AI Quiz** button without touching it.
+   **Expected:** every few seconds a soft light sweep travels across it.
+3. Press and **hold** it.
+   **Expected:** it shrinks slightly, brightens, and its shadow flattens — you
+   can clearly see it is being pressed. **Before:** nothing moved at all.
+4. Release. **Expected:** it springs back with a slight bounce and the quiz starts.
+5. Press and hold, then slide your finger off before releasing.
+   **Expected:** it returns to normal and no quiz starts.
+
+**Nav bar pass-through** (docked mode)
+1. Settings → Appearance → make sure **Floating nav bar** is **off**.
+2. Go Home and scroll so a mode card or the Generate button sits directly
+   behind the bottom bar.
+3. Tap the bar's empty areas: the gap between the Home and Settings icons, the
+   padding above/below them, and the rounded corners at the far left/right.
+   **Expected:** nothing happens — no quiz starts, no card selects.
+   **Before:** the tap activated whatever was behind the bar.
+4. Tap the Home and Settings icons themselves. **Expected:** they still navigate.
+5. Turn the floating bar back **on** and tap beside the pill.
+   **Expected:** the element behind it still responds — the floating bar only
+   blocks the pill's own footprint.
