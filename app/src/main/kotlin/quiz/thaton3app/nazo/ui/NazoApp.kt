@@ -172,36 +172,44 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         ReminderScheduler.syncSchedule(context.applicationContext)
     }
 
-    // Offline / online mode. `forceOffline` is the manual Settings switch and is
-    // SESSION-ONLY (never persisted) — when the app is killed and reopened the network
-    // scan fires again and the user gets the prompt fresh. `detectedOffline` comes from
-    // the startup connectivity probe. `startupDialogMode` drives the one-time startup
-    // popup (OFFLINE requires acknowledgement; ONLINE is informational).
-    var forceOffline by remember { mutableStateOf(false) }
-    var detectedOffline by remember { mutableStateOf(false) }
-    var startupDialogMode by remember { mutableStateOf<StartupMode?>(null) }
+    // Offline / online mode.
+    //
+    // `offlineMode` is THE offline state and the single source of truth: the
+    // Settings switch shows it, and every game path branches on it. It is
+    // session-only (never persisted).
+    //
+    // This used to be `forceOffline || detectedOffline`, which broke two ways:
+    // detection could not be turned off (the switch was powerless while the
+    // network was down), and the switch itself read `forceOffline` alone, so it
+    // showed OFF while the app was actually running offline. Detection now
+    // *drives* the switch instead of overriding it.
+    var offlineMode by remember { mutableStateOf(false) }
+    // Last probe result. Not part of the mode — it only tells us whether an
+    // online attempt can actually succeed.
+    var networkOffline by remember { mutableStateOf(false) }
+    // Shown when the user asks for something online while the network is down.
+    var offlineDialogMode by remember { mutableStateOf<StartupMode?>(null) }
     var showAiMissingDialog by remember { mutableStateOf(false) }
     var pendingQuizRequest by remember { mutableStateOf<Triple<String, String, Int>?>(null) }
-    val isOfflineMode = forceOffline || detectedOffline
+    val isOfflineMode = offlineMode
 
-    // `detectedOffline` used to be written ONLY by a run-once startup probe, so
-    // once the app launched without a network it stayed true for the whole
-    // process. Because isOfflineMode is `forceOffline || detectedOffline`,
-    // flipping the Settings switch off left the app offline and the Home pill
-    // stuck on "Offline mode" no matter how many times it was toggled.
-    // Bumping this counter re-runs the probe; it is the only way the flag can
-    // ever clear without a restart.
+    // Re-runnable connectivity probe. Bumping the counter re-runs it.
     var connectivityProbe by remember { mutableIntStateOf(0) }
+    // Tracks the previous probe result so we can act on TRANSITIONS only.
+    var wasNetworkOffline by remember { mutableStateOf<Boolean?>(null) }
 
     LaunchedEffect(connectivityProbe) {
         val offline = !Connectivity.isOnline(context)
-        detectedOffline = offline
-        // The startup popup is a first-probe concern only — later re-probes
-        // must never resurrect it, or returning to the app would nag.
-        if (connectivityProbe == 0) {
-            // Only block with a popup when offline — the "you're online" notice is no longer needed.
-            startupDialogMode = if (offline) StartupMode.OFFLINE else null
+        networkOffline = offline
+        // Auto-enable offline mode when connectivity is LOST (including at
+        // launch), silently — no startup popup. Keying on the transition, not
+        // the raw state, is what lets the user switch back to online mode while
+        // still disconnected: with the network unchanged there is no
+        // transition, so nothing re-enables the switch behind their back.
+        if (offline && wasNetworkOffline != true) {
+            offlineMode = true
         }
+        wasNetworkOffline = offline
     }
 
     // Re-probe whenever the app returns to the foreground: the usual way
@@ -220,10 +228,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // silently — a brand-new user needs no diff.
     val whatsNewStore = remember { WhatsNewStore(context.applicationContext) }
     var showWhatsNew by remember { mutableStateOf(false) }
-    LaunchedEffect(showOnboarding, startupDialogMode) {
+    LaunchedEffect(showOnboarding, offlineDialogMode) {
         if (showOnboarding) {
             whatsNewStore.lastSeenId = CHANGELOG_ID
-        } else if (startupDialogMode == null && whatsNewStore.lastSeenId != CHANGELOG_ID) {
+        } else if (offlineDialogMode == null && whatsNewStore.lastSeenId != CHANGELOG_ID) {
             delay(700) // let the intro/home settle first
             showWhatsNew = true
         }
@@ -298,8 +306,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
 
     val activity = context as? Activity
     BackHandler(enabled = true) {
-        if (startupDialogMode != null) {
-            startupDialogMode = null
+        if (offlineDialogMode != null) {
+            offlineDialogMode = null
             return@BackHandler
         }
         if (showAiMissingDialog) {
@@ -498,6 +506,13 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             runLocal(topic, difficulty, count)
             return
         }
+        // Online mode, but there is genuinely no network: play from the local
+        // bank and say why, rather than letting the API call fail.
+        if (networkOffline) {
+            offlineDialogMode = StartupMode.OFFLINE
+            runLocal(topic, difficulty, count)
+            return
+        }
         val provider = apiKeyStore.getSelectedProvider() ?: apiKeyStore.getActiveProvider()
         val key = provider?.let { apiKeyStore.getKey(it) }
         val model = provider?.let { apiKeyStore.getModel(it) }.orEmpty()
@@ -642,6 +657,11 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             runLocal(topic, difficulty, 5)
             return
         }
+        if (networkOffline) {
+            offlineDialogMode = StartupMode.OFFLINE
+            runLocal(topic, difficulty, 5)
+            return
+        }
         val provider = apiKeyStore.getSelectedProvider() ?: apiKeyStore.getActiveProvider()
         val key = provider?.let { apiKeyStore.getKey(it) }
         val model = provider?.let { apiKeyStore.getModel(it) }.orEmpty()
@@ -707,6 +727,13 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         quizDifficulty = difficulty
         quizStartedAt = SystemClock.elapsedRealtime()
         if (isOfflineMode) {
+            runLocal(topic, difficulty, count)
+            return
+        }
+        // Online mode, but there is genuinely no network: play from the local
+        // bank and say why, rather than letting the API call fail.
+        if (networkOffline) {
+            offlineDialogMode = StartupMode.OFFLINE
             runLocal(topic, difficulty, count)
             return
         }
@@ -878,7 +905,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     fun kickGuessPrefetch(startedRound: Int) {
         if (startedRound >= guessTotalRounds) return // last round — nothing to build
         if (guessPrefetchJob != null || guessPrefetch != null) return // already in flight / done
-        if (isOfflineMode) return
+        if (isOfflineMode || networkOffline) return
         // Silent provider lookup — a missing key here must NEVER disturb the
         // round the player is currently playing.
         val provider = apiKeyStore.getSelectedProvider() ?: apiKeyStore.getActiveProvider() ?: return
@@ -992,7 +1019,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     }
 
     fun prepareGuessRound() {
-        if (isOfflineMode) {
+        if (isOfflineMode || networkOffline) {
             guessPhase = GuessPhase.Error(
                 "Guessing Game needs an internet connection to fetch the answer set and the mystery image.",
                 isOffline = true,
@@ -1137,7 +1164,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 targetState = currentScreen,
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(if (startupDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp) else Modifier),
+                    .then(if (offlineDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp) else Modifier),
                 transitionSpec = {
                     fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
                 },
@@ -1192,13 +1219,13 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onOpenAppearance = { navigate(Screen.Appearance) },
                         onOpenBackupRestore = { navigate(Screen.BackupRestore) },
                         onOpenAbout = { navigate(Screen.About) },
-                    forceOffline = forceOffline,
+                    forceOffline = offlineMode,
                     onForceOfflineChange = { v ->
-                        forceOffline = v
-                        // Turning the switch OFF must also clear a stale
-                        // detectedOffline from the startup probe, otherwise
-                        // isOfflineMode stays true and the Home pill never
-                        // leaves "Offline mode".
+                        // The user's choice always wins, even with no network.
+                        // Going online while disconnected is allowed on
+                        // purpose: the app simply explains itself when an
+                        // online action is actually attempted.
+                        offlineMode = v
                         if (!v) connectivityProbe++
                     },
                     soundEnabled = soundEnabled,
@@ -1488,21 +1515,24 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         // dialog; the bar used to be inside a screen and so was
                         // blurred with it.
                         .then(
-                            if (startupDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp)
+                            if (offlineDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp)
                             else Modifier
                         ),
                 )
             }
 
 
-            if (startupDialogMode != null) {
+            // No longer a *startup* popup — the app now drops into offline
+            // mode silently. This appears only when the user asks for
+            // something online while the network is actually down.
+            if (offlineDialogMode != null) {
                 OfflineWarningDialog(
-                    mode = startupDialogMode!!,
+                    mode = offlineDialogMode!!,
                     onGoOffline = {
-                        forceOffline = true
-                        startupDialogMode = null
+                        offlineMode = true
+                        offlineDialogMode = null
                     },
-                    onContinue = { startupDialogMode = null },
+                    onContinue = { offlineDialogMode = null },
                 )
             }
 
@@ -1521,7 +1551,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             if (showAiMissingDialog) {
                 AiMissingDialog(
                     onGoOffline = {
-                        forceOffline = true
+                        offlineMode = true
                         showAiMissingDialog = false
                         pendingQuizRequest?.let { (t, d, c) ->
                             runLocal(t, d, c)
@@ -1581,13 +1611,13 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         remindersEnabled = v
                         ReminderScheduler.setEnabled(context.applicationContext, v)
                     },
-                    forceOffline = forceOffline,
+                    forceOffline = offlineMode,
                     onForceOfflineChange = { v ->
-                        forceOffline = v
-                        // Turning the switch OFF must also clear a stale
-                        // detectedOffline from the startup probe, otherwise
-                        // isOfflineMode stays true and the Home pill never
-                        // leaves "Offline mode".
+                        // The user's choice always wins, even with no network.
+                        // Going online while disconnected is allowed on
+                        // purpose: the app simply explains itself when an
+                        // online action is actually attempted.
+                        offlineMode = v
                         if (!v) connectivityProbe++
                     },
                     onProvidersChanged = {

@@ -4842,3 +4842,66 @@ padding do not.
 4. Swipe down on the sheet. **Expected:** it still dismisses normally.
 5. Check a short sheet — Appearance → **Background effects**.
    **Expected:** unchanged; it still hugs its content rather than jumping to the cap.
+
+---
+
+## Offline mode: the Settings switch now reflects and controls the real state
+
+Three related defects, one root cause.
+
+**Root cause.** `isOfflineMode` was `forceOffline || detectedOffline`, so the
+probe result was OR-ed on top of the user's choice:
+
+1. The Settings switch rendered `forceOffline` alone, so launching with no
+   network ran the app offline while the switch showed **off**.
+2. Because detection was OR-ed in, turning the switch off could not take
+   effect while the network was down — the app stayed offline regardless.
+3. The startup popup fired on every offline launch.
+
+**Fix.** `offlineMode` is now the single source of truth for the mode, and
+`networkOffline` merely records the last probe. Detection *drives* the switch
+rather than overriding it:
+
+- On a **transition** into "no network" (including at launch) the app silently
+  enables `offlineMode`. The switch shows on, matching reality. No popup.
+- The user may switch back to online at any time, **even with no connection**.
+  Keying the auto-enable on the transition (not the raw state) is what makes
+  this stick: with the network unchanged there is no new transition, so a
+  later probe or an app resume will not flip it back behind their back.
+- If the network drops again *after* recovering, that is a fresh transition and
+  offline mode re-enables.
+
+**Online actions with no network.** Quiz / Survival / Versus now check
+`networkOffline` before calling a provider: they play from the local bank and
+raise the existing offline explainer instead of letting the API fail. Guessing
+Game (which genuinely cannot run offline) and the prefetch both bail out.
+Blitz is local-only by design and was left alone.
+
+The startup popup is gone, as requested — `OfflineWarningDialog` is now only
+shown when an online action is attempted with no network.
+
+Verified by simulating the state machine over six scenarios (launch offline,
+switch online while disconnected, resume while still disconnected, reconnect,
+drop again, manual offline while connected) before building.
+
+### How to test it live
+
+1. **Launch offline.** Turn on airplane mode, cold-start Nazo.
+   **Expected:** no popup; the app just opens. Home shows the grey
+   "Offline mode" pill.
+2. Go to **Settings**. **Expected:** the *Offline mode* switch is already
+   **ON** — this is the main bug; it used to show OFF.
+3. **Switch it OFF while still in airplane mode.** **Expected:** it turns off
+   and stays off. Home's pill changes to your provider / "API Key inactive".
+4. Tap **Generate AI Quiz** (still in airplane mode).
+   **Expected:** the "You're offline" dialog appears and the quiz starts from
+   the local library. Tapping *Go Offline* puts the switch back on.
+5. Return to Settings and confirm the switch stayed **off** (unless you tapped
+   *Go Offline*). Background the app, reopen it: it must **not** silently flip
+   back on.
+6. **Turn airplane mode off.** With the switch off, tap Generate again.
+   **Expected:** normal AI generation (given a provider key).
+7. **Turn airplane mode back on** and reopen the app.
+   **Expected:** offline mode re-enables automatically and the switch shows on.
+8. **Guessing Game with no network** (either mode): shows the "needs an
+   internet connection" error rather than hanging.
