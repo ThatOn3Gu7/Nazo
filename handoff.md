@@ -4905,3 +4905,36 @@ drop again, manual offline while connected) before building.
    **Expected:** offline mode re-enables automatically and the switch shows on.
 8. **Guessing Game with no network** (either mode): shows the "needs an
    internet connection" error rather than hanging.
+
+---
+
+## v8.0 release: tag-triggered, restricted to an allowlist
+
+**Does a tag pushed from a working branch trigger Build & Release?** Yes. The
+workflow triggers on `push: tags: 'v*'` with no branch filter, so a tag pointing
+at any commit — including one on an unmerged `arena/**` branch — builds and
+publishes. This is how a release ships without merging the PR and closing the
+Arena session.
+
+**Release authorization.** Because the trigger is tag-based and anyone with
+push access could cut a release, `build-release.yml` gained an `authorize` job
+that `build-and-release` now `needs:`. It compares the triggering actor against
+an allowlist:
+
+    RELEASE_ACTORS: 'ThatOn3Gu7,arena-ai-coding-agent[bot]'
+
+Anyone else pushing a `v*` tag gets a failed run; the build job never starts, so
+no APK and no GitHub Release are produced. Cleaning up is just deleting the tag.
+
+The comparison is exact, not a substring test — `ThatOn3Gu7x`, `xThatOn3Gu7`,
+`thaton3gu7` and `arena-ai-coding-agent` (no `[bot]`) are all rejected. Verified
+with 11 cases in `/tmp/gate_auth.sh`.
+
+To change who may release, edit `RELEASE_ACTORS` at the top of the workflow.
+Note this is a *workflow-level* guard, not a branch/tag protection rule; a
+GitHub ruleset restricting who can create `v*` tags would be the stricter
+belt-and-braces option if you ever want it.
+
+**Version.** `versionCode` 7 -> 8, `versionName` "7.0" -> "8.0", per the
+standing rule that a version bump only happens when the owner asks to ship and
+is the last change before the tag.
