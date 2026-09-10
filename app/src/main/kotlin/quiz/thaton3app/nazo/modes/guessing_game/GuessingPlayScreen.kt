@@ -394,9 +394,15 @@ fun GuessingPlayScreen(
             // in it (same layout pattern as the quiz's LoadingScreen), and the
             // Playing content scrolls when it outgrows the screen.
             when (phase) {
+                // The card is centred in the remaining height, but in landscape
+                // it is TALLER than that space, so the bottom (the Cancel
+                // button) was clipped away with no way to scroll to it.
+                // Scrolling the box keeps the card centred when it fits and
+                // reachable when it does not.
                 is GuessPhase.Preparing -> Box(
                     modifier = Modifier
                         .weight(1f)
+                        .verticalScroll(rememberScrollState())
                         .padding(horizontal = 20.dp)
                         .navigationBarsPadding(),
                     contentAlignment = Alignment.Center,
@@ -412,6 +418,7 @@ fun GuessingPlayScreen(
                 is GuessPhase.Error -> Box(
                     modifier = Modifier
                         .weight(1f)
+                        .verticalScroll(rememberScrollState())
                         .padding(horizontal = 20.dp)
                         .navigationBarsPadding(),
                     contentAlignment = Alignment.Center,
@@ -1133,6 +1140,7 @@ private fun RevealCard(
 /** Spinner card while the round payload and image URL are being fetched. */
 @Composable
 private fun PreparingCard(round: Int, totalRounds: Int, topic: String, onCancel: () -> Unit) {
+    val landscape = isLandscape()
     val infiniteTransition = rememberInfiniteTransition(label = "guessPreparing")
     val scale by infiniteTransition.animateFloat(
         initialValue = 1f,
@@ -1149,13 +1157,13 @@ private fun PreparingCard(round: Int, totalRounds: Int, topic: String, onCancel:
             .clip(RoundedCornerShape(28.dp))
             .background(NazoSurface)
             .border(1.5.dp, NazoTextSecondary.copy(alpha = 0.2f), RoundedCornerShape(28.dp))
-            .padding(32.dp),
+            .padding(if (landscape) 20.dp else 32.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
                 modifier = Modifier
-                    .size(88.dp)
+                    .size(if (landscape) 60.dp else 88.dp)
                     .scale(scale)
                     .clip(CircleShape)
                     .background(NazoPrimary),
@@ -1168,7 +1176,7 @@ private fun PreparingCard(round: Int, totalRounds: Int, topic: String, onCancel:
                     fontWeight = FontWeight.Bold
                 )
             }
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(if (landscape) 10.dp else 18.dp))
             Text(
                 text = "Round $round of $totalRounds",
                 color = NazoTextPrimary,
@@ -1182,9 +1190,9 @@ private fun PreparingCard(round: Int, totalRounds: Int, topic: String, onCancel:
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center
             )
-            Spacer(Modifier.height(20.dp))
-            WavySpinner(color = NazoPrimary, modifier = Modifier.size(44.dp))
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(if (landscape) 12.dp else 20.dp))
+            WavySpinner(color = NazoPrimary, modifier = Modifier.size(if (landscape) 32.dp else 44.dp))
+            Spacer(Modifier.height(if (landscape) 14.dp else 24.dp))
             // Same physical "Cancel" button the quiz's loading screen has.
             CancelTextButton(label = "Cancel", onClick = onCancel)
         }

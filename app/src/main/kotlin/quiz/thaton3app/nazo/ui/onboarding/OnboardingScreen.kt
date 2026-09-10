@@ -62,6 +62,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -88,6 +89,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -104,6 +106,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import kotlin.math.absoluteValue
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.data.remote.ApiClient
@@ -111,6 +114,7 @@ import quiz.thaton3app.nazo.data.remote.ModelInfo
 import quiz.thaton3app.nazo.data.remote.preferredDefaultModel
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.Accents
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoError
@@ -122,7 +126,6 @@ import quiz.thaton3app.nazo.ui.theme.NazoSurface
 import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 import quiz.thaton3app.nazo.ui.theme.resolveAccent
-import kotlin.math.absoluteValue
 
 // ---------------------------------------------------------------------------
 // Pages. 0-3 = feature slides (reference-style doodle cards), 4 = setup
@@ -571,24 +574,30 @@ private fun SlideCardFrame(
 @Composable
 private fun FeatureSlide(index: Int) {
     val page = FEATURE_PAGES[index]
-    SlideCardFrame(index) {
+    val landscape = isLandscape()
+
+    val doodle: @Composable () -> Unit = {
+        when (index) {
+            0 -> QuizDoodle()
+            1 -> GuessDoodle()
+            2 -> ModesDoodle()
+            else -> StatsDoodle()
+        }
+    }
+    val title: @Composable () -> Unit = {
         Text(
             text = page.title,
-            style = MaterialTheme.typography.titleLarge.copy(fontSize = 40.sp, lineHeight = 46.sp),
+            // The 40sp portrait display size does not fit a landscape half-pane
+            // with the body text; the slide title stacked into the doodle.
+            style = MaterialTheme.typography.titleLarge.copy(
+                fontSize = if (landscape) 28.sp else 40.sp,
+                lineHeight = if (landscape) 32.sp else 46.sp,
+            ),
             color = NazoTextPrimary,
             fontWeight = FontWeight.Bold,
         )
-        Box(
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            contentAlignment = Alignment.Center,
-        ) {
-            when (index) {
-                0 -> QuizDoodle()
-                1 -> GuessDoodle()
-                2 -> ModesDoodle()
-                else -> StatsDoodle()
-            }
-        }
+    }
+    val body: @Composable () -> Unit = {
         Text(
             text = buildAnnotatedString {
                 page.body.forEach { (segment, bold) ->
@@ -601,10 +610,48 @@ private fun FeatureSlide(index: Int) {
                     }
                 }
             },
-            style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 24.sp),
+            style = MaterialTheme.typography.bodyLarge.copy(
+                lineHeight = if (landscape) 21.sp else 24.sp,
+            ),
             color = NazoTextSecondary,
             modifier = Modifier.padding(bottom = 6.dp),
         )
+    }
+
+    SlideCardFrame(index) {
+        if (landscape) {
+            // Text column left, artwork right — the slide's own two panes.
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    title()
+                    Spacer(Modifier.height(12.dp))
+                    body()
+                }
+                Spacer(Modifier.width(20.dp))
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    doodle()
+                }
+            }
+        } else {
+            title()
+            Box(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                contentAlignment = Alignment.Center,
+            ) {
+                doodle()
+            }
+            body()
+        }
     }
 }
 
@@ -659,29 +706,25 @@ private fun SetupSlide(
         ActivityResultContracts.RequestPermission()
     ) { /* result handled implicitly — the worker checks before posting */ }
     SlideCardFrame(PAGE_SETUP) {
-        // Encompassing the entire inner content with verticalScroll removes dead-zones,
-        // letting users scroll smoothly from the title or spacing instead of mis-triggering
-        // clickable elements inside the expansion.
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+        OnboardingSlideBody(
+            heading = {
+                Text(
+                    text = "Make It\nYours",
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontSize = if (isLandscape()) 28.sp else 40.sp,
+                        lineHeight = if (isLandscape()) 32.sp else 46.sp,
+                    ),
+                    color = NazoTextPrimary,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "All optional — everything here also lives in Settings.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NazoTextSecondary,
+                )
+            },
         ) {
-            Text(
-                text = "Make It\nYours",
-                style = MaterialTheme.typography.titleLarge.copy(fontSize = 40.sp, lineHeight = 46.sp),
-                color = NazoTextPrimary,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            Text(
-                text = "All optional — everything here also lives in Settings.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = NazoTextSecondary,
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
@@ -1047,26 +1090,25 @@ private fun FirstGameSlide(
     }
 
     SlideCardFrame(PAGE_FIRST_GAME) {
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+        OnboardingSlideBody(
+            heading = {
+                Text(
+                    text = "Your First\nGame",
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontSize = if (isLandscape()) 28.sp else 40.sp,
+                        lineHeight = if (isLandscape()) 32.sp else 46.sp,
+                    ),
+                    color = NazoTextPrimary,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "Pick a topic and jump right in — or just start exploring from Home.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NazoTextSecondary,
+                )
+            },
         ) {
-            Text(
-                text = "Your First\nGame",
-                style = MaterialTheme.typography.titleLarge.copy(fontSize = 40.sp, lineHeight = 46.sp),
-                color = NazoTextPrimary,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            Text(
-                text = "Pick a topic and jump right in — or just start exploring from Home.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = NazoTextSecondary,
-            )
-            Spacer(modifier = Modifier.height(18.dp))
-
             Column(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
@@ -1137,20 +1179,34 @@ private fun FirstGameSlide(
                     ),
                 )
 
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    suggestions.forEach { suggestion ->
-                        SelectPill(
-                            text = suggestion,
-                            selected = topicInput.equals(suggestion, ignoreCase = true),
-                            onClick = {
-                                Haptics.soft(context)
-                                onTopicChange(suggestion)
-                            },
-                        )
+                // There are eight suggestions but only ~three fit on screen, and
+                // nothing said the row scrolled — players assumed those three
+                // were the only choices. The fade + chevron on the trailing edge
+                // is the affordance; it disappears once the row is scrolled to
+                // the end.
+                val suggestionScroll = rememberScrollState()
+                Box {
+                    Row(
+                        modifier = Modifier.horizontalScroll(suggestionScroll),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        suggestions.forEach { suggestion ->
+                            SelectPill(
+                                text = suggestion,
+                                selected = topicInput.equals(suggestion, ignoreCase = true),
+                                onClick = {
+                                    Haptics.soft(context)
+                                    onTopicChange(suggestion)
+                                },
+                            )
+                        }
+                        // Room for the fade so the last pill is never sat under it.
+                        Spacer(Modifier.width(20.dp))
                     }
+                    ScrollMoreHint(
+                        visible = suggestionScroll.canScrollForward,
+                        modifier = Modifier.align(Alignment.CenterEnd),
+                    )
                 }
 
                 AnimatedContent(
@@ -1175,6 +1231,94 @@ private fun FirstGameSlide(
                 }
             }
         }
+    }
+}
+
+/**
+ * Trailing-edge affordance for a horizontally scrollable row: a short fade into
+ * the slide background with a chevron, shown only while there is more to
+ * scroll. Without it a row that overflows looks exactly like a row that does
+ * not.
+ */
+@Composable
+private fun ScrollMoreHint(
+    visible: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(180)),
+        exit = fadeOut(tween(180)),
+        modifier = modifier,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.End,
+            modifier = Modifier
+                .height(34.dp)
+                .width(34.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(Color.Transparent, NazoSurface.copy(alpha = 0.92f)),
+                    )
+                ),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.ChevronRight,
+                contentDescription = "More topics — swipe",
+                tint = NazoTextSecondary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Body layout shared by the two interactive onboarding slides (setup and first
+ * game).
+ *
+ * Portrait keeps one scrolling column: heading, then the controls.
+ *
+ * Landscape puts the heading in a fixed left pane and scrolls only the controls
+ * on the right, mirroring how the feature slides put their artwork opposite the
+ * text. Stacked vertically in a landscape window these slides had almost no
+ * room left for the controls and everything squashed together.
+ */
+@Composable
+private fun OnboardingSlideBody(
+    heading: @Composable ColumnScope.() -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    if (isLandscape()) {
+        Row(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .weight(0.42f)
+                    .verticalScroll(rememberScrollState()),
+                content = heading,
+            )
+            Spacer(Modifier.width(20.dp))
+            Column(
+                modifier = Modifier
+                    .weight(0.58f)
+                    .verticalScroll(rememberScrollState()),
+                content = content,
+            )
+        }
+        return
+    }
+
+    // Encompassing the entire inner content with verticalScroll removes dead-zones,
+    // letting users scroll smoothly from the title or spacing instead of mis-triggering
+    // clickable elements inside the expansion.
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+    ) {
+        heading()
+        Spacer(Modifier.height(16.dp))
+        content()
     }
 }
 

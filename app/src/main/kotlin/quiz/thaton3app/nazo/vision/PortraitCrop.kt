@@ -131,7 +131,12 @@ object PortraitCrop {
             val ok = if (out.hasAlpha()) {
                 out.compress(Bitmap.CompressFormat.PNG, 100, bos)
             } else {
-                out.compress(Bitmap.CompressFormat.JPEG, 92, bos)
+                // 92 left visible JPEG ringing around the high-contrast line art
+                // typical of anime portraits, which the pixel reveal then
+                // amplified. This re-encode is transient (it feeds the decoder
+                // immediately and is never stored), so the extra bytes cost
+                // nothing.
+                out.compress(Bitmap.CompressFormat.JPEG, 98, bos)
             }
             out.recycle()
             if (ok) {

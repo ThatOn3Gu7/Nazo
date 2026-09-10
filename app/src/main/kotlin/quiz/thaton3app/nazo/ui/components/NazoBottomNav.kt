@@ -45,6 +45,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -300,14 +301,17 @@ private fun NazoNavRailItem(
                         lineHeight = 11.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
-                        style = LocalTextStyle.current.merge(
-                            // Compose reserves extra room above the first line
-                            // and below the last from the font metrics; without
-                            // trimming it the stack keeps a visible gap even at
-                            // a tight lineHeight, and the last letter leaves a
-                            // gap before the pill's bottom edge (most obvious on
-                            // the longer "Settings" label).
-                            PlatformTextStyle(includeFontPadding = false)
+                        // Compose reserves extra room above the first line and
+                        // below the last from the font metrics; without trimming
+                        // it the stack keeps a visible gap between every letter,
+                        // and the last letter leaves a gap before the pill's
+                        // bottom edge (most obvious on the longer "Settings").
+                        style = LocalTextStyle.current.copy(
+                            platformStyle = PlatformTextStyle(includeFontPadding = false),
+                            lineHeightStyle = LineHeightStyle(
+                                alignment = LineHeightStyle.Alignment.Center,
+                                trim = LineHeightStyle.Trim.Both,
+                            ),
                         ),
                     )
                 }

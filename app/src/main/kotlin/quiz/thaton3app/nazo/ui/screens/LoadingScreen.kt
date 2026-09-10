@@ -132,8 +132,14 @@ fun LoadingScreen(
                 }
             }
 
+            // Same landscape clipping the guessing game's Preparing card had:
+            // the dialog is taller than the window once rotated, so its Cancel
+            // button was cut off with no way to reach it. Scrolling keeps the
+            // card centred when it fits and reachable when it does not.
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
                 contentAlignment = Alignment.Center,
             ) {
                 // Smooth scale-in entrance animation for the central dialog card

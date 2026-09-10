@@ -49,7 +49,24 @@ internal fun buildPixelLevels(bytes: ByteArray): List<Bitmap>? {
                 original,
                 (original.width / scale).coerceAtLeast(1),
                 (original.height / scale).coerceAtLeast(1),
-                false, // nearest neighbour — crisp pixel edges
+                // filter = TRUE, and this is the important part.
+                //
+                // This used to pass false. Nearest neighbour is right when
+                // scaling a small image UP (it keeps pixel edges crisp), but
+                // this call scales DOWN — by up to 128x. Nearest neighbour
+                // downscaling keeps ONE arbitrary source pixel per cell and
+                // throws the other ~16,000 away, so each block took the colour
+                // of whatever single pixel happened to land on the sample grid.
+                // On detailed artwork neighbouring blocks then sampled unrelated
+                // details and the reveal came out speckled and noisy, with
+                // colours that did not match the picture.
+                //
+                // Bilinear filtering AVERAGES the pixels each block covers, so
+                // a block shows the true mean colour of that region. The reveal
+                // still looks like hard-edged pixel art because the upscale in
+                // PixelatedImage draws with FilterQuality.None — crisp edges
+                // come from the UPscale, not this downscale.
+                true,
             )
         }
     }
