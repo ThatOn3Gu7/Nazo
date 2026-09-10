@@ -39,6 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -78,6 +79,14 @@ private fun Modifier.blockTouchThrough(): Modifier =
     this.pointerInput(Unit) { detectTapGestures { /* absorb: not a tab */ } }
 
 /** Shared duration for the floating bar's tab transition (tint + label expand). */
+/** Pre-measured ink metrics for a stacked label. */
+private data class LetterMetrics(
+    val chars: List<Char>,
+    val bounds: List<AndroidRect>,
+    val width: Float,
+    val height: Float,
+)
+
 /**
  * Draws [text] as a vertical stack of UPPERCASE letters whose total height is
  * exactly the sum of the drawn glyph heights plus [letterSpacing] between them.
@@ -104,49 +113,54 @@ private fun StackedLetters(
     letterSpacing: Dp,
 ) {
     val density = LocalDensity.current
-    val chars = remember(text) { text.uppercase().toCharArray().toList() }
-    val fontSizePx = with(density) { fontSizeSp.sp.toPx() }
-    val spacingPx = with(density) { letterSpacing.toPx() }
+    val fontSizePx: Float = with(density) { fontSizeSp.sp.toPx() }
+    val spacingPx: Float = with(density) { letterSpacing.toPx() }
 
     // Ink bounds per letter, plus the total canvas size. Keyed so this only
     // recomputes when something that affects the metrics changes.
-    val metrics = remember(chars, fontSizePx, spacingPx) {
+    val metrics: LetterMetrics = remember(text, fontSizePx, spacingPx) {
+        val chars: List<Char> = text.uppercase().toList()
         val paint = AndroidPaint().apply {
             textSize = fontSizePx
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             isAntiAlias = true
         }
-        val bounds = chars.map { ch ->
-            AndroidRect().also { paint.getTextBounds(ch.toString(), 0, 1, it) }
+        val bounds: List<AndroidRect> = chars.map { ch ->
+            val r = AndroidRect()
+            paint.getTextBounds(ch.toString(), 0, 1, r)
+            r
         }
-        val height = bounds.sumOf { it.height() }.toFloat() +
-            spacingPx * (chars.size - 1).coerceAtLeast(0)
-        val width = bounds.maxOfOrNull { it.width() }?.toFloat() ?: 0f
-        Triple(bounds, width, height)
+        var totalHeight = spacingPx * (chars.size - 1).coerceAtLeast(0)
+        var maxWidth = 0f
+        bounds.forEach { r ->
+            totalHeight += r.height().toFloat()
+            if (r.width().toFloat() > maxWidth) maxWidth = r.width().toFloat()
+        }
+        LetterMetrics(chars, bounds, maxWidth, totalHeight)
     }
-    val (bounds, inkWidth, inkHeight) = metrics
 
+    val argb: Int = color.toArgb()
     Canvas(
         modifier = Modifier.size(
-            width = with(density) { inkWidth.toDp() },
-            height = with(density) { inkHeight.toDp() },
+            width = with(density) { metrics.width.toDp() },
+            height = with(density) { metrics.height.toDp() },
         )
     ) {
         val paint = AndroidPaint().apply {
             textSize = fontSizePx
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             isAntiAlias = true
-            this.color = color.toArgb()
+            this.color = argb
         }
         drawIntoCanvas { canvas ->
             var y = 0f
-            chars.forEachIndexed { i, ch ->
-                val b = bounds[i]
+            metrics.chars.forEachIndexed { i, ch ->
+                val b = metrics.bounds[i]
                 // getTextBounds is relative to the drawing origin, so shifting
                 // by -left / -top puts the ink's own top-left at (x, y).
-                val x = (inkWidth - b.width()) / 2f - b.left
+                val x = (metrics.width - b.width()) / 2f - b.left
                 canvas.nativeCanvas.drawText(ch.toString(), x, y - b.top, paint)
-                y += b.height() + spacingPx
+                y += b.height().toFloat() + spacingPx
             }
         }
     }
