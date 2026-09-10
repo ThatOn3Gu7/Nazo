@@ -313,6 +313,38 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var backPressedOnce by remember { mutableStateOf(false) }
 
     fun navigate(screen: Screen) {
+        // Already on it — nothing to do.
+        if (navigationStack.lastOrNull() == screen) return
+        // Settings hub behaves like a "single top" destination: browsing
+        // Appearance → back → Statistics → back → About used to push a fresh
+        // Settings entry each time, so the stack grew
+        // Home > Settings > Appearance > Settings > Statistics > ... and back
+        // out of the last sub-screen replayed every earlier one before finally
+        // leaving Settings. Popping to the existing entry keeps the stack at
+        // Home > Settings > <sub-screen>, so one back always leaves the
+        // sub-screen and the next one leaves Settings.
+        // Scoped deliberately to the settings hub. Gameplay screens legitimately
+        // recur in one journey (Quiz > Results > Quiz again), and popping back
+        // to the earlier entry there would throw away the Results the player is
+        // returning from.
+        if (screen == Screen.Settings || screen.asSettingsDetail() != null) {
+            val existing = navigationStack.indexOf(screen)
+            if (existing >= 0) {
+                while (navigationStack.lastIndex > existing) {
+                    navigationStack.removeAt(navigationStack.lastIndex)
+                }
+                return
+            }
+            // Entering a sibling sub-screen directly from another one (only
+            // possible in the landscape list-detail layout) should REPLACE it,
+            // not stack on it.
+            if (navigationStack.lastOrNull()?.asSettingsDetail() != null &&
+                screen.asSettingsDetail() != null
+            ) {
+                navigationStack[navigationStack.lastIndex] = screen
+                return
+            }
+        }
         navigationStack.add(screen)
     }
     fun replace(screen: Screen) {
@@ -1606,6 +1638,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             if (navTab != null && !showOnboarding) {
                 NazoBottomNav(
                     selected = navTab,
+                    // Hoisted state, NOT a preference read inside the bar, so
+                    // flipping the Appearance toggle restyles it instantly.
+                    floating = navBarFloating,
                     onHomeClick = { if (currentScreen != Screen.Home) goHome() },
                     onSettingsClick = { if (currentScreen != Screen.Settings) navigate(Screen.Settings) },
                     modifier = Modifier

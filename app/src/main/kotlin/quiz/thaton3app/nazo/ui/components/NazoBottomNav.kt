@@ -16,8 +16,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -28,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -73,10 +77,17 @@ private const val TAB_ANIM_MS = 280
 fun NazoBottomNav(
     selected: NazoTab,
     modifier: Modifier = Modifier,
+    floating: Boolean? = null,
     onHomeClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
 ) {
-    val floating = ThemePreferences(LocalContext.current).floatingNavBar
+    // The style is normally passed in from NazoApp's hoisted state so toggling
+    // it in Appearance restyles the bar IMMEDIATELY. Reading the preference
+    // here instead (as this used to) meant the new value was only picked up
+    // when something else forced a recomposition — in practice a screen change
+    // — so the bar kept its old style until the user navigated.
+    // The fallback read keeps standalone previews/callers working.
+    val floating = floating ?: ThemePreferences(LocalContext.current).floatingNavBar
 
     // Landscape: the bar becomes a RAIL on the right edge. A bottom bar costs
     // ~56dp of the scarcest dimension in landscape, where vertical space is
@@ -158,6 +169,8 @@ private fun NazoNavRail(
     Column(
         modifier = modifier
             .then(if (floating) Modifier.padding(end = 12.dp) else Modifier)
+            // Width of the widest item, so both can fill it equally.
+            .then(if (floating) Modifier else Modifier.width(IntrinsicSize.Max))
             .blockTouchThrough()
             .then(
                 if (floating) {
@@ -183,11 +196,19 @@ private fun NazoNavRail(
         verticalArrangement = Arrangement.spacedBy(6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        // Docked rail: both items get the SAME width so their selected fill is
+        // identical. Left to itself the Column sizes each item to its own
+        // content, and "Settings" (8 letters) drew a visibly wider highlight
+        // than "Home" (4). IntrinsicSize.Max measures the widest item and
+        // fillMaxWidth() makes the other match it. The floating rail is a
+        // hugging capsule by design, so it opts out.
+        val itemWidth = if (floating) Modifier else Modifier.fillMaxWidth()
         NazoNavRailItem(
             icon = Icons.Filled.Home,
             label = "Home",
             selected = selected == NazoTab.Home,
             isFloating = floating,
+            modifier = itemWidth,
             onClick = onHomeClick,
         )
         NazoNavRailItem(
@@ -195,6 +216,7 @@ private fun NazoNavRail(
             label = "Settings",
             selected = selected == NazoTab.Settings,
             isFloating = floating,
+            modifier = itemWidth,
             onClick = onSettingsClick,
         )
     }
@@ -212,6 +234,7 @@ private fun NazoNavRailItem(
     label: String,
     selected: Boolean,
     isFloating: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     val targetTint = if (selected) NazoOnPrimary else NazoTextSecondary
@@ -228,10 +251,7 @@ private fun NazoNavRailItem(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
-        modifier = Modifier
-            // The floating rail is the portrait pill turned on its side: a fully
-            // rounded capsule that hugs its content. The docked rail keeps the
-            // roomier squircle.
+        modifier = modifier
             .clip(if (isFloating) RoundedCornerShape(50) else RoundedCornerShape(18.dp))
             .background(currentBg)
             .clickable {
@@ -239,7 +259,7 @@ private fun NazoNavRailItem(
                 onClick()
             }
             .padding(
-                horizontal = if (isFloating) 9.dp else 12.dp,
+                horizontal = if (isFloating) 9.dp else 8.dp,
                 vertical = if (isFloating) 12.dp else 10.dp,
             ),
     ) {
@@ -267,17 +287,28 @@ private fun NazoNavRailItem(
             ) + fadeOut(animationSpec = tween(TAB_ANIM_MS / 2)),
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Spacer(Modifier.height(6.dp))
-                // The label is stacked one letter per line so a narrow rail can
-                // show the whole word without rotating the text.
+                Spacer(Modifier.height(5.dp))
+                // One letter per line so a narrow rail shows the whole word
+                // without rotated text. lineHeight is pulled BELOW the glyph
+                // size so the letters sit tight against each other instead of
+                // carrying default line spacing between every character.
                 label.forEach { ch ->
                     Text(
                         text = ch.toString(),
                         color = currentTint,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        fontSize = 11.sp,
+                        lineHeight = 11.sp,
+                        fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
-                        lineHeight = 13.sp,
+                        style = LocalTextStyle.current.merge(
+                            // Compose reserves extra room above the first line
+                            // and below the last from the font metrics; without
+                            // trimming it the stack keeps a visible gap even at
+                            // a tight lineHeight, and the last letter leaves a
+                            // gap before the pill's bottom edge (most obvious on
+                            // the longer "Settings" label).
+                            PlatformTextStyle(includeFontPadding = false)
+                        ),
                     )
                 }
             }
