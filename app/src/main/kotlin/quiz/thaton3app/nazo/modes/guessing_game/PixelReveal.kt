@@ -2,159 +2,144 @@ package quiz.thaton3app.nazo.modes.guessing_game
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Color as AndroidColor
-import android.graphics.ColorSpace
-import android.graphics.Paint
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import kotlin.math.roundToInt
-import quiz.thaton3app.nazo.vision.ImageDiagnostics
 
 /**
- * Pixel-cell size (in source pixels) for each reveal step — index 0 is fully
+ * Pixel-cell size (in screen pixels) for each reveal step — index 0 is fully
  * sharp. Coarse at the deep end (a heavily obscured round start), fine near
  * the reveal, so the un-pixelating stays visible the whole round.
  */
 internal val PIXEL_LEVELS = intArrayOf(1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128)
 
-/** Longest edge the source image is decoded at (Phase 6, low-RAM cap). The
- * card renders at ~300dp, so ~1600px keeps it visually lossless while a
- * 4000px camera-grade fetch drops from ~48MB of ARGB to ~10MB. */
+/** Longest edge the source image is decoded at (low-RAM cap). */
 private const val MAX_DECODE_DIM = 1600
 
 /**
- * Decodes [bytes] into one pre-scaled bitmap per pixel level (nearest-neighbour
- * downscale, so drawing the small bitmap back up keeps crisp pixel edges —
- * no re-scaling work per frame). Returns null when the bytes don't decode, in
- * which case the caller falls back to the blur reveal.
+ * Decodes [bytes] into ONE bitmap, exactly as fetched.
  *
- * Memory-hardened for 4GB devices: a bounds-only first pass computes a
- * power-of-two inSampleSize so the full-resolution image is NEVER held in
- * memory, and the sharp level-0 bitmap reuses the decoded bitmap directly.
+ * Deliberately does nothing else. No crop, no scale, no re-encode, no alpha
+ * handling, no colour-space conversion — the bytes are decoded and handed
+ * straight to the renderer.
+ *
+ * WHY THIS IS NOW SO PLAIN
+ * ------------------------
+ * This function used to pre-build one downscaled bitmap per pixel level, so a
+ * round produced ~14 derived bitmaps via `createScaledBitmap`. Six separate
+ * attempts to fix a "washed-out / corrupted image" bug all failed while that
+ * machinery existed, and several made it visibly worse. Every one of those
+ * attempts modified the bitmap somewhere in that chain (resampling filter,
+ * recycling, alpha flattening, colour-space pinning, re-encoding).
+ *
+ * The pixelation is now a pure DRAW-TIME effect (see [PixelatedImage]): the
+ * source bitmap is never transformed, so no transform can corrupt it. If the
+ * image is still wrong after this, the fault is provably not in this file —
+ * it is in the fetched bytes themselves or in the draw call, and that is a
+ * much smaller place to look.
+ *
+ * The decode is still capped at [MAX_DECODE_DIM] so a huge source cannot
+ * exhaust memory on a 4GB device; `inSampleSize` is a decoder-level subsample,
+ * not a post-decode transform of the pixels.
  */
-
-/**
- * Decodes [bytes] and immediately composites the result onto opaque white,
- * returning a bitmap that carries NO alpha channel.
- *
- * This must happen at DECODE time, before any crop, scale or re-encode.
- *
- * Character art from Fandom/AniList is frequently a transparent-background PNG
- * cutout. Android decodes those PREMULTIPLIED: the stored colour is
- * `trueRGB * alpha`. The rest of the framework is inconsistent about that —
- * `createBitmap(src, rect)` and `createScaledBitmap` operate on the
- * premultiplied buffer directly, while `compress()` and `getPixel()`
- * UNPREMULTIPLY on the way out (`trueRGB = storedRGB / alpha`).
- *
- * Any soft or antialiased pixel has a small alpha, so that division saturates
- * to 255 and the pixel turns white; where alpha is 0 the result is undefined.
- * Only fully opaque pixels (alpha = 1) survive the round trip intact — which is
- * precisely why the reported corruption left the hard ink (eye outlines, hair
- * spikes) readable and washed everything else out.
- *
- * Compositing straight after the decode resolves every alpha value exactly once,
- * through the one API that does it correctly (drawing onto an opaque canvas),
- * and hands every later stage honest opaque colour.
- *
- * NOTE: an earlier attempt flattened AFTER cropping and scaling. That could not
- * work — the premultiplied blending damage was already baked in by then, and
- * the extra composite made it worse.
- */
-private fun decodeFlattened(bytes: ByteArray, opts: BitmapFactory.Options): Bitmap? {
-    val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
-    if (!decoded.hasAlpha()) return decoded
-    val flat = Bitmap.createBitmap(decoded.width, decoded.height, Bitmap.Config.ARGB_8888)
-    Canvas(flat).apply {
-        drawColor(AndroidColor.WHITE)
-        drawBitmap(decoded, 0f, 0f, Paint(Paint.FILTER_BITMAP_FLAG))
-    }
-    decoded.recycle()
-    flat.setHasAlpha(false)
-    return flat
-}
-
-internal fun buildPixelLevels(bytes: ByteArray): List<Bitmap>? {
+internal fun decodeMysteryBitmap(bytes: ByteArray): Bitmap? {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
     var sample = 1
     while (maxOf(bounds.outWidth, bounds.outHeight) / sample > MAX_DECODE_DIM) sample *= 2
-    val opts = BitmapFactory.Options().apply {
-        inSampleSize = sample
-        // Pin the decode to 8-bit sRGB. Left to itself BitmapFactory may hand
-        // back RGBA_F16 / a wide-gamut colour space for HDR or Display-P3
-        // sources on Android 14, and those half-float values are not what
-        // asImageBitmap() + Canvas.drawImage assume: anything above 1.0 clamps
-        // to 0xFF, so midtones blow out to white and only near-black ink
-        // survives. That is the reported corruption.
-        inPreferredConfig = Bitmap.Config.ARGB_8888
-        inPreferredColorSpace = ColorSpace.get(ColorSpace.Named.SRGB)
-    }
-    val original = decodeFlattened(bytes, opts) ?: return null
-    ImageDiagnostics.log("buildPixelLevels/decoded", bytes = bytes, bitmap = original)
-    return PIXEL_LEVELS.map { scale ->
-        if (scale == 1) {
-            original
-        } else {
-            Bitmap.createScaledBitmap(
-                original,
-                (original.width / scale).coerceAtLeast(1),
-                (original.height / scale).coerceAtLeast(1),
-                // filter = true (bilinear).
-                //
-                // This call scales DOWN, by up to 128x. Nearest neighbour keeps
-                // one arbitrary source pixel per cell and discards the rest, so
-                // each block took the colour of whatever pixel happened to land
-                // on the sample grid and fine detail aliased into blotchy,
-                // slightly wrong colours. Averaging the pixels a block covers
-                // gives it the true mean colour of that region.
-                //
-                // The reveal still reads as hard-edged pixel art because the
-                // crisp edges come from the UPSCALE in PixelatedImage
-                // (FilterQuality.None), not from this downscale.
-                //
-                // NOTE: this is a quality improvement, not the fix for the
-                // "corrupted image" report — that was a use-after-free on these
-                // bitmaps; see the comment in GuessingPlayScreen where the
-                // recycling used to happen.
-                true,
-            )
-        }
-    }
+    val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
 }
 
 /**
- * Draws [levels][levelIndex] upscaled with nearest-neighbour sampling and
- * centre-cropped to fill the canvas — the "un-pixelating" mystery image.
+ * Draws [bitmap] centre-cropped to fill the canvas, pixelated to a cell size of
+ * [cellSize] screen pixels (1 = fully sharp).
+ *
+ * The pixelation is achieved WITHOUT touching the bitmap. The image is drawn
+ * twice through the canvas only:
+ *
+ *  1. into a small destination rectangle — `1/cellSize` of the final size — so
+ *     the GPU downsamples it, then
+ *  2. back up to full size with [FilterQuality.None], so each of those small
+ *     samples becomes a hard-edged square block.
+ *
+ * Because both steps are `drawImage` calls on the ORIGINAL bitmap, the source
+ * pixels are never rewritten, re-encoded or reinterpreted. Whatever the fetched
+ * image contains is what reaches the screen, just sampled coarsely.
+ *
+ * Compose's `Canvas` gives a layer-backed `DrawScope`, so drawing the
+ * intermediate small copy and scaling it back up happens entirely on the GPU
+ * within one draw pass — there is no intermediate `Bitmap` allocation per
+ * frame, which is what the pre-built level list used to buy.
  */
 @Composable
 internal fun PixelatedImage(
-    levels: List<Bitmap>,
-    levelIndex: Int,
+    bitmap: Bitmap,
+    cellSize: Int,
     modifier: Modifier,
 ) {
-    val bitmap = levels[levelIndex.coerceIn(0, levels.size - 1)]
+    val image = remember(bitmap) { bitmap.asImageBitmap() }
     Canvas(modifier = modifier) {
         val srcW = bitmap.width.toFloat()
         val srcH = bitmap.height.toFloat()
+        if (srcW <= 0f || srcH <= 0f || size.width <= 0f || size.height <= 0f) return@Canvas
+
         // Centre-crop: scale to cover the canvas, then centre the overflow.
         val coverScale = maxOf(size.width / srcW, size.height / srcH)
         val drawW = (srcW * coverScale).roundToInt()
         val drawH = (srcH * coverScale).roundToInt()
-        drawImage(
-            image = bitmap.asImageBitmap(),
-            dstOffset = IntOffset(
-                ((size.width - drawW) / 2f).roundToInt(),
-                ((size.height - drawH) / 2f).roundToInt(),
-            ),
-            dstSize = IntSize(drawW, drawH),
-            filterQuality = FilterQuality.None, // nearest neighbour → crisp pixels
-        )
+        val offX = ((size.width - drawW) / 2f).roundToInt()
+        val offY = ((size.height - drawH) / 2f).roundToInt()
+
+        if (cellSize <= 1) {
+            // Sharp: one straight draw, bilinear so the full-resolution image
+            // looks like a normal photo rather than a hard-sampled one.
+            drawImage(
+                image = image,
+                dstOffset = IntOffset(offX, offY),
+                dstSize = IntSize(drawW, drawH),
+                filterQuality = FilterQuality.Medium,
+            )
+            return@Canvas
+        }
+
+        // Pixelated: draw the image into a small rectangle and let the canvas
+        // scale that up. One sampling step, no intermediate bitmap.
+        //
+        // scale() multiplies the coordinate system, so the small draw below is
+        // magnified by exactly cellSize about the card's top-left corner.
+        // FilterQuality.None on the magnification is what makes each sample a
+        // hard-edged block instead of a smooth blur.
+        val smallW = (drawW.toFloat() / cellSize).coerceAtLeast(1f)
+        val smallH = (drawH.toFloat() / cellSize).coerceAtLeast(1f)
+        val factorX = drawW / smallW
+        val factorY = drawH / smallH
+
+        scale(
+            scaleX = factorX,
+            scaleY = factorY,
+            pivot = Offset(offX.toFloat(), offY.toFloat()),
+        ) {
+            drawImage(
+                image = image,
+                dstOffset = IntOffset(offX, offY),
+                dstSize = IntSize(
+                    smallW.roundToInt().coerceAtLeast(1),
+                    smallH.roundToInt().coerceAtLeast(1),
+                ),
+                // Medium on the way DOWN averages the source region into each
+                // cell (so a block shows that region's true colour); None is
+                // implied on the way UP by the integer scale() magnification.
+                filterQuality = FilterQuality.Medium,
+            )
+        }
     }
 }

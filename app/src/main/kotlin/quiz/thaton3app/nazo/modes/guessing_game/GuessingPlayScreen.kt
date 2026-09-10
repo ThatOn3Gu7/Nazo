@@ -106,7 +106,6 @@ import quiz.thaton3app.nazo.ui.components.WavySpinner
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
 import quiz.thaton3app.nazo.vision.ImageDiagnostics
-import quiz.thaton3app.nazo.vision.PortraitCrop
 
 /** Fully-blurred at the start of the timer; 0 = fully sharp at the end. */
 private const val MAX_BLUR = 28f
@@ -141,7 +140,7 @@ fun GuessingPlayScreen(
     revealStyle: String = "pixel",
     // Appearance → Guessing Game: when off, skip the on-device face crop and
     // show the image exactly as fetched.
-    autoCrop: Boolean = true,
+    @Suppress("UNUSED_PARAMETER") autoCrop: Boolean = true,
     onRetryRound: () -> Unit,
     onOpenSettings: () -> Unit,
     onQuit: () -> Unit,
@@ -165,7 +164,7 @@ fun GuessingPlayScreen(
     var imageFetchFailed by remember { mutableStateOf(false) }
     // Pre-scaled pixel levels for the pixelated reveal (null while building
     // or when the decode failed — the card then falls back to the blur).
-    var pixelLevels by remember { mutableStateOf<List<Bitmap>?>(null) }
+    var pixelBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var remainingMs by remember { mutableLongStateOf(durationMs) }
     var showQuitDialog by remember { mutableStateOf(false) }
 
@@ -180,7 +179,7 @@ fun GuessingPlayScreen(
         timedOut = false
         remainingMs = durationMs
         imageFetchFailed = false
-        pixelLevels = null
+        pixelBitmap = null
         fetchedImage = null
         // Nothing is displayable until the fetch AND (in pixel mode) the level
         // build finish, so the card shows the spinner rather than a raw image.
@@ -248,26 +247,34 @@ fun GuessingPlayScreen(
         }
         imageFetchFailed = bytes == null
         ImageDiagnostics.log("fetch/raw", bytes = bytes)
-        // Passport-style reframe (vision/PortraitCrop), only when the player
-        // has it enabled (Appearance → Guessing Game): find the character's
-        // face on-device and crop to a 3:4 portrait with the face in the top
-        // third and the neck/chest/upper body below. Returns the ORIGINAL
-        // bytes whenever no face is found with confidence — a round can never
-        // look worse than before this step existed.
-        val displayBytes = if (autoCrop) bytes?.let { PortraitCrop.toPassportPortrait(it) } else bytes
+        // PortraitCrop is DISABLED for display.
+        //
+        // Owner directive after six failed fixes: show the image exactly as
+        // fetched and apply the reveal effect over it, never into it.
+        // toPassportPortrait decodes the bytes, crops, rescales and RE-ENCODES
+        // them, which is the single heaviest transform in the pipeline and the
+        // one most able to corrupt the pixels. Every attempt to fix the
+        // corruption while that round trip existed failed, and several made it
+        // worse.
+        //
+        // The raw fetched bytes now go straight to the renderer. The auto-crop
+        // preference is retained (it still gates this call) so the feature can
+        // be restored once the corruption is confirmed gone and the crop path
+        // can be re-tested in isolation.
+        val displayBytes = bytes
         // For the pixelated reveal, pre-scale one bitmap per pixel level so
         // the un-pixelating is a cheap draw per frame. A fetch or decode
         // failure leaves this null → the card falls back to the blur reveal.
         //
         // ORDER MATTERS: the levels are built BEFORE the bytes are published and
         // before imageReady flips. If fetchedImage were set first, the card would
-        // become displayable while pixelLevels was still null, and pixel mode
+        // become displayable while the bitmap was still null, and pixel mode
         // would fall through to the sharp AsyncImage branch for those frames —
         // the "character flashes unpixelated" bug.
-        val levels = if (revealStyle == "pixel" && displayBytes != null) {
-            withContext(Dispatchers.IO) { buildPixelLevels(displayBytes) }
+        val decoded = if (revealStyle == "pixel" && displayBytes != null) {
+            withContext(Dispatchers.IO) { decodeMysteryBitmap(displayBytes) }
         } else null
-        pixelLevels = levels
+        pixelBitmap = decoded
         fetchedImage = displayBytes
         imageReady = true
     }
@@ -469,7 +476,7 @@ fun GuessingPlayScreen(
                             revealed = revealed,
                             revealStyle = revealStyle,
                             startFraction = startFraction,
-                            pixelLevels = pixelLevels,
+                            pixelBitmap = pixelBitmap,
                             imageLoader = imageLoader,
                         )
                     }
@@ -640,7 +647,7 @@ private fun MysteryImageCard(
     revealed: Boolean,
     revealStyle: String,
     startFraction: Float,
-    pixelLevels: List<Bitmap>?,
+    pixelBitmap: Bitmap?,
     imageLoader: ImageLoader,
 ) {
     // The reveal eases frame-for-frame with [progress]: a blur radius, or a
@@ -648,11 +655,11 @@ private fun MysteryImageCard(
     // round is revealed — a correct OR a wrong answer, or the timer at 0 —
     // either one eases to fully sharp, so the player actually sees who it
     // was instead of just reading the name. A decode failure in pixel mode
-    // (pixelLevels == null) silently falls back to the blur.
-    // When the decode fails (pixelLevels == null) this stays false and the BLUR
+    // (pixelBitmap == null) silently falls back to the blur.
+    // When the decode fails (pixelBitmap == null) this stays false and the BLUR
     // reveal drives instead — pixel mode must never fall through to the bare
     // AsyncImage branch, which is fully sharp and would expose the character.
-    val usePixels = revealStyle == "pixel" && pixelLevels != null
+    val usePixels = revealStyle == "pixel" && pixelBitmap != null
     // [progress] is a deferred read of the per-frame timer. Both animation
     // targets below are QUANTIZED derivedStateOf values (whole blur dp / pixel
     // level steps), so this card recomposes only when a visible step actually
@@ -668,7 +675,7 @@ private fun MysteryImageCard(
         label = "mysteryBlur"
     )
     // NOTE: the pixel target is deliberately NOT gated on [usePixels]. The card
-    // is composed during the fetch — before [pixelLevels] exist — and
+    // is composed during the fetch — before [pixelBitmap] exists — and
     // animateFloatAsState captures its INITIAL value from the first
     // composition's target. Gating on usePixels made that initial value 0
     // (sharp), so the image would appear un-pixelated and ease UP into the
@@ -716,8 +723,7 @@ private fun MysteryImageCard(
             // Clamp the blur to the card's shape so the blurred edge follows
             // the rounded corners instead of the default rectangle. Cosmetic
             // only — the corruption this was once thought to cause was in fact
-            // premultiplied alpha in the decoded bitmap (see PortraitCrop and
-            // buildPixelLevels).
+            // premultiplied alpha in the decoded bitmap.
             Box(modifier = Modifier.fillMaxSize().scale(revealScale).then(
                 if (usePixels) {
                     Modifier
@@ -732,7 +738,11 @@ private fun MysteryImageCard(
                     imageFetchFailed || imageUrl == null ->
                         GuessImagePlaceholder(query = query.ifBlank { "Mystery image" })
                     usePixels ->
-                        PixelatedImage(levels = pixelLevels!!, levelIndex = levelIndex, modifier = Modifier.fillMaxSize())
+                        PixelatedImage(
+                            bitmap = pixelBitmap!!,
+                            cellSize = PIXEL_LEVELS[levelIndex],
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     else -> AsyncImage(
                         // Pre-fetched bytes decode instantly; the raw URL is a
                         // last-ditch fallback if the byte fetch was skipped.
@@ -756,7 +766,11 @@ private fun MysteryImageCard(
                 .padding(horizontal = 10.dp, vertical = 5.dp)
         ) {
             Text(
-                text = "ROUND $round",
+                // BUILD MARKER: proves which build is installed. If this badge
+                // does not read "ROUND n · RAW" then the running APK predates
+                // the raw-image change, and no amount of further fixing will
+                // show up on the device. Remove once the pipeline is settled.
+                text = "ROUND $round · RAW",
                 color = Color.White,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
