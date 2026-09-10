@@ -5,9 +5,11 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -39,7 +41,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.ui.theme.NazoNavBar
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
@@ -172,7 +176,10 @@ private fun NazoNavRail(
             )
             // Keep clear of the gesture bar / cutout on the short edges.
             .navigationBarsPadding()
-            .padding(horizontal = 8.dp, vertical = 10.dp),
+            .padding(
+                horizontal = if (floating) 6.dp else 8.dp,
+                vertical = if (floating) 6.dp else 10.dp,
+            ),
         verticalArrangement = Arrangement.spacedBy(6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -180,12 +187,14 @@ private fun NazoNavRail(
             icon = Icons.Filled.Home,
             label = "Home",
             selected = selected == NazoTab.Home,
+            isFloating = floating,
             onClick = onHomeClick,
         )
         NazoNavRailItem(
             icon = Icons.Filled.Settings,
             label = "Settings",
             selected = selected == NazoTab.Settings,
+            isFloating = floating,
             onClick = onSettingsClick,
         )
     }
@@ -202,46 +211,77 @@ private fun NazoNavRailItem(
     icon: ImageVector,
     label: String,
     selected: Boolean,
+    isFloating: Boolean,
     onClick: () -> Unit,
 ) {
+    val targetTint = if (selected) NazoOnPrimary else NazoTextSecondary
+    val targetBg = if (selected) NazoPrimary else Color.Transparent
+
     val spec = tween<Color>(TAB_ANIM_MS, easing = FastOutSlowInEasing)
-    val tint by animateColorAsState(
-        targetValue = if (selected) NazoOnPrimary else NazoTextSecondary,
-        animationSpec = spec,
-        label = "rail_tint",
-    )
-    val bg by animateColorAsState(
-        targetValue = if (selected) NazoPrimary else Color.Transparent,
-        animationSpec = spec,
-        label = "rail_bg",
-    )
+    val animatedTint by animateColorAsState(targetValue = targetTint, animationSpec = spec, label = "rail_tint")
+    val animatedBg by animateColorAsState(targetValue = targetBg, animationSpec = spec, label = "rail_bg")
+
+    val currentTint = if (isFloating) animatedTint else targetTint
+    val currentBg = if (isFloating) animatedBg else targetBg
 
     val context = LocalContext.current
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
         modifier = Modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(bg)
+            // The floating rail is the portrait pill turned on its side: a fully
+            // rounded capsule that hugs its content. The docked rail keeps the
+            // roomier squircle.
+            .clip(if (isFloating) RoundedCornerShape(50) else RoundedCornerShape(18.dp))
+            .background(currentBg)
             .clickable {
                 Haptics.light(context)
                 onClick()
             }
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(
+                horizontal = if (isFloating) 9.dp else 12.dp,
+                vertical = if (isFloating) 12.dp else 10.dp,
+            ),
     ) {
         Icon(
             imageVector = icon,
             contentDescription = label,
-            tint = tint,
-            modifier = Modifier.size(20.dp),
+            tint = currentTint,
+            modifier = Modifier.size(if (isFloating) 18.dp else 20.dp),
         )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = label,
-            color = tint,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-        )
+
+        // Same rule as the portrait pill: floating shows the label only for the
+        // SELECTED tab, so the capsule grows as it gains the tab and shrinks to
+        // a bare icon as it loses it. The rail's long axis is vertical, so the
+        // expand/collapse must be VERTICAL here (the portrait pill uses the
+        // horizontal pair for exactly the same reason, mirrored).
+        AnimatedVisibility(
+            visible = !isFloating || selected,
+            enter = expandVertically(
+                animationSpec = tween(TAB_ANIM_MS, easing = FastOutSlowInEasing),
+                expandFrom = Alignment.Top,
+            ) + fadeIn(animationSpec = tween(TAB_ANIM_MS)),
+            exit = shrinkVertically(
+                animationSpec = tween(TAB_ANIM_MS, easing = FastOutSlowInEasing),
+                shrinkTowards = Alignment.Top,
+            ) + fadeOut(animationSpec = tween(TAB_ANIM_MS / 2)),
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Spacer(Modifier.height(6.dp))
+                // The label is stacked one letter per line so a narrow rail can
+                // show the whole word without rotating the text.
+                label.forEach { ch ->
+                    Text(
+                        text = ch.toString(),
+                        color = currentTint,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 13.sp,
+                    )
+                }
+            }
+        }
     }
 }
 

@@ -68,6 +68,7 @@ import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.ShareResultCard
+import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
 
 /**
@@ -139,6 +140,7 @@ fun GuessingResultsScreen(
         else -> NazoTextPrimary
     }
 
+    val landscape = isLandscape()
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -148,12 +150,16 @@ fun GuessingResultsScreen(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .verticalScroll(rememberScrollState())
+                    .then(
+                        // Landscape gives each pane its own scroll, so the page
+                        // must not scroll as well.
+                        if (landscape) Modifier else Modifier.verticalScroll(rememberScrollState())
+                    )
                     .navigationBarsPadding()
                     .padding(horizontal = 20.dp)
                     .padding(bottom = 12.dp)
             ) {
-                Spacer(Modifier.height(40.dp))
+                Spacer(Modifier.height(if (landscape) 12.dp else 40.dp))
 
                 AnimatedVisibility(
                     visible = showHeader,
@@ -175,8 +181,11 @@ fun GuessingResultsScreen(
                     }
                 }
 
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(if (landscape) 12.dp else 24.dp))
 
+                TwoPaneGuessResults(
+                    landscape = landscape,
+                    ring = {
                 AnimatedVisibility(
                     visible = showCard,
                     enter = slideInVertically(spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessLow)) { 100 } + fadeIn()
@@ -208,8 +217,8 @@ fun GuessingResultsScreen(
                     }
                 }
 
-                Spacer(Modifier.height(24.dp))
-
+                    },
+                    details = {
                 AnimatedVisibility(
                     visible = showRounds,
                     enter = slideInVertically(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow)) { 100 } + fadeIn()
@@ -283,7 +292,7 @@ fun GuessingResultsScreen(
                     }
                 }
 
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(if (landscape) 16.dp else 24.dp))
 
                 AnimatedVisibility(
                     visible = showButtons,
@@ -363,6 +372,8 @@ fun GuessingResultsScreen(
                     }
                 }
                 Spacer(Modifier.height(16.dp))
+                    },
+                )
             }
         }
 
@@ -374,6 +385,51 @@ fun GuessingResultsScreen(
                 style = celebrationStyle,
                 modifier = Modifier.fillMaxSize(),
             )
+        }
+    }
+}
+
+/**
+ * Guessing-game results layout — the same split as the quiz's complete screen.
+ *
+ * Portrait: score ring, record badge, per-round list, buttons, all stacked.
+ *
+ * Landscape: the ring and its record badge on the left; the round breakdown and
+ * the action buttons on the right. Each pane scrolls on its own, so a long list
+ * of rounds can never push the buttons out of reach.
+ */
+@Composable
+private fun TwoPaneGuessResults(
+    landscape: Boolean,
+    ring: @Composable () -> Unit,
+    details: @Composable () -> Unit,
+) {
+    if (!landscape) {
+        Column {
+            ring()
+            Spacer(Modifier.height(24.dp))
+            details()
+        }
+        return
+    }
+
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            ring()
+            Spacer(Modifier.height(12.dp))
+        }
+        Spacer(Modifier.width(20.dp))
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            details()
         }
     }
 }

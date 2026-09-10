@@ -570,7 +570,7 @@ fun AppearanceScreen(
             onDismissRequest = { showIconSheet = false },
             sheetState = iconSheetState,
         ) {
-            NazoSheetColumn(scrollable = true) {
+            NazoSheetColumn() {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier

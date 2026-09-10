@@ -149,7 +149,7 @@ fun WhatsNewSheet(onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         sheetState = sheetState,
     ) {
-        NazoSheetColumn(scrollable = true) {
+        NazoSheetColumn() {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier

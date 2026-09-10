@@ -181,43 +181,36 @@ fun NazoModalSheet(
  * Standard content column for a Nazo sheet: the usual horizontal/vertical
  * padding plus navigation-bar padding.
  *
- * Set [scrollable] to true for sheets whose content can outgrow the screen
- * (the app-icon list). The scroll is bounded by the sheet's status-bar inset,
- * so it settles at the top instead of fighting the sheet's drag.
+ * EVERY sheet scrolls and is height-capped, unconditionally.
+ *
+ * This used to be opt-in via a `scrollable` flag, which only the app-icon sheet
+ * set. That was wrong: whether content "fits" is not a property of the sheet,
+ * it is a property of the window. In landscape the usable height roughly
+ * halves, so sheets that fit fine in portrait (theme, accent, sparkle,
+ * celebration, difficulty) overflowed with no scroll container at all — the
+ * options below the fold were simply unreachable and the sheet refused to
+ * scroll. Making it unconditional means a sheet can never become a dead end on
+ * a short window.
+ *
+ * The hard height cap is what keeps the scroll well-behaved: without it a sheet
+ * taller than the screen grows to full height, and then the sheet's own drag
+ * and the inner scroll fight over the same upward gesture (the judder against
+ * the camera cutout fixed earlier). Capping means the sheet settles at a fixed
+ * height and scrolling happens purely inside a container whose size never
+ * changes.
  */
 @Composable
 fun NazoSheetColumn(
     modifier: Modifier = Modifier,
-    scrollable: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    // A scrollable sheet must be given a HARD height cap.
-    //
-    // Without one the content (nine icon cards) is taller than the screen, so
-    // ModalBottomSheet grows to the full display height. At that point the
-    // sheet's own drag and the inner verticalScroll both want the upward
-    // gesture: the scroll consumes it, the sheet re-expands, the scroll
-    // consumes it again — the rapid up/down/up/down judder against the camera
-    // cutout. Status-bar padding alone does NOT fix this; padding shifts
-    // content but does not bound the sheet's height.
-    //
-    // Capping the column stops the sheet growing past the cap, so it settles
-    // at a fixed height and simply cannot be dragged higher. Scrolling then
-    // happens purely inside a container whose size never changes.
     val maxSheetHeight = LocalConfiguration.current.screenHeightDp.dp * SHEET_MAX_HEIGHT_FRACTION
 
-    val sizeModifier =
-        if (scrollable) {
-            Modifier
-                .heightIn(max = maxSheetHeight)
-                .verticalScroll(rememberScrollState())
-        } else {
-            Modifier
-        }
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .then(sizeModifier)
+            .heightIn(max = maxSheetHeight)
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 10.dp)
             .navigationBarsPadding(),
         content = content,
