@@ -3,17 +3,12 @@ package quiz.thaton3app.nazo.modes.guessing_game
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ColorSpace
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.withTransform
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
-import kotlin.math.roundToInt
+import androidx.compose.ui.layout.ContentScale
 
 /**
  * Pixel-cell size (in screen pixels) for each reveal step — index 0 is fully
@@ -51,57 +46,28 @@ internal fun decodeMysteryBitmap(bytes: ByteArray): Bitmap? {
 }
 
 /**
- * Draws [bitmap] centre-cropped to fill the canvas, pixelated to a cell size of
- * [cellSize] screen pixels (1 = fully sharp).
+ * TEMPORARY DIAGNOSTIC RENDERER.
  *
- * Pixelation is draw-time only: the source bitmap is never modified. A small
- * destination draw is magnified with FilterQuality.None, producing hard-edged
- * blocks without allocating or rewriting intermediate bitmaps.
+ * The old implementation used a custom Canvas path that drew the bitmap into
+ * a tiny destination and then magnified it with a Canvas transform. That path
+ * is now bypassed completely so we can isolate whether the corruption is in
+ * Canvas/pixelation or in the decoded Bitmap itself.
+ *
+ * [cellSize] is intentionally ignored for this diagnostic build. The image is
+ * rendered through Compose's normal Image path with the same Bitmap produced
+ * by the existing Coil decode.
  */
 @Composable
 internal fun PixelatedImage(
     bitmap: Bitmap,
-    cellSize: Int,
+    @Suppress("UNUSED_PARAMETER") cellSize: Int,
     modifier: Modifier,
 ) {
-    val image = remember(bitmap) { bitmap.asImageBitmap() }
-    Canvas(modifier = modifier) {
-        val srcW = bitmap.width.toFloat()
-        val srcH = bitmap.height.toFloat()
-        if (srcW <= 0f || srcH <= 0f || size.width <= 0f || size.height <= 0f) return@Canvas
-
-        val coverScale = maxOf(size.width / srcW, size.height / srcH)
-        val drawW = (srcW * coverScale).roundToInt()
-        val drawH = (srcH * coverScale).roundToInt()
-        val offX = ((size.width - drawW) / 2f).roundToInt()
-        val offY = ((size.height - drawH) / 2f).roundToInt()
-
-        if (cellSize <= 1) {
-            drawImage(
-                image = image,
-                dstOffset = IntOffset(offX, offY),
-                dstSize = IntSize(drawW, drawH),
-                filterQuality = FilterQuality.Medium,
-            )
-            return@Canvas
-        }
-
-        val cellsX = (drawW / cellSize).coerceAtLeast(1)
-        val cellsY = (drawH / cellSize).coerceAtLeast(1)
-
-        withTransform({
-            scale(
-                scaleX = cellSize.toFloat(),
-                scaleY = cellSize.toFloat(),
-                pivot = Offset(offX.toFloat(), offY.toFloat()),
-            )
-        }) {
-            drawImage(
-                image = image,
-                dstOffset = IntOffset(offX, offY),
-                dstSize = IntSize(cellsX, cellsY),
-                filterQuality = FilterQuality.None,
-            )
-        }
-    }
+    Image(
+        bitmap = bitmap.asImageBitmap(),
+        contentDescription = null,
+        modifier = modifier,
+        contentScale = ContentScale.Crop,
+        filterQuality = FilterQuality.Medium,
+    )
 }
