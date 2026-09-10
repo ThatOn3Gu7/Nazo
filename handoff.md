@@ -5360,3 +5360,101 @@ Files: `ui/components/NazoBottomNav.kt`, `ui/NazoApp.kt`,
     still be sharp, and no unobscured frame may appear at any point.
 14. **Blur reveal unaffected.** Switch reveal style to blur and play a round —
     should look the same as before, slightly cleaner from the JPEG change.
+
+---
+
+## [2026-09-10 20:15] fix: corrupted mystery image (use-after-free) and the stacked rail label gap
+
+Two re-reports from owner testing. Both previous attempts had treated symptoms;
+these are the actual causes.
+
+**1. Mystery image corrupted — yellow/purple noise, outline still readable.**
+
+The previous entry blamed nearest-neighbour downscaling in `buildPixelLevels`
+and switched it to bilinear. That was a genuine quality improvement but it was
+NOT this bug, which is why the owner still saw the corruption afterwards. The
+owner's instinct ("why is it broken? are we doing some kind of filter on the
+image?") was the right question: the answer is that nothing was wrong with the
+filtering — the pixels were being freed underneath the renderer.
+
+`GuessingPlayScreen` had:
+
+```
+DisposableEffect(Unit) {
+    onDispose { pixelLevels?.forEach { if (!it.isRecycled) it.recycle() } }
+}
+```
+
+added alongside the auto-crop work to "free the pixel-level bitmaps as soon as
+the player leaves this screen, instead of waiting for the GC on low-RAM
+devices". `Bitmap.recycle()` frees the native pixel buffer IMMEDIATELY, and
+those bitmaps are still referenced by the Compose draw layer at that moment:
+
+- the screen lives inside `NazoApp`'s `AnimatedContent`, which keeps the
+  OUTGOING screen composed and drawing for the full 220ms cross-fade, and
+- a rotation (or any config change) disposes and re-composes across the same
+  frames — which is why the landscape testing made it so obvious.
+
+The in-flight draws therefore sampled freed memory. Geometry still resolved, so
+the character's silhouette stayed recognisable, but the colour channels came
+back as garbage — the yellow/purple speckle.
+
+Fix: don't recycle. The GC handles it correctly. The cost is trivial: all 14
+levels are downscales of one 1600px-capped decode, so the whole set is about
+1.33x a single bitmap (geometric series 1 + 1/4 + 1/9 + ...), and they become
+unreachable as soon as the round's state is replaced. The
+`DisposableEffect` and its now-unused import are gone.
+
+The bilinear change from the previous entry is KEPT — it genuinely reduces
+aliasing on detailed artwork — but its comment has been corrected so it no
+longer claims to fix the corruption.
+
+*Answering the owner's suggestion directly:* the effect is already applied over
+the image rather than baked into it. Blur mode is a `Modifier.blur` on the
+container, and pixel mode swaps in a pre-scaled bitmap and upscales it at draw
+time with `FilterQuality.None`. The source image is never modified. So there was
+nothing to move — the corruption was a memory-lifetime bug, not an image
+pipeline one.
+
+**2. Floating rail: gap under the pill on Settings but not Home.**
+
+The stacked label drew one `Text` per letter. Every `Text` is its own layout
+box carrying the font's full ascent and descent, and `LineHeightStyle.Trim`
+only trims the first and last line WITHIN a single `Text` — with one line per
+`Text` there was nothing for it to trim, so the previous fix had no effect. The
+leftover space accumulated per letter, so 8-letter "Settings" showed a
+noticeable gap under the last letter while 4-letter "Home" looked fine.
+
+Now the whole word is ONE `Text` with `\n` between the letters. One layout box
+means `Trim.Both` genuinely removes the leading above the first letter and the
+descent below the last, and `lineHeight` (12sp at 11sp glyphs) applies BETWEEN
+letters as intended. Bold is unchanged.
+
+Files: `modes/guessing_game/GuessingPlayScreen.kt`,
+`modes/guessing_game/PixelReveal.kt`, `ui/components/NazoBottomNav.kt`.
+
+### How to test it live
+
+1. **The corruption itself.** Appearance → Guessing Game → reveal style PIXEL.
+   Play a full guessing round. Blocks should be flat, clean colours drawn from
+   the artwork — no yellow or purple speckle anywhere, at any point in the
+   reveal.
+2. **The exact trigger — rotation.** Start a round, then rotate the device
+   mid-reveal, two or three times. This is what made it worst before (dispose +
+   recompose while drawing). The image must stay clean through every rotation.
+3. **The other trigger — leaving mid-round.** Start a round and quit to Home
+   while the image is on screen, then start another guessing game. No
+   corruption on the new round's image.
+4. **Several rounds back to back.** Play all rounds of a game without leaving.
+   Each new image must be clean — this checks nothing is being freed between
+   rounds either.
+5. **Blur mode still fine.** Switch the reveal style to blur and play a round.
+6. **Final frame sharp.** At the end of a pixel round the revealed image must
+   be fully sharp, and no unobscured frame may appear at any earlier point.
+7. **Rail gap.** Landscape, floating nav ON, go to Settings. The green pill
+   should hug the stacked "Settings" letters with the same small margin below
+   the final "s" as there is above the icon — no dead strip at the bottom.
+8. **Compare against Home.** Tap Home and look at its pill: the padding around
+   Home's letters and around Settings' letters should now look identical.
+9. **Letters still tight and bold.** Both labels should read as a tight,
+   bold vertical stack, not spaced out.
