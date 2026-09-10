@@ -5831,3 +5831,76 @@ Files: `modes/guessing_game/PixelReveal.kt`, `vision/PortraitCrop.kt`.
 
 Cleanup owed: `vision/ImageDiagnostics.kt` and its call sites should be deleted
 once the fix is confirmed on a device.
+
+---
+
+## [2026-09-11 04:40] fix: show the fetched image untouched; pixelate at draw time only
+
+Owner directive after six failed attempts: **apply the effect OVER the image,
+never into it.** Implemented literally.
+
+Every previous fix altered the bitmap somewhere in a chain of transforms
+(resampling filter, recycling, alpha flattening, colour-space pinning,
+re-encoding). Each either missed the corruption or worsened it. Rather than add
+a seventh theory, the transform chain itself is removed, which makes the failing
+component identifiable by elimination.
+
+**What changed**
+
+- `buildPixelLevels` → `decodeMysteryBitmap`. It decodes the fetched bytes and
+  returns that ONE bitmap. No crop, no scale, no re-encode, no alpha handling,
+  no colour-space conversion. The only remaining option is `inSampleSize`, a
+  decoder-level subsample (a memory cap) that does not post-process pixels.
+  The ~14 derived bitmaps per round are gone.
+- `PixelatedImage` now takes that bitmap plus a `cellSize` and creates the
+  pixelation entirely in the draw call, via
+  `withTransform { scale(cellSize, pivot) }` around a draw at `1/cellSize` of
+  display size with `FilterQuality.None`. The GPU averages each source region
+  into one texel and replicates it across a cell. The source is only ever READ.
+- `PortraitCrop` is bypassed for display. It decoded, cropped, rescaled and
+  **re-encoded** the bytes — the heaviest transform in the pipeline. The
+  `guessAutoCrop` preference is retained so the feature can be restored and
+  retested in isolation once the image is confirmed clean.
+
+**Build marker.** The round badge temporarily reads `ROUND n · RAW`. This exists
+because six builds produced identical results, which raises the possibility that
+the APK under test was not the one being built. If the badge does not show
+`· RAW`, the installed build predates this change and nothing else observed from
+it is meaningful. Remove the marker once confirmed.
+
+**On the CI artifact question:** the workflow checks out the pushed SHA into a
+clean runner every time, so a stale-build explanation is unlikely, but the
+marker settles it definitively rather than by argument.
+
+**Diagnosis by elimination.** With this build:
+
+- Image now correct → the fault was in the transform chain
+  (`PortraitCrop` re-encode and/or the pre-scaled levels), and the feature can
+  be reintroduced one step at a time.
+- Image still corrupt → the fault is upstream of all rendering, i.e. in the
+  bytes `GuessImageFetcher` returns. That is a decisive result: it would mean
+  the fetcher is saving something that is not the image it thinks it is
+  (a wrong/partial response body, an HTML error page, a truncated download), and
+  the investigation moves entirely to `GuessImageFetcher.fetchImageBytes`.
+
+Files: `modes/guessing_game/PixelReveal.kt`,
+`modes/guessing_game/GuessingPlayScreen.kt`.
+
+### How to test it live
+
+1. **Check the marker first.** Start a guessing round and read the badge over
+   the image. It must say `ROUND 1 · RAW`. If it does not, the APK is stale —
+   stop, and re-download the artifact from the newest green run.
+2. **Pixel reveal.** Appearance → Guessing Game → PIXEL. Play a round. Blocks
+   should carry the artwork's real colours; the revealed frame should be an
+   obviously recognisable character.
+3. **Blur reveal.** Same in BLUR.
+4. **Note the framing change.** Images are no longer cropped to the face, so
+   expect full-body or wide art. That is the auto-crop bypass, not a bug.
+5. **If still corrupt**, report it as: fetcher fault confirmed. The next step is
+   to dump the first bytes of the downloaded response and check they are a real
+   image header rather than HTML or a truncated body.
+
+Cleanup owed once the image is confirmed: remove the `· RAW` marker, delete
+`vision/ImageDiagnostics.kt` and its call sites, and decide whether to restore
+`PortraitCrop` behind its preference.
