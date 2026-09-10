@@ -109,6 +109,24 @@ import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
 import quiz.thaton3app.nazo.vision.ImageDiagnostics
 
+/**
+ * Composites [source] onto opaque white if it has alpha, so transparent PNG
+ * character art from Fandom/AniList renders with correct colours instead of
+ * washing out from premultiplied-alpha artefacts. Returns [source] unchanged
+ * when already opaque.
+ */
+private fun flattenAlphaForDisplay(source: Bitmap): Bitmap {
+    if (!source.hasAlpha()) return source
+    val flat = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
+    android.graphics.Canvas(flat).apply {
+        drawColor(android.graphics.Color.WHITE)
+        drawBitmap(source, 0f, 0f, android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
+    }
+    // Don't recycle source — Coil may hold a reference to it in its cache.
+    flat.setHasAlpha(false)
+    return flat
+}
+
 /** Fully-blurred at the start of the timer; 0 = fully sharp at the end. */
 private const val MAX_BLUR = 28f
 
@@ -212,7 +230,11 @@ fun GuessingPlayScreen(
                 withTimeout(20_000L) {
                     val result = imageLoader.execute(request)
                     val drawable = (result as? SuccessResult)?.drawable
-                    (drawable as? BitmapDrawable)?.bitmap
+                    val raw = (drawable as? BitmapDrawable)?.bitmap
+                    // Flatten alpha immediately — transparent PNG character art
+                    // from Fandom/AniList must be composited onto opaque white
+                    // before anything else touches the pixels.
+                    raw?.let { flattenAlphaForDisplay(it) }
                 }
             }.getOrNull()
         }
@@ -641,7 +663,7 @@ private fun MysteryImageCard(
                 .padding(horizontal = 10.dp, vertical = 5.dp)
         ) {
             Text(
-                text = "ROUND $round · RAW",
+                text = "ROUND $round",
                 color = Color.White,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
