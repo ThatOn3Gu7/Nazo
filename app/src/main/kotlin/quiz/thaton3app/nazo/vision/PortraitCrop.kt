@@ -3,6 +3,7 @@ package quiz.thaton3app.nazo.vision
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.Color as AndroidColor
 import android.graphics.ColorSpace
 import android.graphics.Paint
 import android.graphics.PointF
@@ -128,21 +129,15 @@ object PortraitCrop {
                 if (scaled !== out) out.recycle()
                 out = scaled
             }
-            // REVERTED: this used to composite onto opaque white on the theory
-            // that premultiplied alpha caused the washed-out image. The owner
-            // reported the corruption got WORSE with it, and it still occurred
-            // with auto-crop disabled entirely — so alpha was not the cause and
-            // the extra conversion was doing harm. Transparency is preserved
-            // again via the PNG branch.
             ImageDiagnostics.log("PortraitCrop/preEncode", bitmap = out)
             val bos = ByteArrayOutputStream(128 * 1024)
-            val ok = if (out.hasAlpha()) {
-                out.compress(Bitmap.CompressFormat.PNG, 100, bos)
-            } else {
-                // 98 keeps JPEG ringing off the high-contrast line art typical
-                // of anime portraits; the re-encode is transient.
-                out.compress(Bitmap.CompressFormat.JPEG, 98, bos)
-            }
+            // Always JPEG. decodeCapped already flattened any alpha away, so
+            // the bitmap is opaque and the old hasAlpha()/PNG branch is dead.
+            // That branch was actively harmful: compress() unpremultiplies, so
+            // writing a premultiplied bitmap out as PNG is what saturated the
+            // soft pixels to white. 98 keeps ringing off the high-contrast line
+            // art; the re-encode is transient.
+            val ok = out.compress(Bitmap.CompressFormat.JPEG, 98, bos)
             out.recycle()
             if (ok) {
                 Log.i(TAG, "cropped to passport portrait ${frame.width()}x${frame.height()}")
@@ -176,8 +171,49 @@ object PortraitCrop {
         inPreferredConfig = Bitmap.Config.ARGB_8888
         inPreferredColorSpace = ColorSpace.get(ColorSpace.Named.SRGB)
         }
-        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+        return decodeFlattened(bytes, opts)
     }
+
+
+/**
+ * Decodes [bytes] and immediately composites the result onto opaque white,
+ * returning a bitmap that carries NO alpha channel.
+ *
+ * This must happen at DECODE time, before any crop, scale or re-encode.
+ *
+ * Character art from Fandom/AniList is frequently a transparent-background PNG
+ * cutout. Android decodes those PREMULTIPLIED: the stored colour is
+ * `trueRGB * alpha`. The rest of the framework is inconsistent about that —
+ * `createBitmap(src, rect)` and `createScaledBitmap` operate on the
+ * premultiplied buffer directly, while `compress()` and `getPixel()`
+ * UNPREMULTIPLY on the way out (`trueRGB = storedRGB / alpha`).
+ *
+ * Any soft or antialiased pixel has a small alpha, so that division saturates
+ * to 255 and the pixel turns white; where alpha is 0 the result is undefined.
+ * Only fully opaque pixels (alpha = 1) survive the round trip intact — which is
+ * precisely why the reported corruption left the hard ink (eye outlines, hair
+ * spikes) readable and washed everything else out.
+ *
+ * Compositing straight after the decode resolves every alpha value exactly once,
+ * through the one API that does it correctly (drawing onto an opaque canvas),
+ * and hands every later stage honest opaque colour.
+ *
+ * NOTE: an earlier attempt flattened AFTER cropping and scaling. That could not
+ * work — the premultiplied blending damage was already baked in by then, and
+ * the extra composite made it worse.
+ */
+private fun decodeFlattened(bytes: ByteArray, opts: BitmapFactory.Options): Bitmap? {
+    val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
+    if (!decoded.hasAlpha()) return decoded
+    val flat = Bitmap.createBitmap(decoded.width, decoded.height, Bitmap.Config.ARGB_8888)
+    Canvas(flat).apply {
+        drawColor(AndroidColor.WHITE)
+        drawBitmap(decoded, 0f, 0f, Paint(Paint.FILTER_BITMAP_FLAG))
+    }
+    decoded.recycle()
+    flat.setHasAlpha(false)
+    return flat
+}
 
     // ---- stage 1: framework eye-pair detector ----------------------------
 

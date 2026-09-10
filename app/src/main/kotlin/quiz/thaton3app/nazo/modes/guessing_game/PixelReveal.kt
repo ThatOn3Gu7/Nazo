@@ -2,7 +2,10 @@ package quiz.thaton3app.nazo.modes.guessing_game
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color as AndroidColor
 import android.graphics.ColorSpace
+import android.graphics.Paint
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -35,6 +38,47 @@ private const val MAX_DECODE_DIM = 1600
  * power-of-two inSampleSize so the full-resolution image is NEVER held in
  * memory, and the sharp level-0 bitmap reuses the decoded bitmap directly.
  */
+
+/**
+ * Decodes [bytes] and immediately composites the result onto opaque white,
+ * returning a bitmap that carries NO alpha channel.
+ *
+ * This must happen at DECODE time, before any crop, scale or re-encode.
+ *
+ * Character art from Fandom/AniList is frequently a transparent-background PNG
+ * cutout. Android decodes those PREMULTIPLIED: the stored colour is
+ * `trueRGB * alpha`. The rest of the framework is inconsistent about that —
+ * `createBitmap(src, rect)` and `createScaledBitmap` operate on the
+ * premultiplied buffer directly, while `compress()` and `getPixel()`
+ * UNPREMULTIPLY on the way out (`trueRGB = storedRGB / alpha`).
+ *
+ * Any soft or antialiased pixel has a small alpha, so that division saturates
+ * to 255 and the pixel turns white; where alpha is 0 the result is undefined.
+ * Only fully opaque pixels (alpha = 1) survive the round trip intact — which is
+ * precisely why the reported corruption left the hard ink (eye outlines, hair
+ * spikes) readable and washed everything else out.
+ *
+ * Compositing straight after the decode resolves every alpha value exactly once,
+ * through the one API that does it correctly (drawing onto an opaque canvas),
+ * and hands every later stage honest opaque colour.
+ *
+ * NOTE: an earlier attempt flattened AFTER cropping and scaling. That could not
+ * work — the premultiplied blending damage was already baked in by then, and
+ * the extra composite made it worse.
+ */
+private fun decodeFlattened(bytes: ByteArray, opts: BitmapFactory.Options): Bitmap? {
+    val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
+    if (!decoded.hasAlpha()) return decoded
+    val flat = Bitmap.createBitmap(decoded.width, decoded.height, Bitmap.Config.ARGB_8888)
+    Canvas(flat).apply {
+        drawColor(AndroidColor.WHITE)
+        drawBitmap(decoded, 0f, 0f, Paint(Paint.FILTER_BITMAP_FLAG))
+    }
+    decoded.recycle()
+    flat.setHasAlpha(false)
+    return flat
+}
+
 internal fun buildPixelLevels(bytes: ByteArray): List<Bitmap>? {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
@@ -52,7 +96,7 @@ internal fun buildPixelLevels(bytes: ByteArray): List<Bitmap>? {
         inPreferredConfig = Bitmap.Config.ARGB_8888
         inPreferredColorSpace = ColorSpace.get(ColorSpace.Named.SRGB)
     }
-    val original = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
+    val original = decodeFlattened(bytes, opts) ?: return null
     ImageDiagnostics.log("buildPixelLevels/decoded", bytes = bytes, bitmap = original)
     return PIXEL_LEVELS.map { scale ->
         if (scale == 1) {
