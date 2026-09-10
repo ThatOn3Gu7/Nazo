@@ -5904,3 +5904,76 @@ Files: `modes/guessing_game/PixelReveal.kt`,
 Cleanup owed once the image is confirmed: remove the `· RAW` marker, delete
 `vision/ImageDiagnostics.kt` and its call sites, and decide whether to restore
 `PortraitCrop` behind its preference.
+
+---
+
+## [2026-09-11 12:30] debug: raw URL rendering — the whole image pipeline removed
+
+Owner directive after seven failed attempts (mine and the owner's own): display
+exactly what the URL returns, with no decode, crop, filter or effect of any kind.
+
+This is a **diagnostic build, not a feature**. The mystery is spoiled — the
+answer is fully visible from the first frame — and that is expected.
+
+**Removed from the display path**
+
+- The manual pre-fetch and the Coil `ImageRequest` decode, including
+  `allowHardware(false)`, the forced `ARGB_8888` config, the sRGB colour space
+  and `premultipliedAlpha(true)`.
+- `flattenAlphaForDisplay` — the composite-onto-white step.
+- `PortraitCrop`'s face detect, crop, rescale and re-encode.
+- The pixelation reveal, the blur reveal and the `revealScale` animation.
+- `PixelatedImage` and `decodeMysteryBitmap` are no longer called at all.
+- The SECOND decode path. There was one decode for pixel mode (manual
+  `BitmapFactory`) and another for blur mode (Coil) — they could disagree, and
+  every fix had to be correct in both. Now there is exactly one.
+
+`MysteryImageCard` is now a bare `AsyncImage(model = imageUrl)`. Coil downloads
+the URL and renders it with stock settings; no app code touches the pixels.
+
+**Why this is worth a build**
+
+It partitions the problem cleanly, which no previous attempt did:
+
+- **Image renders correctly** → the fault is in one of the removed stages. They
+  go back one at a time, testing after each, and the first one that breaks it is
+  the culprit. No more guessing.
+- **Image still renders wrong** → nothing in this app's image handling is
+  responsible. The cause is upstream: the bytes the fetcher chose, the source
+  URL itself, or Coil's decode of that format on this specific device. The
+  investigation then moves entirely out of the render path — most likely to
+  `GuessImageFetcher`, checking whether the chosen URL actually returns the
+  image it claims (rather than an HTML error page, a redirect stub, or a
+  format the decoder mishandles).
+
+Either result is progress, which is the point.
+
+**Build marker.** The round badge reads `ROUND n · RAW`. Seven builds have now
+produced the same visual result, so before drawing ANY conclusion, confirm the
+badge shows `· RAW`. If it does not, the installed APK predates this change and
+the observation is meaningless.
+
+Files: `modes/guessing_game/GuessingPlayScreen.kt`.
+
+`PixelReveal.kt` is left in the tree, uncalled, so restoring the reveal is a
+revert rather than a rewrite.
+
+### How to test it live
+
+1. **Check the marker.** Start a round. The badge must read `ROUND 1 · RAW`. If
+   not, re-download the artifact from the newest green run and reinstall.
+2. **Look at the image.** It is unobscured immediately. The only question that
+   matters: are the colours correct?
+3. **Play two or three rounds** so more than one source is exercised.
+4. **Report one of two outcomes:**
+   - "Correct now" → the fault is in the removed stages; they get restored one
+     at a time.
+   - "Still wrong" → the render path is exonerated; the next step is dumping the
+     first bytes of the downloaded response and the URL that produced it.
+5. **If still wrong, the single most useful extra detail** is the failing URL
+   itself (visible in logcat under `NazoGuessImage`, or reachable by opening the
+   same character's Fandom/AniList page). Whether that URL looks correct in a
+   browser separates "bad source" from "bad decode".
+
+Cleanup owed once resolved: restore the reveal effects and the crop, remove the
+`· RAW` marker, and delete `vision/ImageDiagnostics.kt`.
