@@ -6,9 +6,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import kotlin.math.roundToInt
@@ -111,34 +112,35 @@ internal fun PixelatedImage(
             return@Canvas
         }
 
-        // Pixelated: draw the image into a small rectangle and let the canvas
-        // scale that up. One sampling step, no intermediate bitmap.
+        // Pixelated, with NO transform of the source bitmap.
         //
-        // scale() multiplies the coordinate system, so the small draw below is
-        // magnified by exactly cellSize about the card's top-left corner.
-        // FilterQuality.None on the magnification is what makes each sample a
-        // hard-edged block instead of a smooth blur.
-        val smallW = (drawW.toFloat() / cellSize).coerceAtLeast(1f)
-        val smallH = (drawH.toFloat() / cellSize).coerceAtLeast(1f)
-        val factorX = drawW / smallW
-        val factorY = drawH / smallH
+        // Real downsample-then-magnify, done with the canvas transform stack
+        // rather than by building a smaller Bitmap:
+        //
+        //   scale(cellSize) around the card's top-left, then draw the image at
+        //   1/cellSize of its display size with FilterQuality.None.
+        //
+        // The small draw makes the GPU average each source region into one
+        // texel; the magnification replicates that texel across a whole cell
+        // with no interpolation, giving hard-edged blocks. The source bitmap is
+        // only ever READ — never rewritten, re-encoded or reinterpreted.
+        val cellsX = (drawW / cellSize).coerceAtLeast(1)
+        val cellsY = (drawH / cellSize).coerceAtLeast(1)
 
-        scale(
-            scaleX = factorX,
-            scaleY = factorY,
-            pivot = Offset(offX.toFloat(), offY.toFloat()),
-        ) {
+        withTransform({
+            // Snap to whole cells so blocks stay square and no clipped partial
+            // cell shows along the right/bottom edge.
+            scale(
+                scaleX = cellSize.toFloat(),
+                scaleY = cellSize.toFloat(),
+                pivot = Offset(offX.toFloat(), offY.toFloat()),
+            )
+        }) {
             drawImage(
                 image = image,
                 dstOffset = IntOffset(offX, offY),
-                dstSize = IntSize(
-                    smallW.roundToInt().coerceAtLeast(1),
-                    smallH.roundToInt().coerceAtLeast(1),
-                ),
-                // Medium on the way DOWN averages the source region into each
-                // cell (so a block shows that region's true colour); None is
-                // implied on the way UP by the integer scale() magnification.
-                filterQuality = FilterQuality.Medium,
+                dstSize = IntSize(cellsX, cellsY),
+                filterQuality = FilterQuality.None,
             )
         }
     }
