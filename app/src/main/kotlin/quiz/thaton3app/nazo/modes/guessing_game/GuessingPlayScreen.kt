@@ -74,6 +74,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
@@ -710,8 +711,28 @@ private fun MysteryImageCard(
             .background(NazoSurfaceVariant)
     ) {
         if (imageReady) {
+            // An explicit clamping edge treatment is REQUIRED here.
+            //
+            // Modifier.blur defaults to Rectangle treatment, which samples the
+            // layer's own edge pixels when the kernel reaches past the bounds.
+            // At the radii this uses (up to 28dp) on a wide, short landscape
+            // card the kernel overruns the layer badly, and the render node
+            // then samples undefined content outside it — which is what
+            // produced the red/yellow/green speckle over a blown-out white
+            // field, with only the strongest edges surviving. Clamping the
+            // sample area to the layer removes the out-of-bounds reads.
+            //
+            // The blur is applied over the image at draw time either way; the
+            // source bitmap is never modified.
             Box(modifier = Modifier.fillMaxSize().scale(revealScale).then(
-                if (usePixels) Modifier else Modifier.blur(blurRadius)
+                if (usePixels) {
+                    Modifier
+                } else {
+                    Modifier.blur(
+                        radius = blurRadius,
+                        edgeTreatment = BlurredEdgeTreatment(RoundedCornerShape(28.dp)),
+                    )
+                }
             )) {
                 when {
                     imageFetchFailed || imageUrl == null ->

@@ -72,6 +72,14 @@ private fun Modifier.blockTouchThrough(): Modifier =
     this.pointerInput(Unit) { detectTapGestures { /* absorb: not a tab */ } }
 
 /** Shared duration for the floating bar's tab transition (tint + label expand). */
+/**
+ * Vertical step for one letter of a stacked rail label. Slightly under the
+ * 11sp glyph size so the letters read as a tight column; because it is a fixed
+ * height, the stack's total height is exactly proportional to the letter count
+ * and never inherits the font's unused ascent/descent padding.
+ */
+private val LETTER_STACK_STEP = 11.dp
+
 private const val TAB_ANIM_MS = 280
 
 @Composable
@@ -289,35 +297,42 @@ private fun NazoNavRailItem(
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(Modifier.height(5.dp))
-                // The whole word is drawn as ONE Text with newlines between the
-                // letters, not one Text per letter.
+                // (icon gap above; the stack below ends flush with the last
+                // glyph, so the pill's own vertical padding is what closes it)
+                // Each letter is its own Text, sized to the GLYPH rather than to
+                // the font's line box.
                 //
-                // Per-letter Texts were the cause of the leftover space under
-                // the last letter: every Text is its own layout box carrying the
-                // font's ascent/descent, and Trim.Both only trims the first and
-                // last line WITHIN a single Text — with one line per Text it
-                // trimmed nothing. The error was also proportional to the letter
-                // count, which is why 8-letter "Settings" showed a big gap and
-                // 4-letter "Home" looked fine.
+                // A single multi-line Text does not work here: Trim.Both only
+                // trims the outermost lines, so every interior line still
+                // carries the font's full ascent + descent. The font reserves
+                // that space for tall ascenders and descenders (b, d, g, y)
+                // that these labels mostly do not use, so the error accumulated
+                // once per letter — "Settings" (8) ended up visibly taller than
+                // its glyphs, leaving the dead strip under the pill, while
+                // "Home" (4) hid it. That is why the gap scaled with the label.
                 //
-                // One Text means one layout box: Trim.Both now genuinely removes
-                // the leading above the first letter and the descent below the
-                // last, and the tight lineHeight applies BETWEEN letters.
-                Text(
-                    text = label.toCharArray().joinToString("\n"),
-                    color = currentTint,
-                    fontSize = 11.sp,
-                    lineHeight = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    style = LocalTextStyle.current.copy(
-                        platformStyle = PlatformTextStyle(includeFontPadding = false),
-                        lineHeightStyle = LineHeightStyle(
-                            alignment = LineHeightStyle.Alignment.Center,
-                            trim = LineHeightStyle.Trim.Both,
+                // Fixing the height per letter instead makes the stack exactly
+                // as tall as the letters, so both pills wrap their content
+                // identically no matter how long the word is.
+                label.forEach { ch ->
+                    Text(
+                        text = ch.toString(),
+                        color = currentTint,
+                        fontSize = 11.sp,
+                        lineHeight = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        modifier = Modifier.height(LETTER_STACK_STEP),
+                        style = LocalTextStyle.current.copy(
+                            platformStyle = PlatformTextStyle(includeFontPadding = false),
+                            lineHeightStyle = LineHeightStyle(
+                                alignment = LineHeightStyle.Alignment.Center,
+                                trim = LineHeightStyle.Trim.Both,
+                            ),
                         ),
-                    ),
-                )
+                    )
+                }
             }
         }
     }
