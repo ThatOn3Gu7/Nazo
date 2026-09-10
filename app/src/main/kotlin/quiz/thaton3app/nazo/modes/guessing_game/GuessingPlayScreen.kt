@@ -87,6 +87,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -545,12 +546,58 @@ private fun MysteryImageCard(
         if (imageUrl.isNullOrBlank()) {
             GuessImagePlaceholder(query = query.ifBlank { "Mystery image" })
         } else {
+            // An image CANNOT be shown without being decoded — compressed bytes
+            // are not pixels. The most raw form available is therefore: let the
+            // decoder do it, and make it produce a plain, unambiguous buffer.
+            //
+            // allowHardware(false) is the important line. By default Coil
+            // decodes into a HARDWARE bitmap: GPU-resident, with no CPU-visible
+            // pixel data and a device-dependent internal format. Those are the
+            // fastest to draw but the most fragile — on some GPUs and drivers a
+            // hardware bitmap composited inside a layer renders with wrong or
+            // scrambled colour, which matches the remaining corruption exactly
+            // (a recognisable image with the palette scattered). Forcing a
+            // software ARGB_8888 buffer removes the driver from the equation.
+            //
+            // No colour-space or alpha overrides here on purpose: those were
+            // tried and were not the cause. This changes only WHERE the pixels
+            // live, not what they contain.
             AsyncImage(
-                model = imageUrl,
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(imageUrl)
+                    .allowHardware(false)
+                    .allowRgb565(false)
+                    .crossfade(false)
+                    .build(),
                 contentDescription = "Mystery image, round $round",
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
+        }
+        // Source label (diagnostic): the host and file type actually being
+        // rendered. Different sources serve different formats, and knowing
+        // which one is on screen when the colour is wrong is the single most
+        // useful fact left — it separates "one bad source" from "every image".
+        imageUrl?.let { u ->
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(10.dp)
+                    .clip(RoundedCornerShape(50.dp))
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = runCatching {
+                        val host = java.net.URL(u).host.removePrefix("www.")
+                        val ext = u.substringBefore('?').substringAfterLast('.', "?")
+                            .take(5)
+                        "$host · .$ext"
+                    }.getOrDefault("source?"),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
         }
         Box(
             modifier = Modifier
@@ -562,7 +609,7 @@ private fun MysteryImageCard(
         ) {
             Text(
                 // Build marker: confirms the running APK contains this change.
-                text = "ROUND $round · RAW",
+                text = "ROUND $round · RAW2",
                 color = Color.White,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
