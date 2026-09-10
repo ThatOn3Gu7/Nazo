@@ -2,6 +2,9 @@ package quiz.thaton3app.nazo.modes.guessing_game
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -40,7 +43,21 @@ internal fun buildPixelLevels(bytes: ByteArray): List<Bitmap>? {
     var sample = 1
     while (maxOf(bounds.outWidth, bounds.outHeight) / sample > MAX_DECODE_DIM) sample *= 2
     val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-    val original = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
+    val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
+    // Flatten any alpha channel onto opaque white FIRST.
+    //
+    // Character art often ships as a transparent PNG, and BitmapFactory decodes
+    // premultiplied (stored RGB = trueRGB * alpha). Bilinear downscaling such a
+    // bitmap averages premultiplied colour against fully transparent
+    // (0,0,0,0) neighbours, which drags every partially-transparent region
+    // toward white and blows out the picture. Compositing onto white up front
+    // means every level below is built from honest, opaque colour.
+    //
+    // This path matters when auto-crop is OFF (PortraitCrop does its own
+    // flattening); with it ON the bytes arriving here are already opaque and
+    // this is a cheap no-op.
+    val original = flattenOntoWhite(decoded)
+    if (original !== decoded) decoded.recycle()
     return PIXEL_LEVELS.map { scale ->
         if (scale == 1) {
             original
@@ -70,6 +87,22 @@ internal fun buildPixelLevels(bytes: ByteArray): List<Bitmap>? {
             )
         }
     }
+}
+
+/**
+ * Returns an opaque copy of [src] composited over white, or [src] itself when
+ * it is already opaque. Drawing onto an opaque canvas is the only safe way to
+ * resolve premultiplied alpha; reading the RGB out directly keeps the
+ * premultiplied values.
+ */
+private fun flattenOntoWhite(src: Bitmap): Bitmap {
+    if (!src.hasAlpha()) return src
+    val flat = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(flat)
+    canvas.drawColor(Color.WHITE)
+    canvas.drawBitmap(src, 0f, 0f, Paint(Paint.FILTER_BITMAP_FLAG))
+    flat.setHasAlpha(false)
+    return flat
 }
 
 /**

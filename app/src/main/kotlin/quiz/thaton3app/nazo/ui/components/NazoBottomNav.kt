@@ -15,6 +15,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -72,13 +73,19 @@ private fun Modifier.blockTouchThrough(): Modifier =
     this.pointerInput(Unit) { detectTapGestures { /* absorb: not a tab */ } }
 
 /** Shared duration for the floating bar's tab transition (tint + label expand). */
+/** Glyph size for a stacked rail label letter. */
+private val LETTER_FONT_SIZE = 10.sp
+
 /**
- * Vertical step for one letter of a stacked rail label. Slightly under the
- * 11sp glyph size so the letters read as a tight column; because it is a fixed
- * height, the stack's total height is exactly proportional to the letter count
- * and never inherits the font's unused ascent/descent padding.
+ * Vertical step for one letter of a stacked rail label.
+ *
+ * Comfortably clear of the 10sp cap height so the letters do not collide (they
+ * were touching when the step was tighter than the glyphs), while still reading
+ * as one tight column. Being a FIXED height is the point: the stack is exactly
+ * (letters x step) tall and never inherits the font's unused ascent/descent, so
+ * a long label wraps as snugly as a short one.
  */
-private val LETTER_STACK_STEP = 11.dp
+private val LETTER_STACK_STEP = 12.dp
 
 private const val TAB_ANIM_MS = 280
 
@@ -296,42 +303,45 @@ private fun NazoNavRailItem(
             ) + fadeOut(animationSpec = tween(TAB_ANIM_MS / 2)),
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Spacer(Modifier.height(5.dp))
-                // (icon gap above; the stack below ends flush with the last
-                // glyph, so the pill's own vertical padding is what closes it)
-                // Each letter is its own Text, sized to the GLYPH rather than to
-                // the font's line box.
+                Spacer(Modifier.height(6.dp))
+                // Stacked label, one UPPERCASE letter per line.
                 //
-                // A single multi-line Text does not work here: Trim.Both only
-                // trims the outermost lines, so every interior line still
-                // carries the font's full ascent + descent. The font reserves
-                // that space for tall ascenders and descenders (b, d, g, y)
-                // that these labels mostly do not use, so the error accumulated
-                // once per letter — "Settings" (8) ended up visibly taller than
-                // its glyphs, leaving the dead strip under the pill, while
-                // "Home" (4) hid it. That is why the gap scaled with the label.
+                // Uppercase is not only a style choice, it removes the bug:
+                // lowercase "Settings" carries a descender on the 'g', and the
+                // font reserves descender space on EVERY letter box whether the
+                // glyph uses it or not. That reserve is what left the dead strip
+                // under the Settings pill while "Home" — which has no descender
+                // — looked correctly wrapped. Caps are all cap-height, so every
+                // letter box is the same and the column ends flush with the last
+                // glyph.
                 //
-                // Fixing the height per letter instead makes the stack exactly
-                // as tall as the letters, so both pills wrap their content
-                // identically no matter how long the word is.
-                label.forEach { ch ->
-                    Text(
-                        text = ch.toString(),
-                        color = currentTint,
-                        fontSize = 11.sp,
-                        lineHeight = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
+                // Each letter is measured in its own fixed-height box so the
+                // stack's height is exactly (letters x step): a single
+                // multi-line Text would keep the font's ascent/descent on every
+                // interior line, and LineHeightStyle.Trim only trims the
+                // outermost two.
+                label.uppercase().forEach { ch ->
+                    Box(
                         modifier = Modifier.height(LETTER_STACK_STEP),
-                        style = LocalTextStyle.current.copy(
-                            platformStyle = PlatformTextStyle(includeFontPadding = false),
-                            lineHeightStyle = LineHeightStyle(
-                                alignment = LineHeightStyle.Alignment.Center,
-                                trim = LineHeightStyle.Trim.Both,
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = ch.toString(),
+                            color = currentTint,
+                            fontSize = LETTER_FONT_SIZE,
+                            lineHeight = LETTER_FONT_SIZE,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            style = LocalTextStyle.current.copy(
+                                platformStyle = PlatformTextStyle(includeFontPadding = false),
+                                lineHeightStyle = LineHeightStyle(
+                                    alignment = LineHeightStyle.Alignment.Center,
+                                    trim = LineHeightStyle.Trim.Both,
+                                ),
                             ),
-                        ),
-                    )
+                        )
+                    }
                 }
             }
         }
