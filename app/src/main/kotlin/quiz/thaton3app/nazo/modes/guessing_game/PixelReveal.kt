@@ -2,9 +2,13 @@ package quiz.thaton3app.nazo.modes.guessing_game
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.ColorSpace
+import android.graphics.Paint
 import androidx.compose.foundation.Image
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
@@ -21,12 +25,13 @@ internal val PIXEL_LEVELS = intArrayOf(1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64,
 private const val MAX_DECODE_DIM = 1600
 
 /**
- * Decodes [bytes] into ONE bitmap for rendering.
+ * Decodes fetched image bytes into a predictable software bitmap.
  *
- * No crop, scale, re-encode or bitmap mutation is performed after decoding.
- * The explicit ARGB_8888 + sRGB representation keeps the renderer on a known
- * 8-bit colour format instead of allowing a wide-gamut / higher-precision source
- * to reach a later stage with an incompatible pixel representation.
+ * The important boundary here is the encoded bytes -> Android bitmap. Remote
+ * sources can legitimately return different encoded formats and colour spaces.
+ * The guessing renderer should never have to deal with a wide-gamut / floating
+ * point bitmap or unusual colour-space metadata, so every image is decoded as
+ * software pixels and normalized to premultiplied ARGB_8888 sRGB before draw.
  */
 internal fun decodeMysteryBitmap(bytes: ByteArray): Bitmap? {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -41,21 +46,48 @@ internal fun decodeMysteryBitmap(bytes: ByteArray): Bitmap? {
         inScaled = false
         inPreferredConfig = Bitmap.Config.ARGB_8888
         inPreferredColorSpace = ColorSpace.get(ColorSpace.Named.SRGB)
+        inPremultiplied = true
     }
-    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+    val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
+    return normalizeMysteryBitmap(decoded)
 }
 
 /**
- * TEMPORARY DIAGNOSTIC RENDERER.
+ * Converts any decoded bitmap into the exact representation expected by the
+ * Compose/Canvas renderer: premultiplied ARGB_8888 in sRGB.
  *
- * The old implementation used a custom Canvas path that drew the bitmap into
- * a tiny destination and then magnified it with a Canvas transform. That path
- * is now bypassed completely so we can isolate whether the corruption is in
- * Canvas/pixelation or in the decoded Bitmap itself.
- *
- * [cellSize] is intentionally ignored for this diagnostic build. The image is
- * rendered through Compose's normal Image path with the same Bitmap produced
- * by the existing Coil decode.
+ * This is deliberately a simple conversion boundary rather than another image
+ * effect. Wide-gamut/F16/HDR-capable decodes, embedded colour profiles, and
+ * other source-specific bitmap representations are flattened through the
+ * Android Canvas into ordinary 8-bit sRGB pixels before the game draws them.
+ * The source alpha channel is preserved.
+ */
+internal fun normalizeMysteryBitmap(source: Bitmap): Bitmap {
+    val sRgb = ColorSpace.get(ColorSpace.Named.SRGB)
+    val alreadyNormalized =
+        source.config == Bitmap.Config.ARGB_8888 &&
+            source.colorSpace?.isSrgb == true &&
+            source.isPremultiplied
+    if (alreadyNormalized) return source
+
+    val normalized = Bitmap.createBitmap(
+        source.width,
+        source.height,
+        Bitmap.Config.ARGB_8888,
+        true,
+        sRgb,
+    )
+    normalized.setPremultiplied(true)
+    val canvas = Canvas(normalized)
+    val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+    canvas.drawBitmap(source, 0f, 0f, paint)
+    return normalized
+}
+
+/**
+ * Diagnostic/normal rendering path. The image is always normalized once before
+ * Compose draws it, so the reveal code receives a stable pixel representation
+ * regardless of which official-art CDN supplied the encoded source.
  */
 @Composable
 internal fun PixelatedImage(
@@ -63,8 +95,18 @@ internal fun PixelatedImage(
     @Suppress("UNUSED_PARAMETER") cellSize: Int,
     modifier: Modifier,
 ) {
+    val displayBitmap = remember(bitmap) { normalizeMysteryBitmap(bitmap) }
+
+    DisposableEffect(displayBitmap, bitmap) {
+        onDispose {
+            if (displayBitmap !== bitmap && !displayBitmap.isRecycled) {
+                displayBitmap.recycle()
+            }
+        }
+    }
+
     Image(
-        bitmap = bitmap.asImageBitmap(),
+        bitmap = displayBitmap.asImageBitmap(),
         contentDescription = null,
         modifier = modifier,
         contentScale = ContentScale.Crop,
