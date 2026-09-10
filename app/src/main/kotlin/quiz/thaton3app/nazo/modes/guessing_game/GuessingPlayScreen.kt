@@ -1,6 +1,8 @@
 package quiz.thaton3app.nazo.modes.guessing_game
 
 import android.graphics.Bitmap
+import android.graphics.ColorSpace
+import android.graphics.drawable.BitmapDrawable
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -80,7 +82,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -92,7 +93,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.ImageLoader
-import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.request.SuccessResult
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -123,10 +125,7 @@ private const val MAX_BLUR = 28f
  * rounds are always played, then the results screen.
  *
  * All game state lives in the host (NazoApp); this screen is purely reactive
- * to [GuessPhase]:
- *  - [GuessPhase.Preparing] → spinner card while the round payload / image load
- *  - [GuessPhase.Error]     → error card (retry / settings / quit)
- *  - [GuessPhase.Playing]   → the game itself (timer, reveal, input, answer)
+ * to [GuessPhase].
  */
 @Composable
 fun GuessingPlayScreen(
@@ -138,8 +137,7 @@ fun GuessingPlayScreen(
     phase: GuessPhase,
     roundResult: GuessRoundResult?,
     revealStyle: String = "pixel",
-    // Appearance → Guessing Game: when off, skip the on-device face crop and
-    // show the image exactly as fetched.
+    // Appearance → Guessing Game: retained for the future crop path.
     @Suppress("UNUSED_PARAMETER") autoCrop: Boolean = true,
     onRetryRound: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -149,8 +147,6 @@ fun GuessingPlayScreen(
 ) {
     val context = LocalContext.current
     val durationMs = GuessScoring.durationMsFor(difficultyLabel)
-    // How obscured the image is at the start of the round (fraction of the
-    // maximum effect) — the reveal eases from there down to fully sharp.
     val startFraction = GuessScoring.specFor(difficultyLabel).startEffectFraction
     val imageLoader = remember { ImageLoader(context) }
 
@@ -158,20 +154,16 @@ fun GuessingPlayScreen(
     val imageUrl: String? = (phase as? GuessPhase.Playing)?.imageUrl
 
     var submitted by remember { mutableStateOf<String?>(null) }
-    var fetchedImage by remember { mutableStateOf<ByteArray?>(null) }
     var timedOut by remember { mutableStateOf(false) }
     var imageReady by remember { mutableStateOf(false) }
     var imageFetchFailed by remember { mutableStateOf(false) }
-    // Pre-scaled pixel levels for the pixelated reveal (null while building
-    // or when the decode failed — the card then falls back to the blur).
-    var pixelBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    // One software bitmap is the single source of truth for both reveal paths.
+    var mysteryBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var remainingMs by remember { mutableLongStateOf(durationMs) }
     var showQuitDialog by remember { mutableStateOf(false) }
 
-    // Round identity for the state below. Assigning these DURING composition (not
-    // in a LaunchedEffect, which runs only after the frame is committed) is what
-    // guarantees no frame is ever drawn with the previous round's flags — an
-    // effect-based reset let one sharp frame of the NEW image slip through.
+    // Reset synchronously on a round identity change so no previous-round image
+    // or reveal state can leak into the first frame of the new round.
     var stateForPhase by remember { mutableStateOf<Any?>(null) }
     if (stateForPhase !== phase) {
         stateForPhase = phase
@@ -179,26 +171,14 @@ fun GuessingPlayScreen(
         timedOut = false
         remainingMs = durationMs
         imageFetchFailed = false
-        pixelBitmap = null
-        fetchedImage = null
-        // Nothing is displayable until the fetch AND (in pixel mode) the level
-        // build finish, so the card shows the spinner rather than a raw image.
+        mysteryBitmap = null
         imageReady = false
     }
 
-    // Lifelines (Phase 4): supply is shared across the whole game (this screen
-    // stays composed for every round); the revealed letters reset each round.
-    // Each use uncovers 2 more leading letters of the target's name.
     var hintsLeft by remember { mutableStateOf(HintEngine.guessSupply(totalRounds)) }
     var hintLetters by remember(round) { mutableStateOf(0) }
 
     val revealed = submitted != null || timedOut || roundResult != null
-    // Recomposition isolation (Phase 6): the frame-clock loop below writes
-    // [remainingMs] ~60×/s. Nothing at screen scope reads it directly anymore:
-    //  - the progress bar gets a LAMBDA it invokes in its own draw phase
-    //    (zero recompositions), and the image card derives quantized values;
-    //  - the seconds readout derives a once-per-second Int via derivedStateOf,
-    //    so this whole screen recomposes once a second instead of every frame.
     val timerFrac = remember(durationMs) {
         { if (durationMs > 0) (remainingMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f }
     }
@@ -206,84 +186,48 @@ fun GuessingPlayScreen(
         derivedStateOf { ((remainingMs + 999) / 1000).toInt() }
     }
 
-    // NOTE: the pixel-level bitmaps are deliberately NOT recycled here.
-    //
-    // This used to eagerly recycle them on dispose "instead of waiting for the
-    // GC on low-RAM devices". That is what corrupted the mystery image. The
-    // bitmaps are still referenced by the Compose draw layer at that moment:
-    //  - the screen sits inside NazoApp's AnimatedContent, which keeps the
-    //    OUTGOING screen composed and drawing for the whole 220ms cross-fade;
-    //  - a rotation/config change disposes and re-composes around the same
-    //    frames.
-    // recycle() frees the native pixel buffer immediately, so those in-flight
-    // draws read freed memory: the shape still resolves (which is why the
-    // character's outline stayed recognisable) but the colours came back as
-    // garbage — the yellow/purple speckle.
-    //
-    // Letting the GC collect them is correct and safe: the levels are pure
-    // downscales of one capped 1600px decode, so the whole set is only about
-    // 1.33x the original bitmap, and they become unreachable as soon as the
-    // round's state is replaced.
-
-    // Reset per round, then pre-fetch the image BYTES before the timer may start,
-    // so the countdown (and the linear un-blur) only ever runs against pixels
-    // that are actually on screen. A failed / timed-out pre-fetch falls back to
-    // the drawn placeholder instead of blocking the round.
+    // The old guessing implementation manually fetched raw bytes and handed
+    // those bytes straight to AsyncImage. That created two independent decode /
+    // draw paths: manual BitmapFactory for pixel mode and Coil ByteArray decoding
+    // for blur mode. The original image worked when Coil owned the URL request.
+    // Decode once through Coil again, explicitly forcing a software ARGB_8888 /
+    // sRGB bitmap, then render that exact Bitmap in both modes.
     LaunchedEffect(phase) {
-        // Per-round state is already reset synchronously during composition above,
-        // so nothing here needs to clear it (doing so in an effect is exactly what
-        // allowed a sharp frame to leak).
         if (imageUrl == null) {
-            imageReady = true // no URL at all → straight to the placeholder
+            imageReady = true
             return@LaunchedEffect
         }
-        // Pre-fetch the image BYTES over plain HTTP so the countdown only ever
-        // runs against pixels Coil can decode instantly (ByteArray model).
-        // A failed / timed-out fetch falls back to the drawn placeholder.
-        val bytes = withContext(Dispatchers.IO) {
+
+        val request = ImageRequest.Builder(context)
+            .data(imageUrl)
+            .allowHardware(false)
+            .bitmapConfig(Bitmap.Config.ARGB_8888)
+            .colorSpace(ColorSpace.get(ColorSpace.Named.SRGB))
+            .premultipliedAlpha(true)
+            .crossfade(false)
+            .build()
+
+        val bitmap = withContext(Dispatchers.IO) {
             runCatching {
-                withTimeout(20_000L) { GuessImageFetcher.fetchImageBytes(imageUrl) }
+                withTimeout(20_000L) {
+                    val result = imageLoader.execute(request)
+                    val drawable = (result as? SuccessResult)?.drawable
+                    (drawable as? BitmapDrawable)?.bitmap
+                }
             }.getOrNull()
         }
-        imageFetchFailed = bytes == null
-        ImageDiagnostics.log("fetch/raw", bytes = bytes)
-        // PortraitCrop is DISABLED for display.
-        //
-        // Owner directive after six failed fixes: show the image exactly as
-        // fetched and apply the reveal effect over it, never into it.
-        // toPassportPortrait decodes the bytes, crops, rescales and RE-ENCODES
-        // them, which is the single heaviest transform in the pipeline and the
-        // one most able to corrupt the pixels. Every attempt to fix the
-        // corruption while that round trip existed failed, and several made it
-        // worse.
-        //
-        // The raw fetched bytes now go straight to the renderer. The auto-crop
-        // preference is retained (it still gates this call) so the feature can
-        // be restored once the corruption is confirmed gone and the crop path
-        // can be re-tested in isolation.
-        val displayBytes = bytes
-        // For the pixelated reveal, pre-scale one bitmap per pixel level so
-        // the un-pixelating is a cheap draw per frame. A fetch or decode
-        // failure leaves this null → the card falls back to the blur reveal.
-        //
-        // ORDER MATTERS: the levels are built BEFORE the bytes are published and
-        // before imageReady flips. If fetchedImage were set first, the card would
-        // become displayable while the bitmap was still null, and pixel mode
-        // would fall through to the sharp AsyncImage branch for those frames —
-        // the "character flashes unpixelated" bug.
-        val decoded = if (revealStyle == "pixel" && displayBytes != null) {
-            withContext(Dispatchers.IO) { decodeMysteryBitmap(displayBytes) }
-        } else null
-        pixelBitmap = decoded
-        fetchedImage = displayBytes
+
+        if (bitmap != null) {
+            ImageDiagnostics.log("coil/decoded", bitmap = bitmap)
+        }
+        mysteryBitmap = bitmap
+        imageFetchFailed = bitmap == null
         imageReady = true
+        ImageDiagnostics.log("display/bitmap", bitmap = mysteryBitmap)
     }
 
     // Lifecycle-safe countdown, driven by the frame clock (monotonic, drift-free).
-    // The blur radius is a linear function of [remainingMs] — it decreases exactly
-    // in step with the timer. The loop stops the moment the player answers.
-    // (Note: `submitted`/`timedOut` are read as state INSIDE the loop — a plain
-    // `revealed` val would be captured at effect start and go stale.)
+    // The loop stops as soon as the player answers or the timer reaches zero.
     LaunchedEffect(imageReady, payload) {
         if (!imageReady || payload == null) return@LaunchedEffect
         val startNanos = withFrameNanos { it }
@@ -298,7 +242,6 @@ fun GuessingPlayScreen(
                 val sec = ((remaining + 999) / 1000).toInt()
                 if (sec != lastTickSecond) {
                     lastTickSecond = sec
-                    // Same escalating final-5-seconds ramp as the quiz mode.
                     when (sec) {
                         5 -> Haptics.tick(context, 30)
                         4 -> Haptics.tick(context, 36)
@@ -333,13 +276,10 @@ fun GuessingPlayScreen(
         onRoundComplete(correct, answer, remainingMs)
     }
 
-    // Intercept the system back gesture/button too, so leaving via gesture shows
-    // the same "quit game?" confirmation as the X button.
     BackHandler(enabled = true) { showQuitDialog = !showQuitDialog }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
-            // Fixed header: stays put while the game content scrolls below it.
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -395,7 +335,6 @@ fun GuessingPlayScreen(
 
                 if (payload != null) {
                     Spacer(Modifier.height(16.dp))
-                    // The shrinking bar makes the linear time decay visible.
                     LinearProgressIndicator(
                         progress = timerFrac,
                         modifier = Modifier
@@ -410,15 +349,7 @@ fun GuessingPlayScreen(
 
             Spacer(Modifier.height(20.dp))
 
-            // Content area gets the remaining height: Preparing/Error cards center
-            // in it (same layout pattern as the quiz's LoadingScreen), and the
-            // Playing content scrolls when it outgrows the screen.
             when (phase) {
-                // The card is centred in the remaining height, but in landscape
-                // it is TALLER than that space, so the bottom (the Cancel
-                // button) was clipped away with no way to scroll to it.
-                // Scrolling the box keeps the card centred when it fits and
-                // reachable when it does not.
                 is GuessPhase.Preparing -> Box(
                     modifier = Modifier
                         .weight(1f)
@@ -458,79 +389,68 @@ fun GuessingPlayScreen(
                         .navigationBarsPadding()
                         .padding(bottom = 24.dp),
                     image = {
-                    // key(phase): the prefetch path goes straight from one Playing
-                    // round to the next WITHOUT passing through Preparing, so this
-                    // card would otherwise stay composed across the boundary and
-                    // keep the previous round's reveal animation state (which ends
-                    // at 0 = fully sharp). Keying tears it down so every round
-                    // starts from a fresh, fully-obscured animation.
-                    key(phase) {
-                        MysteryImageCard(
-                            imageUrl = phase.imageUrl,
-                            imageReady = imageReady,
-                            imageFetchFailed = imageFetchFailed,
-                            imageBytes = fetchedImage,
-                            query = phase.payload.imageQuery.ifBlank { topic },
-                            round = round,
-                            progress = timerFrac,
-                            revealed = revealed,
-                            revealStyle = revealStyle,
-                            startFraction = startFraction,
-                            pixelBitmap = pixelBitmap,
-                            imageLoader = imageLoader,
-                        )
-                    }
-                    },
-                    answer = {
-                    // Lifeline row (Phase 4): masked name grows in from the left as
-                    // letters get revealed; hint button on the right, greyed once spent
-                    // or after the round is decided.
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        AnimatedVisibility(
-                            visible = hintLetters > 0,
-                            enter = expandHorizontally(tween(280)) + fadeIn(tween(280)),
-                            exit = shrinkHorizontally(tween(200)) + fadeOut(tween(160)),
-                        ) {
-                            HintRevealPill(
-                                text = HintEngine.maskedReveal(phase.payload.targetEntity, hintLetters),
+                        key(phase) {
+                            MysteryImageCard(
+                                imageUrl = phase.imageUrl,
+                                imageReady = imageReady,
+                                imageFetchFailed = imageFetchFailed,
+                                query = phase.payload.imageQuery.ifBlank { topic },
+                                round = round,
+                                progress = timerFrac,
+                                revealed = revealed,
+                                revealStyle = revealStyle,
+                                startFraction = startFraction,
+                                mysteryBitmap = mysteryBitmap,
                             )
                         }
-                        Spacer(Modifier.weight(1f))
-                        HintPill(
-                            remaining = hintsLeft,
-                            enabled = hintsLeft > 0 && !revealed,
-                            onClick = {
-                                Haptics.light(context)
-                                hintsLeft--
-                                hintLetters += HintEngine.GUESS_LETTERS_PER_HINT
-                            },
-                        )
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    when (GuessScoring.specFor(difficultyLabel).inputMode) {
-                        GuessInputMode.CHOICE -> ChoiceInput(
-                            payload = phase.payload,
-                            revealed = revealed,
-                            submitted = submitted,
-                            onSubmit = { answer -> submitAnswer(answer) },
-                        )
-                        GuessInputMode.AUTOCOMPLETE -> AutocompleteInput(
-                            payload = phase.payload,
-                            revealed = revealed,
-                            onSubmit = { answer -> submitAnswer(answer) },
-                        )
-                    }
-                    if (roundResult != null) {
-                        Spacer(Modifier.height(16.dp))
-                        RevealCard(
-                            result = roundResult,
-                            totalRounds = totalRounds,
-                            onNext = onNextRound,
-                        )
-                    }
+                    },
+                    answer = {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            AnimatedVisibility(
+                                visible = hintLetters > 0,
+                                enter = expandHorizontally(tween(280)) + fadeIn(tween(280)),
+                                exit = shrinkHorizontally(tween(200)) + fadeOut(tween(160)),
+                            ) {
+                                HintRevealPill(
+                                    text = HintEngine.maskedReveal(phase.payload.targetEntity, hintLetters),
+                                )
+                            }
+                            Spacer(Modifier.weight(1f))
+                            HintPill(
+                                remaining = hintsLeft,
+                                enabled = hintsLeft > 0 && !revealed,
+                                onClick = {
+                                    Haptics.light(context)
+                                    hintsLeft--
+                                    hintLetters += HintEngine.GUESS_LETTERS_PER_HINT
+                                },
+                            )
+                        }
+                        Spacer(Modifier.height(14.dp))
+                        when (GuessScoring.specFor(difficultyLabel).inputMode) {
+                            GuessInputMode.CHOICE -> ChoiceInput(
+                                payload = phase.payload,
+                                revealed = revealed,
+                                submitted = submitted,
+                                onSubmit = { answer -> submitAnswer(answer) },
+                            )
+                            GuessInputMode.AUTOCOMPLETE -> AutocompleteInput(
+                                payload = phase.payload,
+                                revealed = revealed,
+                                onSubmit = { answer -> submitAnswer(answer) },
+                            )
+                        }
+                        if (roundResult != null) {
+                            Spacer(Modifier.height(16.dp))
+                            RevealCard(
+                                result = roundResult,
+                                totalRounds = totalRounds,
+                                onNext = onNextRound,
+                            )
+                        }
                     },
                 )
 
@@ -549,7 +469,6 @@ fun GuessingPlayScreen(
     }
 }
 
-/** Rolling countdown circle (same pattern as the quiz mode's timer). */
 @Composable
 private fun TimerCircle(seconds: Int) {
     val timerColor by animateColorAsState(
@@ -587,20 +506,6 @@ private fun TimerCircle(seconds: Int) {
     }
 }
 
-/**
- * The mystery image. While [imageReady] is false the fetch spinner shows (the
- * timer has not started). Once ready, the image — or the drawn placeholder when
- * the fetch failed — sits under an on-device blur layer whose radius is a
- * LINEAR function of the remaining time, with a subtle zoom-out as it sharpens.
- */
-/**
- * Round layout for the guessing game.
- *
- * Portrait: mystery image, then the hint row, input and reveal underneath.
- *
- * Landscape: image on the left, everything you interact with on the right, so
- * the input stays above the keyboard instead of being pushed off-screen.
- */
 @Composable
 private fun GuessPlayBody(
     modifier: Modifier = Modifier,
@@ -635,35 +540,26 @@ private fun GuessPlayBody(
     }
 }
 
+/**
+ * Draws the mystery image from the single decoded software Bitmap. Blur and
+ * pixelation now operate on exactly the same source pixels, removing the old
+ * split between Coil ByteArray rendering and manual BitmapFactory rendering.
+ */
 @Composable
 private fun MysteryImageCard(
     imageUrl: String?,
     imageReady: Boolean,
     imageFetchFailed: Boolean,
-    imageBytes: ByteArray?,
     query: String,
     round: Int,
     progress: () -> Float,
     revealed: Boolean,
     revealStyle: String,
     startFraction: Float,
-    pixelBitmap: Bitmap?,
-    imageLoader: ImageLoader,
+    mysteryBitmap: Bitmap?,
 ) {
-    // The reveal eases frame-for-frame with [progress]: a blur radius, or a
-    // pixelation fraction (0..startFraction) for the pixel style. Once the
-    // round is revealed — a correct OR a wrong answer, or the timer at 0 —
-    // either one eases to fully sharp, so the player actually sees who it
-    // was instead of just reading the name. A decode failure in pixel mode
-    // (pixelBitmap == null) silently falls back to the blur.
-    // When the decode fails (pixelBitmap == null) this stays false and the BLUR
-    // reveal drives instead — pixel mode must never fall through to the bare
-    // AsyncImage branch, which is fully sharp and would expose the character.
-    val usePixels = revealStyle == "pixel" && pixelBitmap != null
-    // [progress] is a deferred read of the per-frame timer. Both animation
-    // targets below are QUANTIZED derivedStateOf values (whole blur dp / pixel
-    // level steps), so this card recomposes only when a visible step actually
-    // changes (~a few dozen times per round) — never on every timer frame.
+    val usePixels = revealStyle == "pixel" && mysteryBitmap != null
+
     val blurTarget by remember(usePixels, revealed, startFraction, progress) {
         derivedStateOf {
             if (usePixels || revealed) 0 else (progress() * MAX_BLUR * startFraction).toInt()
@@ -674,17 +570,7 @@ private fun MysteryImageCard(
         animationSpec = tween(350, easing = FastOutSlowInEasing),
         label = "mysteryBlur"
     )
-    // NOTE: the pixel target is deliberately NOT gated on [usePixels]. The card
-    // is composed during the fetch — before [pixelBitmap] exists — and
-    // animateFloatAsState captures its INITIAL value from the first
-    // composition's target. Gating on usePixels made that initial value 0
-    // (sharp), so the image would appear un-pixelated and ease UP into the
-    // pixelation. Without the gate the effect is already at full starting
-    // strength (progress ≈ 1.0 during the fetch) the moment the pixels render,
-    // then lifts as the timer runs — and drops to 0 on reveal.
-    // The target is quantized to the pixel-level grid: its only consumer with
-    // that precision is [levelIndex], so finer values just caused per-frame
-    // recompositions (the 350ms tween still glides between steps).
+
     val pixelSteps = (PIXEL_LEVELS.size - 1).toFloat()
     val pixelTarget by remember(revealed, startFraction, progress) {
         derivedStateOf {
@@ -705,8 +591,6 @@ private fun MysteryImageCard(
     }
     val levelIndex = (pixelEffect * (PIXEL_LEVELS.size - 1)).roundToInt()
 
-    // 300dp is taller than the whole content area in landscape, so the image
-    // is capped against the available height there instead.
     val cardHeight = if (isLandscape()) {
         (LocalConfiguration.current.screenHeightDp * 0.62f).dp.coerceAtMost(300.dp)
     } else {
@@ -720,36 +604,27 @@ private fun MysteryImageCard(
             .background(NazoSurfaceVariant)
     ) {
         if (imageReady) {
-            // Clamp the blur to the card's shape so the blurred edge follows
-            // the rounded corners instead of the default rectangle. Cosmetic
-            // only — the corruption this was once thought to cause was in fact
-            // premultiplied alpha in the decoded bitmap.
-            Box(modifier = Modifier.fillMaxSize().scale(revealScale).then(
-                if (usePixels) {
-                    Modifier
-                } else {
-                    Modifier.blur(
-                        radius = blurRadius,
-                        edgeTreatment = BlurredEdgeTreatment(RoundedCornerShape(28.dp)),
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .scale(revealScale)
+                    .then(
+                        if (usePixels) {
+                            Modifier
+                        } else {
+                            Modifier.blur(
+                                radius = blurRadius,
+                                edgeTreatment = BlurredEdgeTreatment(RoundedCornerShape(28.dp)),
+                            )
+                        }
                     )
-                }
-            )) {
-                when {
-                    imageFetchFailed || imageUrl == null ->
-                        GuessImagePlaceholder(query = query.ifBlank { "Mystery image" })
-                    usePixels ->
-                        PixelatedImage(
-                            bitmap = pixelBitmap!!,
-                            cellSize = PIXEL_LEVELS[levelIndex],
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    else -> AsyncImage(
-                        // Pre-fetched bytes decode instantly; the raw URL is a
-                        // last-ditch fallback if the byte fetch was skipped.
-                        model = imageBytes ?: imageUrl,
-                        imageLoader = imageLoader,
-                        contentScale = ContentScale.Crop,
-                        contentDescription = "Mystery image, round $round",
+            ) {
+                if (imageFetchFailed || imageUrl == null || mysteryBitmap == null) {
+                    GuessImagePlaceholder(query = query.ifBlank { "Mystery image" })
+                } else {
+                    PixelatedImage(
+                        bitmap = mysteryBitmap,
+                        cellSize = if (usePixels) PIXEL_LEVELS[levelIndex] else 1,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -766,10 +641,6 @@ private fun MysteryImageCard(
                 .padding(horizontal = 10.dp, vertical = 5.dp)
         ) {
             Text(
-                // BUILD MARKER: proves which build is installed. If this badge
-                // does not read "ROUND n · RAW" then the running APK predates
-                // the raw-image change, and no amount of further fixing will
-                // show up on the device. Remove once the pipeline is settled.
                 text = "ROUND $round · RAW",
                 color = Color.White,
                 style = MaterialTheme.typography.labelSmall,
@@ -798,10 +669,6 @@ private fun ImageFetchingIndicator() {
     }
 }
 
-/**
- * High-quality on-device fallback shown when no image could be fetched:
- * a themed dark card with the app emblem and the search query.
- */
 @Composable
 private fun GuessImagePlaceholder(query: String) {
     Box(
@@ -844,7 +711,6 @@ private fun GuessImagePlaceholder(query: String) {
     }
 }
 
-/** Easy/Medium input: the standard 4-choice buttons from `easy_medium_options`. */
 @Composable
 private fun ChoiceInput(
     payload: GuessPayload,
@@ -925,10 +791,6 @@ private fun ChoiceInput(
     }
 }
 
-/**
- * Hard/Otaku input: a text field with fuzzy auto-complete over
- * `hard_autocomplete_pool`. A SINGLE TAP on a suggestion auto-submits it.
- */
 @Composable
 private fun AutocompleteInput(
     payload: GuessPayload,
@@ -1021,7 +883,6 @@ private fun AutocompleteInput(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
-                        // Single tap on a suggestion auto-submits the answer.
                         .clickable {
                             focusManager.clearFocus()
                             onSubmit(suggestion)
@@ -1068,7 +929,6 @@ private fun AutocompleteInput(
     }
 }
 
-/** Shown in place after the round resolves — reveals the answer + points. */
 @Composable
 private fun RevealCard(
     result: GuessRoundResult,
@@ -1176,7 +1036,6 @@ private fun RevealCard(
     }
 }
 
-/** Spinner card while the round payload and image URL are being fetched. */
 @Composable
 private fun PreparingCard(round: Int, totalRounds: Int, topic: String, onCancel: () -> Unit) {
     val landscape = isLandscape()
@@ -1232,14 +1091,11 @@ private fun PreparingCard(round: Int, totalRounds: Int, topic: String, onCancel:
             Spacer(Modifier.height(if (landscape) 12.dp else 20.dp))
             WavySpinner(color = NazoPrimary, modifier = Modifier.size(if (landscape) 32.dp else 44.dp))
             Spacer(Modifier.height(if (landscape) 14.dp else 24.dp))
-            // Same physical "Cancel" button the quiz's loading screen has.
             CancelTextButton(label = "Cancel", onClick = onCancel)
         }
     }
 }
 
-/** Flat full-width text button — same look as the quiz loading screen's,
- *  with a full-width outline so it reads as a button at a glance. */
 @Composable
 private fun CancelTextButton(label: String, onClick: () -> Unit) {
     Box(
@@ -1262,7 +1118,6 @@ private fun CancelTextButton(label: String, onClick: () -> Unit) {
     }
 }
 
-/** Card for unrecoverable round errors (no connection / no provider / API failure). */
 @Composable
 private fun ErrorCard(
     message: String,
@@ -1317,7 +1172,6 @@ private fun ErrorCard(
     }
 }
 
-/** Same quit-confirmation pattern as the quiz mode. */
 @Composable
 private fun QuitDialog(
     show: Boolean,
