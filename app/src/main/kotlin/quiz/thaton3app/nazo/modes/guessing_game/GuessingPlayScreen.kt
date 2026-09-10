@@ -1,5 +1,7 @@
 package quiz.thaton3app.nazo.modes.guessing_game
 
+import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -11,6 +13,8 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -71,6 +75,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
@@ -86,8 +92,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import coil.ImageLoader
 import coil.request.ImageRequest
+import coil.request.SuccessResult
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -100,6 +107,10 @@ import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.WavySpinner
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
+import quiz.thaton3app.nazo.vision.PortraitCrop
+
+/** Fully-blurred at the start of the timer; 0 = fully sharp at the end. */
+private const val MAX_BLUR = 28f
 
 /**
  * The active guessing-game screen: a mystery image with an on-device reveal
@@ -127,7 +138,7 @@ fun GuessingPlayScreen(
     roundResult: GuessRoundResult?,
     revealStyle: String = "pixel",
     // Appearance → Guessing Game: retained for the future crop path.
-    @Suppress("UNUSED_PARAMETER") autoCrop: Boolean = true,
+    autoCrop: Boolean = true,
     onRetryRound: () -> Unit,
     onOpenSettings: () -> Unit,
     onQuit: () -> Unit,
@@ -148,6 +159,8 @@ fun GuessingPlayScreen(
     // One software bitmap is the single source of truth for both reveal paths.
     var remainingMs by remember { mutableLongStateOf(durationMs) }
     var showQuitDialog by remember { mutableStateOf(false) }
+    var mysteryBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    val imageLoader = remember { ImageLoader(context) }
 
     // Reset synchronously on a round identity change so no previous-round image
     // or reveal state can leak into the first frame of the new round.
@@ -159,6 +172,7 @@ fun GuessingPlayScreen(
         remainingMs = durationMs
         imageFetchFailed = false
         imageReady = false
+        mysteryBitmap = null
     }
 
     var hintsLeft by remember { mutableStateOf(HintEngine.guessSupply(totalRounds)) }
@@ -172,11 +186,46 @@ fun GuessingPlayScreen(
         derivedStateOf { ((remainingMs + 999) / 1000).toInt() }
     }
 
-    // RAW MODE: no pre-fetch, no manual decode. Coil loads the URL directly in
-    // MysteryImageCard, so there is no second decode path to disagree with it.
-    // imageReady flips immediately; Coil shows its own progressive load.
+    // Decode ONCE, through Coil, into a software bitmap.
+    //
+    // This keeps the exact path that finally produced clean colour: Coil owns
+    // the download and decode, and this app never re-encodes or rewrites the
+    // pixels. The reveal effects below are applied OVER this bitmap at draw
+    // time, never baked into it.
+    //
+    // allowHardware(false) is required: the reveal draws the image inside a
+    // layer, and GPU-resident hardware bitmaps can render with wrong colour in
+    // that situation. A software ARGB_8888 buffer is predictable.
     LaunchedEffect(phase) {
-        imageFetchFailed = false
+        if (imageUrl == null) {
+            imageFetchFailed = true
+            imageReady = true
+            return@LaunchedEffect
+        }
+        val request = ImageRequest.Builder(context)
+            .data(imageUrl)
+            .allowHardware(false)
+            .allowRgb565(false)
+            .crossfade(false)
+            .build()
+        val decoded = withContext(Dispatchers.IO) {
+            runCatching {
+                withTimeout(20_000L) {
+                    val result = imageLoader.execute(request)
+                    ((result as? SuccessResult)?.drawable as? BitmapDrawable)?.bitmap
+                }
+            }.getOrNull()
+        }
+        // Optional reframe (Appearance → Guessing Game). This crops the decoded
+        // bitmap in memory — it does NOT re-encode it, which is what the old
+        // byte-level PortraitCrop round trip did. The pixels that survive the
+        // crop are the exact pixels Coil decoded.
+        mysteryBitmap = if (autoCrop && decoded != null) {
+            withContext(Dispatchers.Default) { PortraitCrop.reframe(decoded) }
+        } else {
+            decoded
+        }
+        imageFetchFailed = mysteryBitmap == null
         imageReady = true
     }
 
@@ -354,6 +403,7 @@ fun GuessingPlayScreen(
                                 revealed = revealed,
                                 revealStyle = revealStyle,
                                 startFraction = startFraction,
+                                mysteryBitmap = mysteryBitmap,
                             )
                         }
                     },
@@ -509,10 +559,49 @@ private fun MysteryImageCard(
     revealed: Boolean,
     revealStyle: String,
     startFraction: Float,
+    mysteryBitmap: Bitmap?,
 ) {
-    // Reveal animation state is intentionally gone while raw mode is active.
-    // revealStyle / progress / revealed / startFraction are still accepted so
-    // restoring the effects is a one-commit revert.
+    val usePixels = revealStyle == "pixel" && mysteryBitmap != null
+
+    // Blur reveal: full strength at the start of the timer, easing to sharp.
+    // Skipped entirely in pixel mode and once the round is decided.
+    val blurTarget by remember(usePixels, revealed, startFraction, progress) {
+        derivedStateOf {
+            if (usePixels || revealed) 0 else (progress() * MAX_BLUR * startFraction).toInt()
+        }
+    }
+    val blurRadiusDp by animateIntAsState(
+        targetValue = blurTarget,
+        animationSpec = tween(350, easing = FastOutSlowInEasing),
+        label = "mysteryBlur",
+    )
+
+    // Pixel reveal. Deliberately NOT gated on usePixels: the card composes
+    // during the fetch, before the bitmap exists, and animateFloatAsState
+    // captures its initial value from that first composition. Gating it made
+    // the initial value 0 (sharp), so the image appeared unobscured for a frame
+    // and then eased INTO pixelation — leaking the answer. Ungated, the effect
+    // is already at full strength when the pixels first render.
+    val pixelSteps = (PIXEL_LEVELS.size - 1).toFloat()
+    val pixelTarget by remember(revealed, startFraction, progress) {
+        derivedStateOf {
+            val raw = if (revealed) 0f else progress() * startFraction
+            (raw * pixelSteps).roundToInt() / pixelSteps
+        }
+    }
+    val pixelEffect by animateFloatAsState(
+        targetValue = pixelTarget,
+        animationSpec = tween(350, easing = FastOutSlowInEasing),
+        label = "mysteryPixel",
+    )
+
+    val blurRadius = blurRadiusDp.dp
+    val revealScale = if (usePixels) {
+        1f + 0.12f * (pixelEffect / startFraction)
+    } else {
+        1f + 0.12f * blurRadiusDp / MAX_BLUR
+    }
+    val levelIndex = (pixelEffect * (PIXEL_LEVELS.size - 1)).roundToInt()
 
     val cardHeight = if (isLandscape()) {
         (LocalConfiguration.current.screenHeightDp * 0.62f).dp.coerceAtMost(300.dp)
@@ -526,53 +615,36 @@ private fun MysteryImageCard(
             .clip(RoundedCornerShape(28.dp))
             .background(NazoSurfaceVariant)
     ) {
-        // RAW-IMAGE DIAGNOSTIC MODE.
-        //
-        // Everything between the network and the screen has been removed:
-        //  - no BitmapFactory decode of our own
-        //  - no alpha flattening, colour-space pinning or config forcing
-        //  - no PortraitCrop face crop / rescale / re-encode
-        //  - no pixelation, no blur, no reveal scale
-        //
-        // Coil is handed the URL and renders whatever it downloads. This is the
-        // simplest path the image can possibly take, so if it STILL renders
-        // wrong then nothing in this app's image handling is at fault and the
-        // problem is the source bytes (or the device/Coil decode of them). If
-        // it renders correctly, the fault is provably in one of the removed
-        // stages and they can be restored one at a time.
-        //
-        // The mystery is deliberately spoiled while this mode is active: the
-        // answer is visible from the first frame. That is expected.
-        if (imageUrl.isNullOrBlank()) {
+        if (!imageReady) {
+            ImageFetchingIndicator()
+        } else if (imageFetchFailed || mysteryBitmap == null) {
             GuessImagePlaceholder(query = query.ifBlank { "Mystery image" })
         } else {
-            // An image CANNOT be shown without being decoded — compressed bytes
-            // are not pixels. The most raw form available is therefore: let the
-            // decoder do it, and make it produce a plain, unambiguous buffer.
-            //
-            // allowHardware(false) is the important line. By default Coil
-            // decodes into a HARDWARE bitmap: GPU-resident, with no CPU-visible
-            // pixel data and a device-dependent internal format. Those are the
-            // fastest to draw but the most fragile — on some GPUs and drivers a
-            // hardware bitmap composited inside a layer renders with wrong or
-            // scrambled colour, which matches the remaining corruption exactly
-            // (a recognisable image with the palette scattered). Forcing a
-            // software ARGB_8888 buffer removes the driver from the equation.
-            //
-            // No colour-space or alpha overrides here on purpose: those were
-            // tried and were not the cause. This changes only WHERE the pixels
-            // live, not what they contain.
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(imageUrl)
-                    .allowHardware(false)
-                    .allowRgb565(false)
-                    .crossfade(false)
-                    .build(),
-                contentDescription = "Mystery image, round $round",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
+            // The reveal is applied OVER the bitmap, never into it: blur is a
+            // draw modifier and the pixelation resamples at draw time. The
+            // decoded pixels are only ever read, which is the arrangement that
+            // finally produced correct colour.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .scale(revealScale)
+                    .then(
+                        if (usePixels) {
+                            Modifier
+                        } else {
+                            Modifier.blur(
+                                radius = blurRadius,
+                                edgeTreatment = BlurredEdgeTreatment(RoundedCornerShape(28.dp)),
+                            )
+                        }
+                    )
+            ) {
+                PixelatedImage(
+                    bitmap = mysteryBitmap,
+                    cellSize = if (usePixels) PIXEL_LEVELS[levelIndex] else 1,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
         // Source label (diagnostic): the host and file type actually being
         // rendered. Different sources serve different formats, and knowing
@@ -608,8 +680,7 @@ private fun MysteryImageCard(
                 .padding(horizontal = 10.dp, vertical = 5.dp)
         ) {
             Text(
-                // Build marker: confirms the running APK contains this change.
-                text = "ROUND $round · RAW2",
+                text = "ROUND $round",
                 color = Color.White,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,

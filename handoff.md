@@ -26,31 +26,26 @@ Conventions:
 
 ---
 
-## Open item: guessing-game image quality
+## Resolved: guessing-game image quality
 
-**Status: likely root cause identified — awaiting device confirmation.**
+**CONFIRMED FIXED on device (2026-09-11).**
 
-Long-running issue where the mystery image rendered with wrong, smeared colour.
-Many render-side theories were tried and all failed (premultiplied alpha,
-bitmap recycling, colour-space pinning, blur edge treatment, nearest-neighbour
-downscaling). Stripping the whole pipeline to a bare `AsyncImage` on the URL
-removed about half the corruption, which proved the remaining fault was NOT in
-this app's rendering.
+A long-running issue where the mystery image rendered with wrong, smeared
+colour. Many render-side theories were tried and all failed — premultiplied
+alpha, bitmap recycling, colour-space pinning, blur edge treatment,
+nearest-neighbour downscaling — because none of them was the cause.
 
-The owner then made the decisive observation: **every round's image came from
-`media.kitsu.app`, always JPEG**, regardless of the anime. That is the answer to
-"why does it look like that" — see the entry below.
+Two steps found it:
 
-Still to do once the image is confirmed good:
-- Restore the pixelation and blur reveals (currently removed; the answer is
-  visible from the first frame).
-- Restore `PortraitCrop` face cropping (currently bypassed).
-- Remove the `RAW2` build marker from the round badge.
-- Delete `vision/ImageDiagnostics.kt` and its call sites.
-- Keep the image-source badge — the owner wants it as a real feature, in its
-  current form (host + extension only, never the character name).
+1. Stripping the pipeline to a bare `AsyncImage` on the URL removed about half
+   the corruption, proving the remaining fault was NOT in this app's rendering.
+2. The owner then observed that **every** round's image came from
+   `media.kitsu.app` as JPEG, whatever the anime. That was the answer: the app
+   was requesting Kitsu's re-encoded thumbnail rendition.
 
----
+Lesson worth keeping: when a visual bug survives several correct-looking fixes,
+stop theorising about the render path and cut it out entirely. The bisect found
+in one build what six targeted fixes could not.
 
 ## [2026-09-11] fix: take Kitsu's original image instead of its re-encoded thumbnail
 
@@ -95,3 +90,57 @@ Files: `modes/guessing_game/GuessImageFetcher.kt`.
    `media.kitsu.app`, Kitsu's originals are themselves poor and the ladder
    should be reordered to prefer AniList/MAL. If it names a different host,
    that host is the new suspect.
+
+---
+
+## [2026-09-11] feat: reveal effects restored; reframing no longer re-encodes
+
+With the colour fixed, the game comes back to full behaviour — rebuilt on the
+arrangement that produced clean colour, not the one that predated it.
+
+**Reveals.** Pixelation and blur are back, applied OVER the decoded bitmap: blur
+is a draw modifier, pixelation resamples at draw time via `PixelatedImage`. The
+decoded pixels are only ever read. The pixel target is deliberately not gated on
+`usePixels` — the card composes before the bitmap exists, and gating made
+`animateFloatAsState` capture 0 (sharp) as its initial value, which flashed the
+answer for a frame before easing into pixelation.
+
+**Decode.** One decode, by Coil, into a software `ARGB_8888` bitmap.
+`allowHardware(false)` is required rather than cosmetic: the reveal draws the
+image inside a layer, and GPU-resident hardware bitmaps can render with wrong
+colour in that situation.
+
+**Reframing.** `PortraitCrop.reframe(Bitmap)` replaces the byte-level
+`toPassportPortrait`. It crops the already-decoded bitmap and returns a view of
+it — no decode, no rescale, no re-encode. The old path did
+decode → crop → rescale → JPEG/PNG encode → decode again, losing quality every
+round for no benefit; it and its helpers are deleted.
+
+Framing is toned down per the owner: frame height is 4.6x the face (was 3.25) at
+4:5 (was 3:4), and any crop keeping 85% or more of the image is skipped, so a
+well-composed portrait is left untouched.
+
+**Removed.** The `RAW2` build marker and `vision/ImageDiagnostics.kt`. The
+image-source badge stays as a permanent feature — host and extension only, never
+the character name.
+
+Files: `modes/guessing_game/GuessingPlayScreen.kt`, `vision/PortraitCrop.kt`,
+`vision/ImageDiagnostics.kt` (deleted).
+
+### How to test it live
+
+1. **Colour is still correct.** Play a round; the image must look as clean as
+   the last build. This is the thing not to regress.
+2. **Pixel reveal.** Appearance → Guessing Game → PIXEL. The image starts as
+   coarse blocks and sharpens as the timer runs. Critically: it must be
+   obscured on the FIRST frame — no flash of the clear image.
+3. **Blur reveal.** Switch to BLUR. Starts heavily blurred, eases to sharp.
+4. **Reveal on answer.** Answer (right or wrong) before the timer ends — the
+   image should snap to fully sharp.
+5. **Crop toned down.** With auto-crop ON, images should look close to the
+   original framing, just centred on the character — not zoomed into the face.
+6. **Crop off.** Toggle auto-crop off and confirm the image is uncropped.
+7. **Source badge.** Still shown bottom-left, e.g. `media.kitsu.app · .jpg`, and
+   never showing the character name.
+8. **Landscape.** Rotate mid-round: the image, reveal and badge should all
+   behave.
