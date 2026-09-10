@@ -63,7 +63,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -206,13 +205,24 @@ fun GuessingPlayScreen(
         derivedStateOf { ((remainingMs + 999) / 1000).toInt() }
     }
 
-    // Free the pixel-level bitmaps (up to ~14 per round) as soon as the player
-    // leaves this screen, instead of waiting for the GC on low-RAM devices.
-    DisposableEffect(Unit) {
-        onDispose {
-            pixelLevels?.forEach { if (!it.isRecycled) it.recycle() }
-        }
-    }
+    // NOTE: the pixel-level bitmaps are deliberately NOT recycled here.
+    //
+    // This used to eagerly recycle them on dispose "instead of waiting for the
+    // GC on low-RAM devices". That is what corrupted the mystery image. The
+    // bitmaps are still referenced by the Compose draw layer at that moment:
+    //  - the screen sits inside NazoApp's AnimatedContent, which keeps the
+    //    OUTGOING screen composed and drawing for the whole 220ms cross-fade;
+    //  - a rotation/config change disposes and re-composes around the same
+    //    frames.
+    // recycle() frees the native pixel buffer immediately, so those in-flight
+    // draws read freed memory: the shape still resolves (which is why the
+    // character's outline stayed recognisable) but the colours came back as
+    // garbage — the yellow/purple speckle.
+    //
+    // Letting the GC collect them is correct and safe: the levels are pure
+    // downscales of one capped 1600px decode, so the whole set is only about
+    // 1.33x the original bitmap, and they become unreachable as soon as the
+    // round's state is replaced.
 
     // Reset per round, then pre-fetch the image BYTES before the timer may start,
     // so the countdown (and the linear un-blur) only ever runs against pixels

@@ -289,32 +289,35 @@ private fun NazoNavRailItem(
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(Modifier.height(5.dp))
-                // One letter per line so a narrow rail shows the whole word
-                // without rotated text. lineHeight is pulled BELOW the glyph
-                // size so the letters sit tight against each other instead of
-                // carrying default line spacing between every character.
-                label.forEach { ch ->
-                    Text(
-                        text = ch.toString(),
-                        color = currentTint,
-                        fontSize = 11.sp,
-                        lineHeight = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        // Compose reserves extra room above the first line and
-                        // below the last from the font metrics; without trimming
-                        // it the stack keeps a visible gap between every letter,
-                        // and the last letter leaves a gap before the pill's
-                        // bottom edge (most obvious on the longer "Settings").
-                        style = LocalTextStyle.current.copy(
-                            platformStyle = PlatformTextStyle(includeFontPadding = false),
-                            lineHeightStyle = LineHeightStyle(
-                                alignment = LineHeightStyle.Alignment.Center,
-                                trim = LineHeightStyle.Trim.Both,
-                            ),
+                // The whole word is drawn as ONE Text with newlines between the
+                // letters, not one Text per letter.
+                //
+                // Per-letter Texts were the cause of the leftover space under
+                // the last letter: every Text is its own layout box carrying the
+                // font's ascent/descent, and Trim.Both only trims the first and
+                // last line WITHIN a single Text — with one line per Text it
+                // trimmed nothing. The error was also proportional to the letter
+                // count, which is why 8-letter "Settings" showed a big gap and
+                // 4-letter "Home" looked fine.
+                //
+                // One Text means one layout box: Trim.Both now genuinely removes
+                // the leading above the first letter and the descent below the
+                // last, and the tight lineHeight applies BETWEEN letters.
+                Text(
+                    text = label.toCharArray().joinToString("\n"),
+                    color = currentTint,
+                    fontSize = 11.sp,
+                    lineHeight = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    style = LocalTextStyle.current.copy(
+                        platformStyle = PlatformTextStyle(includeFontPadding = false),
+                        lineHeightStyle = LineHeightStyle(
+                            alignment = LineHeightStyle.Alignment.Center,
+                            trim = LineHeightStyle.Trim.Both,
                         ),
-                    )
-                }
+                    ),
+                )
             }
         }
     }
