@@ -16,9 +16,12 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -89,6 +92,7 @@ import quiz.thaton3app.nazo.ui.onboarding.OnboardingScreen
 import quiz.thaton3app.nazo.ui.screens.*
 import quiz.thaton3app.nazo.ui.screens.GenerationState
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
+import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 import quiz.thaton3app.nazo.ui.theme.NazoTheme
 import quiz.thaton3app.nazo.widget.NazoWidgetProvider
 
@@ -112,6 +116,35 @@ sealed interface Screen {
     data object VersusHandoff : Screen
     data object VersusResults : Screen
     data object VersusReview : Screen
+}
+
+/**
+ * The Settings sub-screens that can render in the DETAIL pane of the landscape
+ * list-detail layout. Anything else (quiz, results, ...) is full-screen and
+ * returns null so it takes over the whole window.
+ */
+private fun Screen.asSettingsDetail(): Screen? = when (this) {
+    Screen.AiProvider,
+    Screen.Statistics,
+    Screen.Appearance,
+    Screen.BackupRestore,
+    Screen.About -> this
+    else -> null
+}
+
+/** Shown in the detail pane before the user has picked a settings section. */
+@Composable
+private fun SettingsDetailPlaceholder() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "Pick a section on the left",
+            style = MaterialTheme.typography.bodyMedium,
+            color = NazoTextSecondary,
+        )
+    }
 }
 
 private data class GenerationRequest(
@@ -1169,20 +1202,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // Settings show it, so the inset is applied per-screen rather than
             // stealing width from full-screen screens like the quiz.
             val railInset = if (landscape && !showOnboarding &&
-                (currentScreen == Screen.Home || currentScreen == Screen.Settings)
+                (currentScreen == Screen.Home || currentScreen == Screen.Settings ||
+                    currentScreen.asSettingsDetail() != null)
             ) NazoRailWidth else 0.dp
 
-            AnimatedContent(
-                targetState = currentScreen,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(end = railInset)
-                    .then(if (offlineDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp) else Modifier),
-                transitionSpec = {
-                    fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
-                },
-                label = "nazoScreenTransition",
-            ) { screen ->
+            // The screen switch is reused twice: once full-screen, and once as the
+            // DETAIL pane of the landscape Settings list-detail layout. Declaring
+            // it as a local composable lambda keeps a single source of truth.
+            val renderScreen: @Composable (Screen) -> Unit = { screen ->
                 when (screen) {
                     Screen.Home -> HomeScreen(
                         apiKeyActive = apiKeyStore.hasAnyActiveKey(),
@@ -1500,6 +1527,62 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 }
             }
 
+            // Landscape Settings uses a LIST-DETAIL layout: the settings list
+            // stays on the left while the chosen sub-screen renders on the
+            // right, so switching between sub-screens is one tap instead of
+            // back-then-forward. Portrait keeps the normal full-screen push.
+            val settingsDetail = currentScreen.asSettingsDetail()
+            val showListDetail = landscape && !showOnboarding &&
+                (currentScreen == Screen.Settings || settingsDetail != null)
+
+            if (showListDetail) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(end = railInset)
+                        .then(
+                            if (offlineDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp)
+                            else Modifier
+                        ),
+                ) {
+                    // Master: always the settings list.
+                    Box(modifier = Modifier.weight(0.42f)) {
+                        renderScreen(Screen.Settings)
+                    }
+                    // Detail: the selected sub-screen, or a hint when none is.
+                    Box(modifier = Modifier.weight(0.58f)) {
+                        AnimatedContent(
+                            targetState = settingsDetail,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(200)) togetherWith
+                                    fadeOut(animationSpec = tween(140))
+                            },
+                            label = "settingsDetailTransition",
+                        ) { detail ->
+                            if (detail == null) {
+                                SettingsDetailPlaceholder()
+                            } else {
+                                renderScreen(detail)
+                            }
+                        }
+                    }
+                }
+            } else {
+                AnimatedContent(
+                    targetState = currentScreen,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(end = railInset)
+                        .then(if (offlineDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp) else Modifier),
+                    transitionSpec = {
+                        fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
+                    },
+                    label = "nazoScreenTransition",
+                ) { screen ->
+                    renderScreen(screen)
+                }
+            }
+
             // The bottom nav lives OUTSIDE AnimatedContent, for the same reason
             // AmbientBackground does: anything inside gets torn down and rebuilt
             // on every screen change, so its animation state is destroyed.
@@ -1512,9 +1595,12 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // here survives the swap, so the pill genuinely animates between tabs.
             //
             // Only the two tab destinations show it; submenus stay full-screen.
-            val navTab = when (currentScreen) {
-                Screen.Home -> NazoTab.Home
-                Screen.Settings -> NazoTab.Settings
+            val navTab = when {
+                currentScreen == Screen.Home -> NazoTab.Home
+                currentScreen == Screen.Settings -> NazoTab.Settings
+                // In the landscape list-detail layout the settings list is still
+                // on screen next to its sub-screen, so the rail stays too.
+                landscape && currentScreen.asSettingsDetail() != null -> NazoTab.Settings
                 else -> null
             }
             if (navTab != null && !showOnboarding) {
