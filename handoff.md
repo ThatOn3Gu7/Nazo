@@ -5642,3 +5642,106 @@ before the branch is merged.
    small clear gap and do not touch.
 10. **Docked rail.** Turn floating OFF and confirm both tabs are equal width
     with no extra space below either label.
+
+---
+
+## [2026-09-11 01:20] fix: pin image decodes to 8-bit sRGB; ink-metric stacked rail labels
+
+Fifth attempt at the image corruption, this time from a hypothesis supplied by
+Gemini after four in-house diagnoses failed. Its reasoning is recorded because
+it fits evidence the earlier ones could not.
+
+**1. Mystery image — blown-out white, only the darkest ink surviving.**
+
+Hypothesis: `BitmapFactory` was never told what to decode to. On Android 14
+(targetSdk 34) a wide-gamut or HDR source can decode to `RGBA_F16` or a
+non-sRGB colour space. The pixel path then passes that bitmap straight to
+`asImageBitmap()` and `Canvas.drawImage`, which assume 8-bit sRGB — values above
+1.0 clamp to 0xFF, so midtones blow out to white and only near-black pixels
+survive. That is exactly the reported appearance, in both the pixelated and the
+revealed frame.
+
+Two facts make this the best-supported explanation so far:
+
+- The corruption persisted with auto-crop OFF, which bypasses `PortraitCrop`
+  entirely — so the cause has to be in decode or draw.
+- In pixel mode `usePixels` is true, so `PixelatedImage` renders and Coil's
+  `AsyncImage` is never used. The whole path is
+  `decodeByteArray` → `asImageBitmap` → `drawImage`. Decode configuration is the
+  first link.
+
+It also explains why the previous fix made things WORSE: compositing a
+wide-gamut/F16 bitmap onto an opaque ARGB_8888 sRGB canvas adds another bad
+conversion.
+
+Change: all three decode sites (`PixelReveal.buildPixelLevels`,
+`PortraitCrop.decodeCapped`, `AnimeImageGate.decodeCapped`) now set
+`inPreferredConfig = ARGB_8888` and `inPreferredColorSpace = sRGB`.
+
+**This is still a hypothesis.** To settle it rather than guess a sixth time, the
+build now carries `vision/ImageDiagnostics.kt`, which logs — in debug builds
+only — the container magic bytes, `Bitmap.Config`, colour space, `hasAlpha`,
+`isPremultiplied` and five sampled pixel ARGB values at each pipeline stage:
+
+    adb logcat -s NazoImgDiag
+
+If a decoded bitmap reports `RGBA_F16` or a non-sRGB space, the hypothesis is
+confirmed. If it reports `ARGB_8888` / sRGB with sane pixel values yet still
+renders white, the fault is downstream in the draw path and the next
+investigation should start at `PixelatedImage`.
+
+Reverted in the same commit: the composite-onto-white step added last time. The
+owner reported it worsened the corruption, and it was irrelevant with auto-crop
+off, so premultiplied alpha was not the cause. Transparency is preserved again.
+
+*Superseded theories, so none is retried:* nearest-neighbour downscaling;
+`DisposableEffect` recycling (a real use-after-free, correctly removed, wrong
+symptom); `Modifier.blur` edge treatment (kept, cosmetic only); premultiplied
+alpha (reverted).
+
+**2. Rail label dead strip — fixed with real ink metrics.**
+
+Root cause: every Compose `Text` lays out on a baseline and reserves the FONT's
+ascent and descent per line whether the glyphs use it or not. Neither
+`includeFontPadding = false` nor `LineHeightStyle.Trim` removes that reserve —
+Trim only affects the outermost lines of a single `Text`, and font padding is a
+different quantity. So a stack of letters was always taller than its ink, and
+the pill wrapped that empty space.
+
+New private `StackedLetters` composable in `NazoBottomNav.kt` measures each
+glyph's true ink rectangle with `android.graphics.Paint.getTextBounds` and
+draws the letters on a `Canvas` at explicit offsets. Total height is exactly the
+sum of the glyph heights plus the chosen 3dp spacing, so the pill hugs the label
+identically whatever the word, and the letters no longer collide.
+
+Note: Gemini's suggested implementation used
+`TextLayoutResult.getBoundingBox()`, which returns LAYOUT bounds (derived from
+line height and font metrics), not ink bounds — it would have reproduced the
+bug. `Paint.getTextBounds` is the correct API.
+
+Files: `vision/ImageDiagnostics.kt` (new), `vision/PortraitCrop.kt`,
+`vision/AnimeImageGate.kt`, `modes/guessing_game/PixelReveal.kt`,
+`modes/guessing_game/GuessingPlayScreen.kt`, `ui/components/NazoBottomNav.kt`.
+
+### How to test it live
+
+1. **The image.** Appearance → Guessing Game → reveal style PIXEL. Play a round.
+   The image should show real skin, hair and clothing colour, not a white field.
+2. **Revealed frame.** Let the round resolve — the final portrait must be
+   recognisable at a glance.
+3. **Blur style.** Switch to BLUR and play a round.
+4. **Auto-crop both ways.** Toggle auto-crop off, then on, playing a round each
+   time. Both paths are now pinned to sRGB, so both must be clean.
+5. **If it is STILL corrupted, capture the log** — this is the valuable step:
+   `adb logcat -s NazoImgDiag`, play one round, and send the output. It reports
+   the true config, colour space and pixel values at each stage and will end the
+   guessing.
+6. **Rail: no dead strip.** Landscape, floating nav ON, open Settings. The pill
+   must end just below the final "S".
+7. **Rail: compare to Home.** Tap Home; the padding around both labels should
+   look identical.
+8. **Letter spacing.** Letters in "SETTINGS" should have a clear, even gap and
+   not touch.
+9. **Docked rail.** Turn floating OFF and check both tabs again.
+10. **Portrait nav unchanged.** Rotate to portrait — horizontal labels as
+    before.
