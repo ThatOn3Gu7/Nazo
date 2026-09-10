@@ -1,8 +1,5 @@
 package quiz.thaton3app.nazo.modes.guessing_game
 
-import android.graphics.Bitmap
-import android.graphics.ColorSpace
-import android.graphics.drawable.BitmapDrawable
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -14,8 +11,6 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -76,8 +71,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.BlurredEdgeTreatment
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
@@ -92,9 +85,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.ImageLoader
-import coil.request.ImageRequest
-import coil.request.SuccessResult
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -107,28 +97,6 @@ import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.WavySpinner
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
-import quiz.thaton3app.nazo.vision.ImageDiagnostics
-
-/**
- * Composites [source] onto opaque white if it has alpha, so transparent PNG
- * character art from Fandom/AniList renders with correct colours instead of
- * washing out from premultiplied-alpha artefacts. Returns [source] unchanged
- * when already opaque.
- */
-private fun flattenAlphaForDisplay(source: Bitmap): Bitmap {
-    if (!source.hasAlpha()) return source
-    val flat = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
-    android.graphics.Canvas(flat).apply {
-        drawColor(android.graphics.Color.WHITE)
-        drawBitmap(source, 0f, 0f, android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
-    }
-    // Don't recycle source — Coil may hold a reference to it in its cache.
-    flat.setHasAlpha(false)
-    return flat
-}
-
-/** Fully-blurred at the start of the timer; 0 = fully sharp at the end. */
-private const val MAX_BLUR = 28f
 
 /**
  * The active guessing-game screen: a mystery image with an on-device reveal
@@ -166,7 +134,6 @@ fun GuessingPlayScreen(
     val context = LocalContext.current
     val durationMs = GuessScoring.durationMsFor(difficultyLabel)
     val startFraction = GuessScoring.specFor(difficultyLabel).startEffectFraction
-    val imageLoader = remember { ImageLoader(context) }
 
     val payload: GuessPayload? = (phase as? GuessPhase.Playing)?.payload
     val imageUrl: String? = (phase as? GuessPhase.Playing)?.imageUrl
@@ -176,7 +143,6 @@ fun GuessingPlayScreen(
     var imageReady by remember { mutableStateOf(false) }
     var imageFetchFailed by remember { mutableStateOf(false) }
     // One software bitmap is the single source of truth for both reveal paths.
-    var mysteryBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var remainingMs by remember { mutableLongStateOf(durationMs) }
     var showQuitDialog by remember { mutableStateOf(false) }
 
@@ -189,7 +155,6 @@ fun GuessingPlayScreen(
         timedOut = false
         remainingMs = durationMs
         imageFetchFailed = false
-        mysteryBitmap = null
         imageReady = false
     }
 
@@ -204,48 +169,12 @@ fun GuessingPlayScreen(
         derivedStateOf { ((remainingMs + 999) / 1000).toInt() }
     }
 
-    // The old guessing implementation manually fetched raw bytes and handed
-    // those bytes straight to AsyncImage. That created two independent decode /
-    // draw paths: manual BitmapFactory for pixel mode and Coil ByteArray decoding
-    // for blur mode. The original image worked when Coil owned the URL request.
-    // Decode once through Coil again, explicitly forcing a software ARGB_8888 /
-    // sRGB bitmap, then render that exact Bitmap in both modes.
+    // RAW MODE: no pre-fetch, no manual decode. Coil loads the URL directly in
+    // MysteryImageCard, so there is no second decode path to disagree with it.
+    // imageReady flips immediately; Coil shows its own progressive load.
     LaunchedEffect(phase) {
-        if (imageUrl == null) {
-            imageReady = true
-            return@LaunchedEffect
-        }
-
-        val request = ImageRequest.Builder(context)
-            .data(imageUrl)
-            .allowHardware(false)
-            .bitmapConfig(Bitmap.Config.ARGB_8888)
-            .colorSpace(ColorSpace.get(ColorSpace.Named.SRGB))
-            .premultipliedAlpha(true)
-            .crossfade(false)
-            .build()
-
-        val bitmap = withContext(Dispatchers.IO) {
-            runCatching {
-                withTimeout(20_000L) {
-                    val result = imageLoader.execute(request)
-                    val drawable = (result as? SuccessResult)?.drawable
-                    val raw = (drawable as? BitmapDrawable)?.bitmap
-                    // Flatten alpha immediately — transparent PNG character art
-                    // from Fandom/AniList must be composited onto opaque white
-                    // before anything else touches the pixels.
-                    raw?.let { flattenAlphaForDisplay(it) }
-                }
-            }.getOrNull()
-        }
-
-        if (bitmap != null) {
-            ImageDiagnostics.log("coil/decoded", bitmap = bitmap)
-        }
-        mysteryBitmap = bitmap
-        imageFetchFailed = bitmap == null
+        imageFetchFailed = false
         imageReady = true
-        ImageDiagnostics.log("display/bitmap", bitmap = mysteryBitmap)
     }
 
     // Lifecycle-safe countdown, driven by the frame clock (monotonic, drift-free).
@@ -422,7 +351,6 @@ fun GuessingPlayScreen(
                                 revealed = revealed,
                                 revealStyle = revealStyle,
                                 startFraction = startFraction,
-                                mysteryBitmap = mysteryBitmap,
                             )
                         }
                     },
@@ -563,9 +491,9 @@ private fun GuessPlayBody(
 }
 
 /**
- * Draws the mystery image from the single decoded software Bitmap. Blur and
+ * Draws the mystery image. RAW MODE: Coil renders the URL directly and
  * pixelation now operate on exactly the same source pixels, removing the old
- * split between Coil ByteArray rendering and manual BitmapFactory rendering.
+ * no reveal effect is applied — see the comment in the body.
  */
 @Composable
 private fun MysteryImageCard(
@@ -578,40 +506,10 @@ private fun MysteryImageCard(
     revealed: Boolean,
     revealStyle: String,
     startFraction: Float,
-    mysteryBitmap: Bitmap?,
 ) {
-    val usePixels = revealStyle == "pixel" && mysteryBitmap != null
-
-    val blurTarget by remember(usePixels, revealed, startFraction, progress) {
-        derivedStateOf {
-            if (usePixels || revealed) 0 else (progress() * MAX_BLUR * startFraction).toInt()
-        }
-    }
-    val blurRadiusDp by animateIntAsState(
-        targetValue = blurTarget,
-        animationSpec = tween(350, easing = FastOutSlowInEasing),
-        label = "mysteryBlur"
-    )
-
-    val pixelSteps = (PIXEL_LEVELS.size - 1).toFloat()
-    val pixelTarget by remember(revealed, startFraction, progress) {
-        derivedStateOf {
-            val raw = if (revealed) 0f else progress() * startFraction
-            (raw * pixelSteps).roundToInt() / pixelSteps
-        }
-    }
-    val pixelEffect by animateFloatAsState(
-        targetValue = pixelTarget,
-        animationSpec = tween(350, easing = FastOutSlowInEasing),
-        label = "mysteryPixel"
-    )
-    val blurRadius = blurRadiusDp.dp
-    val revealScale = if (usePixels) {
-        1f + 0.12f * (pixelEffect / startFraction)
-    } else {
-        1f + 0.12f * blurRadiusDp / MAX_BLUR
-    }
-    val levelIndex = (pixelEffect * (PIXEL_LEVELS.size - 1)).roundToInt()
+    // Reveal animation state is intentionally gone while raw mode is active.
+    // revealStyle / progress / revealed / startFraction are still accepted so
+    // restoring the effects is a one-commit revert.
 
     val cardHeight = if (isLandscape()) {
         (LocalConfiguration.current.screenHeightDp * 0.62f).dp.coerceAtMost(300.dp)
@@ -625,34 +523,32 @@ private fun MysteryImageCard(
             .clip(RoundedCornerShape(28.dp))
             .background(NazoSurfaceVariant)
     ) {
-        if (imageReady) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .scale(revealScale)
-                    .then(
-                        if (usePixels) {
-                            Modifier
-                        } else {
-                            Modifier.blur(
-                                radius = blurRadius,
-                                edgeTreatment = BlurredEdgeTreatment(RoundedCornerShape(28.dp)),
-                            )
-                        }
-                    )
-            ) {
-                if (imageFetchFailed || imageUrl == null || mysteryBitmap == null) {
-                    GuessImagePlaceholder(query = query.ifBlank { "Mystery image" })
-                } else {
-                    PixelatedImage(
-                        bitmap = mysteryBitmap,
-                        cellSize = if (usePixels) PIXEL_LEVELS[levelIndex] else 1,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
+        // RAW-IMAGE DIAGNOSTIC MODE.
+        //
+        // Everything between the network and the screen has been removed:
+        //  - no BitmapFactory decode of our own
+        //  - no alpha flattening, colour-space pinning or config forcing
+        //  - no PortraitCrop face crop / rescale / re-encode
+        //  - no pixelation, no blur, no reveal scale
+        //
+        // Coil is handed the URL and renders whatever it downloads. This is the
+        // simplest path the image can possibly take, so if it STILL renders
+        // wrong then nothing in this app's image handling is at fault and the
+        // problem is the source bytes (or the device/Coil decode of them). If
+        // it renders correctly, the fault is provably in one of the removed
+        // stages and they can be restored one at a time.
+        //
+        // The mystery is deliberately spoiled while this mode is active: the
+        // answer is visible from the first frame. That is expected.
+        if (imageUrl.isNullOrBlank()) {
+            GuessImagePlaceholder(query = query.ifBlank { "Mystery image" })
         } else {
-            ImageFetchingIndicator()
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = "Mystery image, round $round",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
         }
         Box(
             modifier = Modifier
@@ -663,7 +559,8 @@ private fun MysteryImageCard(
                 .padding(horizontal = 10.dp, vertical = 5.dp)
         ) {
             Text(
-                text = "ROUND $round",
+                // Build marker: confirms the running APK contains this change.
+                text = "ROUND $round · RAW",
                 color = Color.White,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
