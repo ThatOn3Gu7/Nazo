@@ -5229,3 +5229,134 @@ Files: `ui/components/NazoSheet.kt`, `ui/components/NazoBottomNav.kt`,
     three buttons are reachable.
 12. **Guessing record badge.** Set a personal best on a guessing run and rotate:
     the NEW RECORD badge sits under the ring in the LEFT pane.
+
+---
+
+## [2026-09-10 18:40] fix: nav-bar polish, settings back-stack, onboarding landscape, pixel-reveal noise
+
+Ten items from owner testing. Only the nav-rail ones came from the landscape
+work; the rest were pre-existing and merely exposed by rotating.
+
+**Navigation bar**
+
+1. *Unequal fill (docked rail).* The Column sized each item to its own content,
+   so the selected fill behind "Settings" (8 letters) was wider than "Home"
+   (4). The rail is now `width(IntrinsicSize.Max)` and both items
+   `fillMaxWidth()`, so the two highlights are identical. The floating rail is a
+   content-hugging capsule by design and opts out.
+2. *Style did not update until a screen change.* `NazoBottomNav` constructed
+   `ThemePreferences` and read `floatingNavBar` itself. That read is not
+   observable state, so flipping the toggle in Appearance only took effect once
+   something else forced a recomposition — in practice navigating. The style is
+   now passed down from `NazoApp`'s existing hoisted `navBarFloating`, so it
+   applies instantly. The parameter is nullable and falls back to the old read
+   so standalone callers/previews still work.
+3. *Stacked labels too loose.* Now bold at 11sp with `lineHeight` 11sp,
+   `includeFontPadding = false` and `LineHeightStyle.Trim.Both`. Font padding
+   was also the cause of the leftover space below the last letter — most
+   visible on "Settings", which is what made the Settings pill look
+   bottom-heavy next to Home's.
+
+**4. Settings back-stack unwound one screen at a time.** `navigate()` always
+pushed, so Appearance → back → Statistics → back → About grew the stack to
+`Home > Settings > Appearance > Settings > Statistics > Settings > About`.
+Backing out then replayed every screen visited before finally leaving Settings.
+The settings hub is now single-top: navigating to a screen already on the stack
+pops back to it, and moving between sibling sub-screens (possible in the
+landscape list-detail layout) replaces rather than stacks. Deliberately scoped
+to Settings — gameplay screens legitimately recur in one journey (Quiz →
+Results → Quiz), where popping back would discard the Results the player is
+returning from.
+
+**5. Onboarding was unusable in landscape.** Every slide was one vertical
+column, so rotated they squashed together. Feature slides are now text-left /
+artwork-right. The two interactive slides (setup, first game) keep their
+heading in a fixed left pane and scroll only the controls on the right, which
+also gives the setup slide's expandable sections the same feel as the real
+Settings screen. Slide titles drop from 40sp to 28sp in landscape, where the
+display size alone consumed a half-pane.
+
+**6. Topic suggestions looked like three options.** The row scrolls to eight
+but nothing said so, so players assumed Naruto / One Piece / Attack on Titan
+were the only presets. Added `ScrollMoreHint`: a fade into the surface colour
+with a chevron on the trailing edge, shown only while `canScrollForward`. This
+applies in portrait too, where the problem also existed.
+
+**7. Cancel button unreachable while generating.** The guessing game's
+`PreparingCard` and the quiz's AI loading dialog both centre a fixed card in a
+`fillMaxSize`/`weight(1f)` box. In landscape the card is taller than that box,
+so the bottom — the Cancel button — was clipped with no way to scroll. Both
+boxes now scroll: the card stays centred when it fits and becomes reachable
+when it does not. The preparing card's own chrome (88dp badge, spinner,
+spacers) also shrinks in landscape so it usually just fits.
+
+**8. Guessing images looked noisy (pre-existing, the most interesting one).**
+`buildPixelLevels` built each pixel level with
+`Bitmap.createScaledBitmap(..., filter = false)`. Nearest neighbour is the right
+choice when scaling UP — it is exactly what keeps the reveal's pixel edges
+crisp — but this call scales DOWN, by up to 128x. Nearest-neighbour downscaling
+keeps one arbitrary source pixel per cell and discards the other ~16,000, so
+each block took the colour of whatever pixel happened to land on the sample
+grid. On detailed artwork adjacent blocks sampled unrelated details, producing
+the speckled "pixels swapped with one another" look with colours that did not
+match the picture. Now `filter = true`, so each block averages the region it
+covers. The reveal still looks like hard-edged pixel art because the crisp
+edges come from the UPSCALE in `PixelatedImage`
+(`FilterQuality.None`) — not from this downscale. Also raised the
+`PortraitCrop` re-encode from JPEG 92 to 98: ringing around the high-contrast
+line art typical of anime portraits was feeding into the reveal, and the
+re-encode is transient (decoded immediately, never stored).
+
+Files: `ui/components/NazoBottomNav.kt`, `ui/NazoApp.kt`,
+`ui/onboarding/OnboardingScreen.kt`, `ui/screens/LoadingScreen.kt`,
+`modes/guessing_game/GuessingPlayScreen.kt`,
+`modes/guessing_game/PixelReveal.kt`, `vision/PortraitCrop.kt`.
+
+### How to test it live
+
+1. **Equal fill.** Landscape, floating nav OFF. Tap Home, then Settings. The
+   green filled area must be exactly the same width and shape for both — the
+   Settings one no longer wider.
+2. **Instant restyle.** Landscape → Settings → Appearance. Toggle "Floating
+   navigation bar" and WATCH THE RAIL without navigating: it should change
+   between capsule and docked panel the moment you flip it. Toggle back and
+   forth a few times.
+3. **Label spacing.** Look closely at the stacked letters: bold, nearly
+   touching. On the selected Settings pill there should be no dead space
+   between the final "s" and the pill's bottom edge — compare against Home.
+4. **Settings back-stack.** Portrait. Home → Settings → Appearance → back →
+   Statistics → back → About → back. That last back must land on Settings, and
+   ONE more must return to Home. Previously it walked back through every
+   sub-screen first.
+5. **Landscape sibling switching.** Landscape Settings: tap Appearance, then
+   Statistics, then About directly in the left list (no back). Now press back
+   once — it should leave Settings entirely, not replay the sections.
+6. **Gameplay stack still correct** (guarding the scope of that fix). Play a
+   quiz → Results → Play Another → finish → back. You should return through the
+   quiz journey normally, not get bounced to Home.
+7. **Onboarding in landscape** (needs a fresh install, or clear app data).
+   Rotate on the first slide: text on the left, doodle on the right, nothing
+   overlapping. Swipe through all four feature slides in landscape.
+8. **Onboarding setup slide.** Slide 5 in landscape: "Make It Yours" and its
+   caption on the left, the AI Provider / Appearance / Preferences sections on
+   the right. Expand each — the right pane scrolls on its own while the heading
+   stays put.
+9. **Onboarding first-game slide, landscape.** Heading left; MODE pills, topic
+   field and suggestions on the right, all reachable.
+10. **Swipe affordance (portrait too).** On the first-game slide look at the
+    topic suggestion row: there should be a soft fade with a small chevron on
+    the right edge. Swipe the row left — the chevron disappears at the end, and
+    you should find eight suggestions, not three.
+11. **Cancel while generating (guessing).** Landscape, start a guessing game
+    with AI. During "Summoning your mystery image…" the Cancel button must be
+    visible and tappable; scroll the area if the card is tall.
+12. **Cancel while generating (quiz).** Landscape, generate an AI quiz. Same
+    check on the loading dialog's Cancel.
+13. **Image noise — the main one.** Appearance → Guessing Game → reveal style
+    PIXEL. Play a round in either orientation and watch the reveal: blocks
+    should be flat, clean colours that clearly belong to the artwork, and the
+    picture should read as a coherent image while still pixelated. The
+    speckled, wrong-coloured look should be gone. The final revealed frame must
+    still be sharp, and no unobscured frame may appear at any point.
+14. **Blur reveal unaffected.** Switch reveal style to blur and play a round —
+    should look the same as before, slightly cleaner from the JPEG change.
