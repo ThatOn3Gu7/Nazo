@@ -711,19 +711,11 @@ private fun MysteryImageCard(
             .background(NazoSurfaceVariant)
     ) {
         if (imageReady) {
-            // An explicit clamping edge treatment is REQUIRED here.
-            //
-            // Modifier.blur defaults to Rectangle treatment, which samples the
-            // layer's own edge pixels when the kernel reaches past the bounds.
-            // At the radii this uses (up to 28dp) on a wide, short landscape
-            // card the kernel overruns the layer badly, and the render node
-            // then samples undefined content outside it — which is what
-            // produced the red/yellow/green speckle over a blown-out white
-            // field, with only the strongest edges surviving. Clamping the
-            // sample area to the layer removes the out-of-bounds reads.
-            //
-            // The blur is applied over the image at draw time either way; the
-            // source bitmap is never modified.
+            // Clamp the blur to the card's shape so the blurred edge follows
+            // the rounded corners instead of the default rectangle. Cosmetic
+            // only — the corruption this was once thought to cause was in fact
+            // premultiplied alpha in the decoded bitmap (see PortraitCrop and
+            // buildPixelLevels).
             Box(modifier = Modifier.fillMaxSize().scale(revealScale).then(
                 if (usePixels) {
                     Modifier

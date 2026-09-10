@@ -5544,3 +5544,101 @@ Files: `modes/guessing_game/GuessingPlayScreen.kt`,
    filled area should still be equal width with no extra space underneath.
 9. **Portrait nav unchanged.** Rotate to portrait and confirm the horizontal
    pill still reads normally, labels along the baseline.
+
+---
+
+## [2026-09-10 23:30] fix: premultiplied alpha corrupted the mystery image; uppercase rail labels
+
+The owner committed screenshots to `debug/screenshots/` after two earlier
+diagnoses (made without being able to see any images) proved wrong. With the
+actual frames the cause was identifiable.
+
+**1. Mystery image — blown-out white with only the hardest ink surviving.**
+
+What the screenshots show:
+
+- *Revealed frame:* Naruto's face is almost entirely white. Only eye outlines
+  (dark red/black), hair spikes (yellow) and a few cyan iris pixels remain. It
+  is full-resolution — neither blurred nor blocky.
+- *Pixelated frame:* the blocks are overwhelmingly white or very pale, with a
+  handful of saturated yellow/red/black cells. A correct pixelation of that
+  portrait would be mostly skin, orange and blond midtones.
+
+The same defect at two different scales, in two different reveal styles, means
+the corruption is in the BITMAP, before any effect runs. That rules out
+everything the previous attempts touched.
+
+Cause: character art from AniList/Fandom frequently carries an alpha channel,
+and `BitmapFactory` decodes PREMULTIPLIED — stored RGB = trueRGB x alpha.
+`Bitmap.createBitmap(src, rect)` and `createScaledBitmap(..., filter = true)`
+then blend those premultiplied values against fully transparent (0,0,0,0)
+neighbours, and the re-encode divides by a small alpha, so every
+partially-transparent region explodes toward white or saturates to a primary.
+Fully-opaque JPEG sources were untouched, which is exactly why the owner saw it
+"sometimes, or even most of the times" rather than always.
+
+Fix: composite onto opaque white BEFORE any resampling, in both paths —
+`PortraitCrop.toPassportPortrait` (auto-crop on) and `buildPixelLevels`
+(auto-crop off). Drawing onto an opaque canvas is the only correct way to
+resolve premultiplied alpha; reading the RGB out directly (a `copy()`, or
+encoding a translucent bitmap) preserves the premultiplied values and is what
+produced the washout. `PortraitCrop` now always emits JPEG, dropping the
+`hasAlpha()` PNG branch that carried the broken alpha onward.
+
+*Superseded reasoning, so it is not retried:* (a) nearest-neighbour downscaling
+— a real quality improvement, kept, but not this bug; (b) the `DisposableEffect`
+recycling the pixel bitmaps — a genuine use-after-free, correctly removed, but
+not this symptom; (c) `Modifier.blur` edge treatment — the rationale recorded
+for it was wrong and its comment has been corrected. The clamp is kept as a
+cosmetic improvement (the blur now follows the card's rounded corners).
+
+**2. Rail label: dead strip under the Settings pill.**
+
+The screenshots show it precisely: the Home pill wraps its letters snugly, the
+Settings pill has a clear gap below the final letter, and the letters were also
+colliding.
+
+Cause: the font reserves DESCENDER space on every letter box, whether the glyph
+uses it or not. Lowercase "Settings" contains a descender ('g'); "Home"
+contains none. That is the whole asymmetry — not the letter count, as the
+previous entry guessed.
+
+Fix: labels are uppercase (also an explicit owner request), so every letter is
+cap-height and uniform, and each letter sits in its own fixed-height `Box`
+(`LETTER_STACK_STEP` = 12dp against a 10sp glyph), so the stack is exactly
+`letters x step` tall and ends flush with the last glyph. The step is now wider
+than the glyphs, which fixes the collision. This also explains why portrait was
+never affected: the horizontal pill lays letters along a baseline and never
+stacks line boxes.
+
+Files: `vision/PortraitCrop.kt`, `modes/guessing_game/PixelReveal.kt`,
+`modes/guessing_game/GuessingPlayScreen.kt`, `ui/components/NazoBottomNav.kt`.
+
+Note: `debug/screenshots/` is committed on this branch for diagnosis. Delete it
+before the branch is merged.
+
+### How to test it live
+
+1. **The corruption — pixel style.** Appearance → Guessing Game → reveal style
+   PIXEL, auto-crop ON. Play a Naruto round. The blocks should carry real skin,
+   orange and blond tones, not a pale white field.
+2. **The corruption — revealed frame.** Let the same round resolve. The final
+   image must be a normal, fully-coloured portrait you can recognise at a
+   glance.
+3. **Blur style.** Switch to BLUR and play a round: a clean soft blur of a
+   properly-coloured image.
+4. **Auto-crop OFF** (this exercises the second code path). Appearance →
+   Guessing Game → turn auto-crop off, play a round in each reveal style.
+   Both must be correctly coloured.
+5. **Several rounds.** Play a 3-round game; every image should look right, since
+   the defect only hit sources that carry transparency.
+6. **Portrait too.** Repeat one round in portrait — it was never
+   orientation-specific, so it should be equally clean.
+7. **Rail labels uppercase.** Landscape: both tabs should read "HOME" and
+   "SETTINGS" stacked vertically.
+8. **No dead strip.** Open Settings with the floating nav ON. The pill must end
+   just under the final "S", matching how the Home pill wraps.
+9. **Letters not colliding.** Check that adjacent letters in "SETTINGS" have a
+   small clear gap and do not touch.
+10. **Docked rail.** Turn floating OFF and confirm both tabs are equal width
+    with no extra space below either label.
