@@ -1,24 +1,22 @@
 package quiz.thaton3app.nazo.ui.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
-import androidx.compose.runtime.getValue
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -31,11 +29,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
@@ -71,6 +73,21 @@ fun NazoBottomNav(
     onSettingsClick: () -> Unit = {},
 ) {
     val floating = ThemePreferences(LocalContext.current).floatingNavBar
+
+    // Landscape: the bar becomes a RAIL on the right edge. A bottom bar costs
+    // ~56dp of the scarcest dimension in landscape, where vertical space is
+    // what the content actually needs; the right edge is cheap by comparison.
+    // Labels stack under their icons so the rail stays narrow.
+    if (isLandscape()) {
+        NazoNavRail(
+            selected = selected,
+            floating = floating,
+            modifier = modifier,
+            onHomeClick = onHomeClick,
+            onSettingsClick = onSettingsClick,
+        )
+        return
+    }
 
     if (floating) {
         Row(
@@ -110,6 +127,121 @@ fun NazoBottomNav(
         ) {
             NavItems(selected = selected, isFloating = false, onHomeClick = onHomeClick, onSettingsClick = onSettingsClick)
         }
+    }
+}
+
+/**
+ * The landscape navigation rail: the same two tabs, stacked vertically against
+ * the right edge with each label sitting under its icon.
+ *
+ * Mirrors the bar's two looks — `floating` gives a detached rounded pill,
+ * otherwise it is a solid surface anchored to the edge.
+ */
+@Composable
+private fun NazoNavRail(
+    selected: NazoTab,
+    floating: Boolean,
+    modifier: Modifier = Modifier,
+    onHomeClick: () -> Unit,
+    onSettingsClick: () -> Unit,
+) {
+    val shape = if (floating) {
+        RoundedCornerShape(50)
+    } else {
+        RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp)
+    }
+
+    Column(
+        modifier = modifier
+            .then(if (floating) Modifier.padding(end = 12.dp) else Modifier)
+            .blockTouchThrough()
+            .then(
+                if (floating) {
+                    Modifier.shadow(elevation = 6.dp, shape = shape, clip = false)
+                } else {
+                    Modifier
+                }
+            )
+            .background(NazoNavBar, shape)
+            .then(
+                if (floating) {
+                    Modifier.border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), shape)
+                } else {
+                    Modifier
+                }
+            )
+            // Keep clear of the gesture bar / cutout on the short edges.
+            .navigationBarsPadding()
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        NazoNavRailItem(
+            icon = Icons.Filled.Home,
+            label = "Home",
+            selected = selected == NazoTab.Home,
+            onClick = onHomeClick,
+        )
+        NazoNavRailItem(
+            icon = Icons.Filled.Settings,
+            label = "Settings",
+            selected = selected == NazoTab.Settings,
+            onClick = onSettingsClick,
+        )
+    }
+}
+
+/**
+ * One rail tab: icon above, label below.
+ *
+ * Unlike the portrait pill the label is always shown — a rail is wide enough
+ * for it, and hiding it would leave two unlabelled icons with no context.
+ */
+@Composable
+private fun NazoNavRailItem(
+    icon: ImageVector,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val spec = tween<Color>(TAB_ANIM_MS, easing = FastOutSlowInEasing)
+    val tint by animateColorAsState(
+        targetValue = if (selected) NazoOnPrimary else NazoTextSecondary,
+        animationSpec = spec,
+        label = "rail_tint",
+    )
+    val bg by animateColorAsState(
+        targetValue = if (selected) NazoPrimary else Color.Transparent,
+        animationSpec = spec,
+        label = "rail_bg",
+    )
+
+    val context = LocalContext.current
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = Modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(bg)
+            .clickable {
+                Haptics.light(context)
+                onClick()
+            }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = tint,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = label,
+            color = tint,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+        )
     }
 }
 

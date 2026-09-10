@@ -1,6 +1,9 @@
 package quiz.thaton3app.nazo.ui
 
+import android.app.Activity
 import android.os.SystemClock
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
@@ -8,76 +11,54 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import android.app.Activity
-import android.widget.Toast
-import androidx.activity.compose.BackHandler
+import kotlin.math.PI
+import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import quiz.thaton3app.nazo.ui.theme.NazoBackground
+import quiz.thaton3app.nazo.IntroStyle
+import quiz.thaton3app.nazo.LauncherIconSwitcher
+import quiz.thaton3app.nazo.R
+import quiz.thaton3app.nazo.achievements.AchievementEngine
+import quiz.thaton3app.nazo.daily.DailyChallenge
+import quiz.thaton3app.nazo.daily.DailyStore
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.data.Question
+import quiz.thaton3app.nazo.data.backup.BackupScheduler
 import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.data.remote.Connectivity
-import quiz.thaton3app.nazo.data.backup.BackupScheduler
+import quiz.thaton3app.nazo.data.remote.QuizCache
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.data.settings.BackupPrefs
 import quiz.thaton3app.nazo.data.settings.MissedQuestionsStore
 import quiz.thaton3app.nazo.data.settings.ProfilePreferences
 import quiz.thaton3app.nazo.data.settings.QuestionHistoryStore
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
-import quiz.thaton3app.nazo.IntroStyle
-import quiz.thaton3app.nazo.LauncherIconSwitcher
-import quiz.thaton3app.nazo.R
-import quiz.thaton3app.nazo.records.RecordsStore
-import quiz.thaton3app.nazo.daily.DailyChallenge
-import quiz.thaton3app.nazo.daily.DailyStore
-import quiz.thaton3app.nazo.achievements.AchievementEngine
-import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
-import quiz.thaton3app.nazo.ui.components.NazoBottomNav
-import quiz.thaton3app.nazo.ui.components.NazoTab
-import quiz.thaton3app.nazo.ui.components.OfflineWarningDialog
-import quiz.thaton3app.nazo.ui.components.AiMissingDialog
-import quiz.thaton3app.nazo.ui.components.AmbientBackground
-import quiz.thaton3app.nazo.ui.components.FloatingParticlesBackground
-import quiz.thaton3app.nazo.ui.components.StartupMode
-import quiz.thaton3app.nazo.ui.components.CHANGELOG_ID
-import quiz.thaton3app.nazo.ui.components.WhatsNewSheet
-import quiz.thaton3app.nazo.ui.components.WhatsNewStore
-
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalFocusManager
-import kotlin.random.Random
-import kotlin.math.PI
-import quiz.thaton3app.nazo.ui.launch.IntroOverlay
-import quiz.thaton3app.nazo.ui.onboarding.OnboardingPrefs
-import quiz.thaton3app.nazo.ui.onboarding.OnboardingScreen
-import quiz.thaton3app.nazo.ui.screens.*
-import quiz.thaton3app.nazo.ui.theme.NazoTheme
-import quiz.thaton3app.nazo.data.remote.QuizCache
-import quiz.thaton3app.nazo.ui.screens.GenerationState
 import quiz.thaton3app.nazo.modes.guessing_game.GuessApiClient
 import quiz.thaton3app.nazo.modes.guessing_game.GuessImageFetcher
 import quiz.thaton3app.nazo.modes.guessing_game.GuessPayload
@@ -86,8 +67,29 @@ import quiz.thaton3app.nazo.modes.guessing_game.GuessRoundResult
 import quiz.thaton3app.nazo.modes.guessing_game.GuessScoring
 import quiz.thaton3app.nazo.modes.guessing_game.GuessingPlayScreen
 import quiz.thaton3app.nazo.modes.guessing_game.GuessingResultsScreen
+import quiz.thaton3app.nazo.records.RecordsStore
 import quiz.thaton3app.nazo.reminders.ReminderScheduler
 import quiz.thaton3app.nazo.session.SessionMemory
+import quiz.thaton3app.nazo.sound.Sounds
+import quiz.thaton3app.nazo.ui.components.AiMissingDialog
+import quiz.thaton3app.nazo.ui.components.AmbientBackground
+import quiz.thaton3app.nazo.ui.components.CHANGELOG_ID
+import quiz.thaton3app.nazo.ui.components.FloatingParticlesBackground
+import quiz.thaton3app.nazo.ui.components.NazoBottomNav
+import quiz.thaton3app.nazo.ui.components.NazoRailWidth
+import quiz.thaton3app.nazo.ui.components.NazoTab
+import quiz.thaton3app.nazo.ui.components.OfflineWarningDialog
+import quiz.thaton3app.nazo.ui.components.StartupMode
+import quiz.thaton3app.nazo.ui.components.WhatsNewSheet
+import quiz.thaton3app.nazo.ui.components.WhatsNewStore
+import quiz.thaton3app.nazo.ui.components.isLandscape
+import quiz.thaton3app.nazo.ui.launch.IntroOverlay
+import quiz.thaton3app.nazo.ui.onboarding.OnboardingPrefs
+import quiz.thaton3app.nazo.ui.onboarding.OnboardingScreen
+import quiz.thaton3app.nazo.ui.screens.*
+import quiz.thaton3app.nazo.ui.screens.GenerationState
+import quiz.thaton3app.nazo.ui.theme.NazoBackground
+import quiz.thaton3app.nazo.ui.theme.NazoTheme
 import quiz.thaton3app.nazo.widget.NazoWidgetProvider
 
 // Every destination in the app. Wrapping this in AnimatedContent gives us a single,
@@ -1141,6 +1143,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     val configuredProviders = apiKeyStore.getConfiguredProviders()
 
     val rootFocusManager = LocalFocusManager.current
+    // Landscape moves the nav bar to a right-edge rail; screens that show it
+    // must inset their content so nothing sits underneath.
+    val landscape = isLandscape()
     NazoTheme(darkTheme = isDark, accentId = accentName) {
         Box(
             modifier = Modifier
@@ -1160,10 +1165,18 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 modifier = Modifier.fillMaxSize(),
                 style = backgroundStyle,
             )
+            // Screens that show the rail must not draw under it. Only Home and
+            // Settings show it, so the inset is applied per-screen rather than
+            // stealing width from full-screen screens like the quiz.
+            val railInset = if (landscape && !showOnboarding &&
+                (currentScreen == Screen.Home || currentScreen == Screen.Settings)
+            ) NazoRailWidth else 0.dp
+
             AnimatedContent(
                 targetState = currentScreen,
                 modifier = Modifier
                     .fillMaxSize()
+                    .padding(end = railInset)
                     .then(if (offlineDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp) else Modifier),
                 transitionSpec = {
                     fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
@@ -1510,7 +1523,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     onHomeClick = { if (currentScreen != Screen.Home) goHome() },
                     onSettingsClick = { if (currentScreen != Screen.Settings) navigate(Screen.Settings) },
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
+                        // Landscape turns the bar into a right-edge rail, so it
+                        // anchors to the end rather than the bottom.
+                        .align(if (landscape) Alignment.CenterEnd else Alignment.BottomCenter)
                         // Match the blur AnimatedContent gets behind a startup
                         // dialog; the bar used to be inside a screen and so was
                         // blurred with it.

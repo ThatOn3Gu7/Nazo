@@ -1,14 +1,7 @@
 package quiz.thaton3app.nazo.ui.screens
 
 import android.os.SystemClock
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
@@ -18,24 +11,32 @@ import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,13 +44,12 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
-import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -62,6 +62,7 @@ import quiz.thaton3app.nazo.hints.HintPill
 import quiz.thaton3app.nazo.hints.HintRevealPill
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
 
 @Composable
@@ -185,6 +186,13 @@ fun ActiveQuizScreen(
     val reveal = isAnswered || isTimeUp
     val isCorrect = selectedAnswer == question.correctAnswer
 
+    // Landscape splits the screen: question (and its explanation) on the left,
+    // answers on the right. The chrome above the split is also tightened,
+    // because vertical space is the scarce dimension in landscape.
+    val landscape = isLandscape()
+    val chromeGap = if (landscape) 8.dp else 16.dp
+    val topGap = if (landscape) 8.dp else 20.dp
+
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -194,12 +202,18 @@ fun ActiveQuizScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+                .then(
+                    // In landscape each pane scrolls on its own, so the page
+                    // itself must not also scroll (two nested scrollers would
+                    // fight over the same drag).
+                    if (landscape) Modifier.weight(1f)
+                    else Modifier.verticalScroll(rememberScrollState())
+                )
                 .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
                 .padding(bottom = 12.dp)
         ) {
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(topGap))
 
             // Header with Progress
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -319,7 +333,7 @@ fun ActiveQuizScreen(
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(chromeGap))
             // Endless/blitz runs have no meaningful fraction — skip the bar.
             if (!endless && !isBlitz) {
                 val progressAnim = animateFloatAsState(
@@ -341,7 +355,7 @@ fun ActiveQuizScreen(
             // Lifeline row (Phase 4): lives OUTSIDE the question AnimatedContent so it
             // never slides with the question. Revealed letter hint grows in from the
             // left; the hint button sits on the right and greys out once unusable.
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(chromeGap))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -373,7 +387,7 @@ fun ActiveQuizScreen(
                 )
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(if (landscape) 10.dp else 24.dp))
 
             // Smooth sliding transition between questions
             AnimatedContent(
@@ -384,14 +398,16 @@ fun ActiveQuizScreen(
                 },
                 label = "questionTransition"
             ) { q ->
-                Column {
+                TwoPaneQuizBody(
+                    landscape = landscape,
+                    question = {
                 // Question Card
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(24.dp))
                         .background(NazoSurface)
-                        .padding(24.dp)
+                        .padding(if (landscape) 18.dp else 24.dp)
                 ) {
                     Text(
                         text = q.theme.uppercase(),
@@ -408,8 +424,8 @@ fun ActiveQuizScreen(
                     )
                 }
 
-                Spacer(Modifier.height(24.dp))
-
+                    },
+                    options = {
                 // Options
                 val labels = listOf("A", "B", "C", "D")
                 q.options.forEachIndexed { index, optionText ->
@@ -488,6 +504,8 @@ fun ActiveQuizScreen(
                     }
                 }
 
+                    },
+                    explanation = {
                 // Explanation Card (shows after answering OR when time runs out).
                 // Hidden in blitz: answers auto-advance on a 650ms beat instead.
                 AnimatedVisibility(
@@ -545,9 +563,10 @@ fun ActiveQuizScreen(
                         }
                     }
                 }
-                }
+                    },
+                )
             }
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(if (landscape) 12.dp else 32.dp))
         }
         }
 
@@ -646,6 +665,60 @@ fun ActiveQuizScreen(
                         }
                     }
                 }
+        }
+    }
+}
+
+/**
+ * Question / options layout for one quiz question.
+ *
+ * Portrait keeps the original single column: question, options, then the
+ * explanation underneath.
+ *
+ * Landscape splits into two panes — question on the left with the explanation
+ * appearing beneath it (there is dead space there once the question is short),
+ * and the four options on the right where they are all reachable without
+ * scrolling. Each pane scrolls independently so a long question can never push
+ * the answers off-screen.
+ */
+@Composable
+private fun TwoPaneQuizBody(
+    landscape: Boolean,
+    question: @Composable () -> Unit,
+    options: @Composable () -> Unit,
+    explanation: @Composable () -> Unit,
+) {
+    if (!landscape) {
+        Column {
+            question()
+            Spacer(Modifier.height(24.dp))
+            options()
+            explanation()
+        }
+        return
+    }
+
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            question()
+            // The explanation lives under the question in landscape: that pane
+            // has room once answered, and it keeps the answers where the eye
+            // already is.
+            explanation()
+            Spacer(Modifier.height(12.dp))
+        }
+        Spacer(Modifier.width(16.dp))
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            options()
+            Spacer(Modifier.height(12.dp))
         }
     }
 }
