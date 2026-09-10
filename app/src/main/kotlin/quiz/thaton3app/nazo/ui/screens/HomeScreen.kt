@@ -28,6 +28,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -64,12 +65,14 @@ import quiz.thaton3app.nazo.daily.DailyChallengeCard
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoModalSheet
+import quiz.thaton3app.nazo.ui.components.NazoReadableWidth
 import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
 import quiz.thaton3app.nazo.ui.components.SPARKLE_METEORS
 import quiz.thaton3app.nazo.ui.components.SPARKLE_TWINKLE
 import quiz.thaton3app.nazo.ui.components.drawMeteorShower
 import quiz.thaton3app.nazo.ui.components.drawTwinklingStars
+import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
 
 enum class Difficulty(val label: String) {
@@ -147,18 +150,25 @@ fun HomeScreen(
         }
     }
 
+    val landscape = isLandscape()
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .statusBarsPadding()
+            .statusBarsPadding(),
+        // Landscape caps the content width and centres it, so the home cards
+        // stay a comfortable reading width instead of stretching edge to edge.
+        contentAlignment = if (landscape) Alignment.TopCenter else Alignment.TopStart,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .then(if (landscape) Modifier.widthIn(max = NazoReadableWidth) else Modifier)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
-                .padding(bottom = 96.dp)
+                // The nav is a right-edge rail in landscape, so no bottom
+                // clearance is needed there.
+                .padding(bottom = if (landscape) 20.dp else 96.dp)
         ) {
             Spacer(Modifier.height(24.dp))
 

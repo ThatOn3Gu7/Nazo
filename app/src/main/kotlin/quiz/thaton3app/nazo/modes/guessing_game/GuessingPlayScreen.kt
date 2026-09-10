@@ -17,13 +17,13 @@ import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.expandHorizontally
-import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
@@ -81,6 +81,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -102,6 +103,7 @@ import quiz.thaton3app.nazo.hints.HintRevealPill
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.WavySpinner
+import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
 import quiz.thaton3app.nazo.vision.PortraitCrop
 
@@ -422,14 +424,13 @@ fun GuessingPlayScreen(
                     )
                 }
 
-                is GuessPhase.Playing -> Column(
+                is GuessPhase.Playing -> GuessPlayBody(
                     modifier = Modifier
                         .weight(1f)
-                        .verticalScroll(rememberScrollState())
                         .padding(horizontal = 20.dp)
                         .navigationBarsPadding()
                         .padding(bottom = 24.dp),
-                ) {
+                    image = {
                     // key(phase): the prefetch path goes straight from one Playing
                     // round to the next WITHOUT passing through Preparing, so this
                     // card would otherwise stay composed across the boundary and
@@ -452,7 +453,8 @@ fun GuessingPlayScreen(
                             imageLoader = imageLoader,
                         )
                     }
-                    Spacer(Modifier.height(20.dp))
+                    },
+                    answer = {
                     // Lifeline row (Phase 4): masked name grows in from the left as
                     // letters get revealed; hint button on the right, greyed once spent
                     // or after the round is decided.
@@ -502,7 +504,8 @@ fun GuessingPlayScreen(
                             onNext = onNextRound,
                         )
                     }
-                }
+                    },
+                )
 
                 GuessPhase.Idle -> Box(Modifier.weight(1f))
             }
@@ -563,6 +566,48 @@ private fun TimerCircle(seconds: Int) {
  * the fetch failed — sits under an on-device blur layer whose radius is a
  * LINEAR function of the remaining time, with a subtle zoom-out as it sharpens.
  */
+/**
+ * Round layout for the guessing game.
+ *
+ * Portrait: mystery image, then the hint row, input and reveal underneath.
+ *
+ * Landscape: image on the left, everything you interact with on the right, so
+ * the input stays above the keyboard instead of being pushed off-screen.
+ */
+@Composable
+private fun GuessPlayBody(
+    modifier: Modifier = Modifier,
+    image: @Composable () -> Unit,
+    answer: @Composable () -> Unit,
+) {
+    if (!isLandscape()) {
+        Column(modifier = modifier.verticalScroll(rememberScrollState())) {
+            image()
+            Spacer(Modifier.height(20.dp))
+            answer()
+        }
+        return
+    }
+
+    Row(modifier = modifier) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            image()
+        }
+        Spacer(Modifier.width(20.dp))
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            answer()
+        }
+    }
+}
+
 @Composable
 private fun MysteryImageCard(
     imageUrl: String?,
@@ -633,10 +678,17 @@ private fun MysteryImageCard(
     }
     val levelIndex = (pixelEffect * (PIXEL_LEVELS.size - 1)).roundToInt()
 
+    // 300dp is taller than the whole content area in landscape, so the image
+    // is capped against the available height there instead.
+    val cardHeight = if (isLandscape()) {
+        (LocalConfiguration.current.screenHeightDp * 0.62f).dp.coerceAtMost(300.dp)
+    } else {
+        300.dp
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(300.dp)
+            .height(cardHeight)
             .clip(RoundedCornerShape(28.dp))
             .background(NazoSurfaceVariant)
     ) {
