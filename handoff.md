@@ -5745,3 +5745,89 @@ Files: `vision/ImageDiagnostics.kt` (new), `vision/PortraitCrop.kt`,
 9. **Docked rail.** Turn floating OFF and check both tabs again.
 10. **Portrait nav unchanged.** Rotate to portrait — horizontal labels as
     before.
+
+---
+
+## [2026-09-11 03:05] fix: premultiplied alpha resolved at decode time (root cause found)
+
+Sixth attempt, and the first backed by the full repository history rather than a
+guess. The local clone was SHALLOW (`git log` showed 57 commits; the real
+history is 334). `git fetch --unshallow` made the archaeology possible.
+
+**What the history showed**
+
+- `PixelReveal.kt` has barely changed since it was written (`f2bb33e`). The
+  original `buildPixelLevels` is nearly identical to the current one, so the
+  reveal code was never the regression.
+- `MysteryImageCard`'s container and the `revealScale`/blur wrapper are
+  unchanged since `9fb81b2`.
+- What DID change is the image SOURCE. `4d30b25`
+  ("official-art-first image pipeline (cast ground stages + Fandom infobox)")
+  made Fandom infobox art a primary source. Those are overwhelmingly
+  **transparent-background PNG cutouts**, where earlier sources were mostly
+  opaque JPEGs. The rendering code did not break; it started being fed a kind
+  of image it had never handled correctly.
+
+**The mechanism**
+
+Android decodes PNGs with alpha PREMULTIPLIED — stored colour is
+`trueRGB * alpha`. The framework is then inconsistent about that representation:
+
+- `createBitmap(src, rect)` and `createScaledBitmap(...)` operate on the
+  premultiplied buffer directly;
+- `compress()` and `getPixel()` UNPREMULTIPLY on the way out, computing
+  `trueRGB = storedRGB / alpha`.
+
+Any soft or antialiased pixel has a small alpha, so that division saturates to
+255 and the pixel turns white. Where alpha is 0 the result is undefined. Only
+fully opaque pixels (alpha = 1) survive the round trip intact.
+
+That is precisely the reported symptom: the hard ink — eye outlines, hair
+spikes, iris pixels — stayed readable while everything else washed to white,
+and it worsened with every re-encode. It explains both the pixelated and the
+revealed frame, both reveal styles, and why it persisted with auto-crop off
+(`buildPixelLevels` scales the same premultiplied bitmap).
+
+**The fix**
+
+Both decode sites now composite onto opaque white IMMEDIATELY after decoding,
+via `decodeFlattened(bytes, opts)` — drawing onto an opaque canvas, the one API
+that resolves premultiplied alpha correctly — and hand every later stage
+alpha-free colour. `PortraitCrop`'s `hasAlpha()`/PNG branch is deleted: the
+bitmap is opaque by then, and writing a premultiplied bitmap out as PNG was
+itself part of the corruption.
+
+**Why attempt 4 failed on the same theory:** it flattened AFTER the crop and
+scale, by which point the premultiplied blending damage was already baked in,
+and the extra composite added another wash-out pass. Right idea, wrong place in
+the pipeline. Position matters completely here.
+
+**Kept from earlier attempts** (each defensible on its own merits, none of them
+the cause): bilinear downscaling in `buildPixelLevels`; the removal of the
+`DisposableEffect` that recycled in-use bitmaps (a real use-after-free); the
+`BlurredEdgeTreatment` clamp (cosmetic); pinning decodes to `ARGB_8888`/sRGB
+(cheap insurance against a wide-gamut decode). `ImageDiagnostics` is retained
+for now — see below.
+
+Files: `modes/guessing_game/PixelReveal.kt`, `vision/PortraitCrop.kt`.
+
+### How to test it live
+
+1. **Pixel reveal.** Appearance → Guessing Game → PIXEL. Play a Naruto round.
+   Blocks must carry real skin, orange and blond tones. The revealed frame must
+   be an obviously recognisable portrait.
+2. **Blur reveal.** Same round in BLUR.
+3. **Auto-crop OFF** — the case that disproved the earlier theories. Turn it off
+   and play a round in each style; both paths are flattened now.
+4. **Auto-crop ON.** Turn it back on and repeat.
+5. **Several rounds.** Play a 3-round game; the bug only ever hit sources with
+   transparency, so a few rounds gives real coverage.
+6. **Portrait and landscape.** One round each — it was never orientation-
+   specific.
+7. **If it is STILL wrong**, the diagnostics are still in the build and no
+   longer need adb over a cable: `adb logcat -s NazoImgDiag` after a round, or
+   simply report whether the image is white-washed vs speckled vs correct, and
+   which source the round used.
+
+Cleanup owed: `vision/ImageDiagnostics.kt` and its call sites should be deleted
+once the fix is confirmed on a device.
