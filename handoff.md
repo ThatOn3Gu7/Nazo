@@ -5977,3 +5977,69 @@ revert rather than a rewrite.
 
 Cleanup owed once resolved: restore the reveal effects and the crop, remove the
 `· RAW` marker, and delete `vision/ImageDiagnostics.kt`.
+
+---
+
+## [2026-09-11 14:10] debug: force a software bitmap; label the image source
+
+The raw-URL build removed roughly half the corruption: the face became
+recognisable, but the colours are still wrong and "scattered". That is a real
+result — it proves the removed stages caused part of the damage and something
+still in the path causes the rest.
+
+**A misconception worth recording, because it shaped several attempts**
+
+There is no way to display an image without decoding it. JPEG/PNG/WebP are
+compressed formats; they must be expanded into pixels before any screen can show
+them. "Show the raw image with no decoding" is not achievable — the honest
+version is "no decoding *by our code*", which the previous build already
+achieved. The decode still happens, in Coil/Android. Saying otherwise earlier
+was misleading and sent the search in the wrong direction.
+
+**What is left, and what this build tests**
+
+With our own decode, crop, flatten and effects all gone, exactly one variable
+remains: HOW the decoder materialises the pixels.
+
+Coil defaults to a **hardware bitmap** — GPU-resident, with no CPU-visible pixel
+data and a device-dependent internal format. They are the fastest to draw and
+the most fragile: on some GPUs and driver versions a hardware bitmap composited
+inside a layer renders with wrong or scrambled colour. "Recognisable image,
+palette scattered" is precisely that failure mode, and it is device-specific,
+which fits a bug that survived every logic-level fix.
+
+`allowHardware(false)` + `allowRgb565(false)` forces a plain software
+`ARGB_8888` buffer and removes the GPU driver from the path. Deliberately NO
+colour-space or alpha overrides — those were tried and were not the cause. This
+changes *where* the pixels live, not what they contain.
+
+**On-screen source label**
+
+adb has proved impractical, so the card now shows the image's host and file
+extension in a small badge (bottom-left), e.g. `static.wikia.nocookie.net ·
+.png`. Which source is on screen when the colour is wrong is the single most
+useful remaining fact: it separates "one provider serves bad images" from
+"every image decodes wrong on this device".
+
+Build marker is now `RAW2`.
+
+Files: `modes/guessing_game/GuessingPlayScreen.kt`.
+
+### How to test it live
+
+1. **Check the marker** — the badge must read `ROUND 1 · RAW2`.
+2. **Play 3–4 rounds** and for each note two things: whether the colour is
+   correct, and what the small source label at the bottom-left says.
+3. **Report the pattern.** The useful shapes are:
+   - Every image correct → hardware bitmaps were the cause; the reveal effects
+     can be restored on top of a software decode.
+   - Some sources correct, others wrong → it is a source/format problem, and
+     the label names the culprit; the fetcher can then avoid or convert it.
+   - All still wrong → the decode itself is fine and the fault is in the bytes
+     the fetcher selects, i.e. the URL chosen is not the image it claims.
+4. **If a specific source is bad**, opening that host's image in a phone browser
+   and seeing whether it looks correct there settles source-versus-decode in one
+   step.
+
+Cleanup owed once resolved: restore the reveal effects and the crop, remove the
+`RAW2` marker and the source label, delete `vision/ImageDiagnostics.kt`.
