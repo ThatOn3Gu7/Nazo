@@ -5145,3 +5145,87 @@ Precondition for all of it: auto-rotate ON in the system quick settings.
 18. **Full-screen screens keep full width.** In a landscape quiz there should be
     NO nav rail and no reserved empty strip on the right — the quiz owns the
     whole window.
+
+---
+
+## [2026-09-10 16:05] fix: sheet scrolling, floating nav rail style, guessing results split
+
+Three follow-ups from owner testing of the landscape work. Only the second is a
+regression from that work; the other two are pre-existing.
+
+**1. Bottom sheets could not scroll (pre-existing bug, worst in landscape).**
+`NazoSheetColumn` took a `scrollable` flag that defaulted to false, and only the
+app-icon sheet passed true. Every other sheet — theme, accent, sparkle style,
+celebration style, difficulty — had NO scroll container at all. In portrait they
+happened to fit, so it went unnoticed; in landscape the usable height roughly
+halves and the options below the fold became unreachable, with the sheet
+refusing to scroll.
+
+Whether content fits is a property of the window, not of the sheet, so the flag
+was the wrong shape for the problem. Scrolling and the height cap
+(`SHEET_MAX_HEIGHT_FRACTION`, 0.78) are now unconditional and the parameter is
+removed. The cap is what keeps this well-behaved: an uncapped sheet grows to
+full height and then its drag fights the inner scroll (the judder fixed in the
+`f8abc44` entry).
+
+`AboutScreen`'s update sheet builds its own column instead of using
+`NazoSheetColumn`, so it had the identical dead end and got the same cap +
+scroll directly.
+
+**2. Floating nav rail was too bulky (regression from the landscape work).**
+The rail rendered both labels always, in both styles. The docked rail is correct
+that way, but the floating one is meant to be the portrait pill turned on its
+side. It now mirrors the portrait behaviour exactly: a fully-rounded capsule
+hugging its content that shows the label only for the SELECTED tab, so it grows
+as it gains the tab and collapses to a bare icon as it loses it. The
+expand/collapse is `expandVertically`/`shrinkVertically` — the rail's long axis
+is vertical, the mirror image of why the portrait pill uses the horizontal pair.
+Labels are stacked one letter per line ("H" over "o" over "m" over "e") so a
+narrow rail shows the whole word without rotated text. The docked rail keeps its
+roomier squircle and always-on labels.
+
+**3. Guessing results screen was still a single column.** Given the same
+treatment as the quiz's complete screen: score ring and record badge in the left
+pane, round-by-round breakdown and the Play Again / Home / Share buttons in the
+right, each pane scrolling independently so a long round list cannot push the
+buttons out of reach.
+
+Files: `ui/components/NazoSheet.kt`, `ui/components/NazoBottomNav.kt`,
+`ui/components/WhatsNew.kt`, `ui/screens/AppearanceScreen.kt`,
+`ui/screens/AboutScreen.kt`,
+`modes/guessing_game/GuessingResultsScreen.kt`.
+
+### How to test it live
+
+1. **Icon sheet scrolls in landscape.** Rotate to landscape → Settings →
+   Appearance → App Icon. Drag up inside the list: it should scroll to the last
+   icon variant. The sheet itself must not jump or judder while you scroll.
+2. **The other sheets scroll too** (the actual fix — these had no scroll at
+   all). Still in landscape Appearance, open Theme, then Accent, then Sparkle
+   Style, then Celebration Style. In each, drag up inside the sheet and confirm
+   you can reach the last option and select it.
+3. **Difficulty sheet.** Landscape Home → tap the difficulty selector. Scroll to
+   "Otaku Master" and pick it.
+4. **Update sheet.** Landscape → Settings → About → App Updates. Scroll to the
+   bottom: the frequency options and buttons should all be reachable.
+5. **Portrait sheets unchanged.** Rotate to portrait and open the same sheets.
+   They should look exactly as before, sized to their content, not suddenly
+   tall or scrolling when there is nothing to scroll.
+6. **Floating rail is now small.** Landscape with the floating nav pref ON: the
+   rail should be a slim capsule, NOT a tall block. Only the selected tab shows
+   its label; the other is icon-only.
+7. **Stacked letters.** With Home selected, its label reads vertically — H, o,
+   m, e — one letter per line under the icon, centred.
+8. **Rail animates.** Tap between Home and Settings in the floating rail. The
+   capsule should grow downward on the tab it gains and shrink upward on the one
+   it loses, in step with the colour fade — no instant snap.
+9. **Docked rail unchanged.** Turn the floating pref OFF, stay landscape. Both
+   tabs show their (still stacked) labels, in the roomier square-cornered rail
+   flush to the edge.
+10. **Guessing results split.** Finish a guessing run, rotate on the results
+    screen. Score ring left, ROUNDS list plus Play Again / Home / Share right.
+11. **Guessing results independent scroll.** With several rounds listed, drag
+    the right pane: the round list scrolls while the ring stays put. Confirm all
+    three buttons are reachable.
+12. **Guessing record badge.** Set a personal best on a guessing run and rotate:
+    the NEW RECORD badge sits under the ring in the LEFT pane.
