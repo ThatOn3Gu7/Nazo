@@ -107,12 +107,26 @@ jobs:
           cp app/build/outputs/apk/release/*.apk "apks/Nazo-release-$VERSION.apk"
           cp app/build/outputs/apk/debug/*.apk "apks/Nazo-debug-$VERSION.apk"
 
+      # Hand-written notes win when they exist.
+      #
+      # RELEASE_NOTES_<version>.md in the repo root is used verbatim. The
+      # generator turns commit subjects into notes, which is fine for a tidy
+      # release but useless when a version's history is mostly failed attempts
+      # at one bug — the player-facing summary then has to be written by hand.
+      # Falls back to the generator when no such file exists.
       - name: Generate release notes
         id: notes
         run: |
-          PREV=$(git tag --sort=-creatordate | sed -n '2p')
-          if [ -z "$PREV" ]; then RANGE=""; else RANGE="$PREV..HEAD"; fi
-          python3 .github/scripts/gen_release_notes.py "$RANGE" > release_notes.md
+          VERSION=$(echo "${{ github.ref_name }}" | sed 's/^v//')
+          HAND="RELEASE_NOTES_$VERSION.md"
+          if [ -f "$HAND" ]; then
+            echo "Using hand-written notes from $HAND"
+            cp "$HAND" release_notes.md
+          else
+            PREV=$(git tag --sort=-creatordate | sed -n '2p')
+            if [ -z "$PREV" ]; then RANGE=""; else RANGE="$PREV..HEAD"; fi
+            python3 .github/scripts/gen_release_notes.py "$RANGE" > release_notes.md
+          fi
           cat release_notes.md
 
       - name: Create GitHub Release

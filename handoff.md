@@ -144,3 +144,41 @@ Files: `modes/guessing_game/GuessingPlayScreen.kt`, `vision/PortraitCrop.kt`,
    never showing the character name.
 8. **Landscape.** Rotate mid-round: the image, reveal and badge should all
    behave.
+
+---
+
+## [2026-09-11] release: v9.0
+
+Bumped `versionCode` 8 → 9 and `versionName` "8.0" → "9.0" as the last commit
+before the tag.
+
+**Hand-written release notes.** `RELEASE_NOTES_9.0.md` in the repo root holds
+the notes for this version, and `build-release.yml` now prefers
+`RELEASE_NOTES_<version>.md` over the commit-subject generator, falling back to
+the generator when no such file exists.
+
+This was necessary because 39 commits separate 8.0 from 9.0 and most are failed
+attempts at the guessing-game image bug that cancel each other out. Generated
+notes would have listed a dozen contradictory "fix(guessing): …" subjects for a
+single user-visible fix. The notes instead describe the net difference between
+the two versions.
+
+The hand-written file keeps the `<!--NAZO_NOTES_START-->` / `<!--NAZO_NOTES_END-->`
+markers, so `UpdateChecker.playerFacingNotes()` still extracts the player-facing
+section for the in-app update panel. Verified by simulating the parser against
+the file: headings, bullets and bold all resolve, leaving no stray markdown.
+Nested bullets were flattened because the parser trims indentation, which would
+have made sub-items indistinguishable from top-level ones.
+
+Files: `app/build.gradle.kts`, `RELEASE_NOTES_9.0.md` (new),
+`.github/workflows/build-release.yml`.
+
+### How to test it live
+
+1. After the tag is pushed, check the run under Actions → Build & Release
+   completes and a "Nazo v9.0" release appears with both APKs attached.
+2. Read the release body on GitHub — it should be the hand-written summary, not
+   a commit list.
+3. Install 9.0 over an existing 8.0 build and open Settings → About → App
+   Updates. The notes shown in-app should be clean prose with bullets, no `**`
+   or `##` markers.
