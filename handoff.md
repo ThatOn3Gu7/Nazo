@@ -5458,3 +5458,89 @@ Files: `modes/guessing_game/GuessingPlayScreen.kt`,
    Home's letters and around Settings' letters should now look identical.
 9. **Letters still tight and bold.** Both labels should read as a tight,
    bold vertical stack, not spaced out.
+
+---
+
+## [2026-09-10 22:10] fix: blur reveal sampling out of bounds; stacked rail label height
+
+Owner supplied screenshots, which finally identified both causes. Two earlier
+attempts at each had been wrong — recorded here so the reasoning is not
+repeated.
+
+**1. Mystery image corrupted — red/yellow/green speckle on a white field.**
+
+The screenshot is the evidence: the corrupted image shows FULL-RESOLUTION,
+sharp line detail. That rules out the pixel reveal completely (its blocks would
+be visible), so this is the BLUR path — which is why the two previous fixes,
+both aimed at `buildPixelLevels` and its bitmaps, changed nothing.
+
+`Modifier.blur` defaults to `BlurredEdgeTreatment.Rectangle`, which permits the
+kernel to sample beyond the layer's bounds. Two factors make that overrun large
+here:
+
+- `revealScale` zooms the content to as much as 1.12, pushing ~12% of it outside
+  the layer, and
+- the radius runs up to `MAX_BLUR` = 28dp.
+
+On the portrait card (300dp tall) that overrun is a small fraction of the
+layer. In landscape the card is capped at 62% of window height — often
+150–200dp — so the identical kernel covers a much larger share of it and the
+sampling ran well outside the render node, returning undefined content: the
+blown-out white with surviving high-contrast edges in pure R/G/B. This is why
+the owner saw it in landscape and not portrait, even though nothing about the
+orientation code itself was wrong.
+
+Fix: pass an explicit clamping `BlurredEdgeTreatment(RoundedCornerShape(28.dp))`
+matching the card's own shape, so every sample stays inside the layer.
+
+*Previous wrong attempts, for the record:* (a) switching the pixel downscale to
+bilinear — a real quality improvement, kept, but unrelated; (b) removing the
+`DisposableEffect` that recycled the pixel bitmaps — that WAS a genuine
+use-after-free and is correctly removed, but it was not this symptom either.
+Neither touched the blur path.
+
+**2. Floating rail: dead strip under the pill on Settings, not on Home.**
+
+The screenshots show the gap clearly and, critically, show it scaling with the
+label length. The previous fix (one multi-line `Text` with
+`LineHeightStyle.Trim.Both`) was wrong because Trim only affects the FIRST and
+LAST line of a text block — every interior line still carries the font's full
+ascent and descent. That reserved space exists for tall ascenders and
+descenders (b, d, g, y) that these labels barely use, so the excess accumulated
+once per letter: "Settings" (8 letters) grew visibly taller than its glyphs and
+left the dead strip, while "Home" (4) hid it.
+
+Fix: each letter is its own `Text` again, but with an explicit
+`Modifier.height(LETTER_STACK_STEP)` (11dp). Fixing the box height per letter
+makes the stack exactly as tall as the letters regardless of the word, so both
+pills wrap their content identically. This is also why the bug never appeared
+in portrait: the horizontal pill lays letters out along the baseline and never
+stacks line boxes.
+
+Files: `modes/guessing_game/GuessingPlayScreen.kt`,
+`ui/components/NazoBottomNav.kt`.
+
+### How to test it live
+
+1. **Blur reveal in landscape — the reported bug.** Appearance → Guessing Game
+   → reveal style BLUR. Start a round in landscape. The image must be a clean,
+   soft blur of the artwork: no red/yellow/green speckle, no blown-out white.
+   Watch it all the way to the reveal.
+2. **Worst case: shortest card.** Repeat on the largest blur, i.e. the very
+   start of a round, and in landscape where the card is shortest. This is
+   exactly where the kernel overran before.
+3. **Blur in portrait still correct.** Same round in portrait — should look as
+   it always has.
+4. **Pixel reveal unaffected.** Switch to PIXEL and play a round in both
+   orientations: clean flat blocks, sharp final frame, and no unobscured frame
+   at any point.
+5. **Rotate mid-round.** Rotate two or three times during a blur round and
+   during a pixel round. No corruption in either.
+6. **Rail: Settings pill.** Landscape, floating nav ON, open Settings. The pill
+   should end just under the final "s" — no dead strip below it.
+7. **Rail: compare with Home.** Tap Home. The padding around "Home" and around
+   "Settings" should now look identical; the only difference is pill length.
+8. **Docked rail too.** Turn the floating pref OFF and check both tabs — the
+   filled area should still be equal width with no extra space underneath.
+9. **Portrait nav unchanged.** Rotate to portrait and confirm the horizontal
+   pill still reads normally, labels along the baseline.
