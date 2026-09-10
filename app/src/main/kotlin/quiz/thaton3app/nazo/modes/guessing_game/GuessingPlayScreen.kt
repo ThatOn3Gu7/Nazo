@@ -105,6 +105,7 @@ import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.WavySpinner
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
+import quiz.thaton3app.nazo.vision.ImageDiagnostics
 import quiz.thaton3app.nazo.vision.PortraitCrop
 
 /** Fully-blurred at the start of the timer; 0 = fully sharp at the end. */
@@ -246,6 +247,7 @@ fun GuessingPlayScreen(
             }.getOrNull()
         }
         imageFetchFailed = bytes == null
+        ImageDiagnostics.log("fetch/raw", bytes = bytes)
         // Passport-style reframe (vision/PortraitCrop), only when the player
         // has it enabled (Appearance → Guessing Game): find the character's
         // face on-device and crop to a 3:4 portrait with the face in the top

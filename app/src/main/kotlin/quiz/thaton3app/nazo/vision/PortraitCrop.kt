@@ -3,6 +3,7 @@ package quiz.thaton3app.nazo.vision
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.ColorSpace
 import android.graphics.Paint
 import android.graphics.PointF
 import android.graphics.Rect
@@ -127,32 +128,21 @@ object PortraitCrop {
                 if (scaled !== out) out.recycle()
                 out = scaled
             }
-            // FLATTEN ONTO OPAQUE WHITE before encoding.
-            //
-            // This is what corrupted the mystery image: character art from
-            // AniList/Fandom very often carries an alpha channel, and
-            // BitmapFactory decodes PREMULTIPLIED (stored RGB = trueRGB *
-            // alpha). Cropping and bilinear-scaling such a bitmap blends those
-            // premultiplied values against fully transparent (0,0,0,0)
-            // neighbours, and the re-encode then divides by a small alpha —
-            // so anything not fully opaque explodes toward white or saturates
-            // to a primary. The result was a blown-out white portrait with only
-            // the hardest ink (eye outlines, hair spikes) surviving, in both
-            // the pixel and the blur reveal, because the BITMAP itself was
-            // already wrong before any effect ran.
-            //
-            // Compositing onto opaque white removes the alpha channel entirely,
-            // so there is nothing left to premultiply against. White matches the
-            // typical transparent-PNG character cutout background and the card's
-            // own light surface.
-            val flat = flattenOntoWhite(out)
-            if (flat !== out) out.recycle()
-            out = flat
+            // REVERTED: this used to composite onto opaque white on the theory
+            // that premultiplied alpha caused the washed-out image. The owner
+            // reported the corruption got WORSE with it, and it still occurred
+            // with auto-crop disabled entirely — so alpha was not the cause and
+            // the extra conversion was doing harm. Transparency is preserved
+            // again via the PNG branch.
+            ImageDiagnostics.log("PortraitCrop/preEncode", bitmap = out)
             val bos = ByteArrayOutputStream(128 * 1024)
-            // Always JPEG now: the bitmap is guaranteed opaque, so the PNG
-            // branch (which is what emitted the broken alpha) is gone. 98 keeps
-            // ringing off the high-contrast line art; the re-encode is transient.
-            val ok = out.compress(Bitmap.CompressFormat.JPEG, 98, bos)
+            val ok = if (out.hasAlpha()) {
+                out.compress(Bitmap.CompressFormat.PNG, 100, bos)
+            } else {
+                // 98 keeps JPEG ringing off the high-contrast line art typical
+                // of anime portraits; the re-encode is transient.
+                out.compress(Bitmap.CompressFormat.JPEG, 98, bos)
+            }
             out.recycle()
             if (ok) {
                 Log.i(TAG, "cropped to passport portrait ${frame.width()}x${frame.height()}")
@@ -169,26 +159,6 @@ object PortraitCrop {
         }
     }
 
-    /**
-     * Returns an opaque copy of [src] composited over white, or [src] itself
-     * when it is already opaque (no allocation in the common JPEG case).
-     *
-     * Drawing the premultiplied source onto an opaque canvas resolves the alpha
-     * correctly — this is the ONLY safe way to drop an alpha channel. Reading
-     * the RGB out directly (e.g. copy(RGB_565, ...) or a JPEG encode of a
-     * translucent bitmap) keeps the premultiplied values and is exactly what
-     * produced the washed-out image.
-     */
-    private fun flattenOntoWhite(src: Bitmap): Bitmap {
-        if (!src.hasAlpha()) return src
-        val flat = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(flat)
-        canvas.drawColor(android.graphics.Color.WHITE)
-        canvas.drawBitmap(src, 0f, 0f, Paint(Paint.FILTER_BITMAP_FLAG))
-        flat.setHasAlpha(false)
-        return flat
-    }
-
     // ---- decoding -------------------------------------------------------
 
     private fun decodeCapped(bytes: ByteArray): Bitmap? {
@@ -198,7 +168,14 @@ object PortraitCrop {
         var sample = 1
         val dim = max(bounds.outWidth, bounds.outHeight)
         while (dim / sample > MAX_SRC_DIM) sample *= 2
-        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        val opts = BitmapFactory.Options().apply {
+            inSampleSize = sample
+        // Pin to 8-bit sRGB — see PixelReveal.buildPixelLevels for why an
+        // unpinned decode can hand back half-float / wide-gamut pixels that
+        // later stages misread.
+        inPreferredConfig = Bitmap.Config.ARGB_8888
+        inPreferredColorSpace = ColorSpace.get(ColorSpace.Named.SRGB)
+        }
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
     }
 

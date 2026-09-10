@@ -1,5 +1,8 @@
 package quiz.thaton3app.nazo.ui.components
 
+import android.graphics.Paint as AndroidPaint
+import android.graphics.Rect as AndroidRect
+import android.graphics.Typeface
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -10,6 +13,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,7 +35,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,13 +44,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.LineHeightStyle
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
@@ -73,19 +78,79 @@ private fun Modifier.blockTouchThrough(): Modifier =
     this.pointerInput(Unit) { detectTapGestures { /* absorb: not a tab */ } }
 
 /** Shared duration for the floating bar's tab transition (tint + label expand). */
-/** Glyph size for a stacked rail label letter. */
-private val LETTER_FONT_SIZE = 10.sp
-
 /**
- * Vertical step for one letter of a stacked rail label.
+ * Draws [text] as a vertical stack of UPPERCASE letters whose total height is
+ * exactly the sum of the drawn glyph heights plus [letterSpacing] between them.
  *
- * Comfortably clear of the 10sp cap height so the letters do not collide (they
- * were touching when the step was tighter than the glyphs), while still reading
- * as one tight column. Being a FIXED height is the point: the stack is exactly
- * (letters x step) tall and never inherits the font's unused ascent/descent, so
- * a long label wraps as snugly as a short one.
+ * Why this is not a Text (or a Column of Texts): every Compose Text lays out on
+ * a baseline and reserves the FONT's ascent and descent on each line, whether
+ * the glyph uses that space or not. "SETTINGS" therefore reserved descender
+ * room it never fills, leaving a dead strip below the last letter inside the
+ * selected pill, while "HOME" happened to hide it. includeFontPadding = false
+ * and LineHeightStyle.Trim do not remove this: Trim only affects the first and
+ * last line of a single Text, and font padding is a different quantity from the
+ * ascent/descent reserve.
+ *
+ * Measuring the real INK bounds with Paint.getTextBounds — the tight rectangle
+ * the glyph actually covers — and drawing each letter at its own offset gives a
+ * stack that ends flush with the final glyph, so the pill hugs it identically
+ * whatever the word.
  */
-private val LETTER_STACK_STEP = 12.dp
+@Composable
+private fun StackedLetters(
+    text: String,
+    color: Color,
+    fontSizeSp: Float,
+    letterSpacing: Dp,
+) {
+    val density = LocalDensity.current
+    val chars = remember(text) { text.uppercase().toCharArray().toList() }
+    val fontSizePx = with(density) { fontSizeSp.sp.toPx() }
+    val spacingPx = with(density) { letterSpacing.toPx() }
+
+    // Ink bounds per letter, plus the total canvas size. Keyed so this only
+    // recomputes when something that affects the metrics changes.
+    val metrics = remember(chars, fontSizePx, spacingPx) {
+        val paint = AndroidPaint().apply {
+            textSize = fontSizePx
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
+        }
+        val bounds = chars.map { ch ->
+            AndroidRect().also { paint.getTextBounds(ch.toString(), 0, 1, it) }
+        }
+        val height = bounds.sumOf { it.height() }.toFloat() +
+            spacingPx * (chars.size - 1).coerceAtLeast(0)
+        val width = bounds.maxOfOrNull { it.width() }?.toFloat() ?: 0f
+        Triple(bounds, width, height)
+    }
+    val (bounds, inkWidth, inkHeight) = metrics
+
+    Canvas(
+        modifier = Modifier.size(
+            width = with(density) { inkWidth.toDp() },
+            height = with(density) { inkHeight.toDp() },
+        )
+    ) {
+        val paint = AndroidPaint().apply {
+            textSize = fontSizePx
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            isAntiAlias = true
+            this.color = color.toArgb()
+        }
+        drawIntoCanvas { canvas ->
+            var y = 0f
+            chars.forEachIndexed { i, ch ->
+                val b = bounds[i]
+                // getTextBounds is relative to the drawing origin, so shifting
+                // by -left / -top puts the ink's own top-left at (x, y).
+                val x = (inkWidth - b.width()) / 2f - b.left
+                canvas.nativeCanvas.drawText(ch.toString(), x, y - b.top, paint)
+                y += b.height() + spacingPx
+            }
+        }
+    }
+}
 
 private const val TAB_ANIM_MS = 280
 
@@ -304,45 +369,12 @@ private fun NazoNavRailItem(
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(Modifier.height(6.dp))
-                // Stacked label, one UPPERCASE letter per line.
-                //
-                // Uppercase is not only a style choice, it removes the bug:
-                // lowercase "Settings" carries a descender on the 'g', and the
-                // font reserves descender space on EVERY letter box whether the
-                // glyph uses it or not. That reserve is what left the dead strip
-                // under the Settings pill while "Home" — which has no descender
-                // — looked correctly wrapped. Caps are all cap-height, so every
-                // letter box is the same and the column ends flush with the last
-                // glyph.
-                //
-                // Each letter is measured in its own fixed-height box so the
-                // stack's height is exactly (letters x step): a single
-                // multi-line Text would keep the font's ascent/descent on every
-                // interior line, and LineHeightStyle.Trim only trims the
-                // outermost two.
-                label.uppercase().forEach { ch ->
-                    Box(
-                        modifier = Modifier.height(LETTER_STACK_STEP),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = ch.toString(),
-                            color = currentTint,
-                            fontSize = LETTER_FONT_SIZE,
-                            lineHeight = LETTER_FONT_SIZE,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            style = LocalTextStyle.current.copy(
-                                platformStyle = PlatformTextStyle(includeFontPadding = false),
-                                lineHeightStyle = LineHeightStyle(
-                                    alignment = LineHeightStyle.Alignment.Center,
-                                    trim = LineHeightStyle.Trim.Both,
-                                ),
-                            ),
-                        )
-                    }
-                }
+                StackedLetters(
+                    text = label,
+                    color = currentTint,
+                    fontSizeSp = 10f,
+                    letterSpacing = 3.dp,
+                )
             }
         }
     }
