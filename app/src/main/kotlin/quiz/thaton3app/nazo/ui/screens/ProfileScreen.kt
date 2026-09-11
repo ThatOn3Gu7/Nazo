@@ -35,6 +35,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
 import kotlin.math.abs
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
@@ -70,6 +72,8 @@ fun ProfileScreen(
     var showPictureDialog by remember { mutableStateOf(false) }
     var showUrlDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -112,79 +116,271 @@ fun ProfileScreen(
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            ProfileAvatar(
-                name = username,
-                pictureUri = profilePictureUri,
-                size = 132.dp,
-                onClick = { showPictureDialog = true },
-                modifier = Modifier.padding(bottom = 16.dp),
-            )
-
-            Surface(
-                onClick = { showUsernameDialog = true },
-                shape = MaterialTheme.shapes.extraLarge,
-                color = Color.Transparent,
-                modifier = Modifier.clip(MaterialTheme.shapes.extraLarge)
+        if (isLandscape) {
+            // --- LANDSCAPE LAYOUT ---
+            Row(
+                modifier = Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(32.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                // Left Column: Avatar & Username
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
-                    Text(
-                        text = username.ifBlank {
-                            if (quizStats.totalQuizzes > 0) "Edit Profile" else "Create Profile"
-                        },
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = NazoTextPrimary
+                    ProfileAvatar(
+                        name = username,
+                        pictureUri = profilePictureUri,
+                        size = 132.dp,
+                        onClick = { showPictureDialog = true },
+                        modifier = Modifier.padding(bottom = 16.dp),
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(
-                        imageVector = Icons.Rounded.Edit,
-                        contentDescription = "Edit username",
-                        tint = NazoPrimary,
-                        modifier = Modifier.size(22.dp)
+
+                    Surface(
+                        onClick = { showUsernameDialog = true },
+                        shape = MaterialTheme.shapes.extraLarge,
+                        color = Color.Transparent,
+                        modifier = Modifier.clip(MaterialTheme.shapes.extraLarge)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = username.ifBlank {
+                                    if (quizStats.totalQuizzes > 0) "Edit Profile" else "Create Profile"
+                                },
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = NazoTextPrimary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(
+                                imageVector = Icons.Rounded.Edit,
+                                contentDescription = "Edit username",
+                                tint = NazoPrimary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Right Column: Stats & Menu
+                Column(
+                    modifier = Modifier
+                        .weight(1.5f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    if (quizStats.totalQuizzes > 0) {
+                        ProfileStatsCard(stats = quizStats)
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        ProfileMenuItem(
+                            icon = Icons.Filled.BarChart,
+                            title = "Statistics",
+                            subtitle = "View your quiz insights",
+                            onClick = onNavigateToStatistics
+                        )
+                        ProfileMenuItem(
+                            icon = Icons.Filled.Settings,
+                            title = "Settings",
+                            subtitle = "Appearance, categories, backup",
+                            onClick = onNavigateToSettings
+                        )
+                    }
+                }
+            }
+        } else {
+            // --- PORTRAIT LAYOUT (Original) ---
+            Column(
+                modifier = Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                ProfileAvatar(
+                    name = username,
+                    pictureUri = profilePictureUri,
+                    size = 132.dp,
+                    onClick = { showPictureDialog = true },
+                    modifier = Modifier.padding(bottom = 16.dp),
+                )
+
+                Surface(
+                    onClick = { showUsernameDialog = true },
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = Color.Transparent,
+                    modifier = Modifier.clip(MaterialTheme.shapes.extraLarge)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = username.ifBlank {
+                                if (quizStats.totalQuizzes > 0) "Edit Profile" else "Create Profile"
+                            },
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = NazoTextPrimary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            imageVector = Icons.Rounded.Edit,
+                            contentDescription = "Edit username",
+                            tint = NazoPrimary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                if (quizStats.totalQuizzes > 0) {
+                    ProfileStatsCard(stats = quizStats)
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    ProfileMenuItem(
+                        icon = Icons.Filled.BarChart,
+                        title = "Statistics",
+                        subtitle = "View your quiz insights",
+                        onClick = onNavigateToStatistics
+                    )
+                    ProfileMenuItem(
+                        icon = Icons.Filled.Settings,
+                        title = "Settings",
+                        subtitle = "Appearance, categories, backup",
+                        onClick = onNavigateToSettings
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            if (quizStats.totalQuizzes > 0) {
-                ProfileStatsCard(stats = quizStats)
-                Spacer(modifier = Modifier.height(24.dp))
-            }
-
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                ProfileMenuItem(
-                    icon = Icons.Filled.BarChart,
-                    title = "Statistics",
-                    subtitle = "View your quiz insights",
-                    onClick = onNavigateToStatistics
-                )
-                ProfileMenuItem(
-                    icon = Icons.Filled.Settings,
-                    title = "Settings",
-                    subtitle = "Appearance, categories, backup",
-                    onClick = onNavigateToSettings
-                )
-            }
         }
     }
+    // Scaffold(
+    //     containerColor = Color.Transparent,
+    //     topBar = {
+    //         CenterAlignedTopAppBar(
+    //             title = {
+    //                 Text(
+    //                     "Profile",
+    //                     style = MaterialTheme.typography.headlineSmall,
+    //                     fontFamily = ProfileHeaderFont,
+    //                     fontWeight = FontWeight.Bold,
+    //                     color = NazoPrimary,
+    //                     letterSpacing = 0.5.sp
+    //                 )
+    //             },
+    //             navigationIcon = {
+    //                 IconButton(onClick = onBack) {
+    //                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+    //                 }
+    //             },
+    //             colors = TopAppBarDefaults.topAppBarColors(
+    //                 containerColor = Color.Transparent
+    //             )
+    //         )
+    //     }
+    // ) { padding ->
+    //     Column(
+    //         modifier = Modifier
+    //             .padding(padding)
+    //             .fillMaxSize()
+    //             .verticalScroll(rememberScrollState())
+    //             .padding(horizontal = 24.dp, vertical = 16.dp),
+    //         horizontalAlignment = Alignment.CenterHorizontally
+    //     ) {
+    //         ProfileAvatar(
+    //             name = username,
+    //             pictureUri = profilePictureUri,
+    //             size = 132.dp,
+    //             onClick = { showPictureDialog = true },
+    //             modifier = Modifier.padding(bottom = 16.dp),
+    //         )
+    //
+    //         Surface(
+    //             onClick = { showUsernameDialog = true },
+    //             shape = MaterialTheme.shapes.extraLarge,
+    //             color = Color.Transparent,
+    //             modifier = Modifier.clip(MaterialTheme.shapes.extraLarge)
+    //         ) {
+    //             Row(
+    //                 verticalAlignment = Alignment.CenterVertically,
+    //                 horizontalArrangement = Arrangement.Center,
+    //                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+    //             ) {
+    //                 Text(
+    //                     text = username.ifBlank {
+    //                         if (quizStats.totalQuizzes > 0) "Edit Profile" else "Create Profile"
+    //                     },
+    //                     style = MaterialTheme.typography.headlineMedium,
+    //                     fontWeight = FontWeight.Bold,
+    //                     maxLines = 1,
+    //                     overflow = TextOverflow.Ellipsis,
+    //                     color = NazoTextPrimary
+    //                 )
+    //                 Spacer(modifier = Modifier.width(8.dp))
+    //                 Icon(
+    //                     imageVector = Icons.Rounded.Edit,
+    //                     contentDescription = "Edit username",
+    //                     tint = NazoPrimary,
+    //                     modifier = Modifier.size(22.dp)
+    //                 )
+    //             }
+    //         }
+    //
+    //         Spacer(modifier = Modifier.height(32.dp))
+    //
+    //         if (quizStats.totalQuizzes > 0) {
+    //             ProfileStatsCard(stats = quizStats)
+    //             Spacer(modifier = Modifier.height(24.dp))
+    //         }
+    //
+    //         Column(
+    //             modifier = Modifier.fillMaxWidth(),
+    //             verticalArrangement = Arrangement.spacedBy(12.dp)
+    //         ) {
+    //             ProfileMenuItem(
+    //                 icon = Icons.Filled.BarChart,
+    //                 title = "Statistics",
+    //                 subtitle = "View your quiz insights",
+    //                 onClick = onNavigateToStatistics
+    //             )
+    //             ProfileMenuItem(
+    //                 icon = Icons.Filled.Settings,
+    //                 title = "Settings",
+    //                 subtitle = "Appearance, categories, backup",
+    //                 onClick = onNavigateToSettings
+    //             )
+    //         }
+    //     }
+    // }
 
     // --- Dialogs ---
 
