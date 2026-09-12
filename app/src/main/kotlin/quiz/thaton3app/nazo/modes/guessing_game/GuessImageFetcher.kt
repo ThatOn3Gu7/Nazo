@@ -211,6 +211,9 @@ object GuessImageFetcher {
                             ?: animeVerified(fromFandomInfobox(v, variants, fandomWiki), fallback)
                             ?: animeVerified(fromCommonsPhrase(v, franchise, variants), fallback)
                             ?: animeVerified(fromWikipediaPhrase(v, franchise, variants), fallback)
+                        // Per-stage visibility: Kitsu winning every round means
+                        // the two stages ahead of it are missing, and this says
+                        // which and why without another build.
                         Log.i(TAG, "cast+dbs+wiki('$v') -> ${found ?: "miss"}")
                         if (found != null) break
                     }
@@ -504,6 +507,8 @@ object GuessImageFetcher {
             val rank = (if (franchiseMatch) 10 else 0) + nameScore
             if (rank <= bestRank) continue
             val img = node.optJSONObject("image") ?: continue
+            // AniList's "large" is the full-size upload (not a re-encoded
+            // thumbnail like Kitsu's), so it is the right pick here.
             val url = img.optString("large", "").ifBlank { img.optString("medium", "") }
             if (!isUsableImage(url)) continue
             bestRank = rank
@@ -748,8 +753,20 @@ object GuessImageFetcher {
             val rank = (if (franchiseMatch) 10 else 0) + nameScore
             if (rank <= bestRank) continue
             val img = attrs.optJSONObject("image") ?: continue
-            val url = img.optString("large", "")
-                .ifBlank { img.optString("original", "") }
+            // ORIGINAL first, not "large".
+            //
+            // Kitsu's named renditions ("large"/"medium"/"small") are
+            // server-generated thumbnails. They are re-encoded from the source
+            // at low JPEG quality and are frequently 4:2:0 chroma-subsampled,
+            // which is exactly the artefact the owner reported: the shapes
+            // survive so the character stays recognisable, but the COLOUR is
+            // blocky and smeared, because chroma is stored at a quarter of the
+            // luma resolution. Anime art — large flat colour fields bounded by
+            // hard ink lines — is the worst case for that.
+            //
+            // "original" is the unresampled upload, so the colour is intact.
+            val url = img.optString("original", "")
+                .ifBlank { img.optString("large", "") }
                 .ifBlank { img.optString("medium", "") }
             if (!isUsableImage(url)) continue
             bestRank = rank

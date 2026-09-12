@@ -95,6 +95,33 @@ class ApiKeyStore(context: Context) {
     fun getConfiguredProviders(): List<String> =
         PROVIDER_ORDER.filter { !getKey(it).isNullOrBlank() && !getModel(it).isNullOrBlank() }
 
+    /**
+     * The provider the generation path would ACTUALLY use, or null when none is
+     * usable. This mirrors the resolution order in `NazoApp`
+     * (`getSelectedProvider() ?: getActiveProvider()`) and then applies the same
+     * key-and-model requirement the request builder enforces.
+     *
+     * Single source of truth on purpose: the Home status pill previously used
+     * `hasAnyActiveKey()`, which is true as soon as ANY key is stored — even
+     * with no model chosen, in which case generation actually fails. The pill
+     * claimed a provider was in use while the generator fell back to the
+     * "AI missing" dialog.
+     */
+    fun getGenerationProvider(): String? {
+        val provider = getSelectedProvider() ?: getActiveProvider() ?: return null
+        val hasKey = !getKey(provider).isNullOrBlank()
+        val hasModel = !getModel(provider).isNullOrBlank()
+        return if (hasKey && hasModel) provider else null
+    }
+
+    /**
+     * True when at least one key is stored but nothing is actually
+     * generation-ready — the "key saved, no model picked" gap the user can only
+     * resolve by opening the provider screen and choosing a model.
+     */
+    fun hasKeyButNoUsableModel(): Boolean =
+        getGenerationProvider() == null && hasAnyActiveKey()
+
     private fun selFor() = "selected_provider"
 
     private fun keyFor(id: String) = "key_$id"

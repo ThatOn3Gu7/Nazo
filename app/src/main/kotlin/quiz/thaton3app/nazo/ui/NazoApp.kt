@@ -1,5 +1,9 @@
 package quiz.thaton3app.nazo.ui
 
+import android.app.Activity
+import android.os.SystemClock
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
@@ -7,66 +11,57 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import android.app.Activity
-import android.widget.Toast
-import androidx.activity.compose.BackHandler
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlin.math.PI
+import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import quiz.thaton3app.nazo.ui.theme.NazoBackground
+import quiz.thaton3app.nazo.IntroStyle
+import quiz.thaton3app.nazo.LauncherIconSwitcher
+import quiz.thaton3app.nazo.R
+import quiz.thaton3app.nazo.achievements.AchievementEngine
+import quiz.thaton3app.nazo.daily.DailyChallenge
+import quiz.thaton3app.nazo.daily.DailyStore
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.data.Question
+import quiz.thaton3app.nazo.data.backup.BackupScheduler
 import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.data.remote.Connectivity
-import quiz.thaton3app.nazo.data.backup.BackupScheduler
+import quiz.thaton3app.nazo.data.remote.QuizCache
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.data.settings.BackupPrefs
 import quiz.thaton3app.nazo.data.settings.MissedQuestionsStore
 import quiz.thaton3app.nazo.data.settings.ProfilePreferences
 import quiz.thaton3app.nazo.data.settings.QuestionHistoryStore
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
-import quiz.thaton3app.nazo.records.RecordsStore
-import quiz.thaton3app.nazo.daily.DailyChallenge
-import quiz.thaton3app.nazo.daily.DailyStore
-import quiz.thaton3app.nazo.achievements.AchievementEngine
-import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
-import quiz.thaton3app.nazo.ui.components.OfflineWarningDialog
-import quiz.thaton3app.nazo.ui.components.AiMissingDialog
-import quiz.thaton3app.nazo.ui.components.AmbientBackground
-import quiz.thaton3app.nazo.ui.components.FloatingParticlesBackground
-import quiz.thaton3app.nazo.ui.components.StartupMode
-import quiz.thaton3app.nazo.ui.components.CHANGELOG_ID
-import quiz.thaton3app.nazo.ui.components.WhatsNewSheet
-import quiz.thaton3app.nazo.ui.components.WhatsNewStore
-
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalFocusManager
-import kotlin.random.Random
-import kotlin.math.PI
-import quiz.thaton3app.nazo.ui.launch.IntroOverlay
-import quiz.thaton3app.nazo.ui.onboarding.OnboardingPrefs
-import quiz.thaton3app.nazo.ui.onboarding.OnboardingScreen
-import quiz.thaton3app.nazo.ui.screens.*
-import quiz.thaton3app.nazo.ui.theme.NazoTheme
-import quiz.thaton3app.nazo.data.remote.QuizCache
-import quiz.thaton3app.nazo.ui.screens.GenerationState
 import quiz.thaton3app.nazo.modes.guessing_game.GuessApiClient
 import quiz.thaton3app.nazo.modes.guessing_game.GuessImageFetcher
 import quiz.thaton3app.nazo.modes.guessing_game.GuessPayload
@@ -75,8 +70,30 @@ import quiz.thaton3app.nazo.modes.guessing_game.GuessRoundResult
 import quiz.thaton3app.nazo.modes.guessing_game.GuessScoring
 import quiz.thaton3app.nazo.modes.guessing_game.GuessingPlayScreen
 import quiz.thaton3app.nazo.modes.guessing_game.GuessingResultsScreen
+import quiz.thaton3app.nazo.records.RecordsStore
 import quiz.thaton3app.nazo.reminders.ReminderScheduler
 import quiz.thaton3app.nazo.session.SessionMemory
+import quiz.thaton3app.nazo.sound.Sounds
+import quiz.thaton3app.nazo.ui.components.AiMissingDialog
+import quiz.thaton3app.nazo.ui.components.AmbientBackground
+import quiz.thaton3app.nazo.ui.components.CHANGELOG_ID
+import quiz.thaton3app.nazo.ui.components.FloatingParticlesBackground
+import quiz.thaton3app.nazo.ui.components.NazoBottomNav
+import quiz.thaton3app.nazo.ui.components.NazoRailWidth
+import quiz.thaton3app.nazo.ui.components.NazoTab
+import quiz.thaton3app.nazo.ui.components.OfflineWarningDialog
+import quiz.thaton3app.nazo.ui.components.StartupMode
+import quiz.thaton3app.nazo.ui.components.WhatsNewSheet
+import quiz.thaton3app.nazo.ui.components.WhatsNewStore
+import quiz.thaton3app.nazo.ui.components.isLandscape
+import quiz.thaton3app.nazo.ui.launch.IntroOverlay
+import quiz.thaton3app.nazo.ui.onboarding.OnboardingPrefs
+import quiz.thaton3app.nazo.ui.onboarding.OnboardingScreen
+import quiz.thaton3app.nazo.ui.screens.*
+import quiz.thaton3app.nazo.ui.screens.GenerationState
+import quiz.thaton3app.nazo.ui.theme.NazoBackground
+import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
+import quiz.thaton3app.nazo.ui.theme.NazoTheme
 import quiz.thaton3app.nazo.widget.NazoWidgetProvider
 
 // Every destination in the app. Wrapping this in AnimatedContent gives us a single,
@@ -99,6 +116,35 @@ sealed interface Screen {
     data object VersusHandoff : Screen
     data object VersusResults : Screen
     data object VersusReview : Screen
+}
+
+/**
+ * The Settings sub-screens that can render in the DETAIL pane of the landscape
+ * list-detail layout. Anything else (quiz, results, ...) is full-screen and
+ * returns null so it takes over the whole window.
+ */
+private fun Screen.asSettingsDetail(): Screen? = when (this) {
+    Screen.AiProvider,
+    Screen.Statistics,
+    Screen.Appearance,
+    Screen.BackupRestore,
+    Screen.About -> this
+    else -> null
+}
+
+/** Shown in the detail pane before the user has picked a settings section. */
+@Composable
+private fun SettingsDetailPlaceholder() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "Pick a section on the left",
+            style = MaterialTheme.typography.bodyMedium,
+            color = NazoTextSecondary,
+        )
+    }
 }
 
 private data class GenerationRequest(
@@ -161,22 +207,55 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         ReminderScheduler.syncSchedule(context.applicationContext)
     }
 
-    // Offline / online mode. `forceOffline` is the manual Settings switch and is
-    // SESSION-ONLY (never persisted) — when the app is killed and reopened the network
-    // scan fires again and the user gets the prompt fresh. `detectedOffline` comes from
-    // the startup connectivity probe. `startupDialogMode` drives the one-time startup
-    // popup (OFFLINE requires acknowledgement; ONLINE is informational).
-    var forceOffline by remember { mutableStateOf(false) }
-    var detectedOffline by remember { mutableStateOf(false) }
-    var startupDialogMode by remember { mutableStateOf<StartupMode?>(null) }
+    // Offline / online mode.
+    //
+    // `offlineMode` is THE offline state and the single source of truth: the
+    // Settings switch shows it, and every game path branches on it. It is
+    // session-only (never persisted).
+    //
+    // This used to be `forceOffline || detectedOffline`, which broke two ways:
+    // detection could not be turned off (the switch was powerless while the
+    // network was down), and the switch itself read `forceOffline` alone, so it
+    // showed OFF while the app was actually running offline. Detection now
+    // *drives* the switch instead of overriding it.
+    var offlineMode by remember { mutableStateOf(false) }
+    // Last probe result. Not part of the mode — it only tells us whether an
+    // online attempt can actually succeed.
+    var networkOffline by remember { mutableStateOf(false) }
+    // Shown when the user asks for something online while the network is down.
+    var offlineDialogMode by remember { mutableStateOf<StartupMode?>(null) }
     var showAiMissingDialog by remember { mutableStateOf(false) }
     var pendingQuizRequest by remember { mutableStateOf<Triple<String, String, Int>?>(null) }
-    val isOfflineMode = forceOffline || detectedOffline
+    val isOfflineMode = offlineMode
 
-    LaunchedEffect(Unit) {
-        detectedOffline = !Connectivity.isOnline(context)
-        // Only block with a popup when offline — the "you're online" notice is no longer needed.
-        startupDialogMode = if (detectedOffline) StartupMode.OFFLINE else null
+    // Re-runnable connectivity probe. Bumping the counter re-runs it.
+    var connectivityProbe by remember { mutableIntStateOf(0) }
+    // Tracks the previous probe result so we can act on TRANSITIONS only.
+    var wasNetworkOffline by remember { mutableStateOf<Boolean?>(null) }
+
+    LaunchedEffect(connectivityProbe) {
+        val offline = !Connectivity.isOnline(context)
+        networkOffline = offline
+        // Auto-enable offline mode when connectivity is LOST (including at
+        // launch), silently — no startup popup. Keying on the transition, not
+        // the raw state, is what lets the user switch back to online mode while
+        // still disconnected: with the network unchanged there is no
+        // transition, so nothing re-enables the switch behind their back.
+        if (offline && wasNetworkOffline != true) {
+            offlineMode = true
+        }
+        wasNetworkOffline = offline
+    }
+
+    // Re-probe whenever the app returns to the foreground: the usual way
+    // connectivity comes back is the user leaving to fix Wi-Fi and returning.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) connectivityProbe++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // In-app changelog: one-time "What's new" sheet after an update. A true
@@ -184,10 +263,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // silently — a brand-new user needs no diff.
     val whatsNewStore = remember { WhatsNewStore(context.applicationContext) }
     var showWhatsNew by remember { mutableStateOf(false) }
-    LaunchedEffect(showOnboarding, startupDialogMode) {
+    LaunchedEffect(showOnboarding, offlineDialogMode) {
         if (showOnboarding) {
             whatsNewStore.lastSeenId = CHANGELOG_ID
-        } else if (startupDialogMode == null && whatsNewStore.lastSeenId != CHANGELOG_ID) {
+        } else if (offlineDialogMode == null && whatsNewStore.lastSeenId != CHANGELOG_ID) {
             delay(700) // let the intro/home settle first
             showWhatsNew = true
         }
@@ -198,6 +277,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var navBarFloating by remember { mutableStateOf(themePrefs.floatingNavBar) }
     var backgroundStyle by remember { mutableStateOf(themePrefs.backgroundStyle) }
     var celebrationStyle by remember { mutableStateOf(themePrefs.celebrationStyle) }
+    var sparkleStyle by remember { mutableStateOf(themePrefs.sparkleStyle) }
+    // sanitize(): an update can retire an icon variant, leaving the saved pref
+    // pointing at a manifest component that no longer exists.
+    var appIcon by remember {
+        mutableStateOf(
+            LauncherIconSwitcher.sanitize(context, themePrefs.appIcon)
+                .also { if (it != themePrefs.appIcon) themePrefs.appIcon = it }
+        )
+    }
 
     // Launcher-icon theme sync now happens silently when the app is backgrounded
     // (see MainActivity.onStop); no in-app prompt is shown. The Appearance toggle
@@ -225,6 +313,38 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var backPressedOnce by remember { mutableStateOf(false) }
 
     fun navigate(screen: Screen) {
+        // Already on it — nothing to do.
+        if (navigationStack.lastOrNull() == screen) return
+        // Settings hub behaves like a "single top" destination: browsing
+        // Appearance → back → Statistics → back → About used to push a fresh
+        // Settings entry each time, so the stack grew
+        // Home > Settings > Appearance > Settings > Statistics > ... and back
+        // out of the last sub-screen replayed every earlier one before finally
+        // leaving Settings. Popping to the existing entry keeps the stack at
+        // Home > Settings > <sub-screen>, so one back always leaves the
+        // sub-screen and the next one leaves Settings.
+        // Scoped deliberately to the settings hub. Gameplay screens legitimately
+        // recur in one journey (Quiz > Results > Quiz again), and popping back
+        // to the earlier entry there would throw away the Results the player is
+        // returning from.
+        if (screen == Screen.Settings || screen.asSettingsDetail() != null) {
+            val existing = navigationStack.indexOf(screen)
+            if (existing >= 0) {
+                while (navigationStack.lastIndex > existing) {
+                    navigationStack.removeAt(navigationStack.lastIndex)
+                }
+                return
+            }
+            // Entering a sibling sub-screen directly from another one (only
+            // possible in the landscape list-detail layout) should REPLACE it,
+            // not stack on it.
+            if (navigationStack.lastOrNull()?.asSettingsDetail() != null &&
+                screen.asSettingsDetail() != null
+            ) {
+                navigationStack[navigationStack.lastIndex] = screen
+                return
+            }
+        }
         navigationStack.add(screen)
     }
     fun replace(screen: Screen) {
@@ -253,8 +373,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
 
     val activity = context as? Activity
     BackHandler(enabled = true) {
-        if (startupDialogMode != null) {
-            startupDialogMode = null
+        if (offlineDialogMode != null) {
+            offlineDialogMode = null
             return@BackHandler
         }
         if (showAiMissingDialog) {
@@ -446,10 +566,17 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         // assignments, so offline quizzes inherited the PREVIOUS game's
         // difficulty (wrong timer/hints/stats/records) and a stale start time.
         quizDifficulty = difficulty
-        quizStartedAt = System.currentTimeMillis()
+        quizStartedAt = SystemClock.elapsedRealtime()
         // Offline mode: skip any API attempt and go straight to the local bank
         // (stats still record normally in `answer`).
         if (isOfflineMode) {
+            runLocal(topic, difficulty, count)
+            return
+        }
+        // Online mode, but there is genuinely no network: play from the local
+        // bank and say why, rather than letting the API call fail.
+        if (networkOffline) {
+            offlineDialogMode = StartupMode.OFFLINE
             runLocal(topic, difficulty, count)
             return
         }
@@ -485,7 +612,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         quizDifficulty = "Daily"
         isDailyQuiz = true
         quizMode = "normal"
-        quizStartedAt = System.currentTimeMillis()
+        quizStartedAt = SystemClock.elapsedRealtime()
         navigate(Screen.Quiz)
     }
 
@@ -507,7 +634,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         quizDifficulty = "Practice"
         isDailyQuiz = false
         quizMode = "normal"
-        quizStartedAt = System.currentTimeMillis()
+        quizStartedAt = SystemClock.elapsedRealtime()
         navigate(Screen.Quiz)
     }
 
@@ -592,8 +719,13 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         survivalWrongs = 0
         survivalFetching = false
         quizDifficulty = difficulty
-        quizStartedAt = System.currentTimeMillis()
+        quizStartedAt = SystemClock.elapsedRealtime()
         if (isOfflineMode) {
+            runLocal(topic, difficulty, 5)
+            return
+        }
+        if (networkOffline) {
+            offlineDialogMode = StartupMode.OFFLINE
             runLocal(topic, difficulty, 5)
             return
         }
@@ -635,7 +767,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         isDailyQuiz = false
         quizMode = "blitz"
         quizDifficulty = "Blitz"
-        quizStartedAt = System.currentTimeMillis()
+        quizStartedAt = SystemClock.elapsedRealtime()
         // Blitz is instant + offline by design: a big local-bank pool, unseen
         // questions first. The chosen difficulty picks the pool.
         val pool = LocalQuestionBank.getQuestions(80, topic, difficulty)
@@ -648,7 +780,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         score = 0
         aiGenerated = false
         generationState = GenerationState.Idle
-        blitzDeadline = System.currentTimeMillis() + 60_000L
+        blitzDeadline = SystemClock.elapsedRealtime() + 60_000L
         navigate(Screen.Quiz)
     }
 
@@ -660,8 +792,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         versusP1Score = 0
         versusP1Answers = emptyList()
         quizDifficulty = difficulty
-        quizStartedAt = System.currentTimeMillis()
+        quizStartedAt = SystemClock.elapsedRealtime()
         if (isOfflineMode) {
+            runLocal(topic, difficulty, count)
+            return
+        }
+        // Online mode, but there is genuinely no network: play from the local
+        // bank and say why, rather than letting the API call fail.
+        if (networkOffline) {
+            offlineDialogMode = StartupMode.OFFLINE
             runLocal(topic, difficulty, count)
             return
         }
@@ -833,7 +972,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     fun kickGuessPrefetch(startedRound: Int) {
         if (startedRound >= guessTotalRounds) return // last round — nothing to build
         if (guessPrefetchJob != null || guessPrefetch != null) return // already in flight / done
-        if (isOfflineMode) return
+        if (isOfflineMode || networkOffline) return
         // Silent provider lookup — a missing key here must NEVER disturb the
         // round the player is currently playing.
         val provider = apiKeyStore.getSelectedProvider() ?: apiKeyStore.getActiveProvider() ?: return
@@ -947,7 +1086,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     }
 
     fun prepareGuessRound() {
-        if (isOfflineMode) {
+        if (isOfflineMode || networkOffline) {
             guessPhase = GuessPhase.Error(
                 "Guessing Game needs an internet connection to fetch the answer set and the mystery image.",
                 isOffline = true,
@@ -1067,8 +1206,20 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var selectedProvider by remember { mutableStateOf(apiKeyStore.getSelectedProvider()) }
     val activeProvider = selectedProvider ?: apiKeyStore.getActiveProvider()
     val configuredProviders = apiKeyStore.getConfiguredProviders()
+    // Authoritative readiness, read from the same store the generator uses.
+    // Keyed on selectedProvider so picking a provider/model in the sheet
+    // refreshes the pill immediately.
+    val generationProvider = remember(selectedProvider, configuredProviders) {
+        apiKeyStore.getGenerationProvider()
+    }
+    val keyWithoutUsableModel = remember(selectedProvider, configuredProviders) {
+        apiKeyStore.hasKeyButNoUsableModel()
+    }
 
     val rootFocusManager = LocalFocusManager.current
+    // Landscape moves the nav bar to a right-edge rail; screens that show it
+    // must inset their content so nothing sits underneath.
+    val landscape = isLandscape()
     NazoTheme(darkTheme = isDark, accentId = accentName) {
         Box(
             modifier = Modifier
@@ -1088,21 +1239,28 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 modifier = Modifier.fillMaxSize(),
                 style = backgroundStyle,
             )
-            AnimatedContent(
-                targetState = currentScreen,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .then(if (startupDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp) else Modifier),
-                transitionSpec = {
-                    fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
-                },
-                label = "nazoScreenTransition",
-            ) { screen ->
+            // Screens that show the rail must not draw under it. Only Home and
+            // Settings show it, so the inset is applied per-screen rather than
+            // stealing width from full-screen screens like the quiz.
+            val railInset = if (landscape && !showOnboarding &&
+                (currentScreen == Screen.Home || currentScreen == Screen.Settings ||
+                    currentScreen.asSettingsDetail() != null)
+            ) NazoRailWidth else 0.dp
+
+            // The screen switch is reused twice: once full-screen, and once as the
+            // DETAIL pane of the landscape Settings list-detail layout. Declaring
+            // it as a local composable lambda keeps a single source of truth.
+            val renderScreen: @Composable (Screen) -> Unit = { screen ->
                 when (screen) {
                     Screen.Home -> HomeScreen(
-                        apiKeyActive = apiKeyStore.hasAnyActiveKey(),
-                        activeProvider = activeProvider,
+                        // Generation-ready, not merely "a key exists" — this is
+                        // the same resolution the generator performs, so the
+                        // pill and the Generate button can never disagree.
+                        apiKeyActive = generationProvider != null,
+                        apiKeyPresentWithoutModel = keyWithoutUsableModel,
+                        activeProvider = generationProvider ?: activeProvider,
                         offline = isOfflineMode,
+                        sparkleStyle = sparkleStyle,
                         configuredProviders = configuredProviders,
                         onSelectProvider = { id ->
                             apiKeyStore.saveSelectedProvider(id)
@@ -1146,8 +1304,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onOpenAppearance = { navigate(Screen.Appearance) },
                         onOpenBackupRestore = { navigate(Screen.BackupRestore) },
                         onOpenAbout = { navigate(Screen.About) },
-                    forceOffline = forceOffline,
-                    onForceOfflineChange = { v -> forceOffline = v },
+                    forceOffline = offlineMode,
+                    onForceOfflineChange = { v ->
+                        // The user's choice always wins, even with no network.
+                        // Going online while disconnected is allowed on
+                        // purpose: the app simply explains itself when an
+                        // online action is actually attempted.
+                        offlineMode = v
+                        if (!v) connectivityProbe++
+                    },
                     soundEnabled = soundEnabled,
                     onSoundEnabledChange = { v ->
                         soundEnabled = v
@@ -1184,18 +1349,30 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onSaved = { goBack() },
                     )
 
-                    Screen.Statistics -> StatisticsScreen(
-                        stats = quizStats,
-                        bonusXp = dailyStore.totalBonusXp(),
-                        achievements = AchievementEngine.compute(
+                    Screen.Statistics -> {
+                        // Memoised: this walks every achievement rule and hits
+                        // the records/daily stores on each call. Inline as a
+                        // parameter it re-ran on every recomposition of the
+                        // screen (scrolling, theme change). The inputs only
+                        // change when a quiz is recorded, so key on those.
+                        val dailiesCompleted = dailyStore.completedCount()
+                        val bonusXp = dailyStore.totalBonusXp()
+                        val achievements = remember(quizStats, dailiesCompleted) {
+                            AchievementEngine.compute(
+                                stats = quizStats,
+                                hasPerfectQuiz = listOf("Easy", "Medium", "Hard", "Otaku Master", "Daily")
+                                    .any { recordsStore.quizBestPercent(it) >= 100 },
+                                dailiesCompleted = dailiesCompleted,
+                            )
+                        }
+                        StatisticsScreen(
                             stats = quizStats,
-                            hasPerfectQuiz = listOf("Easy", "Medium", "Hard", "Otaku Master", "Daily")
-                                .any { recordsStore.quizBestPercent(it) >= 100 },
-                            dailiesCompleted = dailyStore.completedCount(),
-                        ),
-                        onBackClick = { goBack() },
-                        onHomeClick = { goHome() },
-                    )
+                            bonusXp = bonusXp,
+                            achievements = achievements,
+                            onBackClick = { goBack() },
+                            onHomeClick = { goHome() },
+                        )
+                    }
 
                     Screen.Appearance -> AppearanceScreen(
                         currentMode = themeMode,
@@ -1227,11 +1404,29 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             celebrationStyle = it
                             themePrefs.celebrationStyle = it
                         },
+                        sparkleStyle = sparkleStyle,
+                        onSparkleStyleChange = {
+                            sparkleStyle = it
+                            themePrefs.sparkleStyle = it
+                        },
                         iconFollowsOsTheme = themePrefs.iconFollowsOsTheme,
                         onIconFollowsOsThemeChange = { enabled ->
                             // Just persist the preference; the actual swap happens silently
                             // when the app is backgrounded (MainActivity.onStop).
                             themePrefs.iconFollowsOsTheme = enabled
+                        },
+                        appIcon = appIcon,
+                        onAppIconChange = { id ->
+                            appIcon = id
+                            themePrefs.appIcon = id
+                            // A custom icon and "follow the OS theme" are mutually
+                            // exclusive — picking one turns the automatic mode off.
+                            themePrefs.iconFollowsOsTheme = false
+                            LauncherIconSwitcher.select(context, id)
+                            // Disabling the alias that launched this task makes Android
+                            // tear the task down; finishing ourselves makes that graceful
+                            // and predictable instead of looking like a crash.
+                            (context as? Activity)?.finishAndRemoveTask()
                         },
                         onBackClick = { goBack() },
                         onHomeClick = { goHome() },
@@ -1377,14 +1572,139 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 }
             }
 
-            if (startupDialogMode != null) {
+            // Landscape Settings uses a LIST-DETAIL layout: the settings list
+            // stays on the left while the chosen sub-screen renders on the
+            // right, so switching between sub-screens is one tap instead of
+            // back-then-forward. Portrait keeps the normal full-screen push.
+            val settingsDetail = currentScreen.asSettingsDetail()
+            val showListDetail = landscape && !showOnboarding &&
+                (currentScreen == Screen.Settings || settingsDetail != null)
+
+            // The Home <-> landscape-Settings switch is a STRUCTURAL change:
+            // one branch is a full-screen AnimatedContent, the other a
+            // master/detail Row. An `if` between them replaced the whole
+            // subtree in a single frame, which read as a hard cut even though
+            // both branches animate internally.
+            //
+            // Wrapping the branch choice in its own AnimatedContent cross-fades
+            // the two layout modes. The target is the BOOLEAN, so this only
+            // animates when the layout mode actually changes — Home -> Quiz
+            // still uses the inner screen transition, and Settings -> a detail
+            // screen still uses the detail transition, neither of which is
+            // disturbed.
+            AnimatedContent(
+                targetState = showListDetail,
+                transitionSpec = {
+                    // Same language and durations as the screen transition, so
+                    // the mode switch does not stand out from normal navigation.
+                    fadeIn(animationSpec = tween(220)) togetherWith
+                        fadeOut(animationSpec = tween(160))
+                },
+                label = "layoutModeTransition",
+            ) { listDetail ->
+                if (listDetail) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(end = railInset)
+                            .then(
+                                if (offlineDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp)
+                                else Modifier
+                            ),
+                    ) {
+                        // Master: always the settings list.
+                        Box(modifier = Modifier.weight(0.42f)) {
+                            renderScreen(Screen.Settings)
+                        }
+                        // Detail: the selected sub-screen, or a hint when none is.
+                        Box(modifier = Modifier.weight(0.58f)) {
+                            AnimatedContent(
+                                targetState = settingsDetail,
+                                transitionSpec = {
+                                    fadeIn(animationSpec = tween(200)) togetherWith
+                                        fadeOut(animationSpec = tween(140))
+                                },
+                                label = "settingsDetailTransition",
+                            ) { detail ->
+                                if (detail == null) {
+                                    SettingsDetailPlaceholder()
+                                } else {
+                                    renderScreen(detail)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    AnimatedContent(
+                        targetState = currentScreen,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(end = railInset)
+                            .then(if (offlineDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp) else Modifier),
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
+                        },
+                        label = "nazoScreenTransition",
+                    ) { screen ->
+                        renderScreen(screen)
+                    }
+                }
+            }
+
+            // The bottom nav lives OUTSIDE AnimatedContent, for the same reason
+            // AmbientBackground does: anything inside gets torn down and rebuilt
+            // on every screen change, so its animation state is destroyed.
+            //
+            // It used to be rendered by HomeScreen and SettingsScreen separately.
+            // Those are two DIFFERENT composables that never coexist — switching
+            // tabs disposed one and created the other, so animateColorAsState /
+            // animateContentSize always started at their target value and the
+            // expand/collapse transition could never be seen. One shared instance
+            // here survives the swap, so the pill genuinely animates between tabs.
+            //
+            // Only the two tab destinations show it; submenus stay full-screen.
+            val navTab = when {
+                currentScreen == Screen.Home -> NazoTab.Home
+                currentScreen == Screen.Settings -> NazoTab.Settings
+                // In the landscape list-detail layout the settings list is still
+                // on screen next to its sub-screen, so the rail stays too.
+                landscape && currentScreen.asSettingsDetail() != null -> NazoTab.Settings
+                else -> null
+            }
+            if (navTab != null && !showOnboarding) {
+                NazoBottomNav(
+                    selected = navTab,
+                    // Hoisted state, NOT a preference read inside the bar, so
+                    // flipping the Appearance toggle restyles it instantly.
+                    floating = navBarFloating,
+                    onHomeClick = { if (currentScreen != Screen.Home) goHome() },
+                    onSettingsClick = { if (currentScreen != Screen.Settings) navigate(Screen.Settings) },
+                    modifier = Modifier
+                        // Landscape turns the bar into a right-edge rail, so it
+                        // anchors to the end rather than the bottom.
+                        .align(if (landscape) Alignment.CenterEnd else Alignment.BottomCenter)
+                        // Match the blur AnimatedContent gets behind a startup
+                        // dialog; the bar used to be inside a screen and so was
+                        // blurred with it.
+                        .then(
+                            if (offlineDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp)
+                            else Modifier
+                        ),
+                )
+            }
+
+
+            // No longer a *startup* popup — the app now drops into offline
+            // mode silently. This appears only when the user asks for
+            // something online while the network is actually down.
+            if (offlineDialogMode != null) {
                 OfflineWarningDialog(
-                    mode = startupDialogMode!!,
+                    mode = offlineDialogMode!!,
                     onGoOffline = {
-                        forceOffline = true
-                        startupDialogMode = null
+                        offlineMode = true
+                        offlineDialogMode = null
                     },
-                    onContinue = { startupDialogMode = null },
+                    onContinue = { offlineDialogMode = null },
                 )
             }
 
@@ -1403,7 +1723,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             if (showAiMissingDialog) {
                 AiMissingDialog(
                     onGoOffline = {
-                        forceOffline = true
+                        offlineMode = true
                         showAiMissingDialog = false
                         pendingQuizRequest?.let { (t, d, c) ->
                             runLocal(t, d, c)
@@ -1463,8 +1783,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         remindersEnabled = v
                         ReminderScheduler.setEnabled(context.applicationContext, v)
                     },
-                    forceOffline = forceOffline,
-                    onForceOfflineChange = { v -> forceOffline = v },
+                    forceOffline = offlineMode,
+                    onForceOfflineChange = { v ->
+                        // The user's choice always wins, even with no network.
+                        // Going online while disconnected is allowed on
+                        // purpose: the app simply explains itself when an
+                        // online action is actually attempted.
+                        offlineMode = v
+                        if (!v) connectivityProbe++
+                    },
                     onProvidersChanged = {
                         selectedProvider = apiKeyStore.getSelectedProvider()
                     },
@@ -1502,14 +1829,28 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // true first launch the (opaque) tour covered it and the splash
             // zoom-through animation played invisibly underneath — the classic
             // "intro only works after setup" bug.
-            IntroOverlay(isDark = isDark)
+            // Continue the system splash's color: when a custom app icon is active
+            // its flat splash color carries into the zoom-through, so there's no
+            // color jump between the two. The follow-OS-theme pair passes null and
+            // keeps the original light/dark greens.
+            val introIcon = if (themePrefs.iconFollowsOsTheme) null
+            else LauncherIconSwitcher.option(appIcon)
+            IntroOverlay(
+                isDark = isDark,
+                backgroundColor = introIcon?.splashColor?.let { Color(it) },
+                mark = introIcon?.introMark ?: R.drawable.ic_launcher_foreground,
+                style = introIcon?.introStyle ?: IntroStyle.WARP,
+            )
         }
     }
 }
 
 private fun formatElapsed(startedAt: Long): String {
     if (startedAt == 0L) return "0m 0s"
-    val secs = ((System.currentTimeMillis() - startedAt) / 1000).toInt().coerceAtLeast(0)
+    // elapsedRealtime(), not currentTimeMillis(): a monotonic clock that can't
+    // jump. Wall time moves when the OS does an NTP sync or the user edits the
+    // date mid-quiz, which produced absurd or negative durations.
+    val secs = ((SystemClock.elapsedRealtime() - startedAt) / 1000).toInt().coerceAtLeast(0)
     return "${secs / 60}m ${secs % 60}s"
 }
 

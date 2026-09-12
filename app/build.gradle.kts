@@ -13,8 +13,8 @@ android {
         applicationId = "quiz.thaton3app.nazo"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "7.0"
+        versionCode = 9
+        versionName = "9.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -55,6 +55,9 @@ dependencies {
     // Branded cold start: system splash screen (backward-compatible to API 26)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    // Provides the current LocalLifecycleOwner for Compose (used to re-probe
+    // connectivity on ON_RESUME); the old compose.ui.platform alias is gone.
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)

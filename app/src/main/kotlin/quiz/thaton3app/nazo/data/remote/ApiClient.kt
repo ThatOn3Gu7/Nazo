@@ -96,6 +96,99 @@ Hard rules:
         }.onFailure { e -> Log.e(TAG, "generateQuiz failed", e) }
     }
 
+    /**
+     * Asks the configured provider for a short anime-flavoured nickname.
+     *
+     * Reuses the same endpoint abstraction as [generateQuiz] rather than
+     * introducing a second key/transport path, so a provider that works for
+     * quizzes works here with no extra configuration.
+     *
+     * The result is sanitised before it is returned: models like to answer in
+     * a sentence, wrap the name in quotes, or add an explanation. Only the
+     * first plausible token survives, capped at [NICKNAME_MAX_LENGTH]. Returns
+     * a failure when nothing usable comes back, which lets the caller keep the
+     * user's current name rather than writing junk into their profile.
+     */
+    suspend fun generateNickname(
+        providerId: String,
+        apiKey: String,
+        model: String,
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val endpoint = providerById(providerId)
+                ?: throw IllegalArgumentException("Unknown provider: $providerId")
+
+            val prompt = "Invent ONE short username for an anime quiz app player. " +
+                "Rules: 3 to 16 characters, letters and digits only, no spaces, " +
+                "no punctuation, no quotes, no explanation. " +
+                "It should sound like an anime fan's handle. " +
+                "Reply with the username and nothing else."
+
+            val url = endpoint.buildUrl(model, apiKey)
+            val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                doOutput = true
+                connectTimeout = 15_000
+                readTimeout = 20_000
+                endpoint.headers(apiKey).forEach { (k, v) -> setRequestProperty(k, v) }
+            }
+
+            try {
+                val body = endpoint.requestBody(
+                    prompt,
+                    model,
+                    "You invent short usernames. Reply with one username only.",
+                )
+                connection.outputStream.use { os ->
+                    os.write(body.toByteArray(StandardCharsets.UTF_8))
+                }
+                val code = connection.responseCode
+                val raw = if (code in 200..299) {
+                    connection.inputStream.bufferedReader().use { it.readText() }
+                } else {
+                    connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                }
+                if (code !in 200..299) {
+                    throw IOException(friendlyHttpError(code, endpoint.kind))
+                }
+                sanitizeNickname(extractContent(endpoint.kind, raw))
+                    ?: throw IllegalStateException("Provider returned no usable nickname")
+            } finally {
+                connection.disconnect()
+            }
+        }.onFailure { e ->
+            // Deliberately does not log the key or the raw body.
+            Log.e(TAG, "generateNickname failed: ${e.javaClass.simpleName}")
+        }
+    }
+
+    /** Longest nickname accepted from a model, matching the profile field's own limit. */
+    private const val NICKNAME_MAX_LENGTH = 16
+
+    /**
+     * Reduces a model's reply to a single safe handle, or null when nothing
+     * usable is present.
+     *
+     * Models frequently reply with more than the name ("Sure! How about
+     * **ShadowRonin**?"), so this takes the first token that is plausibly a
+     * handle after stripping markdown, quotes and punctuation.
+     */
+    internal fun sanitizeNickname(content: String): String? {
+        val candidates = content
+            // Anything that is not a letter or digit is a separator, so
+            // markdown, quotes, brackets and punctuation all fall away without
+            // needing to enumerate them.
+            .split(Regex("""[^\p{L}\p{N}]+"""))
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+        val token = candidates.firstOrNull { candidate ->
+            candidate.length in 3..NICKNAME_MAX_LENGTH &&
+                candidate.all { it.isLetterOrDigit() } &&
+                candidate.any { it.isLetter() }
+        } ?: return null
+        return token.take(NICKNAME_MAX_LENGTH)
+    }
+
     // internal (not private) so other modes (e.g. modes/guessing_game) can reuse
     // the same response-shape handling instead of duplicating it.
     internal fun extractContent(kind: ProviderKind, raw: String): String = when (kind) {
@@ -303,15 +396,20 @@ Hard rules:
 
 /** In-memory cache of generated quizzes for the current app session (keyed by request params). */
 object QuizCache {
+    // Guarded by [lock]: generateQuiz runs on Dispatchers.IO and several
+    // requests can be in flight at once (a quiz build plus a prefetch), so an
+    // unsynchronised LinkedHashMap could interleave a put() resize with a
+    // read and corrupt the map or throw ConcurrentModificationException.
+    private val lock = Any()
     private val map = LinkedHashMap<String, List<Question>>()
     private const val MAX = 20
 
     fun key(provider: String, model: String, topic: String, difficulty: String, count: Int): String =
         "$provider:$model:$topic:$difficulty:$count"
 
-    fun get(key: String): List<Question>? = map[key]
+    fun get(key: String): List<Question>? = synchronized(lock) { map[key] }
 
-    fun put(key: String, value: List<Question>) {
+    fun put(key: String, value: List<Question>) = synchronized(lock) {
         map.remove(key)
         map[key] = value
         while (map.size > MAX) map.remove(map.keys.first())

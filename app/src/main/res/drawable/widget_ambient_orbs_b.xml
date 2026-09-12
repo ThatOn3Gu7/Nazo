@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Widget ambient frame: orbs, phase B of 3.
+
+  RemoteViews cannot host Compose, so AmbientBackground's live canvas cannot be
+  reused in a widget. These layer-lists reproduce its visual LANGUAGE with
+  static art; NazoWidgetProvider cross-fades A -> B -> C in a ViewFlipper, which
+  is a supported RemoteViews view, to suggest motion without a frame loop.
+  Drift between phases is deliberately small so the effect reads as ambient
+  rather than as a slideshow.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#1A2620" />
+            <corners android:radius="24dp" />
+            <stroke android:width="1dp" android:color="#2E4237" />
+        </shape>
+    </item>
+    <item android:left="114dp" android:top="6dp" android:width="34dp" android:height="34dp">
+        <shape android:shape="oval">
+            <solid android:color="#00000000" />
+            <stroke android:width="1dp" android:color="#24694A" />
+        </shape>
+    </item>
+    <item android:left="157dp" android:top="27dp" android:width="18dp" android:height="18dp">
+        <shape android:shape="oval">
+            <solid android:color="#00000000" />
+            <stroke android:width="1dp" android:color="#1F5A3D" />
+        </shape>
+    </item>
+    <item android:left="179dp" android:top="11dp" android:width="7dp" android:height="7dp">
+        <shape android:shape="oval">
+            <solid android:color="#1F5A3D" />
+        </shape>
+    </item>
+</layer-list>

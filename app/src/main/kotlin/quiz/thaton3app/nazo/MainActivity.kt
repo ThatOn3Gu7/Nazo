@@ -6,24 +6,65 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import quiz.thaton3app.nazo.LauncherIconSwitcher
 import quiz.thaton3app.nazo.data.UpdatePrefs
 import quiz.thaton3app.nazo.data.UpdateScheduler
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
-import quiz.thaton3app.nazo.LauncherIconSwitcher
 import quiz.thaton3app.nazo.ui.NazoApp
+import quiz.thaton3app.nazo.widget.NazoWidgetProvider
 
-class MainActivity : ComponentActivity() {
+open class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        // MUST be the first statement (before super.onCreate) so the system splash
-        // window is installed and handed off before any content is drawn.
+        // Fallback for launches that DON'T come from a per-icon launcher activity
+        // (e.g. the Daily Challenge shortcut, which targets MainActivity directly):
+        // re-theme so the splash still matches the chosen icon. The starting window
+        // itself is already correct whenever a Launcher* entry was tapped, since
+        // that component carries the theme in the manifest. Must run before
+        // installSplashScreen(), which reads windowSplashScreen* off the theme.
+        applyIconSplashTheme()
+        // MUST be the first statement after that (before super.onCreate) so the system
+        // splash window is installed and handed off before any content is drawn.
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         // Schedule background update checks per the saved frequency preference.
         UpdateScheduler.apply(this, UpdatePrefs(this).updateFrequency)
+        // Re-render any placed widget from current storage on every launch.
+        //
+        // This is the supported recovery path after "Clear data". Android does
+        // NOT deliver ACTION_PACKAGE_DATA_CLEARED to the package whose own data
+        // was cleared, so the app cannot react to the clear itself, and the
+        // launcher keeps showing the last RemoteViews it was given — stale
+        // streak and Daily text — until something updates the widget. The first
+        // launch after a clear is the earliest moment we are allowed to run, so
+        // it repaints from the now-empty stores.
+        //
+        // Do NOT replace this with a self-targeted data-cleared receiver; it
+        // will never fire. See NazoWidgetProvider for the full explanation.
+        NazoWidgetProvider.refreshAll(applicationContext)
         setContent {
             NazoApp(launchDailyChallenge = intent?.action == ACTION_DAILY)
         }
+    }
+
+    /**
+     * Re-themes the window to the splash variant matching the user's chosen app
+     * icon, so the post-process-start splash is the same color as the launcher tile.
+     *
+     * Note this canNOT affect the *starting window* (the frame the system draws
+     * before the process exists) — that comes from the launched component's
+     * manifest theme, which is why each icon has its own Launcher* activity.
+     * This only covers non-icon entry points like the launcher shortcut.
+     *
+     * Only applies when the icon is NOT following the OS theme — the classic green
+     * pair keeps `Theme.Nazo.Splash`, whose background is already day/night aware.
+     */
+    private fun applyIconSplashTheme() {
+        val prefs = ThemePreferences(this)
+        if (prefs.iconFollowsOsTheme) return
+        // option() already falls back to the classic icon for a retired id, so a
+        // stale pref degrades to the default splash rather than crashing.
+        LauncherIconSwitcher.option(prefs.appIcon).splashTheme?.let(::setTheme)
     }
 
     override fun onStop() {

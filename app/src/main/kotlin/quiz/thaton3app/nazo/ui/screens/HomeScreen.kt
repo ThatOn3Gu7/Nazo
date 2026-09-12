@@ -3,8 +3,17 @@ package quiz.thaton3app.nazo.ui.screens
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -12,10 +21,15 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,9 +44,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -40,13 +59,21 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.PI
+import kotlin.math.sin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.daily.DailyChallengeCard
+import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.ui.components.Haptics
-import quiz.thaton3app.nazo.ui.components.NazoBottomNav
-import quiz.thaton3app.nazo.ui.components.NazoTab
+import quiz.thaton3app.nazo.ui.components.NazoModalSheet
+import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
+import quiz.thaton3app.nazo.ui.components.SPARKLE_METEORS
+import quiz.thaton3app.nazo.ui.components.SPARKLE_TWINKLE
+import quiz.thaton3app.nazo.ui.components.drawMeteorShower
+import quiz.thaton3app.nazo.ui.components.drawTwinklingStars
+import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
 
 enum class Difficulty(val label: String) {
@@ -69,8 +96,12 @@ enum class NazoMode(val label: String) {
 @Composable
 fun HomeScreen(
     apiKeyActive: Boolean,
+    /** A key is stored but nothing is generation-ready (no model selected). */
+    apiKeyPresentWithoutModel: Boolean = false,
     activeProvider: String? = null,
     offline: Boolean = false,
+    /** Generate-button tap effect: SPARKLE_TWINKLE or SPARKLE_METEORS. */
+    sparkleStyle: String = SPARKLE_TWINKLE,
     onSettingsClick: () -> Unit = {},
     profileName: String = "",
     profilePictureUri: String? = null,
@@ -115,265 +146,287 @@ fun HomeScreen(
         scope.launch {
             sheetState.hide()
         }.invokeOnCompletion {
-            // Run the side effect unconditionally so a provider selection / navigation
-            // is never dropped if the hide animation is interrupted or cancelled.
             showProviderSheet = false
             onComplete()
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .navigationBarsPadding()
-                .padding(bottom = 96.dp)
+    val landscape = isLandscape()
+
+    // Group 1: Profile, Badges, Daily Challenge, and Mode Selection
+    val leftContent: @Composable () -> Unit = {
+        Spacer(Modifier.height(24.dp))
+
+        HomeHeader(
+            onSettingsClick = onSettingsClick,
+            profileName = profileName,
+            profilePictureUri = profilePictureUri,
+            onProfileClick = onProfileClick,
+        )
+
+        Spacer(Modifier.height(18.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Spacer(Modifier.height(24.dp))
-
-            HomeHeader(
-                onSettingsClick = onSettingsClick,
-                profileName = profileName,
-                profilePictureUri = profilePictureUri,
-                onProfileClick = onProfileClick,
+            ApiKeyBadge(
+                active = apiKeyActive,
+                activeProvider = activeProvider,
+                offline = offline,
+                keyWithoutModel = apiKeyPresentWithoutModel,
+                onClick = if (offline) null else ({ showProviderSheet = true }),
             )
-
-            Spacer(Modifier.height(18.dp))
-
-            // Status row: provider badge on the left, daily-streak flame on
-            // the right — one line instead of two stacked chips.
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ApiKeyBadge(
-                    active = apiKeyActive,
-                    activeProvider = activeProvider,
-                    offline = offline,
-                    onClick = if (offline) null else ({ showProviderSheet = true }),
-                )
-                Spacer(Modifier.weight(1f))
-                // Daily streak flame: appears from day 1 and burns hotter as
-                // the streak grows (see StreakFlameChip).
-                if (streakDays >= 1) {
-                    StreakFlameChip(streakDays = streakDays)
-                }
+            Spacer(Modifier.weight(1f))
+            if (streakDays >= 1) {
+                StreakFlameChip(streakDays = streakDays)
             }
+        }
 
-            Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(22.dp))
 
-            // Daily Challenge (Phase 5): date-seeded from the local bank, so it
-            // is always available — even offline and with no provider set up.
-            DailyChallengeCard(
-                completed = dailyCompleted,
-                lastScore = dailyScore,
-                lastBonus = dailyBonus,
-                onPlay = onPlayDaily,
-            )
+        DailyChallengeCard(
+            completed = dailyCompleted,
+            lastScore = dailyScore,
+            lastBonus = dailyBonus,
+            onPlay = onPlayDaily,
+        )
 
-            Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(22.dp))
 
-            SectionLabel("MODE")
-            Spacer(Modifier.height(10.dp))
-            // Five modes — a compact dropdown card instead of a 3-row pill
-            // grid: shows the selected mode (icon + one-line pitch) and
-            // expands in place to reveal the others.
-            ModeSelector(
-                selected = nazoMode,
-                onSelect = { m ->
-                    if (nazoMode != m) Haptics.light(context)
-                    onModeChange(m.name)
+        SectionLabel("MODE")
+        Spacer(Modifier.height(10.dp))
+        ModeSelector(
+            selected = nazoMode,
+            onSelect = { m ->
+                if (nazoMode != m) Haptics.light(context)
+                onModeChange(m.name)
+            },
+        )
+
+        Spacer(Modifier.height(24.dp))
+
+        AnimatedContent(
+            targetState = nazoMode,
+            transitionSpec = {
+                (slideInVertically(spring(stiffness = Spring.StiffnessMediumLow)) { it / 3 } + fadeIn())
+                    .togetherWith(slideOutVertically { -it / 3 } + fadeOut())
+            },
+            label = "modeHeadline",
+        ) { m ->
+            Text(
+                text = when (m) {
+                    NazoMode.GUESSING -> "Can you spot the\nmystery image?"
+                    NazoMode.SURVIVAL -> "How long can\nyou survive?"
+                    NazoMode.BLITZ -> "How many in\n60 seconds?"
+                    NazoMode.VERSUS -> "Who knows their\nanime better?"
+                    else -> "Ready to test your\nanime knowledge?"
                 },
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 28.sp,
+                    lineHeight = 34.sp,
+                    letterSpacing = (-0.5).sp
+                ),
+                color = NazoTextPrimary,
             )
+        }
+    }
 
-            Spacer(Modifier.height(24.dp))
+    // Group 2: Topic, Difficulty, Rounds/Questions, and the Generate Button
+    val rightContent: @Composable () -> Unit = {
+        // Top alignment spacer for landscape
+        if (landscape) Spacer(Modifier.height(24.dp))
 
-            // Headline swaps with a little slide+fade whenever the mode changes.
-            AnimatedContent(
-                targetState = nazoMode,
-                transitionSpec = {
-                    (slideInVertically(spring(stiffness = Spring.StiffnessMediumLow)) { it / 3 } + fadeIn())
-                        .togetherWith(slideOutVertically { -it / 3 } + fadeOut())
-                },
-                label = "modeHeadline",
-            ) { m ->
-                Text(
-                    text = when (m) {
-                        NazoMode.GUESSING -> "Can you spot the\nmystery image?"
-                        NazoMode.SURVIVAL -> "How long can\nyou survive?"
-                        NazoMode.BLITZ -> "How many in\n60 seconds?"
-                        NazoMode.VERSUS -> "Who knows their\nanime better?"
-                        else -> "Ready to test your\nanime knowledge?"
+        TopicInputCard(topic = topic, onTopicChange = onTopicChange)
+        
+        Spacer(Modifier.height(24.dp))
+        
+        SectionLabel("DIFFICULTY")
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            listOf(Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD).forEach { level ->
+                PillButton(
+                    text = level.label,
+                    selected = difficulty == level,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        if (difficulty != level) Haptics.light(context)
+                        onDifficultyChange(level.name)
                     },
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 28.sp,
-                        lineHeight = 34.sp,
-                        letterSpacing = (-0.5).sp
-                    ),
-                    color = NazoTextPrimary,
                 )
             }
+        }
+        Spacer(Modifier.height(10.dp))
+        PillButton(
+            text = Difficulty.OTAKU_MASTER.label,
+            selected = difficulty == Difficulty.OTAKU_MASTER,
+            icon = Icons.Filled.WorkspacePremium,
+            onClick = {
+                if (difficulty != Difficulty.OTAKU_MASTER) Haptics.light(context)
+                onDifficultyChange(Difficulty.OTAKU_MASTER.name)
+            },
+        )
+        
+        Spacer(Modifier.height(24.dp))
 
-            Spacer(Modifier.height(24.dp))
-
-            TopicInputCard(topic = topic, onTopicChange = onTopicChange)
-            
-            Spacer(Modifier.height(24.dp))
-            
-            SectionLabel("DIFFICULTY")
+        if (isGuessing) {
+            SectionLabel("ROUNDS")
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf(Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD).forEach { level ->
+                listOf(1, 3, 5).forEach { count ->
                     PillButton(
-                        text = level.label,
-                        selected = difficulty == level,
+                        text = if (count == 1) "1 Round" else "$count Rounds",
+                        selected = guessingRounds == count,
                         modifier = Modifier.weight(1f),
                         onClick = {
-                            if (difficulty != level) Haptics.light(context)
-                            onDifficultyChange(level.name)
+                            if (guessingRounds != count) Haptics.light(context)
+                            onGuessingRoundsChange(count)
                         },
                     )
                 }
             }
+        } else if (nazoMode == NazoMode.QUIZ || nazoMode == NazoMode.VERSUS) {
+            SectionLabel("QUESTIONS")
             Spacer(Modifier.height(10.dp))
-            PillButton(
-                text = Difficulty.OTAKU_MASTER.label,
-                selected = difficulty == Difficulty.OTAKU_MASTER,
-                icon = Icons.Filled.WorkspacePremium,
-                onClick = {
-                    if (difficulty != Difficulty.OTAKU_MASTER) Haptics.light(context)
-                    onDifficultyChange(Difficulty.OTAKU_MASTER.name)
-                },
-            )
-            
-            Spacer(Modifier.height(24.dp))
-
-            if (isGuessing) {
-                SectionLabel("ROUNDS")
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    listOf(1, 3, 5).forEach { count ->
-                        PillButton(
-                            text = if (count == 1) "1 Round" else "$count Rounds",
-                            selected = guessingRounds == count,
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                if (guessingRounds != count) Haptics.light(context)
-                                onGuessingRoundsChange(count)
-                            },
-                        )
-                    }
-                }
-            } else if (nazoMode == NazoMode.QUIZ || nazoMode == NazoMode.VERSUS) {
-                SectionLabel("QUESTIONS")
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    listOf(5, 10, 15).forEach { count ->
-                        PillButton(
-                            text = "$count Questions",
-                            selected = questionCount == count,
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                if (questionCount != count) Haptics.light(context)
-                                onQuestionCountChange(count)
-                            },
-                        )
-                    }
-                }
-
-                // Practice deck: replay previously missed questions. Only
-                // appears once there's something to practice; the count is
-                // live (questions graduate out when answered correctly).
-                if (nazoMode == NazoMode.QUIZ && practiceCount > 0) {
-                    Spacer(Modifier.height(14.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(50))
-                            .background(NazoSurface)
-                            .border(1.dp, NazoPrimary.copy(alpha = 0.35f), RoundedCornerShape(50))
-                            .clickable {
-                                Haptics.light(context)
-                                onStartPractice()
-                            }
-                            .padding(horizontal = 20.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.School,
-                            contentDescription = null,
-                            tint = NazoPrimary,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "Practice your misses ($practiceCount)",
-                            color = NazoPrimary,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                listOf(5, 10, 15).forEach { count ->
+                    PillButton(
+                        text = "$count Questions",
+                        selected = questionCount == count,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            if (questionCount != count) Haptics.light(context)
+                            onQuestionCountChange(count)
+                        },
+                    )
                 }
             }
 
-            Spacer(Modifier.height(28.dp))
-
-            GenerateButton(
-                label = when (nazoMode) {
-                    NazoMode.GUESSING -> "Start Guessing Game"
-                    NazoMode.SURVIVAL -> "Start Survival Run"
-                    NazoMode.BLITZ -> "Start 60-Second Blitz"
-                    NazoMode.VERSUS -> "Start Versus Match"
-                    else -> if (offline) "Generate Quiz" else "Generate AI Quiz"
-                },
-                onClick = {
-                    when (nazoMode) {
-                        NazoMode.GUESSING -> onStartGuessing(topic, difficulty.label, guessingRounds)
-                        NazoMode.SURVIVAL -> onStartSurvival(topic, difficulty.label)
-                        NazoMode.BLITZ -> onStartBlitz(topic, difficulty.label)
-                        NazoMode.VERSUS -> onStartVersus(topic, difficulty.label, questionCount)
-                        else -> onStartQuiz(topic, difficulty.label, questionCount)
-                    }
-                },
-            )
-            Spacer(Modifier.height(16.dp))
-        }
-
-        NazoBottomNav(
-            selected = NazoTab.Home,
-            onSettingsClick = onSettingsClick,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
-
-        if (showProviderSheet) {
-            ModalBottomSheet(
-                onDismissRequest = { showProviderSheet = false },
-                sheetState = sheetState,
-                containerColor = NazoSurface,
-                dragHandle = {
-                    Box(
-                        modifier = Modifier
-                            .padding(top = 16.dp, bottom = 8.dp)
-                            .size(width = 36.dp, height = 4.dp)
-                            .clip(CircleShape)
-                            .background(NazoTextSecondary.copy(alpha = 0.3f))
+            if (nazoMode == NazoMode.QUIZ && practiceCount > 0) {
+                Spacer(Modifier.height(14.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(50))
+                        .background(NazoSurface)
+                        .border(1.dp, NazoPrimary.copy(alpha = 0.35f), RoundedCornerShape(50))
+                        .clickable {
+                            Haptics.light(context)
+                            onStartPractice()
+                        }
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.School,
+                        contentDescription = null,
+                        tint = NazoPrimary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Practice your misses ($practiceCount)",
+                        color = NazoPrimary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
                     )
                 }
+            }
+        }
+
+        Spacer(Modifier.height(28.dp))
+
+        GenerateButton(
+            sparkleStyle = sparkleStyle,
+            label = when (nazoMode) {
+                NazoMode.GUESSING -> "Start Guessing Game"
+                NazoMode.SURVIVAL -> "Start Survival Run"
+                NazoMode.BLITZ -> "Start 60-Second Blitz"
+                NazoMode.VERSUS -> "Start Versus Match"
+                else -> if (offline) "Generate Quiz" else "Generate AI Quiz"
+            },
+            onClick = {
+                when (nazoMode) {
+                    NazoMode.GUESSING -> onStartGuessing(topic, difficulty.label, guessingRounds)
+                    NazoMode.SURVIVAL -> onStartSurvival(topic, difficulty.label)
+                    NazoMode.BLITZ -> onStartBlitz(topic, difficulty.label)
+                    NazoMode.VERSUS -> onStartVersus(topic, difficulty.label, questionCount)
+                    else -> onStartQuiz(topic, difficulty.label, questionCount)
+                }
+            },
+        )
+        Spacer(Modifier.height(16.dp))
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding(),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        if (landscape) {
+            // Two-column landscape layout.
+            //
+            // Each pane owns its OWN scroll state. Putting the Row inside one
+            // shared verticalScroll made both columns move together, so the
+            // shorter side dragged empty space past the taller one — and the
+            // Row was then measured with infinite height, which defeats the
+            // weight(1f) split.
+            val leftScroll = rememberScrollState()
+            val rightScroll = rememberScrollState()
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .widthIn(max = 900.dp) // Generous width constraint for landscape
+                    .padding(horizontal = 24.dp)
+                    .navigationBarsPadding(),
+                horizontalArrangement = Arrangement.spacedBy(32.dp)
             ) {
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 10.dp)
-                        .navigationBarsPadding(),
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(leftScroll)
+                        .padding(bottom = 20.dp)
                 ) {
+                    leftContent()
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(rightScroll)
+                        .padding(bottom = 20.dp)
+                ) {
+                    rightContent()
+                }
+            }
+        } else {
+            val scrollState = rememberScrollState()
+            // Render the standard single-column layout in portrait
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 20.dp)
+                    .navigationBarsPadding()
+                    .padding(bottom = 96.dp)
+            ) {
+                leftContent()
+                // Spacer separating the sections dynamically when in portrait
+                Spacer(Modifier.height(24.dp))
+                rightContent()
+            }
+        }
+
+        if (showProviderSheet) {
+            NazoModalSheet(
+                onDismissRequest = { showProviderSheet = false },
+                sheetState = sheetState,
+            ) {
+                NazoSheetColumn {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
@@ -565,25 +618,38 @@ private fun HomeHeader(
     }
 }
 
+/**
+ * Provider status pill.
+ *
+ * [active] means GENERATION-READY — a provider with both a key and a selected
+ * model, i.e. exactly what the generator would use. It is not "a key exists":
+ * that was the old behaviour and it lied, because a saved key with no model
+ * chosen still sends the user to the "AI missing" dialog when they press
+ * Generate. [keyWithoutModel] covers that gap explicitly so the pill can say
+ * what is actually wrong.
+ */
 @Composable
 private fun ApiKeyBadge(
     active: Boolean,
     activeProvider: String? = null,
     offline: Boolean = false,
+    keyWithoutModel: Boolean = false,
     onClick: (() -> Unit)? = null,
 ) {
-    val (bg, dot, text) = if (offline) {
-        Triple(NazoPillUnselected, NazoTextSecondary, NazoTextSecondary)
-    } else {
-        Triple(
-            if (active) NazoBadge else NazoErrorBg,
-            if (active) NazoPrimary else NazoError,
-            if (active) NazoPrimary else NazoError,
-        )
+    // Amber for the "nearly there" state: it is not an error (the key is valid
+    // and saved) but it is not ready either, so neither the green nor the red
+    // treatment would be honest.
+    val warn = Color(0xFFFF8F00)
+    val (bg, dot, text) = when {
+        offline -> Triple(NazoPillUnselected, NazoTextSecondary, NazoTextSecondary)
+        active -> Triple(NazoBadge, NazoPrimary, NazoPrimary)
+        keyWithoutModel -> Triple(warn.copy(alpha = 0.12f), warn, warn)
+        else -> Triple(NazoErrorBg, NazoError, NazoError)
     }
     val label = when {
         offline -> "Offline mode"
         active -> activeProvider?.let { PROVIDER_DISPLAY[it] ?: it } ?: "API Key active"
+        keyWithoutModel -> "Choose a model"
         else -> "API Key inactive"
     }
     Row(
@@ -660,11 +726,47 @@ private fun StreakFlameChip(streakDays: Int) {
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Animated flame.
+        //
+        // The motion is deliberately irregular: three sine waves at unrelated
+        // frequencies drive squash, lean and lift, so the flame never repeats
+        // on an obvious beat the way a single pulse would. It is also NOT a
+        // scale pulse — the Daily Challenge card already uses that pattern, and
+        // two pulses on one screen read as a glitch.
+        //
+        // graphicsLayer is a DRAW-phase read of the animation value, so the
+        // flicker never recomposes this chip (let alone HomeScreen) — it only
+        // redraws the icon.
+        val flicker = rememberInfiniteTransition(label = "streakFlame")
+        val t by flicker.animateFloat(
+            initialValue = 0f,
+            targetValue = (2f * PI).toFloat(),
+            animationSpec = infiniteRepeatable(
+                animation = tween(2200, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "streakFlamePhase",
+        )
         Icon(
             imageVector = Icons.Filled.LocalFireDepartment,
             contentDescription = null,
             tint = flameColor,
-            modifier = Modifier.size(flameSize),
+            modifier = Modifier
+                .size(flameSize)
+                .graphicsLayer {
+                    // Pivot at the base: a flame is anchored to what it burns.
+                    transformOrigin = TransformOrigin(0.5f, 1f)
+                    // Vertical stretch with a matching horizontal squash, so the
+                    // flame keeps its volume while it licks upward.
+                    val stretch = 1f + 0.07f * sin(t)
+                    scaleY = stretch
+                    scaleX = 1f - 0.05f * sin(t + 0.6f)
+                    // A slow lean, on a different period from the stretch.
+                    rotationZ = 2.4f * sin(t * 0.73f + 1.1f)
+                    // A tiny lift at yet another period keeps it from looking
+                    // like it is bolted down.
+                    translationY = -0.6f * size.height * 0.01f * sin(t * 1.31f)
+                },
         )
         Spacer(Modifier.width(6.dp))
         Text(
@@ -1001,8 +1103,63 @@ private fun PillButton(
 }
 
 @Composable
-private fun GenerateButton(label: String, onClick: () -> Unit) {
+private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // Tap sequence: the sparkle twinkles, then navigation fires a beat later so
+    // the animation is actually seen. `launching` also guards against a second
+    // tap queueing a second quiz while the beat plays.
+    var launching by remember { mutableStateOf(false) }
+    val twinkle = remember { Animatable(0f) }
+
+    // The button used to give no visual feedback at all — only haptics — so a
+    // press was invisible. Three layers now respond to touch:
+    //   1. a spring scale-down while held (the "physical" press),
+    //   2. a brightening overlay + lifted elevation that track the press,
+    //   3. a slow sheen that sweeps across the face, hinting it is tappable.
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.97f else 1f,
+        // Springy on release so it feels responsive rather than sluggish.
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "generate_press_scale",
+    )
+    val pressOverlay by animateFloatAsState(
+        targetValue = if (pressed) 0.16f else 0f,
+        animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
+        label = "generate_press_overlay",
+    )
+    val elevation by animateDpAsState(
+        targetValue = if (pressed) 1.dp else 8.dp,
+        animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
+        label = "generate_press_elevation",
+    )
+
+    // Idle sheen: a soft highlight that travels left-to-right on a long loop,
+    // with a pause between sweeps so it reads as a gentle shine, not a spinner.
+    val sheen = rememberInfiniteTransition(label = "generate_sheen")
+    val sheenX by sheen.animateFloat(
+        initialValue = -0.35f,
+        targetValue = 1.35f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes<Float> {
+                durationMillis = 4200
+                // Dwell off-screen, sweep across, then hold before repeating.
+                (-0.35f) at 0
+                (-0.35f) at 1400
+                1.35f at 3000 using LinearEasing
+                1.35f at 4200
+            },
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "generate_sheen_x",
+    )
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -1010,19 +1167,111 @@ private fun GenerateButton(label: String, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .height(58.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .shadow(
+                elevation = elevation,
+                shape = RoundedCornerShape(18.dp),
+                ambientColor = NazoPrimary,
+                spotColor = NazoPrimary,
+            )
             .clip(RoundedCornerShape(18.dp))
             .background(NazoPrimary)
-            .clickable {
+            // Sheen sits above the fill but below the label, and is skipped
+            // while pressed so the two effects never overlap.
+            .drawWithContent {
+                drawContent()
+                if (!pressed) {
+                    val bandWidth = size.width * 0.38f
+                    val center = size.width * sheenX
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                NazoOnPrimary.copy(alpha = 0.14f),
+                                Color.Transparent,
+                            ),
+                            startX = center - bandWidth / 2f,
+                            endX = center + bandWidth / 2f,
+                        ),
+                    )
+                }
+            }
+            // Press brightening, drawn over everything.
+            .drawWithContent {
+                drawContent()
+                if (pressOverlay > 0f) {
+                    drawRect(color = NazoOnPrimary.copy(alpha = pressOverlay))
+                }
+                // The shower sweeps the full button, so it is drawn here rather
+                // than on the icon. Clipped by the button's rounded shape.
+                if (sparkleStyle == SPARKLE_METEORS && twinkle.value > 0f) {
+                    drawMeteorShower(
+                        progress = twinkle.value,
+                        buttonSize = size,
+                        tint = NazoOnPrimary,
+                    )
+                }
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                // The scale + brighten IS the feedback; a ripple on top would
+                // clash with the sheen.
+                indication = null,
+            ) {
+                if (launching) return@clickable
+                launching = true
                 Haptics.light(context)
-                onClick()
+                scope.launch {
+                    twinkle.snapTo(0f)
+                    // ~420ms of twinkle, then a short beat so the animation
+                    // lands before the screen changes. Deliberately brief —
+                    // this is a flourish, not a loading screen.
+                    // Meteors need longer to cross the button than the stars
+                    // need to pulse, so the shower gets a wider window.
+                    val duration = if (sparkleStyle == SPARKLE_METEORS) 720 else 460
+                    twinkle.animateTo(
+                        targetValue = 1f,
+                        animationSpec = tween(durationMillis = duration, easing = LinearEasing),
+                    )
+                    delay(70)
+                    onClick()
+                    // Reset so returning Home shows a clean, untwinkled icon.
+                    twinkle.snapTo(0f)
+                    launching = false
+                }
             },
     ) {
-        Icon(
-            imageVector = if (label.startsWith("Start")) Icons.Filled.ImageSearch else Icons.Filled.AutoAwesome,
-            contentDescription = null,
-            tint = NazoOnPrimary,
-            modifier = Modifier.size(20.dp),
-        )
+        // "Start ..." modes keep the magnifier; the quiz modes get the
+        // sparkle, which is drawn on a Canvas so each star can twinkle on its
+        // own schedule (a plain Icon can only be transformed as a whole).
+        val t = twinkle.value
+        if (label.startsWith("Start")) {
+            // Same pulse, applied to the single glyph.
+            val pulse = sin(t * PI.toFloat())
+            val iconScale = 1f + 0.25f * pulse
+            Icon(
+                imageVector = Icons.Filled.ImageSearch,
+                contentDescription = null,
+                tint = NazoOnPrimary,
+                modifier = Modifier
+                    .size(20.dp)
+                    .graphicsLayer {
+                        scaleX = iconScale
+                        scaleY = iconScale
+                    },
+            )
+        } else {
+            Canvas(modifier = Modifier.size(20.dp)) {
+                drawTwinklingStars(
+                    progress = t,
+                    baseColor = NazoOnPrimary,
+                    boxSize = size,
+                )
+            }
+        }
         Spacer(Modifier.width(10.dp))
         Text(
             text = label,
@@ -1032,4 +1281,3 @@ private fun GenerateButton(label: String, onClick: () -> Unit) {
         )
     }
 }
-
