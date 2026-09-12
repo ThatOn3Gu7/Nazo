@@ -353,7 +353,14 @@ fun GuessingPlayScreen(
             Spacer(Modifier.height(20.dp))
 
             when (phase) {
-                is GuessPhase.Preparing -> Box(
+                // Preparing and Error share one animated container so the swap
+                // is a deliberate cross-fade rather than an instant replacement
+                // — the same treatment the quiz's generation card gets.
+                //
+                // Keyed on the phase CLASS: an Error whose message changes must
+                // not restart the transition, and Preparing advancing a round
+                // must not either.
+                is GuessPhase.Preparing, is GuessPhase.Error -> Box(
                     modifier = Modifier
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
@@ -361,28 +368,32 @@ fun GuessingPlayScreen(
                         .navigationBarsPadding(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    PreparingCard(
-                        round = phase.round,
-                        totalRounds = totalRounds,
-                        topic = topic,
-                        onCancel = onQuit,
-                    )
-                }
-
-                is GuessPhase.Error -> Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 20.dp)
-                        .navigationBarsPadding(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    ErrorCard(
-                        message = phase.message,
-                        onRetry = onRetryRound,
-                        onOpenSettings = onOpenSettings,
-                        onQuit = onQuit,
-                    )
+                    AnimatedContent(
+                        targetState = phase is GuessPhase.Error,
+                        transitionSpec = {
+                            (fadeIn(tween(220, delayMillis = 160)) +
+                                scaleIn(tween(220, delayMillis = 160), initialScale = 0.96f)) togetherWith
+                                fadeOut(tween(160)) using
+                                SizeTransform(clip = false) { _, _ -> tween(280) }
+                        },
+                        label = "guessPrepareState",
+                    ) { isError ->
+                        if (isError) {
+                            ErrorCard(
+                                message = (phase as? GuessPhase.Error)?.message.orEmpty(),
+                                onRetry = onRetryRound,
+                                onOpenSettings = onOpenSettings,
+                                onQuit = onQuit,
+                            )
+                        } else {
+                            PreparingCard(
+                                round = (phase as? GuessPhase.Preparing)?.round ?: round,
+                                totalRounds = totalRounds,
+                                topic = topic,
+                                onCancel = onQuit,
+                            )
+                        }
+                    }
                 }
 
                 is GuessPhase.Playing -> GuessPlayBody(

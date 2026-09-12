@@ -1206,6 +1206,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var selectedProvider by remember { mutableStateOf(apiKeyStore.getSelectedProvider()) }
     val activeProvider = selectedProvider ?: apiKeyStore.getActiveProvider()
     val configuredProviders = apiKeyStore.getConfiguredProviders()
+    // Authoritative readiness, read from the same store the generator uses.
+    // Keyed on selectedProvider so picking a provider/model in the sheet
+    // refreshes the pill immediately.
+    val generationProvider = remember(selectedProvider, configuredProviders) {
+        apiKeyStore.getGenerationProvider()
+    }
+    val keyWithoutUsableModel = remember(selectedProvider, configuredProviders) {
+        apiKeyStore.hasKeyButNoUsableModel()
+    }
 
     val rootFocusManager = LocalFocusManager.current
     // Landscape moves the nav bar to a right-edge rail; screens that show it
@@ -1244,8 +1253,12 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             val renderScreen: @Composable (Screen) -> Unit = { screen ->
                 when (screen) {
                     Screen.Home -> HomeScreen(
-                        apiKeyActive = apiKeyStore.hasAnyActiveKey(),
-                        activeProvider = activeProvider,
+                        // Generation-ready, not merely "a key exists" — this is
+                        // the same resolution the generator performs, so the
+                        // pill and the Generate button can never disagree.
+                        apiKeyActive = generationProvider != null,
+                        apiKeyPresentWithoutModel = keyWithoutUsableModel,
+                        activeProvider = generationProvider ?: activeProvider,
                         offline = isOfflineMode,
                         sparkleStyle = sparkleStyle,
                         configuredProviders = configuredProviders,

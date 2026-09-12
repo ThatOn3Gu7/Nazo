@@ -96,6 +96,8 @@ enum class NazoMode(val label: String) {
 @Composable
 fun HomeScreen(
     apiKeyActive: Boolean,
+    /** A key is stored but nothing is generation-ready (no model selected). */
+    apiKeyPresentWithoutModel: Boolean = false,
     activeProvider: String? = null,
     offline: Boolean = false,
     /** Generate-button tap effect: SPARKLE_TWINKLE or SPARKLE_METEORS. */
@@ -172,6 +174,7 @@ fun HomeScreen(
                 active = apiKeyActive,
                 activeProvider = activeProvider,
                 offline = offline,
+                keyWithoutModel = apiKeyPresentWithoutModel,
                 onClick = if (offline) null else ({ showProviderSheet = true }),
             )
             Spacer(Modifier.weight(1f))
@@ -615,25 +618,38 @@ private fun HomeHeader(
     }
 }
 
+/**
+ * Provider status pill.
+ *
+ * [active] means GENERATION-READY — a provider with both a key and a selected
+ * model, i.e. exactly what the generator would use. It is not "a key exists":
+ * that was the old behaviour and it lied, because a saved key with no model
+ * chosen still sends the user to the "AI missing" dialog when they press
+ * Generate. [keyWithoutModel] covers that gap explicitly so the pill can say
+ * what is actually wrong.
+ */
 @Composable
 private fun ApiKeyBadge(
     active: Boolean,
     activeProvider: String? = null,
     offline: Boolean = false,
+    keyWithoutModel: Boolean = false,
     onClick: (() -> Unit)? = null,
 ) {
-    val (bg, dot, text) = if (offline) {
-        Triple(NazoPillUnselected, NazoTextSecondary, NazoTextSecondary)
-    } else {
-        Triple(
-            if (active) NazoBadge else NazoErrorBg,
-            if (active) NazoPrimary else NazoError,
-            if (active) NazoPrimary else NazoError,
-        )
+    // Amber for the "nearly there" state: it is not an error (the key is valid
+    // and saved) but it is not ready either, so neither the green nor the red
+    // treatment would be honest.
+    val warn = Color(0xFFFF8F00)
+    val (bg, dot, text) = when {
+        offline -> Triple(NazoPillUnselected, NazoTextSecondary, NazoTextSecondary)
+        active -> Triple(NazoBadge, NazoPrimary, NazoPrimary)
+        keyWithoutModel -> Triple(warn.copy(alpha = 0.12f), warn, warn)
+        else -> Triple(NazoErrorBg, NazoError, NazoError)
     }
     val label = when {
         offline -> "Offline mode"
         active -> activeProvider?.let { PROVIDER_DISPLAY[it] ?: it } ?: "API Key active"
+        keyWithoutModel -> "Choose a model"
         else -> "API Key inactive"
     }
     Row(

@@ -1,28 +1,31 @@
 package quiz.thaton3app.nazo.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
@@ -37,8 +40,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,15 +50,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import quiz.thaton3app.nazo.data.remote.ModelInfo
 import quiz.thaton3app.nazo.ui.components.WavySpinner
-import quiz.thaton3app.nazo.ui.theme.NazoSurface
-import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
+import quiz.thaton3app.nazo.ui.theme.NazoSurface
+import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
 import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
-import quiz.thaton3app.nazo.data.remote.ModelInfo
 
 /**
  * Drives the quiz-generation screen. The host (NazoApp) keeps this state in memory and
@@ -67,6 +70,9 @@ sealed interface GenerationState {
     data class Loading(val providerModel: String) : GenerationState
     data class Error(val message: String, val isModelError: Boolean = false) : GenerationState
 }
+
+/** Which face of the generation card is showing. See the AnimatedContent below. */
+private enum class GenerationPhase { LOADING, ERROR }
 
 @Composable
 fun LoadingScreen(
@@ -159,25 +165,58 @@ fun LoadingScreen(
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            when (state) {
-                                is GenerationState.Loading -> LoadingContent(
-                                    providerModel = state.providerModel,
-                                    onCancel = onCancel,
-                                )
-                                is GenerationState.Error -> ErrorContent(
-                                    message = state.message,
-                                    isModelError = state.isModelError,
-                                    availableModels = availableModels,
-                                    currentModel = currentModel,
-                                    onRetry = onRetry,
-                                    onUseLocal = onUseLocal,
-                                    onCancel = onCancel,
-                                    onChangeModel = onChangeModel,
-                                )
-                                GenerationState.Idle -> LoadingContent(
-                                    providerModel = "",
-                                    onCancel = onCancel,
-                                )
+                            // Loading -> Error used to swap instantly, so the
+                            // card's height jumped and the buttons appeared
+                            // under the finger that was still on Cancel.
+                            //
+                            // Keyed on the state CLASS, not the instance: an
+                            // Error whose message changes (fallback-model retry)
+                            // must not re-run the transition, and Loading whose
+                            // providerModel updates must not either.
+                            //
+                            // The outgoing content fades fully before the
+                            // incoming starts (delayMillis == the exit duration),
+                            // so the two are never both legible — and never both
+                            // tappable, since the exiting child stops taking
+                            // input once AnimatedContent begins the swap.
+                            AnimatedContent(
+                                targetState = when (state) {
+                                    is GenerationState.Error -> GenerationPhase.ERROR
+                                    else -> GenerationPhase.LOADING
+                                },
+                                transitionSpec = {
+                                    (fadeIn(tween(220, delayMillis = 160)) +
+                                        scaleIn(
+                                            tween(220, delayMillis = 160),
+                                            initialScale = 0.96f,
+                                        )) togetherWith
+                                        fadeOut(tween(160)) using
+                                        SizeTransform(clip = false) { _, _ ->
+                                            tween(280, easing = LinearOutSlowInEasing)
+                                        }
+                                },
+                                label = "generationState",
+                            ) { phase ->
+                                when (phase) {
+                                    GenerationPhase.ERROR -> {
+                                        val error = state as? GenerationState.Error
+                                        ErrorContent(
+                                            message = error?.message.orEmpty(),
+                                            isModelError = error?.isModelError == true,
+                                            availableModels = availableModels,
+                                            currentModel = currentModel,
+                                            onRetry = onRetry,
+                                            onUseLocal = onUseLocal,
+                                            onCancel = onCancel,
+                                            onChangeModel = onChangeModel,
+                                        )
+                                    }
+                                    GenerationPhase.LOADING -> LoadingContent(
+                                        providerModel = (state as? GenerationState.Loading)
+                                            ?.providerModel.orEmpty(),
+                                        onCancel = onCancel,
+                                    )
+                                }
                             }
                         }
                     }
