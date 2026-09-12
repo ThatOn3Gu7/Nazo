@@ -134,7 +134,11 @@ Hard rules:
             }
 
             try {
-                val body = endpoint.requestBody(prompt, model, null)
+                val body = endpoint.requestBody(
+                    prompt,
+                    model,
+                    "You invent short usernames. Reply with one username only.",
+                )
                 connection.outputStream.use { os ->
                     os.write(body.toByteArray(StandardCharsets.UTF_8))
                 }
