@@ -11,6 +11,7 @@ import quiz.thaton3app.nazo.R
 import quiz.thaton3app.nazo.daily.DailyChallenge
 import quiz.thaton3app.nazo.daily.DailyStore
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
+import quiz.thaton3app.nazo.data.settings.ThemePreferences
 
 /**
  * Home-screen widget: current streak + today's Daily Challenge status, tap to
@@ -98,6 +99,7 @@ class NazoWidgetProvider : AppWidgetProvider() {
             val done = daily.isCompletedToday()
 
             val views = RemoteViews(context.packageName, R.layout.widget_nazo)
+            applyAmbientStyle(context, views)
             val streak = stats.currentStreakDays
             views.setTextViewText(
                 R.id.widget_streak,
@@ -124,5 +126,59 @@ class NazoWidgetProvider : AppWidgetProvider() {
             }
             manager.updateAppWidget(widgetId, views)
         }
+
+        /**
+         * Points the ViewFlipper's three frames at the artwork for the user's
+         * chosen ambient background.
+         *
+         * Why not the real [quiz.thaton3app.nazo.ui.components.AmbientBackground]:
+         * it is a Compose canvas driven by a frame clock, and RemoteViews hosts
+         * neither Compose nor a custom View — a widget can only use a fixed set
+         * of framework views. Reproducing a live canvas would mean rendering
+         * bitmaps on a timer from our own process, which is exactly the battery
+         * cost a widget must avoid.
+         *
+         * Instead each style has three static phases that the system-driven
+         * ViewFlipper cross-fades. It suggests the same drifting motion, costs
+         * nothing while the screen is off, and needs no service or alarm.
+         *
+         * Unknown or newly added styles fall back to "shapes" rather than
+         * leaving the frames blank.
+         */
+        private fun applyAmbientStyle(context: Context, views: RemoteViews) {
+            val style = runCatching { ThemePreferences(context).backgroundStyle }
+                .getOrDefault("shapes")
+            val frames = AMBIENT_FRAMES[style] ?: AMBIENT_FRAMES.getValue("shapes")
+            views.setImageViewResource(R.id.widget_ambient_a, frames[0])
+            views.setImageViewResource(R.id.widget_ambient_b, frames[1])
+            views.setImageViewResource(R.id.widget_ambient_c, frames[2])
+        }
+
+        /**
+         * Phase artwork per background style, matching the ids in
+         * ThemePreferences.backgroundStyle.
+         */
+        private val AMBIENT_FRAMES: Map<String, IntArray> = mapOf(
+            "shapes" to intArrayOf(
+                R.drawable.widget_ambient_shapes_a,
+                R.drawable.widget_ambient_shapes_b,
+                R.drawable.widget_ambient_shapes_c,
+            ),
+            "constellation" to intArrayOf(
+                R.drawable.widget_ambient_constellation_a,
+                R.drawable.widget_ambient_constellation_b,
+                R.drawable.widget_ambient_constellation_c,
+            ),
+            "rain" to intArrayOf(
+                R.drawable.widget_ambient_rain_a,
+                R.drawable.widget_ambient_rain_b,
+                R.drawable.widget_ambient_rain_c,
+            ),
+            "orbs" to intArrayOf(
+                R.drawable.widget_ambient_orbs_a,
+                R.drawable.widget_ambient_orbs_b,
+                R.drawable.widget_ambient_orbs_c,
+            ),
+        )
     }
 }

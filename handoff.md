@@ -182,3 +182,145 @@ Files: `app/build.gradle.kts`, `RELEASE_NOTES_9.0.md` (new),
 3. Install 9.0 over an existing 8.0 build and open Settings → About → App
    Updates. The notes shown in-app should be clean prose with bullets, no `**`
    or `##` markers.
+
+---
+
+## [2026-09-13] Feedback pass: 11 fixes across home, provider, widget and rotation
+
+All eleven items from the owner's review, verified against the code before
+implementing. Every claim held up.
+
+**1. Landscape Home panes scrolled together (#7).** Both columns sat inside one
+shared `verticalScroll`, so the shorter side dragged empty space past the
+taller. Each pane now owns its own `rememberScrollState`. The shared scroll was
+also measuring the `Row` with infinite height, which defeats `weight(1f)` —
+fixed by the same change plus `fillMaxHeight()` on each column.
+
+**2. Rotation relaunched the app (#2).** `NazoApp` holds the navigation stack,
+generated questions, session and timer state in ~60 plain `remember` values
+(only 8 are `rememberSaveable`), so an activity recreate reset the back stack to
+Home and restarted in-progress rounds. Added `configChanges` for
+`orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden`.
+
+This is normally discouraged, so the justification matters: the app has **no
+orientation- or size-qualified resources** (`res/` holds only `values`,
+`values-night`, `drawable`, `layout`), so nothing needs re-resolving; and every
+orientation-dependent layout reads `LocalConfiguration`, which Compose updates
+on a configuration change whether or not the activity restarts. The two-pane
+layouts therefore still switch correctly. If orientation-qualified resources are
+ever added, this must be revisited — noted in the manifest.
+
+**3. Static streak flame (#3).** Now animated by three sine waves at unrelated
+frequencies driving squash, lean and lift, pivoting at the base. Deliberately
+not a scale pulse — the Daily Challenge card already uses that, and two pulses
+read as a glitch. Driven through `graphicsLayer`, a draw-phase read, so the
+flicker redraws the icon without recomposing the chip or HomeScreen.
+
+**4. Provider pill lied (#4).** It used `hasAnyActiveKey()`, true as soon as any
+key is stored, while generation requires provider AND key AND a selected model.
+A saved key with no model showed a green "ready" pill while Generate fell
+straight to the AI-missing dialog. `ApiKeyStore.getGenerationProvider()` is now
+the single source of truth, mirroring the generator's own resolution order
+(`getSelectedProvider() ?: getActiveProvider()`, then the key+model check). Added
+the missing fourth state: an amber "Choose a model" pill for key-without-model.
+
+**5. Landscape Home → Settings jumped (#5).** The switch between the full-screen
+`AnimatedContent` and the master/detail `Row` was a bare `if`, replacing the
+subtree in one frame. The branch choice is now its own `AnimatedContent` keyed on
+the boolean, so only a real layout-mode change animates — the screen transition
+and the settings-detail transition are untouched, and portrait is unaffected.
+
+**6. AI nickname generation (#6).** `ApiClient.generateNickname` reuses the same
+endpoint abstraction as `generateQuiz` rather than a second key path. Output is
+sanitised — models reply with sentences, markdown and quotes, so only the first
+plausible alphanumeric token of 3–16 chars is accepted; anything else counts as
+a failure and the current name is kept. Spinner while in flight, double-tap
+guard, and a silent fall back to `randomAnimeUsername()` when nothing is
+generation-ready. The key is never logged.
+
+**8. Abrupt loading → error swaps (#8).** Both generation flows had an instant
+`when` swap, so the card jumped and error buttons landed under the finger still
+on Cancel. Both now cross-fade with the outgoing content leaving before the
+incoming arrives, keyed on the state CLASS so a fallback-model retry that only
+changes the message does not restart the transition. Applied to the quiz's
+`GenerationState` and the guessing game's separate `GuessPhase`.
+
+**9. Daily bonus bounce (#9).** `DampingRatioMediumBouncy` visibly oscillated.
+Now settles once from 0.88 scale with no bounce; timing, shape and content
+unchanged.
+
+**10. Widget stale after data clear (#10).** Confirmed the platform constraint:
+Android does **not** deliver `ACTION_PACKAGE_DATA_CLEARED` to the package whose
+own data was cleared, and the clear also cancels the widget's periodic alarm, so
+the launcher keeps the last `RemoteViews` indefinitely. Wired the supported
+recovery paths instead — repaint on app launch (the earliest our code can run
+afterwards), on `onEnabled`, and on `onRestored`. `render()` never caches, so a
+cleared state naturally produces the zero-streak default. Documented at length
+on the provider so nobody reintroduces a receiver that can never fire.
+
+*Unavoidable limitation:* if data is cleared and the app is never opened again,
+nothing can repaint the widget. No supported callback exists for that.
+
+**11. One-way scroll hint (#11).** The topic hint only ever pointed right, so at
+the far end it suggested scrolling into nothing. Both edges now come from the
+ScrollState's own `canScrollBackward` / `canScrollForward` — one at each extreme,
+both in the middle, neither when the row fits.
+
+**1. Widget animation (#1).** `RemoteViews` hosts neither Compose nor a custom
+View, so `AmbientBackground`'s canvas cannot be reused, and rendering bitmaps on
+a timer would cost exactly the battery a widget must avoid. Each background
+style instead has three static phase drawables cross-faded by a `ViewFlipper` —
+a supported RemoteViews view whose flipping the system drives, so nothing runs
+while the screen is off. Honours the chosen style, falls back to `shapes`. Text
+moved into a `FrameLayout` above the animation with a soft shadow for contrast.
+
+Files: `ui/screens/HomeScreen.kt`, `ui/screens/ProfileScreen.kt`,
+`ui/screens/LoadingScreen.kt`, `ui/NazoApp.kt`, `ui/onboarding/OnboardingScreen.kt`,
+`daily/Daily.kt`, `data/settings/ApiKeyStore.kt`, `data/remote/ApiClient.kt`,
+`modes/guessing_game/GuessingPlayScreen.kt`, `widget/NazoWidgetProvider.kt`,
+`MainActivity.kt`, `AndroidManifest.xml`, `res/layout/widget_nazo.xml`,
+12 new `res/drawable/widget_ambient_*.xml`.
+
+### How to test it live
+
+1. **Landscape Home panes.** Rotate on Home. Drag the left column — only it
+   moves. Drag the right — only it moves.
+2. **Rotation keeps state.** Start an AI quiz, answer two questions, rotate.
+   Same question, timer still running, no restart. Repeat on Home, Settings,
+   Profile, Loading and a guessing round.
+3. **Rotation still switches layout.** While rotating, confirm the two-pane
+   layouts appear in landscape and collapse in portrait.
+4. **Flame.** Watch the streak chip on Home — the flame should flicker and lean
+   continuously; the pill around it must stay perfectly still.
+5. **Provider pill — the important one.** In Settings → AI Provider, save a key
+   but do NOT pick a model. Home should show amber "Choose a model", not a green
+   ready pill. Press Generate: the AI-missing dialog it shows now agrees with
+   the pill. Then pick a model — the pill turns green with the provider name.
+6. **Offline + no key** states should still read "Offline mode" and "API Key
+   inactive".
+7. **Landscape Home → Settings.** Rotate, then tap Settings. It should cross-fade
+   into the two-pane layout, not snap. Tap Home again — equally smooth.
+8. **Settings detail still animates.** In landscape Settings, tap Appearance then
+   Statistics — the right pane cross-fades as before.
+9. **Nickname, with AI.** With a generation-ready provider, open Profile → edit
+   username → tap refresh. Spinner, then a short handle. Tap repeatedly — no
+   double requests.
+10. **Nickname, without AI.** Remove the key (or go offline) and tap refresh —
+    the local random name appears instantly with no error.
+11. **Nickname failure.** With a key but no network, tap refresh: your current
+    name is kept and a short message appears; the field stays usable.
+12. **Loading → error.** Start an AI quiz with a bad key. The loading card should
+    fade into the error card rather than snapping. Retry still works.
+13. **Guessing preparing → error.** Same check in a guessing round.
+14. **Daily bonus chip.** Finish a Daily Challenge — the +XP badge should settle
+    in without a visible jump.
+15. **Widget animation.** Add the widget. It should slowly cross-fade its
+    background. Change Appearance → Background style and confirm the widget's
+    look follows after the next refresh (open the app once).
+16. **Widget readability.** Streak and Daily text must stay legible over every
+    animation phase.
+17. **Widget after clear.** With a widget placed, clear app data. Reopen Nazo
+    once — the widget must drop to zero streak and "Daily Challenge ready".
+18. **Widget resize** still works after the layout change.
+19. **Scroll hints.** Onboarding first-game slide: at the far left only a right
+    chevron, mid-scroll both, at the far right only a left chevron.

@@ -14,10 +14,41 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.ComposeEmptyActivity">
+        <!--
+            configChanges: handle rotation (and the related size/layout changes)
+            in-process instead of letting Android destroy and recreate the
+            activity.
+
+            Why this is safe HERE specifically:
+              * NazoApp holds the navigation stack, the generated question list,
+                quiz/guessing session state, timers and in-flight coroutines in
+                plain `remember` state — about 60 values, only a handful of them
+                rememberSaveable. A recreate wiped all of it, so rotating during
+                a quiz restarted the round and rotating anywhere reset the
+                back stack to Home.
+              * The app has NO orientation- or size-qualified resources
+                (res/ has only values, values-night, drawable, layout), so there
+                is nothing for the system to re-resolve on rotation. This is the
+                usual reason configChanges is discouraged, and it does not
+                apply.
+              * Every orientation-dependent layout reads LocalConfiguration
+                (isLandscape(), the sheet height caps, the guessing card height).
+                Compose updates that composition local on a configuration change
+                whether or not the activity restarts, so landscape/portrait
+                layouts still switch correctly and recompose normally.
+
+            screenSize/smallestScreenSize/orientation must be listed together:
+            orientation alone is not enough on API 13+, and omitting the size
+            entries would still trigger a recreate.
+
+            If orientation-qualified resources are ever added, this must be
+            revisited — they would go stale.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
             android:theme="@style/Theme.Nazo.Splash" />
 
         <!-- Launcher entries (the real activity is never disabled). Exactly one is
