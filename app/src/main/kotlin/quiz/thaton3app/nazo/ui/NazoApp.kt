@@ -1580,51 +1580,74 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             val showListDetail = landscape && !showOnboarding &&
                 (currentScreen == Screen.Settings || settingsDetail != null)
 
-            if (showListDetail) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(end = railInset)
-                        .then(
-                            if (offlineDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp)
-                            else Modifier
-                        ),
-                ) {
-                    // Master: always the settings list.
-                    Box(modifier = Modifier.weight(0.42f)) {
-                        renderScreen(Screen.Settings)
-                    }
-                    // Detail: the selected sub-screen, or a hint when none is.
-                    Box(modifier = Modifier.weight(0.58f)) {
-                        AnimatedContent(
-                            targetState = settingsDetail,
-                            transitionSpec = {
-                                fadeIn(animationSpec = tween(200)) togetherWith
-                                    fadeOut(animationSpec = tween(140))
-                            },
-                            label = "settingsDetailTransition",
-                        ) { detail ->
-                            if (detail == null) {
-                                SettingsDetailPlaceholder()
-                            } else {
-                                renderScreen(detail)
+            // The Home <-> landscape-Settings switch is a STRUCTURAL change:
+            // one branch is a full-screen AnimatedContent, the other a
+            // master/detail Row. An `if` between them replaced the whole
+            // subtree in a single frame, which read as a hard cut even though
+            // both branches animate internally.
+            //
+            // Wrapping the branch choice in its own AnimatedContent cross-fades
+            // the two layout modes. The target is the BOOLEAN, so this only
+            // animates when the layout mode actually changes — Home -> Quiz
+            // still uses the inner screen transition, and Settings -> a detail
+            // screen still uses the detail transition, neither of which is
+            // disturbed.
+            AnimatedContent(
+                targetState = showListDetail,
+                transitionSpec = {
+                    // Same language and durations as the screen transition, so
+                    // the mode switch does not stand out from normal navigation.
+                    fadeIn(animationSpec = tween(220)) togetherWith
+                        fadeOut(animationSpec = tween(160))
+                },
+                label = "layoutModeTransition",
+            ) { listDetail ->
+                if (listDetail) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(end = railInset)
+                            .then(
+                                if (offlineDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp)
+                                else Modifier
+                            ),
+                    ) {
+                        // Master: always the settings list.
+                        Box(modifier = Modifier.weight(0.42f)) {
+                            renderScreen(Screen.Settings)
+                        }
+                        // Detail: the selected sub-screen, or a hint when none is.
+                        Box(modifier = Modifier.weight(0.58f)) {
+                            AnimatedContent(
+                                targetState = settingsDetail,
+                                transitionSpec = {
+                                    fadeIn(animationSpec = tween(200)) togetherWith
+                                        fadeOut(animationSpec = tween(140))
+                                },
+                                label = "settingsDetailTransition",
+                            ) { detail ->
+                                if (detail == null) {
+                                    SettingsDetailPlaceholder()
+                                } else {
+                                    renderScreen(detail)
+                                }
                             }
                         }
                     }
-                }
-            } else {
-                AnimatedContent(
-                    targetState = currentScreen,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(end = railInset)
-                        .then(if (offlineDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp) else Modifier),
-                    transitionSpec = {
-                        fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
-                    },
-                    label = "nazoScreenTransition",
-                ) { screen ->
-                    renderScreen(screen)
+                } else {
+                    AnimatedContent(
+                        targetState = currentScreen,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(end = railInset)
+                            .then(if (offlineDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp) else Modifier),
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
+                        },
+                        label = "nazoScreenTransition",
+                    ) { screen ->
+                        renderScreen(screen)
+                    }
                 }
             }
 

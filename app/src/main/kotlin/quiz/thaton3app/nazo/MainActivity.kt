@@ -6,11 +6,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import quiz.thaton3app.nazo.LauncherIconSwitcher
 import quiz.thaton3app.nazo.data.UpdatePrefs
 import quiz.thaton3app.nazo.data.UpdateScheduler
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
-import quiz.thaton3app.nazo.LauncherIconSwitcher
 import quiz.thaton3app.nazo.ui.NazoApp
+import quiz.thaton3app.nazo.widget.NazoWidgetProvider
 
 open class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -28,6 +29,19 @@ open class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         // Schedule background update checks per the saved frequency preference.
         UpdateScheduler.apply(this, UpdatePrefs(this).updateFrequency)
+        // Re-render any placed widget from current storage on every launch.
+        //
+        // This is the supported recovery path after "Clear data". Android does
+        // NOT deliver ACTION_PACKAGE_DATA_CLEARED to the package whose own data
+        // was cleared, so the app cannot react to the clear itself, and the
+        // launcher keeps showing the last RemoteViews it was given — stale
+        // streak and Daily text — until something updates the widget. The first
+        // launch after a clear is the earliest moment we are allowed to run, so
+        // it repaints from the now-empty stores.
+        //
+        // Do NOT replace this with a self-targeted data-cleared receiver; it
+        // will never fire. See NazoWidgetProvider for the full explanation.
+        NazoWidgetProvider.refreshAll(applicationContext)
         setContent {
             NazoApp(launchDailyChallenge = intent?.action == ACTION_DAILY)
         }
