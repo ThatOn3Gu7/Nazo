@@ -1,12 +1,16 @@
 package quiz.thaton3app.nazo.ui.screens
 
 import android.content.Intent
+import android.content.res.Configuration
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,12 +23,16 @@ import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material3.*
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -32,11 +40,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import android.content.res.Configuration
-import androidx.compose.ui.platform.LocalConfiguration
+import java.net.HttpURLConnection
+import java.net.URL
 import kotlin.math.abs
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
@@ -46,11 +51,11 @@ import org.json.JSONArray
 import org.json.JSONObject
 import quiz.thaton3app.nazo.R
 import quiz.thaton3app.nazo.data.QuizStats
+import quiz.thaton3app.nazo.data.remote.ApiClient
+import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
 import quiz.thaton3app.nazo.ui.components.SafeRemoteImage
 import quiz.thaton3app.nazo.ui.theme.*
-import java.net.HttpURLConnection
-import java.net.URL
 
 val ProfileHeaderFont = FontFamily(
     Font(R.font.plus_jakarta_sans_bold, FontWeight.Bold)
@@ -69,6 +74,9 @@ fun ProfileScreen(
     onNavigateToSettings: () -> Unit = {},
 ) {
     var showUsernameDialog by remember { mutableStateOf(false) }
+    val nicknameContext = LocalContext.current
+    val apiKeyStore = remember(nicknameContext) { ApiKeyStore(nicknameContext) }
+    val scope = rememberCoroutineScope()
     var showPictureDialog by remember { mutableStateOf(false) }
     var showUrlDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -386,6 +394,10 @@ fun ProfileScreen(
 
     if (showUsernameDialog) {
         var text by remember { mutableStateOf(username) }
+        // Scoped to the dialog so state resets naturally when it closes and a
+        // recomposition can never trigger a generation on its own.
+        var generatingName by remember { mutableStateOf(false) }
+        var nameError by remember { mutableStateOf<String?>(null) }
         AlertDialog(
             onDismissRequest = { showUsernameDialog = false },
             icon = { Icon(Icons.Rounded.AccountCircle, contentDescription = null) },
@@ -397,14 +409,59 @@ fun ProfileScreen(
                     singleLine = true,
                     placeholder = { Text("Enter a username") },
                     shape = MaterialTheme.shapes.large,
+                    enabled = !generatingName,
                     trailingIcon = {
-                        IconButton(onClick = { text = randomAnimeUsername() }) {
-                            Icon(
-                                Icons.Filled.Refresh,
-                                contentDescription = "Generate random username"
-                            )
+                        // One button, two behaviours. With a generation-ready
+                        // provider it asks the model; without one it falls back
+                        // to the local generator silently — no API error for a
+                        // user who never configured a key.
+                        IconButton(
+                            enabled = !generatingName,
+                            onClick = {
+                                val provider = apiKeyStore.getGenerationProvider()
+                                val key = provider?.let { apiKeyStore.getKey(it) }
+                                val model = provider?.let { apiKeyStore.getModel(it) }
+                                if (provider == null || key.isNullOrBlank() || model.isNullOrBlank()) {
+                                    text = randomAnimeUsername()
+                                    return@IconButton
+                                }
+                                // Guard against a second tap while in flight, so
+                                // one press can never become two requests.
+                                if (generatingName) return@IconButton
+                                generatingName = true
+                                nameError = null
+                                scope.launch {
+                                    val result = ApiClient.generateNickname(provider, key, model)
+                                    // The dialog may have been dismissed while
+                                    // the request was running.
+                                    result
+                                        .onSuccess { text = it }
+                                        .onFailure {
+                                            // Keep whatever the user had; the
+                                            // local generator stays available.
+                                            nameError = "Couldn't reach the AI — tap again or edit manually"
+                                        }
+                                    generatingName = false
+                                }
+                            },
+                        ) {
+                            if (generatingName) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Filled.Refresh,
+                                    contentDescription = "Generate a username"
+                                )
+                            }
                         }
-                    }
+                    },
+                    supportingText = nameError?.let { msg ->
+                        { Text(msg, style = MaterialTheme.typography.bodySmall) }
+                    },
+                    isError = nameError != null
                 )
             },
             confirmButton = {
