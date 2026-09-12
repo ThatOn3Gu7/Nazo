@@ -62,6 +62,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.Button
@@ -1190,6 +1191,7 @@ private fun FirstGameSlide(
                         modifier = Modifier.horizontalScroll(suggestionScroll),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        Spacer(Modifier.width(4.dp))
                         suggestions.forEach { suggestion ->
                             SelectPill(
                                 text = suggestion,
@@ -1200,11 +1202,23 @@ private fun FirstGameSlide(
                                 },
                             )
                         }
-                        // Room for the fade so the last pill is never sat under it.
+                        // Room for the trailing fade so the last pill is never
+                        // sat under it. The leading side gets the same below.
                         Spacer(Modifier.width(20.dp))
                     }
-                    ScrollMoreHint(
+                    // Both edges, driven by the real scroll state: left when
+                    // there is content behind, right when there is content
+                    // ahead, both together in the middle, neither when the row
+                    // fits. canScrollBackward/Forward are already derived from
+                    // the ScrollState, so no item counting is involved.
+                    ScrollEdgeHint(
+                        visible = suggestionScroll.canScrollBackward,
+                        trailing = false,
+                        modifier = Modifier.align(Alignment.CenterStart),
+                    )
+                    ScrollEdgeHint(
                         visible = suggestionScroll.canScrollForward,
+                        trailing = true,
                         modifier = Modifier.align(Alignment.CenterEnd),
                     )
                 }
@@ -1235,14 +1249,22 @@ private fun FirstGameSlide(
 }
 
 /**
- * Trailing-edge affordance for a horizontally scrollable row: a short fade into
- * the slide background with a chevron, shown only while there is more to
- * scroll. Without it a row that overflows looks exactly like a row that does
- * not.
+ * Edge affordance for a horizontally scrollable row: a short fade into the
+ * slide background with a chevron pointing the way the user can scroll.
+ *
+ * [trailing] picks the side — true for the right edge (more content ahead),
+ * false for the left (content behind). Callers drive [visible] from the
+ * ScrollState's own `canScrollForward` / `canScrollBackward`, so the hints
+ * always describe the real scroll range: one at each extreme, both in the
+ * middle, neither when the row fits.
+ *
+ * Kept deliberately light — a narrow gradient and a small chevron, no opaque
+ * panel — so the topic pills underneath stay readable.
  */
 @Composable
-private fun ScrollMoreHint(
+private fun ScrollEdgeHint(
     visible: Boolean,
+    trailing: Boolean,
     modifier: Modifier = Modifier,
 ) {
     AnimatedVisibility(
@@ -1253,19 +1275,25 @@ private fun ScrollMoreHint(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.End,
+            horizontalArrangement = if (trailing) Arrangement.End else Arrangement.Start,
             modifier = Modifier
                 .height(34.dp)
                 .width(34.dp)
                 .background(
+                    // Fade runs from transparent toward the surface on the
+                    // OUTER side, so the gradient always points off-screen.
                     Brush.horizontalGradient(
-                        listOf(Color.Transparent, NazoSurface.copy(alpha = 0.92f)),
+                        if (trailing) {
+                            listOf(Color.Transparent, NazoSurface.copy(alpha = 0.92f))
+                        } else {
+                            listOf(NazoSurface.copy(alpha = 0.92f), Color.Transparent)
+                        }
                     )
                 ),
         ) {
             Icon(
-                imageVector = Icons.Filled.ChevronRight,
-                contentDescription = "More topics — swipe",
+                imageVector = if (trailing) Icons.Filled.ChevronRight else Icons.Filled.ChevronLeft,
+                contentDescription = if (trailing) "More topics to the right" else "More topics to the left",
                 tint = NazoTextSecondary,
                 modifier = Modifier.size(18.dp),
             )

@@ -28,6 +28,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -49,6 +50,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -361,28 +363,45 @@ fun HomeScreen(
             .statusBarsPadding(),
         contentAlignment = Alignment.TopCenter,
     ) {
-        val scrollState = rememberScrollState()
-
         if (landscape) {
-            // Render a 2-column layout in landscape
+            // Two-column landscape layout.
+            //
+            // Each pane owns its OWN scroll state. Putting the Row inside one
+            // shared verticalScroll made both columns move together, so the
+            // shorter side dragged empty space past the taller one — and the
+            // Row was then measured with infinite height, which defeats the
+            // weight(1f) split.
+            val leftScroll = rememberScrollState()
+            val rightScroll = rememberScrollState()
             Row(
                 modifier = Modifier
                     .fillMaxSize()
                     .widthIn(max = 900.dp) // Generous width constraint for landscape
-                    .verticalScroll(scrollState)
                     .padding(horizontal = 24.dp)
-                    .navigationBarsPadding()
-                    .padding(bottom = 20.dp),
+                    .navigationBarsPadding(),
                 horizontalArrangement = Arrangement.spacedBy(32.dp)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(leftScroll)
+                        .padding(bottom = 20.dp)
+                ) {
                     leftContent()
                 }
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(rightScroll)
+                        .padding(bottom = 20.dp)
+                ) {
                     rightContent()
                 }
             }
         } else {
+            val scrollState = rememberScrollState()
             // Render the standard single-column layout in portrait
             Column(
                 modifier = Modifier
@@ -691,11 +710,47 @@ private fun StreakFlameChip(streakDays: Int) {
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Animated flame.
+        //
+        // The motion is deliberately irregular: three sine waves at unrelated
+        // frequencies drive squash, lean and lift, so the flame never repeats
+        // on an obvious beat the way a single pulse would. It is also NOT a
+        // scale pulse — the Daily Challenge card already uses that pattern, and
+        // two pulses on one screen read as a glitch.
+        //
+        // graphicsLayer is a DRAW-phase read of the animation value, so the
+        // flicker never recomposes this chip (let alone HomeScreen) — it only
+        // redraws the icon.
+        val flicker = rememberInfiniteTransition(label = "streakFlame")
+        val t by flicker.animateFloat(
+            initialValue = 0f,
+            targetValue = (2f * PI).toFloat(),
+            animationSpec = infiniteRepeatable(
+                animation = tween(2200, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "streakFlamePhase",
+        )
         Icon(
             imageVector = Icons.Filled.LocalFireDepartment,
             contentDescription = null,
             tint = flameColor,
-            modifier = Modifier.size(flameSize),
+            modifier = Modifier
+                .size(flameSize)
+                .graphicsLayer {
+                    // Pivot at the base: a flame is anchored to what it burns.
+                    transformOrigin = TransformOrigin(0.5f, 1f)
+                    // Vertical stretch with a matching horizontal squash, so the
+                    // flame keeps its volume while it licks upward.
+                    val stretch = 1f + 0.07f * sin(t)
+                    scaleY = stretch
+                    scaleX = 1f - 0.05f * sin(t + 0.6f)
+                    // A slow lean, on a different period from the stretch.
+                    rotationZ = 2.4f * sin(t * 0.73f + 1.1f)
+                    // A tiny lift at yet another period keeps it from looking
+                    // like it is bolted down.
+                    translationY = -0.6f * size.height * 0.01f * sin(t * 1.31f)
+                },
         )
         Spacer(Modifier.width(6.dp))
         Text(
