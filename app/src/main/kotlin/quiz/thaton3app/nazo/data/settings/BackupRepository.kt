@@ -52,6 +52,18 @@ object BackupRepository {
         val label: String,
         val description: String,
         val entries: Int,
+        /**
+         * True for stores that hold things the user actually produced (stats,
+         * records, profile, practice deck). False for pure preference stores,
+         * which exist on a brand-new install and so must not make an otherwise
+         * empty backup look like it contains progress.
+         */
+        val isProgress: Boolean,
+    )
+
+    /** Stores that represent earned progress rather than settings. */
+    private val PROGRESS_STORES = setOf(
+        "nazo_stats", "nazo_records", "nazo_daily", "nazo_qhistory", "nazo_missed", "nazo_profile",
     )
 
     private fun labelFor(store: String): Pair<String, String> = when (store) {
@@ -79,7 +91,7 @@ object BackupRepository {
             val count = stores.optJSONObject(name)?.length() ?: 0
             if (count == 0) return@mapNotNull null
             val (label, description) = labelFor(name)
-            BackupCategory(name, label, description, count)
+            BackupCategory(name, label, description, count, name in PROGRESS_STORES)
         }
     }
 
@@ -104,7 +116,7 @@ object BackupRepository {
     ): List<BackupCategory> = parsed.mapNotNull { (name, entry) ->
         if (entry.isEmpty()) return@mapNotNull null
         val (label, description) = labelFor(name)
-        BackupCategory(name, label, description, entry.size)
+        BackupCategory(name, label, description, entry.size, name in PROGRESS_STORES)
     }
 
     fun autoBackupPath(context: Context): String =

@@ -2,14 +2,15 @@
 <!--
   Widget layout.
 
-  The ambient animation is a ViewFlipper sitting BEHIND the text in a FrameLayout.
-  ViewFlipper is one of the few animating views RemoteViews supports, and its
-  flipping is driven by the system rather than by any process of ours, so the
-  widget animates with no service, no alarm and no work while the screen is off.
+  The ambient background is a single ImageView behind the text.
+  NazoWidgetProvider renders a STATIC bitmap into it at the widget's real
+  measured size (see WidgetAmbient), so particle size, spacing and positions
+  are recomputed on every resize instead of the artwork being stretched.
 
-  The three children are static drawables; NazoWidgetProvider sets them to the
-  phase frames matching the user's chosen background style. Text sits on top in
-  the same FrameLayout so it is never obscured by the animation.
+  There is deliberately no ViewFlipper / animation here: a widget that flips
+  frames reads as a low-frame-rate slideshow and burns updates for nothing.
+  The card's own rounded background stays as the fallback for the brief moment
+  before the first bitmap arrives, and for hosts that report no size.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
@@ -17,36 +18,12 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_bg">
 
-    <ViewFlipper
+    <ImageView
         android:id="@+id/widget_ambient"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:autoStart="true"
-        android:flipInterval="3000"
-        android:inAnimation="@android:anim/fade_in"
-        android:outAnimation="@android:anim/fade_out">
-
-        <ImageView
-            android:id="@+id/widget_ambient_a"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:scaleType="fitXY"
-            android:contentDescription="@null" />
-
-        <ImageView
-            android:id="@+id/widget_ambient_b"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:scaleType="fitXY"
-            android:contentDescription="@null" />
-
-        <ImageView
-            android:id="@+id/widget_ambient_c"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:scaleType="fitXY"
-            android:contentDescription="@null" />
-    </ViewFlipper>
+        android:scaleType="fitXY"
+        android:contentDescription="@null" />
 
     <LinearLayout
         android:layout_width="match_parent"

@@ -2,6 +2,7 @@ package quiz.thaton3app.nazo.ui.screens
 
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -231,8 +232,15 @@ fun BackupRestoreScreen(
         // Fading Dialogs (Keeping the fade here since popups aren't part of the main nav graph)
         FadeDialog(
             visible = showBackupPreview,
-            onDismiss = { showBackupPreview = false }
+            onDismiss = { showBackupPreview = false },
+            dismissible = false,
         ) {
+            if (backupPreview.none { it.isProgress }) {
+                // Fresh install: only default preference stores exist. Backing
+                // that up would produce a file that restores nothing, so offer
+                // no confirm button at all rather than a misleading success.
+                NothingToBackUpContent(onClose = { showBackupPreview = false })
+            } else {
             BackupContentsContent(
                 title = "Ready to Back Up",
                 message = "Everything below will be written into a single JSON file. " +
@@ -248,11 +256,13 @@ fun BackupRestoreScreen(
                     createLauncher.launch(name)
                 }
             )
+            }
         }
 
         FadeDialog(
             visible = showRestoreConfirm,
-            onDismiss = { showRestoreConfirm = false }
+            onDismiss = { showRestoreConfirm = false },
+            dismissible = false,
         ) {
             BackupContentsContent(
                 title = "Restore Data?",
@@ -489,12 +499,28 @@ private fun AnimatedActionRow(
     }
 }
 
+/**
+ * Inline fading overlay used for this screen's dialogs.
+ *
+ * [dismissible] = false makes it modal in the strict sense: the scrim swallows
+ * taps instead of closing, and a [BackHandler] eats the back press / back
+ * gesture while it is on screen. That is used for the backup and restore
+ * confirmations, where an accidental swipe should not silently abandon — or
+ * worse, ambiguously continue — a destructive operation. The only way out is
+ * the explicit Cancel button.
+ */
 @Composable
 private fun FadeDialog(
     visible: Boolean,
     onDismiss: () -> Unit,
+    dismissible: Boolean = true,
     content: @Composable () -> Unit
 ) {
+    // Registered only while visible, so it never steals back from the screen.
+    BackHandler(enabled = visible) {
+        if (dismissible) onDismiss()
+        // Otherwise: consumed and ignored on purpose.
+    }
     AnimatedVisibility(
         visible = visible,
         enter = fadeIn(tween(250)),
@@ -508,7 +534,7 @@ private fun FadeDialog(
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = onDismiss
+                    onClick = { if (dismissible) onDismiss() }
                 ),
             contentAlignment = Alignment.Center
         ) {
@@ -519,6 +545,68 @@ private fun FadeDialog(
             )) {
                 content()
             }
+        }
+    }
+}
+
+/**
+ * Shown instead of the backup confirmation when there is nothing worth saving:
+ * no quizzes played, no records, no practice deck, no profile. Only default
+ * preferences exist at that point, so a backup would restore nothing. Rather
+ * than write a file and report success, the flow stops here with an explanation
+ * and no confirm button.
+ */
+@Composable
+private fun NothingToBackUpContent(onClose: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .widthIn(max = 340.dp)
+            .clip(RoundedCornerShape(32.dp))
+            .background(NazoSurface)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.15f), RoundedCornerShape(32.dp))
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(68.dp)
+                .clip(CircleShape)
+                .background(NazoTextSecondary.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Filled.Inbox,
+                contentDescription = null,
+                tint = NazoTextSecondary,
+                modifier = Modifier.size(30.dp)
+            )
+        }
+        Spacer(Modifier.height(20.dp))
+        Text(
+            "Nothing to Back Up Yet",
+            color = NazoTextPrimary,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.ExtraBold,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "You haven't played any quizzes or set up a profile, so a backup " +
+                "would only contain default settings. Play a round or two and " +
+                "come back — then there'll be real progress worth saving.",
+            color = NazoTextSecondary,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            lineHeight = 22.sp
+        )
+        Spacer(Modifier.height(28.dp))
+        Button(
+            onClick = onClose,
+            modifier = Modifier.fillMaxWidth().height(54.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = NazoPrimary, contentColor = NazoOnPrimary),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Text("Got it", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
     }
 }

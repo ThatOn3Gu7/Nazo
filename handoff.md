@@ -374,3 +374,67 @@ UI: `BackupContentsContent` + `BackupCategoryRow` replace `RestoreConfirmContent
    present you get "No usable auto-backup yet".
 7. **Long list scrolls.** With many categories, the list area scrolls
    internally and both buttons remain visible.
+
+---
+
+## Widget background: static, size-aware, no animation
+
+Replaced the ViewFlipper experiment. A flipping widget reads as a low-frame-rate
+slideshow and spends updates for very little, and a layer-list drawable pins
+every element at a fixed dp offset, so resizing just stretched the artwork.
+
+`widget/WidgetAmbient.kt` now draws a **static** background with plain
+`android.graphics` at the widget's real measured pixel size, once per update:
+
+- Style, accent and dark/light all come from the same `ThemePreferences` the app
+  uses, so the widget matches the chosen look (all 15 accents, not a fixed green).
+- **Size-aware:** particle counts derive from AREA (`countFor`, particles per
+  100x100dp patch, clamped), sizes from the short edge, constellation link
+  distance from the diagonal, rain length from the height. Nothing is scaled
+  from a previous size.
+- **Deterministic:** `Random(("id|style|w|h").hashCode())`. Identical output on
+  every refresh; a resize reseeds on purpose, because that is exactly when the
+  layout should be recomputed.
+- Bitmap longest edge capped at 1000 px (Binder ~1 MB transaction budget);
+  the card radius is scaled by the same factor so corners still line up.
+- `onAppWidgetOptionsChanged` re-renders on resize.
+- Any failure leaves the ImageView empty and `@drawable/widget_bg` shows through.
+
+Deleted the 12 `widget_ambient_*.xml` frames; `widget_nazo.xml` is now one
+`ImageView` behind the text. Streak / daily / tap-to-open are untouched.
+
+## Backup dialogs: modal, plus an empty state
+
+- `FadeDialog` gained `dismissible` (default true). The backup and restore
+  confirmations pass `false`: the scrim swallows taps and a `BackHandler`
+  consumes the back press/gesture. Only **Cancel** closes them.
+- `BackupCategory.isProgress` marks stores holding earned data (stats, records,
+  daily, question history, practice deck, profile) as opposed to preferences.
+  When no progress store has content, *Create Local Backup* shows
+  `NothingToBackUpContent` — an explanation with a single "Got it" button and
+  **no** confirm path — instead of writing a file that restores nothing.
+
+### How to test it live
+
+1. **Widget matches the app.** Settings → Appearance → Background style →
+   Constellation. Open the app once. The widget shows a static constellation
+   (dots + faint links), not the old fading frames. Repeat for Rain, Orbs,
+   Particles — each looks clearly different.
+2. **Accent follows.** Change the accent colour, reopen the app — the widget's
+   particles take the new colour.
+3. **Resize, the main one.** Drag the widget from 3x1 out to 4x2. The particles
+   must be *relaid out*: same dot size, more of them, correct spacing — not the
+   same picture stretched. Shrink it back — likewise, and nothing blurs.
+4. **No animation, no jumping.** Watch the widget for a minute: completely
+   still. Finish a quiz so the streak updates — the text changes but the
+   background stays pixel-identical, no reshuffle.
+5. **Text stays readable** over every style at every size.
+6. **Dialog can't be swiped away.** Backup & Restore → Create Local Backup.
+   Swipe from the screen edge / press back — nothing happens. Tap the dark area
+   outside the card — nothing. Tap **Cancel** — it closes. Repeat for the
+   restore confirmation after picking a file.
+7. **Empty state.** On a fresh install (or after clearing data), open
+   Backup & Restore → Create Local Backup. You get "Nothing to Back Up Yet"
+   with only a "Got it" button — no file picker.
+8. **Empty state clears.** Play one quiz, try again — you now get the normal
+   "Ready to Back Up" list including Quiz statistics.

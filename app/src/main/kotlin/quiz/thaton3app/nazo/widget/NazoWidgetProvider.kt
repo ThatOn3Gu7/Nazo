@@ -3,8 +3,11 @@ package quiz.thaton3app.nazo.widget
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
+import android.appwidget.AppWidgetProviderInfo
 import android.content.ComponentName
 import android.content.Context
+import android.content.res.Configuration
+import android.os.Bundle
 import android.graphics.Color
 import android.widget.RemoteViews
 import quiz.thaton3app.nazo.R
@@ -80,6 +83,22 @@ class NazoWidgetProvider : AppWidgetProvider() {
         refreshAll(context)
     }
 
+    /**
+     * Fired whenever the user resizes the widget (and once when it is first
+     * placed). The ambient background is generated for the widget's actual
+     * measured size, so a resize must re-render rather than let the launcher
+     * stretch the old bitmap.
+     */
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: Bundle,
+    ) {
+        super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
+        render(context, appWidgetManager, appWidgetId)
+    }
+
     companion object {
 
         /** No-op when no widgets are placed — safe to call after every game. */
@@ -99,7 +118,7 @@ class NazoWidgetProvider : AppWidgetProvider() {
             val done = daily.isCompletedToday()
 
             val views = RemoteViews(context.packageName, R.layout.widget_nazo)
-            applyAmbientStyle(context, views)
+            applyAmbientStyle(context, manager, widgetId, views)
             val streak = stats.currentStreakDays
             views.setTextViewText(
                 R.id.widget_streak,
@@ -128,57 +147,86 @@ class NazoWidgetProvider : AppWidgetProvider() {
         }
 
         /**
-         * Points the ViewFlipper's three frames at the artwork for the user's
-         * chosen ambient background.
+         * Paints a static ambient background sized for this particular widget.
          *
-         * Why not the real [quiz.thaton3app.nazo.ui.components.AmbientBackground]:
-         * it is a Compose canvas driven by a frame clock, and RemoteViews hosts
-         * neither Compose nor a custom View — a widget can only use a fixed set
-         * of framework views. Reproducing a live canvas would mean rendering
-         * bitmaps on a timer from our own process, which is exactly the battery
-         * cost a widget must avoid.
+         * The style, accent and dark/light mode come from the same
+         * ThemePreferences the app itself uses, so the widget always matches
+         * the chosen look. The bitmap is generated at the host's reported cell
+         * size and is deterministic for a given (id, style, size), so repeated
+         * refreshes never make the particles jump.
          *
-         * Instead each style has three static phases that the system-driven
-         * ViewFlipper cross-fades. It suggests the same drifting motion, costs
-         * nothing while the screen is off, and needs no service or alarm.
+         * Deliberately NOT animated: RemoteViews can only flip between static
+         * frames, which reads as a slideshow and spends updates for very little.
          *
-         * Unknown or newly added styles fall back to "shapes" rather than
-         * leaving the frames blank.
+         * Any failure (odd host options, allocation pressure) silently leaves
+         * the ImageView empty, and the FrameLayout's own rounded
+         * @drawable/widget_bg shows through unchanged.
          */
-        private fun applyAmbientStyle(context: Context, views: RemoteViews) {
-            val style = runCatching { ThemePreferences(context).backgroundStyle }
-                .getOrDefault("shapes")
-            val frames = AMBIENT_FRAMES[style] ?: AMBIENT_FRAMES.getValue("shapes")
-            views.setImageViewResource(R.id.widget_ambient_a, frames[0])
-            views.setImageViewResource(R.id.widget_ambient_b, frames[1])
-            views.setImageViewResource(R.id.widget_ambient_c, frames[2])
+        private fun applyAmbientStyle(
+            context: Context,
+            manager: AppWidgetManager,
+            widgetId: Int,
+            views: RemoteViews,
+        ) {
+            runCatching {
+                val prefs = ThemePreferences(context)
+                val (widthDp, heightDp) = widgetSizeDp(context, manager, widgetId)
+                val bitmap = WidgetAmbient.render(
+                    context = context,
+                    widgetId = widgetId,
+                    style = prefs.backgroundStyle,
+                    accentId = prefs.accent,
+                    dark = isDarkMode(context, prefs),
+                    widthDp = widthDp,
+                    heightDp = heightDp,
+                ) ?: return@runCatching
+                views.setImageViewBitmap(R.id.widget_ambient, bitmap)
+            }
         }
 
         /**
-         * Phase artwork per background style, matching the ids in
-         * ThemePreferences.backgroundStyle.
+         * The widget's current size in dp, from the host's option bundle.
+         *
+         * Hosts report a MIN and MAX for each axis (the two are the portrait and
+         * landscape extents). We take the min width and max height, which is the
+         * documented way to get the size actually being displayed in the current
+         * orientation. Falls back to the provider's declared minimum when the
+         * host has not filled the bundle in yet.
          */
-        private val AMBIENT_FRAMES: Map<String, IntArray> = mapOf(
-            "shapes" to intArrayOf(
-                R.drawable.widget_ambient_shapes_a,
-                R.drawable.widget_ambient_shapes_b,
-                R.drawable.widget_ambient_shapes_c,
-            ),
-            "constellation" to intArrayOf(
-                R.drawable.widget_ambient_constellation_a,
-                R.drawable.widget_ambient_constellation_b,
-                R.drawable.widget_ambient_constellation_c,
-            ),
-            "rain" to intArrayOf(
-                R.drawable.widget_ambient_rain_a,
-                R.drawable.widget_ambient_rain_b,
-                R.drawable.widget_ambient_rain_c,
-            ),
-            "orbs" to intArrayOf(
-                R.drawable.widget_ambient_orbs_a,
-                R.drawable.widget_ambient_orbs_b,
-                R.drawable.widget_ambient_orbs_c,
-            ),
-        )
+        private fun widgetSizeDp(
+            context: Context,
+            manager: AppWidgetManager,
+            widgetId: Int,
+        ): Pair<Int, Int> {
+            val options = manager.getAppWidgetOptions(widgetId)
+            val portrait = context.resources.configuration.orientation !=
+                Configuration.ORIENTATION_LANDSCAPE
+            val w = if (portrait) {
+                options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0) ?: 0
+            } else {
+                options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, 0) ?: 0
+            }
+            val h = if (portrait) {
+                options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0) ?: 0
+            } else {
+                options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0) ?: 0
+            }
+            if (w > 0 && h > 0) return w to h
+
+            val info: AppWidgetProviderInfo? = manager.getAppWidgetInfo(widgetId)
+            val density = context.resources.displayMetrics.density
+            val fallbackW = ((info?.minWidth ?: 0) / density).toInt().takeIf { it > 0 } ?: 180
+            val fallbackH = ((info?.minHeight ?: 0) / density).toInt().takeIf { it > 0 } ?: 60
+            return fallbackW to fallbackH
+        }
+
+        /** Mirrors the app's own light/dark resolution for the widget's palette. */
+        private fun isDarkMode(context: Context, prefs: ThemePreferences): Boolean =
+            when (prefs.mode) {
+                "light" -> false
+                "dark" -> true
+                else -> (context.resources.configuration.uiMode and
+                    Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+            }
     }
 }
