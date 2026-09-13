@@ -53,6 +53,7 @@ import quiz.thaton3app.nazo.R
 import quiz.thaton3app.nazo.data.QuizStats
 import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
+import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
 import quiz.thaton3app.nazo.ui.components.SafeRemoteImage
 import quiz.thaton3app.nazo.ui.theme.*
@@ -76,6 +77,7 @@ fun ProfileScreen(
     var showUsernameDialog by remember { mutableStateOf(false) }
     val nicknameContext = LocalContext.current
     val apiKeyStore = remember(nicknameContext) { ApiKeyStore(nicknameContext) }
+    val nicknameStats = remember(nicknameContext) { QuizStatsStore(nicknameContext) }
     val scope = rememberCoroutineScope()
     var showPictureDialog by remember { mutableStateOf(false) }
     var showUrlDialog by remember { mutableStateOf(false) }
@@ -431,7 +433,18 @@ fun ProfileScreen(
                                 generatingName = true
                                 nameError = null
                                 scope.launch {
-                                    val result = ApiClient.generateNickname(provider, key, model)
+                                    // The series the player has answered most
+                                    // questions about, so the handle reflects
+                                    // what they actually play. Empty on a fresh
+                                    // install, which just yields a generic name.
+                                    val favourites = nicknameStats.get().animeAnswered
+                                        .entries
+                                        .sortedByDescending { it.value }
+                                        .take(3)
+                                        .map { it.key }
+                                    val result = ApiClient.generateNickname(
+                                        provider, key, model, favourites,
+                                    )
                                     // The dialog may have been dismissed while
                                     // the request was running.
                                     result

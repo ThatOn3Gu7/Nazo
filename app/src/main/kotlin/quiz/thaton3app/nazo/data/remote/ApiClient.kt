@@ -109,20 +109,43 @@ Hard rules:
      * a failure when nothing usable comes back, which lets the caller keep the
      * user's current name rather than writing junk into their profile.
      */
+    /**
+     * Invents a handle for the player.
+     *
+     * [favouriteAnime] is the player's most-answered series, taken from their own
+     * stats, and is woven into the prompt so the result reflects what they
+     * actually play. Pass an empty list for a generic handle.
+     */
     suspend fun generateNickname(
         providerId: String,
         apiKey: String,
         model: String,
+        favouriteAnime: List<String> = emptyList(),
     ): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
             val endpoint = providerById(providerId)
                 ?: throw IllegalArgumentException("Unknown provider: $providerId")
 
+            val taste = favouriteAnime
+                .filter { it.isNotBlank() }
+                .distinct()
+                .take(3)
+            val flavour = if (taste.isEmpty()) {
+                "It should sound like an anime fan's handle. "
+            } else {
+                "The player mainly plays quizzes about: ${taste.joinToString(", ")}. " +
+                    "Draw inspiration from those series — a character, place, term or " +
+                    "motif from them — but do not copy a character's full name verbatim. "
+            }
+
             val prompt = "Invent ONE short username for an anime quiz app player. " +
                 "Rules: 3 to 16 characters, letters and digits only, no spaces, " +
                 "no punctuation, no quotes, no explanation. " +
-                "It should sound like an anime fan's handle. " +
-                "Reply with the username and nothing else."
+                flavour +
+                "Reply with the username and nothing else. " +
+                // Gemini is forced into JSON mode below, so name the field
+                // explicitly rather than letting it invent its own wrapper.
+                """If you reply in JSON, use exactly {"username": "TheName"}."""
 
             val url = endpoint.buildUrl(model, apiKey)
             val connection = (URL(url).openConnection() as HttpURLConnection).apply {
@@ -138,6 +161,11 @@ Hard rules:
                     prompt,
                     model,
                     "You invent short usernames. Reply with one username only.",
+                    // Without an explicit schema Gemini falls back to the QUIZ
+                    // schema, which is why this used to come back as the string
+                    // "theme" — the sanitizer was reading a quiz object's first
+                    // field name, not a nickname.
+                    textSchema("username"),
                 )
                 connection.outputStream.use { os ->
                     os.write(body.toByteArray(StandardCharsets.UTF_8))
@@ -166,15 +194,94 @@ Hard rules:
     private const val NICKNAME_MAX_LENGTH = 16
 
     /**
+     * Field names a model might wrap the answer in. Checked in order; the first
+     * present string wins.
+     */
+    private val NICKNAME_FIELDS = listOf(
+        "username", "nickname", "name", "handle", "value", "text", "result",
+    )
+
+    /**
+     * Words that are structure, not an answer. A model echoing its schema back
+     * ("theme", "question") or prefixing its reply ("Username: Shadow") must not
+     * have that label mistaken for the handle itself.
+     */
+    private val LABEL_WORDS = setOf(
+        "theme", "question", "questions", "options", "answer", "correctanswer",
+        "explanation", "username", "nickname", "name", "handle", "value", "text",
+        "result", "json", "sure", "here", "how", "about", "the", "your", "user",
+        "response", "output", "suggestion", "string", "object", "array", "null",
+    )
+
+    /**
      * Reduces a model's reply to a single safe handle, or null when nothing
      * usable is present.
      *
-     * Models frequently reply with more than the name ("Sure! How about
-     * **ShadowRonin**?"), so this takes the first token that is plausibly a
-     * handle after stripping markdown, quotes and punctuation.
+     * Handles the shapes providers actually return: a bare word, a quoted or
+     * markdown-wrapped word, prose around the name ("Sure! How about
+     * **ShadowRonin**?"), and JSON — either {"username": "X"} or a single-key
+     * object whose key we do not recognise.
+     *
+     * Structural words are rejected rather than returned. This is what the
+     * "theme" bug was: Gemini was being handed the quiz schema, replied with a
+     * quiz object, and the old first-plausible-token scan returned its first
+     * FIELD NAME as the nickname.
      */
     internal fun sanitizeNickname(content: String): String? {
-        val candidates = content
+        val cleaned = coerceModelJson(content).trim()
+
+        // 1. Structured reply. Prefer a known field, else the sole value of a
+        //    one-key object, so an unexpected wrapper still works.
+        jsonCandidate(cleaned)?.let { fromJson ->
+            return pickToken(fromJson, allowLabels = true)
+        }
+
+        // 2. Well-formed JSON that carried no usable field is a FAILURE, not
+        //    something to scrape for words. Scraping is how a quiz object's
+        //    "One Piece" theme could surface as the handle "One".
+        if (looksLikeJson(cleaned)) return null
+
+        // 3. Plain text: first plausible token that is not a label word. A reply
+        //    that is nothing but a label yields null, so the caller keeps the
+        //    current username rather than showing bad output.
+        return pickToken(cleaned, allowLabels = false)
+    }
+
+    /** True for a reply that parses as a JSON object or array. */
+    private fun looksLikeJson(cleaned: String): Boolean = when {
+        cleaned.startsWith("{") -> runCatching { JSONObject(cleaned) }.isSuccess
+        cleaned.startsWith("[") -> runCatching { JSONArray(cleaned) }.isSuccess
+        else -> false
+    }
+
+    /** The string a JSON reply is really carrying, if it is JSON at all. */
+    private fun jsonCandidate(cleaned: String): String? {
+        if (!cleaned.startsWith("{")) return null
+        val obj = runCatching { JSONObject(cleaned) }.getOrNull() ?: return null
+        NICKNAME_FIELDS.forEach { field ->
+            obj.keys().asSequence().firstOrNull { it.equals(field, ignoreCase = true) }
+                ?.let { key ->
+                    val v = obj.optString(key, "")
+                    if (v.isNotBlank()) return v
+                }
+        }
+        // Unrecognised single-key wrapper, e.g. {"handleSuggestion": "X"}.
+        val keys = obj.keys().asSequence().toList()
+        if (keys.size == 1) {
+            val v = obj.optString(keys[0], "")
+            if (v.isNotBlank()) return v
+        }
+        return null
+    }
+
+    /**
+     * First token that could be a handle. When [allowLabels] is false, words
+     * that are almost certainly structure or filler are skipped — but if every
+     * token is filtered out that way, nothing is returned rather than falling
+     * back to a bad guess.
+     */
+    private fun pickToken(source: String, allowLabels: Boolean): String? {
+        val candidates = source
             // Anything that is not a letter or digit is a separator, so
             // markdown, quotes, brackets and punctuation all fall away without
             // needing to enumerate them.
@@ -184,8 +291,11 @@ Hard rules:
         val token = candidates.firstOrNull { candidate ->
             candidate.length in 3..NICKNAME_MAX_LENGTH &&
                 candidate.all { it.isLetterOrDigit() } &&
-                candidate.any { it.isLetter() }
+                candidate.any { it.isLetter() } &&
+                (allowLabels || candidate.lowercase() !in LABEL_WORDS)
         } ?: return null
+        // Even inside JSON, never hand back a bare label.
+        if (token.lowercase() in LABEL_WORDS) return null
         return token.take(NICKNAME_MAX_LENGTH)
     }
 

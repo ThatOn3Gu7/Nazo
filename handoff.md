@@ -492,3 +492,65 @@ the previous entry; only the metadata and the refresh bug were outstanding.
 8. **Restore doesn't import history.** Back up, restore it onto a device with a
    different backup history — the Last Backup card must keep showing *that*
    device's own last backup.
+
+---
+
+## AI nickname: the "theme" bug, and personalization
+
+**Root cause of "theme".** `ProviderConfig.requestBody` defaults `responseSchema`
+to the *quiz* `questionSchema()`. The nickname call passed no schema, so Gemini —
+which is put in `responseMimeType: application/json` mode — was told to answer
+with an array of quiz question objects, and did. `sanitizeNickname` then scanned
+that JSON for "the first plausible token", which was the field name `theme`.
+Nothing was wrong with the network or the key; the app asked the wrong question.
+
+Two fixes, both needed:
+
+1. New top-level `textSchema(field)` in `ProviderConfig.kt`; the nickname call
+   passes `textSchema("username")`, so Gemini now returns `{"username": "..."}`.
+   The prompt also states that shape explicitly for non-schema providers.
+2. `sanitizeNickname` rewritten to understand real reply shapes:
+   - JSON: known field names (`username`/`nickname`/`name`/`handle`/`value`/
+     `text`/`result`, case-insensitive), else the sole value of a one-key object
+     so an unexpected wrapper still works.
+   - **Well-formed JSON with no usable field now FAILS** instead of being scraped
+     for words. This matters: scraping a quiz object for tokens turns the theme
+     "One Piece" into the handle "One". Verified against that exact case.
+   - Plain text, quoted, markdown-fenced and prose replies ("Sure! How about
+     **ShadowRonin**?", `Username: NamiNav`) all still work.
+   - `LABEL_WORDS` rejects structural/filler words, so a bare "theme" returns
+     null and the caller keeps the current username.
+
+Parsing was validated by porting it to a Python model and running 11 shapes
+(quiz array, quiz object, bare word, fenced JSON, quoted, prose, unknown
+wrapper, bare label, label-as-value) — all pass. NOT validated on a real device.
+
+**Personalization.** `generateNickname` takes `favouriteAnime: List<String>`
+(default empty, so no caller breaks). ProfileScreen passes the top 3 series from
+`QuizStatsStore.get().animeAnswered` — real play history, already tracked. The
+prompt asks for inspiration from those series while forbidding a verbatim
+character name. Empty on a fresh install, which just yields a generic handle.
+
+Unchanged: refresh button, spinner, double-tap guard, local fallback when no
+provider is active, and "keep the current name on failure".
+
+### How to test it live
+
+1. **The bug.** Gemini configured with a model → Profile → edit username → tap
+   refresh, five or six times. You must never get "theme" (or "question",
+   "options", "answer"). Every result should be a plausible handle.
+2. **Personalization.** Play several One Piece quizzes so it dominates your
+   stats, then refresh the nickname a few times. Names should lean One Piece —
+   Grand Line, straw hat, pirate, Nami/Zoro-flavoured — without being exactly a
+   character's name.
+3. **Mixed taste.** Play a few Naruto quizzes too; suggestions should start
+   drawing on both series.
+4. **Fresh install.** With no quiz history, refresh still returns a sensible
+   generic anime handle — no crash, no empty field.
+5. **Other providers.** Repeat step 1 on an OpenAI-compatible provider and on
+   Anthropic if configured; all should return clean handles.
+6. **Fallback intact.** Remove the key (or go offline-mode) → refresh gives the
+   local random name instantly, with no error.
+7. **Failure keeps your name.** With a key but no network, refresh: your current
+   text stays, the field stays usable, and the short error appears.
+8. **Double-tap guard.** Spam refresh during the spinner — only one request.
