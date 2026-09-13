@@ -324,3 +324,53 @@ Files: `ui/screens/HomeScreen.kt`, `ui/screens/ProfileScreen.kt`,
 18. **Widget resize** still works after the layout change.
 19. **Scroll hints.** Onboarding first-game slide: at the far left only a right
     chevron, mid-scroll both, at the far right only a left chevron.
+
+---
+
+## Backup & restore: contents preview before writing / overwriting
+
+Both manual backup and restore now pass through the same informational dialog
+listing what the operation touches. The categories are never hard-coded:
+
+- **Before a backup** — `BackupRepository.summarizeLocal(context)` builds the
+  actual export JSON and counts the entries in each store, skipping empty ones.
+- **Before a restore** — `inspectUri` / `inspectPath` run the same
+  `parseAndValidate` gate as `validateUri`, then describe the parsed bundle.
+  An invalid file is still rejected with the old toast; nothing is written.
+
+Restore safety is unchanged: parse-and-validate first, then confirm, then
+`applyValidated`. "Restore from Auto-Backup" now also confirms (it previously
+overwrote instantly) and reuses the same dialog.
+
+Rows are read-only by design — the user cannot deselect categories. They stagger
+in (fade + 14 dp rise, 55 ms apart, capped at 440 ms) via `graphicsLayer`, and
+the list scrolls above 240 dp so the buttons stay reachable.
+
+New: `BackupRepository.BackupCategory(store, label, description, entries)`,
+`summarizeLocal`, `inspectUri`, `inspectPath`, `labelFor`.
+UI: `BackupContentsContent` + `BackupCategoryRow` replace `RestoreConfirmContent`.
+
+### How to test it live
+
+1. **Backup preview.** Settings → Backup & Restore → *Create Local Backup*.
+   Before the file picker appears you now get a "Ready to Back Up" dialog. The
+   category rows should fade and rise in one after another, each with a count
+   badge on the right. Tap **Back Up** — the system save dialog opens and the
+   file is written exactly as before. "Last backup" updates.
+2. **Cancel is safe.** Repeat and tap **Cancel** — no picker, no file, the
+   "Last backup" timestamp is untouched.
+3. **Counts are real.** Play a quiz or two, then reopen the dialog: the
+   "Quiz statistics" / "Question history" counts should have grown. On a fresh
+   install some categories (e.g. Practice deck) should be absent, not zero.
+4. **Restore preview.** *Restore Data* → pick the file you just saved. After
+   validation you get the red "Restore Data?" dialog, now listing the same
+   categories with the same animation. Tap **Restore** — data is restored and
+   the old success toast appears.
+5. **Invalid file still rejected.** Pick any other .json (or rename a text
+   file). You must get "Invalid backup file" and **no** preview dialog.
+6. **Auto-backup now confirms.** Set Auto-Backup Frequency to Daily, wait for a
+   run (or restore an existing one): *Restore from Auto-Backup* shows the
+   preview dialog first instead of overwriting immediately. With no auto-backup
+   present you get "No usable auto-backup yet".
+7. **Long list scrolls.** With many categories, the list area scrolls
+   internally and both buttons remain visible.

@@ -33,6 +33,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -88,6 +89,14 @@ fun BackupRestoreScreen(
     var restoreUri by remember { mutableStateOf<Uri?>(null) }
     var showFreqDialog by remember { mutableStateOf(false) }
 
+    // Contents preview state. Categories always come from the real bundle:
+    // live SharedPreferences for an export, the parsed file for a restore.
+    var backupPreview by remember { mutableStateOf<List<BackupRepository.BackupCategory>>(emptyList()) }
+    var showBackupPreview by remember { mutableStateOf(false) }
+    var restorePreview by remember { mutableStateOf<List<BackupRepository.BackupCategory>>(emptyList()) }
+    // Set when the pending restore is the on-device auto-backup rather than a picked file.
+    var restoreFromAuto by remember { mutableStateOf(false) }
+
     val createLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -108,8 +117,13 @@ fun BackupRestoreScreen(
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         scope.launch {
-            if (BackupRepository.validateUri(context, uri)) {
+            // inspectUri runs the same parseAndValidate gate as validateUri, so an
+            // invalid file is still rejected before anything is shown or written.
+            val contents = BackupRepository.inspectUri(context, uri)
+            if (contents != null) {
                 restoreUri = uri
+                restoreFromAuto = false
+                restorePreview = contents
                 showRestoreConfirm = true
             } else {
                 Toast.makeText(context, "Invalid backup file", Toast.LENGTH_SHORT).show()
@@ -152,8 +166,8 @@ fun BackupRestoreScreen(
                         title = "Create Local Backup",
                         subtitle = "Export your data as a JSON file",
                         onClick = {
-                            val name = "Nazo_backup_${System.currentTimeMillis()}.json"
-                            createLauncher.launch(name)
+                            backupPreview = BackupRepository.summarizeLocal(context)
+                            showBackupPreview = true
                         }
                     )
                     RowDivider()
@@ -170,11 +184,14 @@ fun BackupRestoreScreen(
                         subtitle = "Use the last automatic backup on this device",
                         onClick = {
                             scope.launch {
-                                try {
-                                    BackupRepository.importFromPath(context, autoBackupPath)
-                                    Toast.makeText(context, "Restored from auto-backup", Toast.LENGTH_SHORT).show()
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "No auto-backup yet: ${e.message}", Toast.LENGTH_SHORT).show()
+                                val contents = BackupRepository.inspectPath(context, autoBackupPath)
+                                if (contents != null) {
+                                    restoreUri = null
+                                    restoreFromAuto = true
+                                    restorePreview = contents
+                                    showRestoreConfirm = true
+                                } else {
+                                    Toast.makeText(context, "No usable auto-backup yet", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }
@@ -213,18 +230,52 @@ fun BackupRestoreScreen(
 
         // Fading Dialogs (Keeping the fade here since popups aren't part of the main nav graph)
         FadeDialog(
-            visible = showRestoreConfirm && restoreUri != null,
+            visible = showBackupPreview,
+            onDismiss = { showBackupPreview = false }
+        ) {
+            BackupContentsContent(
+                title = "Ready to Back Up",
+                message = "Everything below will be written into a single JSON file. " +
+                    "All of it is included — nothing is optional.",
+                accent = NazoPrimary,
+                icon = Icons.Filled.Upload,
+                categories = backupPreview,
+                confirmLabel = "Back Up",
+                onCancel = { showBackupPreview = false },
+                onConfirm = {
+                    showBackupPreview = false
+                    val name = "Nazo_backup_${System.currentTimeMillis()}.json"
+                    createLauncher.launch(name)
+                }
+            )
+        }
+
+        FadeDialog(
+            visible = showRestoreConfirm,
             onDismiss = { showRestoreConfirm = false }
         ) {
-            RestoreConfirmContent(
+            BackupContentsContent(
+                title = "Restore Data?",
+                message = "This backup contains the data below. Restoring overwrites your " +
+                    "current stats, profile and settings. This cannot be undone.",
+                accent = NazoError,
+                icon = Icons.Filled.Warning,
+                categories = restorePreview,
+                confirmLabel = "Restore",
                 onCancel = { showRestoreConfirm = false },
-                onRestore = {
+                onConfirm = {
                     showRestoreConfirm = false
-                    val uri = restoreUri!!
+                    val uri = restoreUri
+                    val fromAuto = restoreFromAuto
                     scope.launch {
                         try {
-                            BackupRepository.importFromUri(context, uri)
-                            Toast.makeText(context, "Data restored successfully", Toast.LENGTH_SHORT).show()
+                            if (fromAuto) {
+                                BackupRepository.importFromPath(context, autoBackupPath)
+                                Toast.makeText(context, "Restored from auto-backup", Toast.LENGTH_SHORT).show()
+                            } else if (uri != null) {
+                                BackupRepository.importFromUri(context, uri)
+                                Toast.makeText(context, "Data restored successfully", Toast.LENGTH_SHORT).show()
+                            }
                         } catch (e: Exception) {
                             Toast.makeText(context, "Restore failed: ${e.message}", Toast.LENGTH_SHORT).show()
                         }
@@ -472,50 +523,101 @@ private fun FadeDialog(
     }
 }
 
+/**
+ * Shared informational dialog used both before a manual backup is written and
+ * before a validated restore overwrites data. The category list is always real
+ * bundle content supplied by the caller; rows are read-only on purpose — the
+ * user cannot pick and choose, this only makes the operation feel deliberate.
+ */
 @Composable
-private fun RestoreConfirmContent(onCancel: () -> Unit, onRestore: () -> Unit) {
+private fun BackupContentsContent(
+    title: String,
+    message: String,
+    accent: Color,
+    icon: ImageVector,
+    categories: List<BackupRepository.BackupCategory>,
+    confirmLabel: String,
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    // Drives the staggered reveal once, when the dialog content first composes.
+    var revealed by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { revealed = true }
+
     Column(
         modifier = Modifier
             .widthIn(max = 340.dp)
             .clip(RoundedCornerShape(32.dp))
             .background(NazoSurface)
             .border(1.dp, NazoTextSecondary.copy(alpha = 0.15f), RoundedCornerShape(32.dp))
-            .padding(32.dp),
+            .padding(28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
             modifier = Modifier
                 .size(68.dp)
                 .clip(CircleShape)
-                .background(NazoError.copy(alpha = 0.15f)),
+                .background(accent.copy(alpha = 0.15f)),
             contentAlignment = Alignment.Center,
         ) {
             Box(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(NazoError),
+                    .background(accent),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Filled.Warning, contentDescription = null, tint = NazoOnPrimary, modifier = Modifier.size(24.dp))
+                Icon(icon, contentDescription = null, tint = NazoOnPrimary, modifier = Modifier.size(24.dp))
             }
         }
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(18.dp))
         Text(
-            "Restore Data?",
+            title,
             color = NazoTextPrimary,
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.ExtraBold,
         )
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
         Text(
-            "This will overwrite your current quiz stats, profile, and settings with the data from the selected backup. This action cannot be undone.",
+            message,
             color = NazoTextSecondary,
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
-            lineHeight = 22.sp
+            lineHeight = 20.sp
         )
-        Spacer(Modifier.height(28.dp))
+
+        if (categories.isNotEmpty()) {
+            Spacer(Modifier.height(18.dp))
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = NazoBackground,
+                border = BorderStroke(1.dp, NazoTextSecondary.copy(alpha = 0.1f)),
+            ) {
+                Column(
+                    modifier = Modifier
+                        // Long bundles stay scrollable instead of pushing the buttons off-screen.
+                        .heightIn(max = 240.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    categories.forEachIndexed { index, category ->
+                        BackupCategoryRow(
+                            category = category,
+                            accent = accent,
+                            revealed = revealed,
+                            index = index,
+                        )
+                        if (index < categories.lastIndex) {
+                            HorizontalDivider(
+                                color = NazoTextSecondary.copy(alpha = 0.08f),
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -529,15 +631,77 @@ private fun RestoreConfirmContent(onCancel: () -> Unit, onRestore: () -> Unit) {
             ) {
                 Text("Cancel", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
-            
+
             Button(
-                onClick = onRestore,
+                onClick = onConfirm,
                 modifier = Modifier.weight(1f).height(54.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = NazoPrimary, contentColor = NazoOnPrimary),
                 shape = RoundedCornerShape(16.dp)
             ) {
-                Text("Restore", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(confirmLabel, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
+        }
+    }
+}
+
+/** One category line, sliding up and fading in a beat after the one above it. */
+@Composable
+private fun BackupCategoryRow(
+    category: BackupRepository.BackupCategory,
+    accent: Color,
+    revealed: Boolean,
+    index: Int,
+) {
+    val delay = (index * 55).coerceAtMost(440)
+    val progress by animateFloatAsState(
+        targetValue = if (revealed) 1f else 0f,
+        animationSpec = tween(durationMillis = 320, delayMillis = delay, easing = EaseOutCubic),
+        label = "category_reveal_$index"
+    )
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                alpha = progress
+                translationY = (1f - progress) * 14.dp.toPx()
+            }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(accent.copy(alpha = 0.7f))
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = category.label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = NazoTextPrimary,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = category.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = NazoTextSecondary,
+                lineHeight = 16.sp
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Surface(
+            color = accent.copy(alpha = 0.12f),
+            shape = RoundedCornerShape(50)
+        ) {
+            Text(
+                text = "${category.entries}",
+                style = MaterialTheme.typography.labelMedium,
+                color = accent,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+            )
         }
     }
 }

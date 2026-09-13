@@ -40,6 +40,73 @@ object BackupRepository {
     )
     private const val PROFILE_PICTURE_KEY = "profile_picture_uri"
 
+    /**
+     * One human-readable line of a backup bundle's contents.
+     *
+     * [entries] is the real number of stored values in that category, counted
+     * either from the live SharedPreferences (before an export) or from the
+     * parsed bundle (before a restore) — never a hard-coded list.
+     */
+    data class BackupCategory(
+        val store: String,
+        val label: String,
+        val description: String,
+        val entries: Int,
+    )
+
+    private fun labelFor(store: String): Pair<String, String> = when (store) {
+        "nazo_stats" -> "Quiz statistics" to "Quizzes played, accuracy and totals"
+        "nazo_theme" -> "Appearance" to "Theme, accent colour and icon"
+        "nazo_profile" -> "Profile" to "Username and avatar"
+        "nazo_provider_models" -> "AI providers" to "Selected provider and models"
+        "nazo_secure" -> "API keys" to "Encrypted — only usable on this device"
+        "nazo_records" -> "Personal records" to "Best scores and streaks"
+        "nazo_daily" -> "Daily challenge" to "Streak days and daily bonus state"
+        "nazo_sound" -> "Sound & haptics" to "Audio and vibration preferences"
+        "nazo_reminders" -> "Reminders" to "Scheduled practice notifications"
+        "nazo_qhistory" -> "Question history" to "Anti-repeat memory of seen questions"
+        "nazo_missed" -> "Practice deck" to "Questions you answered incorrectly"
+        else -> store.removePrefix("nazo_").replaceFirstChar { it.uppercase() } to "App data"
+    }
+
+    /**
+     * What a manual backup taken right now would contain. Empty stores are left
+     * out so the preview never promises data the user does not have.
+     */
+    fun summarizeLocal(context: Context): List<BackupCategory> {
+        val stores = buildJson(context).optJSONObject("stores") ?: return emptyList()
+        return STORES.mapNotNull { name ->
+            val count = stores.optJSONObject(name)?.length() ?: 0
+            if (count == 0) return@mapNotNull null
+            val (label, description) = labelFor(name)
+            BackupCategory(name, label, description, count)
+        }
+    }
+
+    /** Parse + validate, then describe the bundle. Null when the file is invalid. */
+    fun inspectUri(context: Context, uri: Uri): List<BackupCategory>? = try {
+        val content = context.contentResolver.openInputStream(uri)
+            ?.bufferedReader()?.use { it.readText() }
+        if (content == null) null else summarizeParsed(parseAndValidate(content))
+    } catch (_: Exception) {
+        null
+    }
+
+    /** Same as [inspectUri] for the on-device automatic backup file. */
+    fun inspectPath(context: Context, path: String): List<BackupCategory>? = try {
+        summarizeParsed(parseAndValidate(File(path).readText(Charsets.UTF_8)))
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun summarizeParsed(
+        parsed: Map<String, Map<String, Pair<String, Any?>>>
+    ): List<BackupCategory> = parsed.mapNotNull { (name, entry) ->
+        if (entry.isEmpty()) return@mapNotNull null
+        val (label, description) = labelFor(name)
+        BackupCategory(name, label, description, entry.size)
+    }
+
     fun autoBackupPath(context: Context): String =
         File(context.getExternalFilesDir(null), "Nazo/auto_backup.json").absolutePath
 
