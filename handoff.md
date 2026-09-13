@@ -438,3 +438,57 @@ Deleted the 12 `widget_ambient_*.xml` frames; `widget_nazo.xml` is now one
    with only a "Got it" button — no file picker.
 8. **Empty state clears.** Play one quiz, try again — you now get the normal
    "Ready to Back Up" list including Quiz statistics.
+
+---
+
+## Last Backup card: cached metadata, and it updates immediately
+
+**Bug fixed:** the card read `backupPrefs.lastBackupEpoch` inline during
+composition, so a fresh backup only appeared after something else recomposed the
+screen — in practice, an app restart. It is now `remember`ed state updated in the
+same block that performs the write.
+
+**Cached at write time, never recomputed.** `exportToUri` / `exportToPath` now
+return a `BackupRepository.BackupReceipt` (epoch, sizeBytes, records, categories,
+automatic) measured from the bundle already in hand. `toLastBackup()` maps it to
+`BackupPrefs.LastBackup`, persisted as a small JSON blob under
+`last_backup_details`. The backup file is never reopened or stat-ed to describe
+it — which is required for manual backups, whose SAF uri we deliberately do not
+retain.
+
+**Covers automatic backups too:** `BackupWorker` stores the same receipt. Since
+the worker runs while the screen is backgrounded, an `ON_RESUME` observer
+re-reads the cached record.
+
+The card now shows date/time, a `records · size` line, and the included category
+labels. Before any backup exists it keeps the old "what would be backed up" line.
+`nazo_backup` is deliberately NOT in `BackupRepository.STORES`, so a restore
+never imports some other install's backup history.
+
+Note: the animated preview dialogs this prompt also asked for already shipped in
+the previous entry; only the metadata and the refresh bug were outstanding.
+
+### How to test it live
+
+1. **The bug.** Backup & Restore → Create Local Backup → confirm → save. The
+   Last Backup card must update to the current date and time *immediately*, with
+   no app restart.
+2. **Details are right.** That same card should read something like
+   "48 records · 12.4 KB" with the category labels underneath. The record count
+   must match the sum of the counts shown in the confirmation dialog you just
+   accepted.
+3. **Size is captured, not recomputed.** After backing up, delete the .json from
+   your file manager and return to the screen — the size and record count must
+   still be displayed.
+4. **It grows.** Play several quizzes, back up again — records and size both
+   increase.
+5. **Automatic backups.** Set Auto-Backup Frequency to Daily. After the worker
+   runs, reopen the screen: the header reads "LAST BACKUP · AUTOMATIC" with its
+   own size and record count.
+6. **Foreground refresh.** With the screen open when an auto-backup lands,
+   background the app and return — the card refreshes on resume.
+7. **Fresh install.** Before any backup: "No backups yet" and the old
+   "what will be backed up" summary line.
+8. **Restore doesn't import history.** Back up, restore it onto a device with a
+   different backup history — the Last Backup card must keep showing *that*
+   device's own last backup.

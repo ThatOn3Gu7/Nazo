@@ -37,14 +37,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.data.backup.BackupScheduler
 import quiz.thaton3app.nazo.data.settings.BackupPrefs
 import quiz.thaton3app.nazo.data.settings.BackupRepository
+import quiz.thaton3app.nazo.data.settings.toLastBackup
 import quiz.thaton3app.nazo.data.settings.ProfilePreferences
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
@@ -66,7 +70,21 @@ fun BackupRestoreScreen(
     val themePrefs = remember { ThemePreferences(context) }
     val scope = rememberCoroutineScope()
 
-    val lastBackupText = backupPrefs.lastBackupEpoch?.let { formatBackupDate(it) }
+    // Held in state, not read straight from prefs: a plain read only re-runs when
+    // something else recomposes the screen, which is why a fresh backup used to
+    // need an app restart before its timestamp appeared.
+    var lastBackup by remember { mutableStateOf(backupPrefs.lastBackup) }
+
+    // The auto-backup worker writes while we are backgrounded, so re-read the
+    // cached record whenever the screen comes back to the foreground.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) lastBackup = backupPrefs.lastBackup
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val stats = statsStore.get()
     val summaryParts = mutableListOf<String>()
@@ -104,8 +122,11 @@ fun BackupRestoreScreen(
         uri ?: return@rememberLauncherForActivityResult
         scope.launch {
             try {
-                BackupRepository.exportToUri(context, uri)
-                backupPrefs.lastBackupEpoch = System.currentTimeMillis()
+                val receipt = BackupRepository.exportToUri(context, uri)
+                val record = receipt.toLastBackup()
+                backupPrefs.lastBackup = record
+                // Update the card in the same breath as the write — no restart.
+                lastBackup = record
                 Toast.makeText(context, "Backup saved successfully", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(context, "Backup failed: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -153,7 +174,7 @@ fun BackupRestoreScreen(
             
             Spacer(Modifier.height(24.dp))
 
-            AnimatedLastBackupCard(date = lastBackupText, summary = summaryText)
+            AnimatedLastBackupCard(last = lastBackup, fallbackSummary = summaryText)
 
             Spacer(Modifier.height(32.dp))
             
@@ -312,8 +333,16 @@ fun BackupRestoreScreen(
     }
 }
 
+/**
+ * Last Backup card. Works for manual and automatic backups alike: everything it
+ * shows comes from [BackupPrefs.LastBackup], which is written when the backup is
+ * created. The file is never reopened to measure it.
+ *
+ * [fallbackSummary] is the old "what you'd be backing up" line, still used
+ * before any backup exists.
+ */
 @Composable
-private fun AnimatedLastBackupCard(date: String?, summary: String) {
+private fun AnimatedLastBackupCard(last: BackupPrefs.LastBackup?, fallbackSummary: String) {
     val infiniteTransition = rememberInfiniteTransition(label = "VaultAnimation")
     
     val iconScale by infiniteTransition.animateFloat(
@@ -378,7 +407,7 @@ private fun AnimatedLastBackupCard(date: String?, summary: String) {
             
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "LAST BACKUP",
+                    text = if (last?.automatic == true) "LAST BACKUP · AUTOMATIC" else "LAST BACKUP",
                     style = MaterialTheme.typography.labelSmall,
                     color = NazoOnDarkCardMuted,
                     letterSpacing = 1.sp,
@@ -386,7 +415,7 @@ private fun AnimatedLastBackupCard(date: String?, summary: String) {
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = date ?: "No backups yet",
+                    text = last?.let { formatBackupDate(it.epoch) } ?: "No backups yet",
                     style = MaterialTheme.typography.titleLarge,
                     color = NazoOnDarkCard,
                     fontWeight = FontWeight.ExtraBold,
@@ -400,13 +429,33 @@ private fun AnimatedLastBackupCard(date: String?, summary: String) {
             color = Color.Black.copy(alpha = 0.2f),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Text(
-                text = summary,
-                style = MaterialTheme.typography.bodyMedium,
-                color = NazoOnDarkCardMuted,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                lineHeight = 20.sp
-            )
+            if (last == null) {
+                Text(
+                    text = fallbackSummary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NazoOnDarkCardMuted,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    lineHeight = 20.sp
+                )
+            } else {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                    Text(
+                        text = "${last.records} ${if (last.records == 1) "record" else "records"}" +
+                            " · ${formatBytes(last.sizeBytes)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = NazoOnDarkCard,
+                        fontWeight = FontWeight.Bold,
+                        lineHeight = 20.sp
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = last.categories.joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NazoOnDarkCardMuted,
+                        lineHeight = 18.sp
+                    )
+                }
+            }
         }
     }
 }
@@ -930,6 +979,13 @@ private fun RowDivider() {
         thickness = 1.5.dp,
         modifier = Modifier.padding(horizontal = 20.dp)
     )
+}
+
+/** Sizes are tiny JSON, so B / KB / MB with one decimal is plenty. */
+private fun formatBytes(bytes: Long): String = when {
+    bytes < 1024 -> "$bytes B"
+    bytes < 1024 * 1024 -> String.format(Locale.getDefault(), "%.1f KB", bytes / 1024f)
+    else -> String.format(Locale.getDefault(), "%.1f MB", bytes / (1024f * 1024f))
 }
 
 private fun formatBackupDate(epoch: Long): String {

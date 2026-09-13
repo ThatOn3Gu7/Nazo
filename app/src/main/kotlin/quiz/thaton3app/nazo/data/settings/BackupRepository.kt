@@ -122,16 +122,55 @@ object BackupRepository {
     fun autoBackupPath(context: Context): String =
         File(context.getExternalFilesDir(null), "Nazo/auto_backup.json").absolutePath
 
-    suspend fun exportToUri(context: Context, uri: Uri) {
+    /**
+     * What was actually written, measured during the write itself.
+     *
+     * Captured here rather than recomputed later so the Last Backup card never
+     * has to reopen (or even keep) the file to describe it — which matters for
+     * manual backups, whose SAF uri we deliberately do not retain.
+     */
+    data class BackupReceipt(
+        val epoch: Long,
+        val sizeBytes: Long,
+        val records: Int,
+        val categories: List<BackupCategory>,
+        val automatic: Boolean,
+    )
+
+    suspend fun exportToUri(context: Context, uri: Uri): BackupReceipt {
+        val json = buildJson(context)
+        val bytes = json.toString().toByteArray(Charsets.UTF_8)
         context.contentResolver.openOutputStream(uri)?.use { out ->
-            out.write(buildJson(context).toString().toByteArray(Charsets.UTF_8))
+            out.write(bytes)
         } ?: throw IllegalStateException("Unable to open backup destination")
+        return receiptFor(json, bytes.size.toLong(), automatic = false)
     }
 
-    suspend fun exportToPath(context: Context, path: String) {
+    suspend fun exportToPath(context: Context, path: String): BackupReceipt {
+        val json = buildJson(context)
+        val text = json.toString()
         val file = File(path)
         file.parentFile?.mkdirs()
-        file.writeText(buildJson(context).toString(), Charsets.UTF_8)
+        file.writeText(text, Charsets.UTF_8)
+        return receiptFor(json, text.toByteArray(Charsets.UTF_8).size.toLong(), automatic = true)
+    }
+
+    /** Describes an export from the bundle already in hand — no re-read. */
+    private fun receiptFor(json: JSONObject, sizeBytes: Long, automatic: Boolean): BackupReceipt {
+        val stores = json.optJSONObject("stores")
+        val categories = STORES.mapNotNull { name ->
+            val count = stores?.optJSONObject(name)?.length() ?: 0
+            if (count == 0) return@mapNotNull null
+            val (label, description) = labelFor(name)
+            BackupCategory(name, label, description, count, name in PROGRESS_STORES)
+        }
+        return BackupReceipt(
+            epoch = System.currentTimeMillis(),
+            sizeBytes = sizeBytes,
+            records = categories.sumOf { it.entries },
+            categories = categories,
+            automatic = automatic,
+        )
     }
 
     private fun buildJson(context: Context): JSONObject {
@@ -289,3 +328,13 @@ object BackupRepository {
         }
     }
 }
+
+/** Bridges a fresh export's measurements into the cached [BackupPrefs.LastBackup]. */
+fun BackupRepository.BackupReceipt.toLastBackup(): BackupPrefs.LastBackup =
+    BackupPrefs.LastBackup(
+        epoch = epoch,
+        sizeBytes = sizeBytes,
+        records = records,
+        categories = categories.map { it.label },
+        automatic = automatic,
+    )
