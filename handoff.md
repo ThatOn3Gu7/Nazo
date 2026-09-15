@@ -665,3 +665,62 @@ each wrap their own `Column`, which is why only the quiz card broke.
 8. **Rotate** on the loading and error cards, and on a small screen: spacing
    holds and the card stays scrollable.
 9. **Success path.** With a good key, generation still lands in the quiz.
+
+---
+
+## Retry: make the loading state actually visible on an instant failure
+
+The previous pass made Retry *set* the Loading state, but that was not enough.
+With Wi-Fi and data off the request fails in about a millisecond, so the state
+went Error -> Loading -> Error inside a single frame. `AnimatedContent` never got
+to run its 160 ms fade-out + 220 ms fade-in, so the user saw one jarring jerk
+rather than a transition.
+
+Fix: a minimum dwell. `MIN_LOADING_MS = 900L` (comfortably longer than the
+card's own 380 ms of cross-fade). When a loading/preparing card appears its
+start time is stamped, and a failure waits out the remainder before it is
+allowed to replace the card. A slow failure waits for nothing — the deadline has
+long passed by the time it returns. Success paths are never delayed.
+
+Applied to every generation loading screen:
+
+- **Quiz** — `loadingShownAt` + `awaitMinimumLoading()`, awaited before
+  `GenerationState.Error` is written. `launchGeneration` stamps the clock, so
+  Retry and "Change model & retry" both get the full transition; the manual
+  Loading assignments added last pass were removed as redundant (they would have
+  double-stamped).
+  The clock is NOT restamped on the auto-fallback re-entry (`req.isFallback`),
+  which would stack a second delay onto one user-visible loading period.
+- **Guessing game** — `guessPreparingAt` + `awaitMinimumPreparing()`, in
+  `beginGuessRoundJob` and in the prefetch's error path.
+- **Guessing game's two instant-fail guards** (offline, and no provider/model)
+  never hit the network at all, so they replaced the error card with itself in
+  the same frame. New `failGuessAfterPreparing()` routes them through a real
+  Preparing card first, so a retry with no connection looks like a genuine
+  attempt.
+
+Cancel/Quit bump their token (`generationToken++` / `guessToken++`) so a job
+sitting in the dwell cannot write an error after the user has left the screen,
+and the post-dwell writes re-check the token for the same reason.
+
+### How to test it live
+
+1. **The reported case.** Turn Wi-Fi AND mobile data off. Start an AI quiz,
+   land on the error card, tap **Retry**: the card must fade to the wavy
+   spinner, hold ~1s, then fade back to the error. No instant jerk.
+2. **Repeatable.** Tap Retry several times — identical animation each time.
+3. **Spam it.** Tap Retry 6 times fast: one spinner, one final error, no
+   flicker of an old error over a new spinner.
+4. **Guessing game, no connection.** Start it with the network off. Tapping
+   "Try again" must show the Preparing card for about a second each time, then
+   return to the error.
+5. **Guessing game, no provider.** Remove the API key, start a guessing game,
+   tap "Try again": same visible Preparing beat, not an instant re-error.
+6. **Change model & retry** shows the spinner for the same beat.
+7. **Cancel during the dwell.** Tap Retry then Cancel within the spinner: you
+   land Home and NO error appears afterwards. Same with Quit in the guessing
+   game.
+8. **Success is not slowed.** With the network back on, generation still lands
+   in the quiz as soon as it is ready — no artificial wait.
+9. **A slow failure is not slowed further.** With a bad API key on a live
+   network, the error still appears as soon as the request fails.
