@@ -400,6 +400,10 @@ fun ProfileScreen(
         // recomposition can never trigger a generation on its own.
         var generatingName by remember { mutableStateOf(false) }
         var nameError by remember { mutableStateOf<String?>(null) }
+        // Every handle offered while this dialog has been open. Sent back to the
+        // model as a do-not-repeat list; an identical request otherwise returns
+        // an identical name however many times Refresh is tapped.
+        val suggested = remember { mutableStateListOf<String>() }
         AlertDialog(
             onDismissRequest = { showUsernameDialog = false },
             icon = { Icon(Icons.Rounded.AccountCircle, contentDescription = null) },
@@ -424,7 +428,16 @@ fun ProfileScreen(
                                 val key = provider?.let { apiKeyStore.getKey(it) }
                                 val model = provider?.let { apiKeyStore.getModel(it) }
                                 if (provider == null || key.isNullOrBlank() || model.isNullOrBlank()) {
-                                    text = randomAnimeUsername()
+                                    // Local generator: keep drawing until it
+                                    // differs from what is already in the field,
+                                    // so a tap always visibly changes something.
+                                    var local = randomAnimeUsername()
+                                    var tries = 0
+                                    while (local == text && tries < 8) {
+                                        local = randomAnimeUsername()
+                                        tries++
+                                    }
+                                    text = local
                                     return@IconButton
                                 }
                                 // Guard against a second tap while in flight, so
@@ -444,11 +457,15 @@ fun ProfileScreen(
                                         .map { it.key }
                                     val result = ApiClient.generateNickname(
                                         provider, key, model, favourites,
+                                        avoid = suggested.toList() + text.trim(),
                                     )
                                     // The dialog may have been dismissed while
                                     // the request was running.
                                     result
-                                        .onSuccess { text = it }
+                                        .onSuccess {
+                                            text = it
+                                            suggested += it
+                                        }
                                         .onFailure {
                                             // Keep whatever the user had; the
                                             // local generator stays available.

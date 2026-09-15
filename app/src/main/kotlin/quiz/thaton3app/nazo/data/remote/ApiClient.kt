@@ -115,12 +115,19 @@ Hard rules:
      * [favouriteAnime] is the player's most-answered series, taken from their own
      * stats, and is woven into the prompt so the result reflects what they
      * actually play. Pass an empty list for a generic handle.
+     *
+     * [avoid] lists handles already offered in this sitting. An LLM asked a
+     * byte-identical question tends to give a byte-identical answer — that is
+     * what made repeated taps of Refresh return the same name forever — so the
+     * previous suggestions are named as forbidden and a random angle is added
+     * below to genuinely move the model off its favourite answer.
      */
     suspend fun generateNickname(
         providerId: String,
         apiKey: String,
         model: String,
         favouriteAnime: List<String> = emptyList(),
+        avoid: List<String> = emptyList(),
     ): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
             val endpoint = providerById(providerId)
@@ -138,10 +145,23 @@ Hard rules:
                     "motif from them — but do not copy a character's full name verbatim. "
             }
 
+            // A different angle each tap. Without this the request is
+            // byte-identical every time and the model simply repeats itself.
+            val angle = NICKNAME_ANGLES.random()
+            val recent = avoid.filter { it.isNotBlank() }.distinct().takeLast(8)
+            val exclusion = if (recent.isEmpty()) {
+                ""
+            } else {
+                "Do NOT suggest any of these, or anything close to them: " +
+                    "${recent.joinToString(", ")}. "
+            }
+
             val prompt = "Invent ONE short username for an anime quiz app player. " +
                 "Rules: 3 to 16 characters, letters and digits only, no spaces, " +
                 "no punctuation, no quotes, no explanation. " +
                 flavour +
+                exclusion +
+                "$angle " +
                 "Reply with the username and nothing else. " +
                 // Gemini is forced into JSON mode below, so name the field
                 // explicitly rather than letting it invent its own wrapper.
@@ -189,6 +209,24 @@ Hard rules:
             Log.e(TAG, "generateNickname failed: ${e.javaClass.simpleName}")
         }
     }
+
+    /**
+     * Rotating instructions that push the model somewhere new on each tap.
+     * Deliberately about STYLE rather than content, so a personalized handle
+     * stays personalized while still changing shape.
+     */
+    private val NICKNAME_ANGLES = listOf(
+        "Make it sound bold and heroic.",
+        "Make it playful and a little silly.",
+        "Make it mysterious and quiet.",
+        "Lean on a place or location.",
+        "Lean on a weapon, power or technique.",
+        "Use a compound of two short words.",
+        "Make it sound like a veteran competitor.",
+        "Include a number somewhere in it.",
+        "Make it short and punchy — under eight characters.",
+        "Make it sound elegant and old-fashioned.",
+    )
 
     /** Longest nickname accepted from a model, matching the profile field's own limit. */
     private const val NICKNAME_MAX_LENGTH = 16

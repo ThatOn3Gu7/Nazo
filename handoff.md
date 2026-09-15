@@ -554,3 +554,47 @@ provider is active, and "keep the current name on failure".
 7. **Failure keeps your name.** With a key but no network, refresh: your current
    text stays, the field stays usable, and the short error appears.
 8. **Double-tap guard.** Spam refresh during the spinner — only one request.
+
+---
+
+## AI nickname: Refresh kept returning the same name
+
+**Cause.** Nothing was wrong with the UI assignment (`text = it` was correct).
+The *request* was byte-for-byte identical on every tap: same prompt, same
+system prompt, same schema, same model. LLMs are near-deterministic for an
+identical request, so the provider kept answering with the same handle.
+Personalization made this worse, not better — pinning the prompt to the
+player's top series narrowed the plausible answers even further.
+
+**Fix — three parts:**
+
+1. `NICKNAME_ANGLES`: ten rotating style instructions ("bold and heroic",
+   "lean on a place", "include a number", ...), one picked at random per call.
+   Deliberately about STYLE, not content, so a personalized handle stays
+   personalized while still changing shape.
+2. `generateNickname(..., avoid: List<String>)`: the last 8 handles offered in
+   this sitting are named in the prompt as forbidden. Mirrors the existing
+   `avoidQuestions` parameter on `generateQuiz`.
+3. ProfileScreen keeps a dialog-scoped `mutableStateListOf<String>` of every
+   suggestion, and sends it plus the current field contents as `avoid`. It
+   resets when the dialog closes, so the list cannot grow without bound.
+
+Also: the **local** fallback generator now redraws (up to 8 attempts) until it
+differs from what is already in the field, so an offline tap always visibly
+changes something. `randomAnimeUsername()` has adjective x noun x 90 numbers of
+range, so a collision is rare and the loop is cheap.
+
+### How to test it live
+
+1. **The bug.** Gemini configured → Profile → edit username → tap Refresh 6-8
+   times in a row without closing the dialog. Every name must be different.
+2. **Personalization survives.** With a One Piece-heavy history, those names
+   should still lean One Piece — different handles, same flavour.
+3. **Reopening is fine.** Close the dialog and reopen it: the avoid-list resets,
+   so a previously seen name may legitimately come back. Tapping Refresh again
+   must still produce something new.
+4. **Local fallback.** Remove the key → tap Refresh repeatedly. The field must
+   change every single tap, never showing the same name twice in a row.
+5. **Failure still safe.** Key but no network → the current name stays, the
+   short error shows, and the field is still editable.
+6. **Double-tap guard intact.** Spam Refresh during the spinner — one request.
