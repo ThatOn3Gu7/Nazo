@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.MailOutline
 import androidx.compose.material.icons.filled.PersonOutline
@@ -420,7 +421,7 @@ internal fun AboutSubScreenHeader(title: String, onBackClick: () -> Unit) {
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
+                Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "Back",
                 tint = NazoTextSecondary,
                 modifier = Modifier.size(20.dp),

@@ -52,6 +52,7 @@ import quiz.thaton3app.nazo.data.NAZO_LIBRARIES
 import quiz.thaton3app.nazo.data.NAZO_LICENSE_ID
 import quiz.thaton3app.nazo.data.NAZO_LICENSE_SUMMARY
 import quiz.thaton3app.nazo.data.ThirdPartyLibrary
+import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoSurface
 import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
@@ -216,7 +217,7 @@ private fun AppLicenseCard(onOpenUrl: (String) -> Unit) {
             Text(
                 text = NAZO_LICENSE_ID,
                 style = MaterialTheme.typography.labelMedium,
-                color = quiz.thaton3app.nazo.ui.theme.NazoOnPrimary,
+                color = NazoOnPrimary,
                 fontWeight = FontWeight.Bold,
             )
         }
