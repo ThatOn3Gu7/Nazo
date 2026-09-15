@@ -197,25 +197,38 @@ fun LoadingScreen(
                                 },
                                 label = "generationState",
                             ) { phase ->
-                                when (phase) {
-                                    GenerationPhase.ERROR -> {
-                                        val error = state as? GenerationState.Error
-                                        ErrorContent(
-                                            message = error?.message.orEmpty(),
-                                            isModelError = error?.isModelError == true,
-                                            availableModels = availableModels,
-                                            currentModel = currentModel,
-                                            onRetry = onRetry,
-                                            onUseLocal = onUseLocal,
+                                // MUST stay a Column. LoadingContent and
+                                // ErrorContent emit a flat run of siblings
+                                // (emblem, Spacers, texts, spinner, buttons)
+                                // that only lay out correctly inside a vertical
+                                // Column. AnimatedContent's content scope is a
+                                // BOX, so without this every element was drawn
+                                // stacked on top of the others and the Spacers
+                                // separated nothing — that was the "cramped and
+                                // overlapping" loading card.
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    when (phase) {
+                                        GenerationPhase.ERROR -> {
+                                            val error = state as? GenerationState.Error
+                                            ErrorContent(
+                                                message = error?.message.orEmpty(),
+                                                isModelError = error?.isModelError == true,
+                                                availableModels = availableModels,
+                                                currentModel = currentModel,
+                                                onRetry = onRetry,
+                                                onUseLocal = onUseLocal,
+                                                onCancel = onCancel,
+                                                onChangeModel = onChangeModel,
+                                            )
+                                        }
+                                        GenerationPhase.LOADING -> LoadingContent(
+                                            providerModel = (state as? GenerationState.Loading)
+                                                ?.providerModel.orEmpty(),
                                             onCancel = onCancel,
-                                            onChangeModel = onChangeModel,
                                         )
                                     }
-                                    GenerationPhase.LOADING -> LoadingContent(
-                                        providerModel = (state as? GenerationState.Loading)
-                                            ?.providerModel.orEmpty(),
-                                        onCancel = onCancel,
-                                    )
                                 }
                             }
                         }

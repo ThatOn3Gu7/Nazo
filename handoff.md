@@ -598,3 +598,70 @@ range, so a collision is rare and the loop is cheap.
 5. **Failure still safe.** Key but no network → the current name stays, the
    short error shows, and the field is still editable.
 6. **Double-tap guard intact.** Spam Refresh during the spinner — one request.
+
+---
+
+## Quiz loading screen: overlapping layout, and Retry not returning to loading
+
+### The layout bug — root cause found
+
+`8128203` wrapped the card's body in `AnimatedContent` to cross-fade
+Loading -> Error. `LoadingContent` and `ErrorContent` do **not** wrap themselves
+in a layout: they emit a flat run of siblings (emblem, `Spacer`s, texts, spinner,
+buttons) that only arrange correctly inside a vertical `Column`. Before that
+commit they were called directly inside the card's `Column`, so they did.
+
+**`AnimatedContent`'s content scope is a `Box`, not a `Column`.** Every element
+was therefore drawn stacked at the same origin, and the `Spacer`s separated
+nothing — the emblem, title, spinner and buttons piled on top of each other.
+That is the "cramped, squashed, overlapping" card. It was intermittent only in
+the sense that it needed the generation screen to actually appear.
+
+Fix: a `Column(horizontalAlignment = CenterHorizontally)` immediately inside the
+`AnimatedContent` lambda, with a comment saying it must stay. One-line cause,
+one-line fix.
+
+The guessing game's equivalent is NOT affected — `PreparingCard` / `ErrorCard`
+each wrap their own `Column`, which is why only the quiz card broke.
+
+### Retry
+
+- `onRetry` now sets `GenerationState.Loading` itself before calling
+  `launchGeneration`, so the card visibly cross-fades back to the wavy spinner
+  even when the request fails again in milliseconds. Same for
+  "Change model & retry".
+- **Duplicate/overlapping requests:** `ApiClient` wraps its work in
+  `runCatching`, which swallows `CancellationException` — so a cancelled attempt
+  still returns a failed `Result` and would paint an error over the newer
+  attempt's loading card. Added a monotonic `generationToken`; every state write
+  is gated on still owning the newest token.
+  A plain Job reference is deliberately NOT used: the auto-fallback path
+  re-enters `launchGeneration` from inside the running job, so "cancel the
+  previous job" would cancel the coroutine doing the cancelling.
+- `guessToken` does the same for the guessing game. Its existing stale-check
+  compared round numbers, which cannot distinguish two attempts at the SAME
+  round — exactly what Retry produces.
+- Cancel now bumps the token and cancels the job, so a request cannot land after
+  the user has left the screen.
+
+### How to test it live
+
+1. **The layout bug.** Use a deliberately bad API key so generation is slow to
+   fail, then start an AI quiz. The loading card must show: emblem, then
+   "Generating your quiz…", then the model line, then the wavy spinner, then
+   Cancel — all clearly separated, nothing overlapping.
+2. **Error layout.** Let it fail. The error card must be equally well spaced:
+   "!" emblem, heading, message, Retry, Use local quiz, Cancel.
+3. **Retry returns to loading.** Tap Retry. The card must cross-fade back to the
+   spinner before showing the error again — never jump error-to-error.
+4. **Change model & retry** behaves the same way.
+5. **No overlapping calls.** Tap Retry rapidly 5-6 times. You should see one
+   spinner and exactly one final error — never a flicker of an old error over a
+   new spinner.
+6. **Guessing game.** Force a failure, tap Retry there, spam it: the Preparing
+   card must come back each time, with one settled result.
+7. **Cancel mid-flight.** Tap Retry then immediately Cancel: you land Home and
+   no error appears afterwards.
+8. **Rotate** on the loading and error cards, and on a small screen: spacing
+   holds and the card stays scrollable.
+9. **Success path.** With a good key, generation still lands in the quiz.
