@@ -40,19 +40,137 @@ object BackupRepository {
     )
     private const val PROFILE_PICTURE_KEY = "profile_picture_uri"
 
+    /**
+     * One human-readable line of a backup bundle's contents.
+     *
+     * [entries] is the real number of stored values in that category, counted
+     * either from the live SharedPreferences (before an export) or from the
+     * parsed bundle (before a restore) — never a hard-coded list.
+     */
+    data class BackupCategory(
+        val store: String,
+        val label: String,
+        val description: String,
+        val entries: Int,
+        /**
+         * True for stores that hold things the user actually produced (stats,
+         * records, profile, practice deck). False for pure preference stores,
+         * which exist on a brand-new install and so must not make an otherwise
+         * empty backup look like it contains progress.
+         */
+        val isProgress: Boolean,
+    )
+
+    /** Stores that represent earned progress rather than settings. */
+    private val PROGRESS_STORES = setOf(
+        "nazo_stats", "nazo_records", "nazo_daily", "nazo_qhistory", "nazo_missed", "nazo_profile",
+    )
+
+    private fun labelFor(store: String): Pair<String, String> = when (store) {
+        "nazo_stats" -> "Quiz statistics" to "Quizzes played, accuracy and totals"
+        "nazo_theme" -> "Appearance" to "Theme, accent colour and icon"
+        "nazo_profile" -> "Profile" to "Username and avatar"
+        "nazo_provider_models" -> "AI providers" to "Selected provider and models"
+        "nazo_secure" -> "API keys" to "Encrypted — only usable on this device"
+        "nazo_records" -> "Personal records" to "Best scores and streaks"
+        "nazo_daily" -> "Daily challenge" to "Streak days and daily bonus state"
+        "nazo_sound" -> "Sound & haptics" to "Audio and vibration preferences"
+        "nazo_reminders" -> "Reminders" to "Scheduled practice notifications"
+        "nazo_qhistory" -> "Question history" to "Anti-repeat memory of seen questions"
+        "nazo_missed" -> "Practice deck" to "Questions you answered incorrectly"
+        else -> store.removePrefix("nazo_").replaceFirstChar { it.uppercase() } to "App data"
+    }
+
+    /**
+     * What a manual backup taken right now would contain. Empty stores are left
+     * out so the preview never promises data the user does not have.
+     */
+    fun summarizeLocal(context: Context): List<BackupCategory> {
+        val stores = buildJson(context).optJSONObject("stores") ?: return emptyList()
+        return STORES.mapNotNull { name ->
+            val count = stores.optJSONObject(name)?.length() ?: 0
+            if (count == 0) return@mapNotNull null
+            val (label, description) = labelFor(name)
+            BackupCategory(name, label, description, count, name in PROGRESS_STORES)
+        }
+    }
+
+    /** Parse + validate, then describe the bundle. Null when the file is invalid. */
+    fun inspectUri(context: Context, uri: Uri): List<BackupCategory>? = try {
+        val content = context.contentResolver.openInputStream(uri)
+            ?.bufferedReader()?.use { it.readText() }
+        if (content == null) null else summarizeParsed(parseAndValidate(content))
+    } catch (_: Exception) {
+        null
+    }
+
+    /** Same as [inspectUri] for the on-device automatic backup file. */
+    fun inspectPath(context: Context, path: String): List<BackupCategory>? = try {
+        summarizeParsed(parseAndValidate(File(path).readText(Charsets.UTF_8)))
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun summarizeParsed(
+        parsed: Map<String, Map<String, Pair<String, Any?>>>
+    ): List<BackupCategory> = parsed.mapNotNull { (name, entry) ->
+        if (entry.isEmpty()) return@mapNotNull null
+        val (label, description) = labelFor(name)
+        BackupCategory(name, label, description, entry.size, name in PROGRESS_STORES)
+    }
+
     fun autoBackupPath(context: Context): String =
         File(context.getExternalFilesDir(null), "Nazo/auto_backup.json").absolutePath
 
-    suspend fun exportToUri(context: Context, uri: Uri) {
+    /**
+     * What was actually written, measured during the write itself.
+     *
+     * Captured here rather than recomputed later so the Last Backup card never
+     * has to reopen (or even keep) the file to describe it — which matters for
+     * manual backups, whose SAF uri we deliberately do not retain.
+     */
+    data class BackupReceipt(
+        val epoch: Long,
+        val sizeBytes: Long,
+        val records: Int,
+        val categories: List<BackupCategory>,
+        val automatic: Boolean,
+    )
+
+    suspend fun exportToUri(context: Context, uri: Uri): BackupReceipt {
+        val json = buildJson(context)
+        val bytes = json.toString().toByteArray(Charsets.UTF_8)
         context.contentResolver.openOutputStream(uri)?.use { out ->
-            out.write(buildJson(context).toString().toByteArray(Charsets.UTF_8))
+            out.write(bytes)
         } ?: throw IllegalStateException("Unable to open backup destination")
+        return receiptFor(json, bytes.size.toLong(), automatic = false)
     }
 
-    suspend fun exportToPath(context: Context, path: String) {
+    suspend fun exportToPath(context: Context, path: String): BackupReceipt {
+        val json = buildJson(context)
+        val text = json.toString()
         val file = File(path)
         file.parentFile?.mkdirs()
-        file.writeText(buildJson(context).toString(), Charsets.UTF_8)
+        file.writeText(text, Charsets.UTF_8)
+        return receiptFor(json, text.toByteArray(Charsets.UTF_8).size.toLong(), automatic = true)
+    }
+
+    /** Describes an export from the bundle already in hand — no re-read. */
+    private fun receiptFor(json: JSONObject, sizeBytes: Long, automatic: Boolean): BackupReceipt {
+        val stores = json.optJSONObject("stores")
+        val categories = STORES.mapNotNull { name ->
+            val count = stores?.optJSONObject(name)?.length() ?: 0
+            if (count == 0) return@mapNotNull null
+            val (label, description) = labelFor(name)
+            BackupCategory(name, label, description, count, name in PROGRESS_STORES)
+        }
+        return BackupReceipt(
+            epoch = System.currentTimeMillis(),
+            sizeBytes = sizeBytes,
+            records = categories.sumOf { it.entries },
+            categories = categories,
+            automatic = automatic,
+        )
     }
 
     private fun buildJson(context: Context): JSONObject {
@@ -210,3 +328,13 @@ object BackupRepository {
         }
     }
 }
+
+/** Bridges a fresh export's measurements into the cached [BackupPrefs.LastBackup]. */
+fun BackupRepository.BackupReceipt.toLastBackup(): BackupPrefs.LastBackup =
+    BackupPrefs.LastBackup(
+        epoch = epoch,
+        sizeBytes = sizeBytes,
+        records = records,
+        categories = categories.map { it.label },
+        automatic = automatic,
+    )

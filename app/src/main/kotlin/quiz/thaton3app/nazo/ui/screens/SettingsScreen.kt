@@ -54,18 +54,23 @@ fun SettingsScreen(
     remindersEnabled: Boolean = false,
     onRemindersEnabledChange: (Boolean) -> Unit = {},
 ) {
-    Column(
+    // Box (not Column) so the content can scroll UNDER the bottom nav, which is
+    // drawn by NazoApp on top of this screen. The bottom padding below reserves
+    // room for it so the last row is always reachable.
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
     ) {
         Column(
             modifier = Modifier
-                .weight(1f)
+                .fillMaxSize()
                 .verticalScroll(scrollState)
                 .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
-                .padding(bottom = 12.dp)
+                // Matches Home's bottom inset so the last row can always be
+                // scrolled clear of the overlaid nav bar.
+                .padding(bottom = 96.dp)
         ) {
             Spacer(Modifier.height(24.dp))
             

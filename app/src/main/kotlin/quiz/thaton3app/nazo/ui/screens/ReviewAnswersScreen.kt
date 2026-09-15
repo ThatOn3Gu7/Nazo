@@ -3,6 +3,7 @@ package quiz.thaton3app.nazo.ui.screens
 import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,8 +40,12 @@ import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
+import quiz.thaton3app.nazo.ui.theme.NazoError
+import quiz.thaton3app.nazo.ui.theme.NazoErrorBg
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoSurface
+import quiz.thaton3app.nazo.ui.theme.NazoSuccess
+import quiz.thaton3app.nazo.ui.theme.NazoSuccessBg
 import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
 import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
@@ -129,14 +134,20 @@ private fun ReviewCard(question: Question, userAnswer: String?, index: Int) {
         question.options.forEachIndexed { optIndex, option ->
             val isCorrectOption = option == question.correctAnswer
             val isUserOption = option == userAnswer
+            // Use the palette's semantic colors rather than hardcoded pastels.
+            // The literals these replaced were light-theme values, so on the dark
+            // theme they painted a near-white pill under NazoTextPrimary (also
+            // near-white) — the option text became unreadable. NazoSuccessBg /
+            // NazoErrorBg follow light/dark and the selected accent, matching how
+            // ActiveQuizScreen renders the very same correct/wrong states.
             val bgColor = when {
-                isCorrectOption -> Color(0xFFD4E7D5)
-                isUserOption -> Color(0xFFF2D5D5)
+                isCorrectOption -> NazoSuccessBg
+                isUserOption -> NazoErrorBg
                 else -> NazoSurfaceVariant
             }
             val borderColor = when {
-                isCorrectOption -> Color(0xFF2E7D32)
-                isUserOption -> Color(0xFFC62828)
+                isCorrectOption -> NazoSuccess
+                isUserOption -> NazoError
                 else -> Color.Transparent
             }
             Row(
@@ -146,6 +157,11 @@ private fun ReviewCard(question: Question, userAnswer: String?, index: Int) {
                     .padding(bottom = 12.dp)
                     .clip(RoundedCornerShape(50))
                     .background(bgColor)
+                    // borderColor was computed but never applied. It matters on the
+                    // dark theme, where successBg and surfaceVariant are the same
+                    // color — without the outline a correct answer is
+                    // indistinguishable from an untouched option.
+                    .border(1.dp, borderColor, RoundedCornerShape(50))
                     .padding(horizontal = 20.dp, vertical = 14.dp),
             ) {
                 Box(
@@ -154,8 +170,8 @@ private fun ReviewCard(question: Question, userAnswer: String?, index: Int) {
                         .clip(CircleShape)
                         .background(
                             when {
-                                isCorrectOption -> Color(0xFF2E7D32)
-                                isUserOption -> Color(0xFFC62828)
+                                isCorrectOption -> NazoSuccess
+                                isUserOption -> NazoError
                                 else -> NazoBackground
                             },
                         ),

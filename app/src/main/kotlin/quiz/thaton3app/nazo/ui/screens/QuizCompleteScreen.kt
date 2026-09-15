@@ -26,19 +26,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import quiz.thaton3app.nazo.daily.DailyBonusChip
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.records.NewRecordBadge
-import quiz.thaton3app.nazo.daily.DailyBonusChip
 import quiz.thaton3app.nazo.sound.Sounds
-import androidx.compose.ui.platform.LocalContext
 import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.ShareResultCard
+import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
 
 @Composable
@@ -58,6 +59,7 @@ fun QuizCompleteScreen(
     onReviewAnswers: () -> Unit,
     onSettingsClick: () -> Unit
 ) {
+    val landscape = isLandscape()
     val accuracy = if (totalQuestions > 0) ((score.toFloat() / totalQuestions) * 100).toInt() else 0
     val isSuccess = accuracy >= 50
 
@@ -117,12 +119,16 @@ fun QuizCompleteScreen(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .verticalScroll(rememberScrollState())
+                    .then(
+                        // Landscape gives each pane its own scroll, so the page
+                        // must not scroll as well.
+                        if (landscape) Modifier else Modifier.verticalScroll(rememberScrollState())
+                    )
                     .navigationBarsPadding()
                     .padding(horizontal = 20.dp)
                     .padding(bottom = 12.dp)
             ) {
-                Spacer(Modifier.height(40.dp))
+                Spacer(Modifier.height(if (landscape) 12.dp else 40.dp))
 
                 // Header
                 AnimatedVisibility(
@@ -141,8 +147,11 @@ fun QuizCompleteScreen(
                     )
                 }
 
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(if (landscape) 12.dp else 24.dp))
 
+                TwoPaneResults(
+                    landscape = landscape,
+                    ring = {
                 // Big Trophy Score Card
                 AnimatedVisibility(
                     visible = showCard,
@@ -189,8 +198,8 @@ fun QuizCompleteScreen(
                     }
                 }
 
-                Spacer(Modifier.height(24.dp))
-
+                    },
+                    stats = {
                 // Stats Row
                 AnimatedVisibility(
                     visible = showStats,
@@ -206,7 +215,7 @@ fun QuizCompleteScreen(
                     }
                 }
 
-                Spacer(Modifier.height(32.dp))
+                Spacer(Modifier.height(if (landscape) 16.dp else 32.dp))
 
                 // Action Buttons
                 AnimatedVisibility(
@@ -282,6 +291,8 @@ fun QuizCompleteScreen(
                         }
                     }
                 }
+                    },
+                )
             }
         }
 
@@ -291,6 +302,53 @@ fun QuizCompleteScreen(
                 style = celebrationStyle,
                 modifier = Modifier.fillMaxSize(),
             )
+        }
+    }
+}
+
+/**
+ * Results layout.
+ *
+ * Portrait is the original stack: ring, record badge, stats row, buttons.
+ *
+ * Landscape puts the score ring (with the record badge and daily bonus beneath
+ * it, inside the same pane) on the left, and the three stat cards plus the
+ * action buttons on the right — so nothing is stretched and the whole result is
+ * visible without scrolling on most devices.
+ */
+@Composable
+private fun TwoPaneResults(
+    landscape: Boolean,
+    ring: @Composable () -> Unit,
+    stats: @Composable () -> Unit,
+) {
+    if (!landscape) {
+        Column {
+            ring()
+            Spacer(Modifier.height(24.dp))
+            stats()
+        }
+        return
+    }
+
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            ring()
+            Spacer(Modifier.height(12.dp))
+        }
+        Spacer(Modifier.width(20.dp))
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            stats()
+            Spacer(Modifier.height(12.dp))
         }
     }
 }

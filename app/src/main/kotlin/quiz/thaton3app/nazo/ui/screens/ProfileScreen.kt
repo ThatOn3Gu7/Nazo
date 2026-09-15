@@ -1,12 +1,25 @@
 package quiz.thaton3app.nazo.ui.screens
 
-import android.content.Intent
+import java.io.File
+import quiz.thaton3app.nazo.ui.components.ProfileImagePreviewDialog
+import quiz.thaton3app.nazo.data.profile.ProfileImageStore
+import quiz.thaton3app.nazo.data.profile.ProfileImageSource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.Image
+import androidx.activity.result.PickVisualMediaRequest
+import android.content.res.Configuration
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,12 +32,16 @@ import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material3.*
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -32,9 +49,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import java.net.HttpURLConnection
+import java.net.URL
 import kotlin.math.abs
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
@@ -44,11 +60,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 import quiz.thaton3app.nazo.R
 import quiz.thaton3app.nazo.data.QuizStats
+import quiz.thaton3app.nazo.data.remote.ApiClient
+import quiz.thaton3app.nazo.data.settings.ApiKeyStore
+import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
 import quiz.thaton3app.nazo.ui.components.SafeRemoteImage
 import quiz.thaton3app.nazo.ui.theme.*
-import java.net.HttpURLConnection
-import java.net.URL
 
 val ProfileHeaderFont = FontFamily(
     Font(R.font.plus_jakarta_sans_bold, FontWeight.Bold)
@@ -67,22 +84,32 @@ fun ProfileScreen(
     onNavigateToSettings: () -> Unit = {},
 ) {
     var showUsernameDialog by remember { mutableStateOf(false) }
+    val nicknameContext = LocalContext.current
+    val apiKeyStore = remember(nicknameContext) { ApiKeyStore(nicknameContext) }
+    val nicknameStats = remember(nicknameContext) { QuizStatsStore(nicknameContext) }
+    val scope = rememberCoroutineScope()
     var showPictureDialog by remember { mutableStateOf(false) }
     var showUrlDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
+    // The image being previewed/cropped, and the temp file behind it (URL only).
+    var pendingSource by remember { mutableStateOf<ProfileImageSource?>(null) }
+    var pendingDraft by remember { mutableStateOf<File?>(null) }
+
+    // PickVisualMedia is the system photo picker: a gallery grid scoped to
+    // images, with no storage permission and no filesystem browsing. It
+    // replaces OpenDocument, which dropped the user into a file manager.
     val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
+        contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri ->
             uri?.let {
-                try {
-                    context.contentResolver.takePersistableUriPermission(
-                        it,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    )
-                } catch (_: Exception) {
-                }
-                onProfilePictureChange(it.toString())
+                // Read-only access for the preview/crop step. We never write
+                // back to this URI -- accepting writes a fresh copy of our own,
+                // so the user's original photo is untouched.
+                pendingDraft = null
+                pendingSource = ProfileImageSource.ContentUri(it)
             }
         }
     )
@@ -112,84 +139,284 @@ fun ProfileScreen(
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            ProfileAvatar(
-                name = username,
-                pictureUri = profilePictureUri,
-                size = 132.dp,
-                onClick = { showPictureDialog = true },
-                modifier = Modifier.padding(bottom = 16.dp),
-            )
-
-            Surface(
-                onClick = { showUsernameDialog = true },
-                shape = MaterialTheme.shapes.extraLarge,
-                color = Color.Transparent,
-                modifier = Modifier.clip(MaterialTheme.shapes.extraLarge)
+        if (isLandscape) {
+            // --- LANDSCAPE LAYOUT ---
+            Row(
+                modifier = Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(32.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                // Left Column: Avatar & Username
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
-                    Text(
-                        text = username.ifBlank {
-                            if (quizStats.totalQuizzes > 0) "Edit Profile" else "Create Profile"
-                        },
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = NazoTextPrimary
+                    ProfileAvatar(
+                        name = username,
+                        pictureUri = profilePictureUri,
+                        size = 132.dp,
+                        onClick = { showPictureDialog = true },
+                        modifier = Modifier.padding(bottom = 16.dp),
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(
-                        imageVector = Icons.Rounded.Edit,
-                        contentDescription = "Edit username",
-                        tint = NazoPrimary,
-                        modifier = Modifier.size(22.dp)
+
+                    Surface(
+                        onClick = { showUsernameDialog = true },
+                        shape = MaterialTheme.shapes.extraLarge,
+                        color = Color.Transparent,
+                        modifier = Modifier.clip(MaterialTheme.shapes.extraLarge)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = username.ifBlank {
+                                    if (quizStats.totalQuizzes > 0) "Edit Profile" else "Create Profile"
+                                },
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = NazoTextPrimary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(
+                                imageVector = Icons.Rounded.Edit,
+                                contentDescription = "Edit username",
+                                tint = NazoPrimary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Right Column: Stats & Menu
+                Column(
+                    modifier = Modifier
+                        .weight(1.5f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    if (quizStats.totalQuizzes > 0) {
+                        ProfileStatsCard(stats = quizStats)
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        ProfileMenuItem(
+                            icon = Icons.Filled.BarChart,
+                            title = "Statistics",
+                            subtitle = "View your quiz insights",
+                            onClick = onNavigateToStatistics
+                        )
+                        ProfileMenuItem(
+                            icon = Icons.Filled.Settings,
+                            title = "Settings",
+                            subtitle = "Appearance, categories, backup",
+                            onClick = onNavigateToSettings
+                        )
+                    }
+                }
+            }
+        } else {
+            // --- PORTRAIT LAYOUT (Original) ---
+            Column(
+                modifier = Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                ProfileAvatar(
+                    name = username,
+                    pictureUri = profilePictureUri,
+                    size = 132.dp,
+                    onClick = { showPictureDialog = true },
+                    modifier = Modifier.padding(bottom = 16.dp),
+                )
+
+                Surface(
+                    onClick = { showUsernameDialog = true },
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = Color.Transparent,
+                    modifier = Modifier.clip(MaterialTheme.shapes.extraLarge)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = username.ifBlank {
+                                if (quizStats.totalQuizzes > 0) "Edit Profile" else "Create Profile"
+                            },
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = NazoTextPrimary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            imageVector = Icons.Rounded.Edit,
+                            contentDescription = "Edit username",
+                            tint = NazoPrimary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                if (quizStats.totalQuizzes > 0) {
+                    ProfileStatsCard(stats = quizStats)
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    ProfileMenuItem(
+                        icon = Icons.Filled.BarChart,
+                        title = "Statistics",
+                        subtitle = "View your quiz insights",
+                        onClick = onNavigateToStatistics
+                    )
+                    ProfileMenuItem(
+                        icon = Icons.Filled.Settings,
+                        title = "Settings",
+                        subtitle = "Appearance, categories, backup",
+                        onClick = onNavigateToSettings
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            if (quizStats.totalQuizzes > 0) {
-                ProfileStatsCard(stats = quizStats)
-                Spacer(modifier = Modifier.height(24.dp))
-            }
-
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                ProfileMenuItem(
-                    icon = Icons.Filled.BarChart,
-                    title = "Statistics",
-                    subtitle = "View your quiz insights",
-                    onClick = onNavigateToStatistics
-                )
-                ProfileMenuItem(
-                    icon = Icons.Filled.Settings,
-                    title = "Settings",
-                    subtitle = "Appearance, categories, backup",
-                    onClick = onNavigateToSettings
-                )
-            }
         }
     }
+    // Scaffold(
+    //     containerColor = Color.Transparent,
+    //     topBar = {
+    //         CenterAlignedTopAppBar(
+    //             title = {
+    //                 Text(
+    //                     "Profile",
+    //                     style = MaterialTheme.typography.headlineSmall,
+    //                     fontFamily = ProfileHeaderFont,
+    //                     fontWeight = FontWeight.Bold,
+    //                     color = NazoPrimary,
+    //                     letterSpacing = 0.5.sp
+    //                 )
+    //             },
+    //             navigationIcon = {
+    //                 IconButton(onClick = onBack) {
+    //                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+    //                 }
+    //             },
+    //             colors = TopAppBarDefaults.topAppBarColors(
+    //                 containerColor = Color.Transparent
+    //             )
+    //         )
+    //     }
+    // ) { padding ->
+    //     Column(
+    //         modifier = Modifier
+    //             .padding(padding)
+    //             .fillMaxSize()
+    //             .verticalScroll(rememberScrollState())
+    //             .padding(horizontal = 24.dp, vertical = 16.dp),
+    //         horizontalAlignment = Alignment.CenterHorizontally
+    //     ) {
+    //         ProfileAvatar(
+    //             name = username,
+    //             pictureUri = profilePictureUri,
+    //             size = 132.dp,
+    //             onClick = { showPictureDialog = true },
+    //             modifier = Modifier.padding(bottom = 16.dp),
+    //         )
+    //
+    //         Surface(
+    //             onClick = { showUsernameDialog = true },
+    //             shape = MaterialTheme.shapes.extraLarge,
+    //             color = Color.Transparent,
+    //             modifier = Modifier.clip(MaterialTheme.shapes.extraLarge)
+    //         ) {
+    //             Row(
+    //                 verticalAlignment = Alignment.CenterVertically,
+    //                 horizontalArrangement = Arrangement.Center,
+    //                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+    //             ) {
+    //                 Text(
+    //                     text = username.ifBlank {
+    //                         if (quizStats.totalQuizzes > 0) "Edit Profile" else "Create Profile"
+    //                     },
+    //                     style = MaterialTheme.typography.headlineMedium,
+    //                     fontWeight = FontWeight.Bold,
+    //                     maxLines = 1,
+    //                     overflow = TextOverflow.Ellipsis,
+    //                     color = NazoTextPrimary
+    //                 )
+    //                 Spacer(modifier = Modifier.width(8.dp))
+    //                 Icon(
+    //                     imageVector = Icons.Rounded.Edit,
+    //                     contentDescription = "Edit username",
+    //                     tint = NazoPrimary,
+    //                     modifier = Modifier.size(22.dp)
+    //                 )
+    //             }
+    //         }
+    //
+    //         Spacer(modifier = Modifier.height(32.dp))
+    //
+    //         if (quizStats.totalQuizzes > 0) {
+    //             ProfileStatsCard(stats = quizStats)
+    //             Spacer(modifier = Modifier.height(24.dp))
+    //         }
+    //
+    //         Column(
+    //             modifier = Modifier.fillMaxWidth(),
+    //             verticalArrangement = Arrangement.spacedBy(12.dp)
+    //         ) {
+    //             ProfileMenuItem(
+    //                 icon = Icons.Filled.BarChart,
+    //                 title = "Statistics",
+    //                 subtitle = "View your quiz insights",
+    //                 onClick = onNavigateToStatistics
+    //             )
+    //             ProfileMenuItem(
+    //                 icon = Icons.Filled.Settings,
+    //                 title = "Settings",
+    //                 subtitle = "Appearance, categories, backup",
+    //                 onClick = onNavigateToSettings
+    //             )
+    //         }
+    //     }
+    // }
 
     // --- Dialogs ---
 
     if (showUsernameDialog) {
         var text by remember { mutableStateOf(username) }
+        // Scoped to the dialog so state resets naturally when it closes and a
+        // recomposition can never trigger a generation on its own.
+        var generatingName by remember { mutableStateOf(false) }
+        var nameError by remember { mutableStateOf<String?>(null) }
+        // Every handle offered while this dialog has been open. Sent back to the
+        // model as a do-not-repeat list; an identical request otherwise returns
+        // an identical name however many times Refresh is tapped.
+        val suggested = remember { mutableStateListOf<String>() }
         AlertDialog(
             onDismissRequest = { showUsernameDialog = false },
             icon = { Icon(Icons.Rounded.AccountCircle, contentDescription = null) },
@@ -201,14 +428,83 @@ fun ProfileScreen(
                     singleLine = true,
                     placeholder = { Text("Enter a username") },
                     shape = MaterialTheme.shapes.large,
+                    enabled = !generatingName,
                     trailingIcon = {
-                        IconButton(onClick = { text = randomAnimeUsername() }) {
-                            Icon(
-                                Icons.Filled.Refresh,
-                                contentDescription = "Generate random username"
-                            )
+                        // One button, two behaviours. With a generation-ready
+                        // provider it asks the model; without one it falls back
+                        // to the local generator silently — no API error for a
+                        // user who never configured a key.
+                        IconButton(
+                            enabled = !generatingName,
+                            onClick = {
+                                val provider = apiKeyStore.getGenerationProvider()
+                                val key = provider?.let { apiKeyStore.getKey(it) }
+                                val model = provider?.let { apiKeyStore.getModel(it) }
+                                if (provider == null || key.isNullOrBlank() || model.isNullOrBlank()) {
+                                    // Local generator: keep drawing until it
+                                    // differs from what is already in the field,
+                                    // so a tap always visibly changes something.
+                                    var local = randomAnimeUsername()
+                                    var tries = 0
+                                    while (local == text && tries < 8) {
+                                        local = randomAnimeUsername()
+                                        tries++
+                                    }
+                                    text = local
+                                    return@IconButton
+                                }
+                                // Guard against a second tap while in flight, so
+                                // one press can never become two requests.
+                                if (generatingName) return@IconButton
+                                generatingName = true
+                                nameError = null
+                                scope.launch {
+                                    // The series the player has answered most
+                                    // questions about, so the handle reflects
+                                    // what they actually play. Empty on a fresh
+                                    // install, which just yields a generic name.
+                                    val favourites = nicknameStats.get().animeAnswered
+                                        .entries
+                                        .sortedByDescending { it.value }
+                                        .take(3)
+                                        .map { it.key }
+                                    val result = ApiClient.generateNickname(
+                                        provider, key, model, favourites,
+                                        avoid = suggested.toList() + text.trim(),
+                                    )
+                                    // The dialog may have been dismissed while
+                                    // the request was running.
+                                    result
+                                        .onSuccess {
+                                            text = it
+                                            suggested += it
+                                        }
+                                        .onFailure {
+                                            // Keep whatever the user had; the
+                                            // local generator stays available.
+                                            nameError = "Couldn't reach the AI — tap again or edit manually"
+                                        }
+                                    generatingName = false
+                                }
+                            },
+                        ) {
+                            if (generatingName) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Filled.Refresh,
+                                    contentDescription = "Generate a username"
+                                )
+                            }
                         }
-                    }
+                    },
+                    supportingText = nameError?.let { msg ->
+                        { Text(msg, style = MaterialTheme.typography.bodySmall) }
+                    },
+                    isError = nameError != null
                 )
             },
             confirmButton = {
@@ -273,10 +569,11 @@ fun ProfileScreen(
                 }
             },
             text = {
+                // The header and tabs stay put; only the avatar grid scrolls.
+                // Nesting a scroller inside a scrolling Column would make the
+                // two fight, so the outer Column must NOT scroll.
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
                         "Pick a default avatar or upload your own. Tap refresh for a new batch.",
@@ -299,8 +596,15 @@ fun ProfileScreen(
                         }
                     }
                     Spacer(Modifier.height(24.dp))
+                    // Some categories (Anime, Pixel) return far more presets
+                    // than the others, which stretched the dialog to the full
+                    // screen height. Capping it keeps every tab the same size
+                    // and lets the long ones scroll in place.
                     FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 260.dp)
+                            .verticalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.Center,
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
@@ -390,7 +694,9 @@ fun ProfileScreen(
                     }) { Text("From URL") }
                     TextButton(onClick = {
                         showPictureDialog = false
-                        galleryLauncher.launch(arrayOf("image/*"))
+                        galleryLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
                     }) { Text("From Gallery") }
                     if (!profilePictureUri.isNullOrBlank()) {
                         TextButton(
@@ -414,28 +720,213 @@ fun ProfileScreen(
         var url by remember {
             mutableStateOf(profilePictureUri?.takeIf { !it.startsWith("emoji:") } ?: "")
         }
+        var fetching by remember { mutableStateOf(false) }
+        var fetchError by remember { mutableStateOf<String?>(null) }
+        // The image fetched for the inline square preview. Held as a draft file
+        // so that accepting or cropping does not download it a second time.
+        var previewBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+        var previewDraft by remember { mutableStateOf<File?>(null) }
+        val urlScope = rememberCoroutineScope()
+
+        fun clearPreview() {
+            ProfileImageStore.discardDraft(previewDraft)
+            previewDraft = null
+            previewBitmap = null
+        }
+
+        fun closeUrlDialog() {
+            // Abandoning the dialog must not strand the downloaded temp file.
+            clearPreview()
+            showUrlDialog = false
+        }
+
+        fun fetch() {
+            val target = url.trim()
+            if (target.isBlank() || fetching) return
+            fetching = true
+            fetchError = null
+            urlScope.launch {
+                clearPreview()
+                val result = ProfileImageStore.downloadDraft(context, target)
+                result.onSuccess { file ->
+                    val decoded = ProfileImageStore.decodeForEditing(
+                        context,
+                        ProfileImageSource.LocalFile(file),
+                        maxEdge = 1024,
+                    )
+                    if (decoded == null) {
+                        ProfileImageStore.discardDraft(file)
+                        fetchError = "That link doesn't point to an image we can read."
+                    } else {
+                        previewDraft = file
+                        previewBitmap = decoded
+                    }
+                }.onFailure { error ->
+                    fetchError = error.message ?: "Couldn't load that image."
+                }
+                fetching = false
+            }
+        }
+
         AlertDialog(
-            onDismissRequest = { showUrlDialog = false },
+            onDismissRequest = { if (!fetching) closeUrlDialog() },
             icon = { Icon(Icons.Rounded.Link, contentDescription = null) },
             title = { Text("Picture from URL") },
             text = {
-                OutlinedTextField(
-                    value = url,
-                    onValueChange = { url = it },
-                    singleLine = true,
-                    placeholder = { Text("https://...") },
-                    shape = MaterialTheme.shapes.large
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    // Square preview sits between the title and the field, so
+                    // the user sees the actual image before accepting it.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(NazoSurfaceVariant),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        val shown = previewBitmap
+                        when {
+                            fetching -> CircularProgressIndicator(
+                                modifier = Modifier.size(28.dp),
+                                strokeWidth = 3.dp,
+                                color = NazoPrimary,
+                            )
+
+                            shown != null -> Image(
+                                bitmap = shown.asImageBitmap(),
+                                contentDescription = "Image from the entered link",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+
+                            else -> Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Link,
+                                    contentDescription = null,
+                                    tint = NazoTextSecondary,
+                                    modifier = Modifier.size(28.dp),
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "Paste a link, then tap Load",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = NazoTextSecondary,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    OutlinedTextField(
+                        value = url,
+                        onValueChange = {
+                            url = it
+                            // The preview no longer matches the typed link.
+                            if (previewBitmap != null) clearPreview()
+                            fetchError = null
+                        },
+                        singleLine = true,
+                        placeholder = { Text("https://...") },
+                        shape = MaterialTheme.shapes.large,
+                        isError = fetchError != null,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+
+                    val error = fetchError
+                    if (error != null) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = error,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NazoError,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(
+                        onClick = { fetch() },
+                        enabled = url.isNotBlank() && !fetching,
+                    ) {
+                        Text(if (previewBitmap != null) "Reload" else "Load image")
+                    }
+                }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    onProfilePictureChange(url.trim().ifBlank { null })
-                    showUrlDialog = false
-                }) { Text("Save") }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (previewBitmap != null) {
+                        TextButton(onClick = {
+                            // Hand the already-downloaded draft to the shared
+                            // crop step; it takes over ownership of the file.
+                            val file = previewDraft
+                            previewDraft = null
+                            previewBitmap = null
+                            showUrlDialog = false
+                            if (file != null) {
+                                pendingDraft = file
+                                pendingSource = ProfileImageSource.LocalFile(file)
+                            }
+                        }) { Text("Crop") }
+                    }
+                    TextButton(
+                        onClick = {
+                            val bitmap = previewBitmap
+                            if (bitmap != null) {
+                                urlScope.launch {
+                                    // Square it first so the saved avatar
+                                    // matches the square preview shown above.
+                                    val squared =
+                                        ProfileImageStore.centerCropSquare(bitmap)
+                                    ProfileImageStore.saveAvatar(context, squared)
+                                        .onSuccess { saved ->
+                                            onProfilePictureChange(saved)
+                                            clearPreview()
+                                            showUrlDialog = false
+                                        }
+                                }
+                            } else {
+                                fetch()
+                            }
+                        },
+                        enabled = !fetching && url.isNotBlank(),
+                    ) {
+                        Text(if (previewBitmap != null) "Accept" else "Load")
+                    }
+                }
             },
             dismissButton = {
-                TextButton(onClick = { showUrlDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { closeUrlDialog() }, enabled = !fetching) {
+                    Text("Cancel")
+                }
             }
+        )
+    }
+
+    // Shared preview + crop step. Gallery picks arrive here directly; URL
+    // images arrive here already downloaded to a draft file.
+    val activeSource = pendingSource
+    if (activeSource != null) {
+        ProfileImagePreviewDialog(
+            source = activeSource,
+            draftFile = pendingDraft,
+            onDismiss = {
+                pendingSource = null
+                pendingDraft = null
+            },
+            onAccepted = { savedUri ->
+                onProfilePictureChange(savedUri)
+                pendingSource = null
+                pendingDraft = null
+            },
         )
     }
 }

@@ -1,14 +1,10 @@
 package quiz.thaton3app.nazo.ui.screens
 
-import androidx.compose.ui.platform.LocalContext
-import quiz.thaton3app.nazo.ui.components.rememberHapticBack
-
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import androidx.core.content.pm.PackageInfoCompat
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -36,13 +32,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,16 +44,17 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.Balance
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.Sync
@@ -68,20 +63,19 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -99,6 +93,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -106,6 +101,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.content.pm.PackageInfoCompat
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -119,7 +119,9 @@ import quiz.thaton3app.nazo.data.currentVersionName
 import quiz.thaton3app.nazo.data.fetchLatestRelease
 import quiz.thaton3app.nazo.data.isNewerVersion
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
+import quiz.thaton3app.nazo.ui.components.NazoModalSheet
 import quiz.thaton3app.nazo.ui.components.NazoTab
+import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
@@ -129,10 +131,6 @@ import quiz.thaton3app.nazo.ui.theme.NazoSurface
 import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
 import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 private const val FEEDBACK_EMAIL = "socialzoneop@gmail.com"
 
@@ -166,6 +164,9 @@ private sealed interface ApkDownloadState {
 fun AboutScreen(
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
+    onOpenChangelog: () -> Unit = {},
+    onOpenLicenses: () -> Unit = {},
+    onOpenCredits: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -189,8 +190,6 @@ fun AboutScreen(
         } ?: "Unknown"
     }
 
-    var showDev by remember { mutableStateOf(false) }
-    var showLicenses by remember { mutableStateOf(false) }
     var showUpdate by remember { mutableStateOf(false) }
 
     var updateState by remember { mutableStateOf<UpdateState>(UpdateState.Idle) }
@@ -326,17 +325,24 @@ fun AboutScreen(
                 )
                 RowDivider()
                 ActionRow(
+                    icon = Icons.AutoMirrored.Filled.ListAlt,
+                    title = "Changelogs",
+                    subtitle = "What changed in every version",
+                    onClick = onOpenChangelog
+                )
+                RowDivider()
+                ActionRow(
                     icon = Icons.Filled.PersonOutline,
-                    title = "About the Developer",
-                    subtitle = "Story & projects",
-                    onClick = { showDev = true }
+                    title = "Credits",
+                    subtitle = "Lead developer & contributors",
+                    onClick = onOpenCredits
                 )
                 RowDivider()
                 ActionRow(
                     icon = Icons.Filled.Balance,
                     title = "Licenses",
-                    subtitle = "Open-source libraries",
-                    onClick = { showLicenses = true }
+                    subtitle = "GPL-3.0 and open-source libraries",
+                    onClick = onOpenLicenses
                 )
                 RowDivider()
                 ActionRow(
@@ -361,10 +367,9 @@ fun AboutScreen(
     }
 
     if (showUpdate) {
-        ModalBottomSheet(
+        NazoModalSheet(
             onDismissRequest = { showUpdate = false },
-            containerColor = NazoSurface,
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         ) {
             UpdateMenuContent(
                 state = updateState,
@@ -384,45 +389,6 @@ fun AboutScreen(
                 }
             )
         }
-    }
-
-    if (showLicenses) {
-        AlertDialog(
-            onDismissRequest = { showLicenses = false },
-            icon = { Icon(Icons.Filled.Balance, contentDescription = null, tint = NazoPrimary) },
-            title = { Text("Open-source Licenses", color = NazoTextPrimary) },
-            text = {
-                val licenses = listOf(
-                    "Android & Jetpack Compose — Apache-2.0",
-                    "Material 3 — Apache-2.0",
-                    "AndroidX Core KTX — Apache-2.0",
-                    "AndroidX Activity Compose — Apache-2.0",
-                    "AndroidX Lifecycle — Apache-2.0",
-                    "AndroidX WorkManager — Apache-2.0",
-                    "Material Icons Extended — Apache-2.0",
-                    "Coil (image loading) — Apache-2.0",
-                    "Kotlin stdlib — Apache-2.0",
-                    "Local data stored via Android SharedPreferences (framework)",
-                )
-                LazyColumn {
-                    items(licenses.size) { index ->
-                        Text(
-                            text = "• ${licenses[index]}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = NazoTextSecondary,
-                            modifier = Modifier.padding(vertical = 4.dp),
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showLicenses = false }) { Text("Close", color = NazoPrimary) }
-            },
-        )
-    }
-
-    if (showDev) {
-        AboutDevDialog(onDismiss = { showDev = false })
     }
 }
 
@@ -463,9 +429,14 @@ private fun UpdateMenuContent(
         }
     }
 
+    // This sheet rolls its own column rather than using NazoSheetColumn, so it
+    // needs the same cap + scroll: in landscape the update panel is taller than
+    // the window and the buttons at the bottom were unreachable.
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(max = LocalConfiguration.current.screenHeightDp.dp * 0.78f)
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 16.dp)
             .padding(bottom = 32.dp)
     ) {
@@ -1144,123 +1115,4 @@ private fun ActionRow(
     }
 }
 
-@Composable
-private fun AboutDevDialog(onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Filled.PersonOutline, contentDescription = null, tint = NazoPrimary) },
-        title = { Text("About the Developer", color = NazoTextPrimary) },
-        text = {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 420.dp),
-            ) {
-                item {
-                    Text("The Story", style = MaterialTheme.typography.titleMedium, color = NazoPrimary)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Nazo started as a learning project. I built it because I wanted to learn how to code, and an anime quiz app felt like the perfect first app — simple to start, but with enough real pieces (a local question bank, a UI, and an AI integration) to actually learn from. It grew into the app you're using now: a friendly place to test how well you really know your favorite series.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NazoTextSecondary,
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Text("About Me", style = MaterialTheme.typography.titleMedium, color = NazoPrimary)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Hi, I'm Sahil R. — also known as ThatOn3Gu7. I'm a developer who likes to learn by building, and I spend a lot of time in the terminal. When I'm not tinkering with Android apps like this one, I'm usually shipping command-line tools or breaking things on purpose to see how they work.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NazoTextSecondary,
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Text("My Projects", style = MaterialTheme.typography.titleMedium, color = NazoPrimary)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "• ProjectR — a modular Bash terminal setup assistant that installs, inspects, and backs up 240+ tools across Linux, macOS, and Termux.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NazoTextSecondary,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "• UtilityKit — a toolbox of 65 standalone Bash utilities (files, network, git, and more) behind one interactive dashboard.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NazoTextSecondary,
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Text("Connect", style = MaterialTheme.typography.titleMedium, color = NazoPrimary)
-                    Spacer(Modifier.height(8.dp))
-                }
-                item {
-                    DevLink("GitHub", "ThatOn3Gu7") {
-                        openUrl(context, "https://github.com/ThatOn3Gu7")
-                    }
-                    DevLink("Email", "socialzoneop@gmail.com") {
-                        openUrl(context, "mailto:socialzoneop@gmail.com")
-                    }
-                    DevLink("Instagram", "@thaton3gu7") {
-                        openUrl(context, "https://instagram.com/thaton3gu7")
-                    }
-                    DevLink("TikTok", "@thaton3gu7") {
-                        openUrl(context, "https://tiktok.com/@thaton3gu7")
-                    }
-                }
-                item {
-                    Spacer(Modifier.height(16.dp))
-                    Text("Credits", style = MaterialTheme.typography.titleMedium, color = NazoPrimary)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Nazo is built with Jetpack Compose and Kotlin, with a local question bank and an optional AI provider for fresh questions. Thanks to the open-source community that makes projects like this possible.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NazoTextSecondary,
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        "Third-party services",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = NazoPrimary,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Optional AI question generation is powered by third-party providers — " +
-                            "Google Gemini, OpenRouter, " +
-                            "OpenCode Zen. Remote images (e.g. profile pictures) are " +
-                            "loaded with Coil. Update checks use the GitHub API, and network " +
-                            "connectivity is verified via Google's service. These services are not " +
-                            "affiliated with or endorsed by Nazo.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NazoTextSecondary,
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Close", color = NazoPrimary) }
-        },
-    )
-}
 
-@Composable
-private fun DevLink(label: String, value: String, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.small)
-            .clickable(onClick = onClick)
-            .padding(vertical = 12.dp, horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.width(90.dp),
-            color = NazoTextPrimary,
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = NazoPrimary,
-            fontWeight = FontWeight.Medium,
-        )
-    }
-}
