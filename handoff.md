@@ -796,3 +796,25 @@ dependency, add a `ThirdPartyLibrary`.
     in the right pane, not to the placeholder.
 11. Rotate back to portrait mid-way through the Licenses list — the screen
     survives the rotation.
+
+### 2026-09-15 — Credits: live GitHub avatars
+
+Follow-up to the About work. The lead developer avatar and both contributor
+rows now load the real GitHub profile pictures via the existing
+`SafeRemoteImage` helper (Coil), instead of the 謎 monogram and a name initial.
+
+- URLs are constants in `data/AboutContent.kt`:
+  `GITHUB_AVATAR_OWNER` = `/u/147610938`, `GITHUB_AVATAR_ARENA` = `/in/4187077`.
+  `Contributor` gained a nullable `avatarUrl`.
+- **Use the numeric-ID URLs, not `github.com/<login>.png`.** The shorthand
+  breaks on account rename, and it does not resolve at all for the Arena agent:
+  it is a GitHub App, so its avatar lives on the `/in/` installation path, not
+  `/u/`. Verified both via `gh api`.
+- Caching is Coil's default memory+disk with HTTP revalidation, so it is both
+  cached and still picks up a changed picture. No custom cache policy was added.
+- The monogram and the name initial survive as the loading/offline fallbacks,
+  so the screen never shows an empty ring.
+
+Test: Settings > About > Credits. Your GitHub photo fills the large ring and
+the two contributor rows show real pictures. Enable airplane mode and clear the
+app's cache, then reopen — you get 謎 and "A" instead of blank circles.

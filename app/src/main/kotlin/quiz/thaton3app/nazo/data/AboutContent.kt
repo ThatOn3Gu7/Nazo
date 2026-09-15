@@ -213,6 +213,24 @@ val NAZO_LIBRARIES: List<ThirdPartyLibrary> = listOf(
 // Credits
 // ---------------------------------------------------------------------------
 
+/**
+ * The lead developer's GitHub avatar.
+ *
+ * Loaded live so that changing the picture on GitHub changes it in the app,
+ * with no release needed. Coil caches it in memory and on disk and revalidates
+ * against GitHub's cache headers, so repeat visits do not re-download it and a
+ * changed picture is still picked up.
+ *
+ * These are the stable numeric-ID URLs rather than `github.com/<login>.png`,
+ * because the latter breaks if an account is ever renamed — and it does not
+ * work at all for the bot, whose avatar is served from the `/in/` (GitHub App
+ * installation) path.
+ */
+const val GITHUB_AVATAR_OWNER = "https://avatars.githubusercontent.com/u/147610938?v=4&s=256"
+
+/** The Arena coding agent's GitHub App avatar. */
+const val GITHUB_AVATAR_ARENA = "https://avatars.githubusercontent.com/in/4187077?v=4&s=256"
+
 /** Someone who worked on Nazo. */
 data class Contributor(
     val name: String,
@@ -220,6 +238,8 @@ data class Contributor(
     val detail: String,
     /** Null for entries with nowhere to link (e.g. a tool rather than a person). */
     val url: String?,
+    /** Remote avatar. Falls back to the name's initial if it cannot be loaded. */
+    val avatarUrl: String? = null,
 )
 
 /**
@@ -232,12 +252,14 @@ val NAZO_CONTRIBUTORS: List<Contributor> = listOf(
         role = "Lead developer",
         detail = "Created Nazo; design, direction and the majority of the app.",
         url = "https://github.com/ThatOn3Gu7",
+        avatarUrl = GITHUB_AVATAR_OWNER,
     ),
     Contributor(
         name = "Arena AI",
         role = "Coding agent",
         detail = "Paired on features, bug fixes and refactors from v5.0 onwards.",
-        url = "https://arena.ai",
+        url = "https://github.com/apps/arena-ai-coding-agent",
+        avatarUrl = GITHUB_AVATAR_ARENA,
     ),
 )
 

@@ -36,12 +36,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import quiz.thaton3app.nazo.ui.components.SafeRemoteImage
 import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 import quiz.thaton3app.nazo.data.Contributor
+import quiz.thaton3app.nazo.data.GITHUB_AVATAR_OWNER
 import quiz.thaton3app.nazo.data.NAZO_CONTRIBUTORS
 import quiz.thaton3app.nazo.data.NAZO_SERVICES
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
@@ -171,8 +174,9 @@ private fun LeadDeveloperCard(onOpenUrl: (String) -> Unit) {
             .padding(vertical = 24.dp, horizontal = 18.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // No photo is shipped, so the monogram stands in for the reference's
-        // avatar rather than leaving an empty ring.
+        // The live GitHub avatar, so changing the picture on GitHub changes it
+        // here with no release. Falls back to the monogram while loading or if
+        // the device is offline.
         Box(
             modifier = Modifier
                 .size(96.dp)
@@ -181,11 +185,13 @@ private fun LeadDeveloperCard(onOpenUrl: (String) -> Unit) {
                 .border(2.dp, NazoPrimary.copy(alpha = 0.55f), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = "謎",
-                style = MaterialTheme.typography.headlineLarge,
-                color = NazoPrimary,
-                fontWeight = FontWeight.Bold,
+            SafeRemoteImage(
+                url = GITHUB_AVATAR_OWNER,
+                contentDescription = "ThatOn3Gu7's GitHub profile picture",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                placeholder = { AvatarMonogram() },
+                errorContent = { AvatarMonogram() },
             )
         }
 
@@ -270,6 +276,24 @@ private fun LeadDeveloperCard(onOpenUrl: (String) -> Unit) {
                     "interactive dashboard.",
             )
         }
+    }
+}
+
+/** The 謎 monogram, used while an avatar loads or when it cannot be fetched. */
+@Composable
+private fun AvatarMonogram() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(NazoPrimary.copy(alpha = 0.15f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "謎",
+            style = MaterialTheme.typography.headlineLarge,
+            color = NazoPrimary,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
@@ -363,12 +387,27 @@ private fun ContributorRow(contributor: Contributor, onOpenUrl: (String) -> Unit
                 .background(NazoPrimary),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = contributor.name.take(1).uppercase(),
-                style = MaterialTheme.typography.titleMedium,
-                color = NazoOnPrimary,
-                fontWeight = FontWeight.Bold,
-            )
+            val initial: @Composable () -> Unit = {
+                Text(
+                    text = contributor.name.take(1).uppercase(),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = NazoOnPrimary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            val avatarUrl = contributor.avatarUrl
+            if (avatarUrl != null) {
+                SafeRemoteImage(
+                    url = avatarUrl,
+                    contentDescription = "${contributor.name}'s profile picture",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    placeholder = initial,
+                    errorContent = initial,
+                )
+            } else {
+                initial()
+            }
         }
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
