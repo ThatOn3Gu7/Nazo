@@ -37,8 +37,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -46,6 +44,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.Balance
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.CheckCircle
@@ -165,6 +164,9 @@ private sealed interface ApkDownloadState {
 fun AboutScreen(
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
+    onOpenChangelog: () -> Unit = {},
+    onOpenLicenses: () -> Unit = {},
+    onOpenCredits: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -188,8 +190,6 @@ fun AboutScreen(
         } ?: "Unknown"
     }
 
-    var showDev by remember { mutableStateOf(false) }
-    var showLicenses by remember { mutableStateOf(false) }
     var showUpdate by remember { mutableStateOf(false) }
 
     var updateState by remember { mutableStateOf<UpdateState>(UpdateState.Idle) }
@@ -325,17 +325,24 @@ fun AboutScreen(
                 )
                 RowDivider()
                 ActionRow(
+                    icon = Icons.AutoMirrored.Filled.ListAlt,
+                    title = "Changelogs",
+                    subtitle = "What changed in every version",
+                    onClick = onOpenChangelog
+                )
+                RowDivider()
+                ActionRow(
                     icon = Icons.Filled.PersonOutline,
-                    title = "About the Developer",
-                    subtitle = "Story & projects",
-                    onClick = { showDev = true }
+                    title = "Credits",
+                    subtitle = "Lead developer & contributors",
+                    onClick = onOpenCredits
                 )
                 RowDivider()
                 ActionRow(
                     icon = Icons.Filled.Balance,
                     title = "Licenses",
-                    subtitle = "Open-source libraries",
-                    onClick = { showLicenses = true }
+                    subtitle = "GPL-3.0 and open-source libraries",
+                    onClick = onOpenLicenses
                 )
                 RowDivider()
                 ActionRow(
@@ -382,45 +389,6 @@ fun AboutScreen(
                 }
             )
         }
-    }
-
-    if (showLicenses) {
-        AlertDialog(
-            onDismissRequest = { showLicenses = false },
-            icon = { Icon(Icons.Filled.Balance, contentDescription = null, tint = NazoPrimary) },
-            title = { Text("Open-source Licenses", color = NazoTextPrimary) },
-            text = {
-                val licenses = listOf(
-                    "Android & Jetpack Compose — Apache-2.0",
-                    "Material 3 — Apache-2.0",
-                    "AndroidX Core KTX — Apache-2.0",
-                    "AndroidX Activity Compose — Apache-2.0",
-                    "AndroidX Lifecycle — Apache-2.0",
-                    "AndroidX WorkManager — Apache-2.0",
-                    "Material Icons Extended — Apache-2.0",
-                    "Coil (image loading) — Apache-2.0",
-                    "Kotlin stdlib — Apache-2.0",
-                    "Local data stored via Android SharedPreferences (framework)",
-                )
-                LazyColumn {
-                    items(licenses.size) { index ->
-                        Text(
-                            text = "• ${licenses[index]}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = NazoTextSecondary,
-                            modifier = Modifier.padding(vertical = 4.dp),
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showLicenses = false }) { Text("Close", color = NazoPrimary) }
-            },
-        )
-    }
-
-    if (showDev) {
-        AboutDevDialog(onDismiss = { showDev = false })
     }
 }
 
@@ -1147,123 +1115,4 @@ private fun ActionRow(
     }
 }
 
-@Composable
-private fun AboutDevDialog(onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Filled.PersonOutline, contentDescription = null, tint = NazoPrimary) },
-        title = { Text("About the Developer", color = NazoTextPrimary) },
-        text = {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 420.dp),
-            ) {
-                item {
-                    Text("The Story", style = MaterialTheme.typography.titleMedium, color = NazoPrimary)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Nazo started as a learning project. I built it because I wanted to learn how to code, and an anime quiz app felt like the perfect first app — simple to start, but with enough real pieces (a local question bank, a UI, and an AI integration) to actually learn from. It grew into the app you're using now: a friendly place to test how well you really know your favorite series.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NazoTextSecondary,
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Text("About Me", style = MaterialTheme.typography.titleMedium, color = NazoPrimary)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Hi, I'm Sahil R. — also known as ThatOn3Gu7. I'm a developer who likes to learn by building, and I spend a lot of time in the terminal. When I'm not tinkering with Android apps like this one, I'm usually shipping command-line tools or breaking things on purpose to see how they work.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NazoTextSecondary,
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Text("My Projects", style = MaterialTheme.typography.titleMedium, color = NazoPrimary)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "• ProjectR — a modular Bash terminal setup assistant that installs, inspects, and backs up 240+ tools across Linux, macOS, and Termux.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NazoTextSecondary,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "• UtilityKit — a toolbox of 65 standalone Bash utilities (files, network, git, and more) behind one interactive dashboard.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NazoTextSecondary,
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Text("Connect", style = MaterialTheme.typography.titleMedium, color = NazoPrimary)
-                    Spacer(Modifier.height(8.dp))
-                }
-                item {
-                    DevLink("GitHub", "ThatOn3Gu7") {
-                        openUrl(context, "https://github.com/ThatOn3Gu7")
-                    }
-                    DevLink("Email", "socialzoneop@gmail.com") {
-                        openUrl(context, "mailto:socialzoneop@gmail.com")
-                    }
-                    DevLink("Instagram", "@thaton3gu7") {
-                        openUrl(context, "https://instagram.com/thaton3gu7")
-                    }
-                    DevLink("TikTok", "@thaton3gu7") {
-                        openUrl(context, "https://tiktok.com/@thaton3gu7")
-                    }
-                }
-                item {
-                    Spacer(Modifier.height(16.dp))
-                    Text("Credits", style = MaterialTheme.typography.titleMedium, color = NazoPrimary)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Nazo is built with Jetpack Compose and Kotlin, with a local question bank and an optional AI provider for fresh questions. Thanks to the open-source community that makes projects like this possible.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NazoTextSecondary,
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        "Third-party services",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = NazoPrimary,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Optional AI question generation is powered by third-party providers — " +
-                            "Google Gemini, OpenRouter, " +
-                            "OpenCode Zen. Remote images (e.g. profile pictures) are " +
-                            "loaded with Coil. Update checks use the GitHub API, and network " +
-                            "connectivity is verified via Google's service. These services are not " +
-                            "affiliated with or endorsed by Nazo.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NazoTextSecondary,
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Close", color = NazoPrimary) }
-        },
-    )
-}
 
-@Composable
-private fun DevLink(label: String, value: String, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.small)
-            .clickable(onClick = onClick)
-            .padding(vertical = 12.dp, horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.width(90.dp),
-            color = NazoTextPrimary,
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = NazoPrimary,
-            fontWeight = FontWeight.Medium,
-        )
-    }
-}

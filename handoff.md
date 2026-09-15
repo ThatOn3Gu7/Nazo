@@ -724,3 +724,75 @@ and the post-dwell writes re-check the token for the same reason.
    in the quiz as soon as it is ready — no artificial wait.
 9. **A slow failure is not slowed further.** With a bad API key on a live
    network, the error still appears as soon as the request fails.
+
+## 2026-09-15 — About section: changelog, GPL-3.0, licenses, credits
+
+New round, prompt 1 of 5.
+
+**What changed**
+
+- `LICENSE` — Nazo is now GPL-3.0 (owner's choice). Verbatim canonical text.
+  `README.md` gained a License section with the standard notice.
+- `data/AboutContent.kt` (new) — the single source of truth for About content:
+  `NAZO_CHANGELOG` (all 9 released versions, hand-written player-facing lines),
+  `NAZO_LIBRARIES` (12 deps mirrored from `gradle/libs.versions.toml`),
+  `NAZO_CONTRIBUTORS`, `NAZO_SERVICES`.
+- `ui/screens/ChangelogScreen.kt` (new) — net-new; no changelog UI existed.
+  Header band + bullet body card per version, newest tinted with the accent.
+- `ui/screens/LicensesScreen.kt` (new) — tinted GPL-3.0 hero card with
+  "View on GitHub" / "Full license text", then a searchable, expandable list of
+  third-party libraries. Replaces a throwaway `AlertDialog` over a hardcoded
+  10-string list that did not match the real dependencies.
+- `ui/screens/CreditsScreen.kt` (new) — Lead developer section (avatar, bio,
+  E-mail/GitHub/Instagram tiles, story, projects) + Contributors + Built with.
+  Replaces the `AboutDevDialog` popup, which is deleted along with `DevLink`.
+  **No donation banner** — the reference has one, but Nazo has no support link
+  and the owner chose not to add one.
+- `AboutScreen.kt` — the three rows now navigate instead of opening dialogs.
+  Update checking, the hero card and all animations are untouched.
+- `NazoApp.kt` — `Screen.Changelog/Licenses/Credits`, added to
+  `asSettingsDetail()` so landscape keeps working, plus `openExternalUrl`.
+
+**Gotcha worth remembering.** `navigate()` REPLACES a settings detail screen
+when you move to a sibling one (so landscape tab-switching does not stack).
+The About sub-screens are detail screens but are pushed *from* About, so that
+rule would have made back-from-Changelog land on Settings and skip About.
+`Screen.isAboutDetail()` exempts them from the replace branch.
+
+**Maintenance note.** The changelog and the library list are hand-maintained
+constants. When cutting a release, add a `ChangelogEntry`; when adding a
+dependency, add a `ThirdPartyLibrary`.
+
+### How to test it live
+
+1. Open the app → **Settings → About**. The hero card and version pill look
+   exactly as before. Confirm the list now reads: Updates & Settings, Send
+   Feedback, GitHub Repository, **Changelogs**, **Credits**, **Licenses**,
+   Installed Date, Version code. "About the Developer" is gone.
+2. Tap **Updates & Settings** → the update sheet still opens and still checks
+   GitHub. This must be unchanged. Close it.
+3. Tap **Changelogs** → a "Changelogs" screen pushes in. **v9.0 is at the top
+   and tinted in your accent colour**; v8.0 down to v1.0 are neutral grey. Each
+   version shows its release date on the right and ring-bulleted lines.
+   Scroll to the bottom — v1.0 "First release." is the last entry.
+4. Press back once → you land on **About**, not Settings. Press back again →
+   Settings.
+5. Tap **Licenses** → a tinted card for Nazo with a **GPL-3.0** pill. Tap
+   **View on GitHub** (repo opens in a browser) and **Full license text** (the
+   LICENSE file opens). Back to the app.
+6. Below it: "Third-party libraries", "12 libraries bundled", a search field.
+   Type `coil` → only Coil remains. Type `zzz` → "No libraries match "zzz"".
+   Clear it.
+7. Tap any library row → it expands **smoothly** to show its licence chip and a
+   "Project page" link, and the chevron rotates. Tap again to collapse.
+8. Back → About. Tap **Credits** → "Lead developer" with the 謎 avatar,
+   ThatOn3Gu7, the bio, and a three-tile row: E-mail / Github / Instagram.
+   Tap **E-mail** → your mail app opens a draft. Tap **Github** → the profile
+   opens. Neither should crash if no app handles it.
+9. Scroll down → "Contributors" lists ThatOn3Gu7 and Arena AI; tapping either
+   opens its link. Then "Built with" and the services list.
+10. **Rotate to landscape on the About screen.** The settings list stays on the
+    left; tap Changelogs → it renders in the right pane. Back returns to About
+    in the right pane, not to the placeholder.
+11. Rotate back to portrait mid-way through the Licenses list — the screen
+    survives the rotation.

@@ -1,6 +1,9 @@
 package quiz.thaton3app.nazo.ui
 
 import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.SystemClock
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -115,6 +118,9 @@ sealed interface Screen {
     data object Appearance : Screen
     data object BackupRestore : Screen
     data object About : Screen
+    data object Changelog : Screen
+    data object Licenses : Screen
+    data object Credits : Screen
     data object Quiz : Screen
     data object Results : Screen
     data object Loading : Screen
@@ -136,9 +142,25 @@ private fun Screen.asSettingsDetail(): Screen? = when (this) {
     Screen.Statistics,
     Screen.Appearance,
     Screen.BackupRestore,
-    Screen.About -> this
+    Screen.About,
+    // The About sub-screens are pushed from About, so they belong in the same
+    // detail pane rather than taking over the window in landscape.
+    Screen.Changelog,
+    Screen.Licenses,
+    Screen.Credits -> this
     else -> null
 }
+
+/**
+ * The About sub-screens.
+ *
+ * They render in the settings detail pane like the other sections, but unlike
+ * the sections they are pushed FROM About rather than from the settings list,
+ * so they must stack on top of it instead of replacing it — otherwise backing
+ * out of the changelog would land on Settings and skip About entirely.
+ */
+private fun Screen.isAboutDetail(): Boolean =
+    this == Screen.Changelog || this == Screen.Licenses || this == Screen.Credits
 
 /** Shown in the detail pane before the user has picked a settings section. */
 @Composable
@@ -165,6 +187,22 @@ private data class GenerationRequest(
     /** True when this request is the automatic one-shot retry with another model. */
     val isFallback: Boolean = false,
 )
+
+/**
+ * Opens a link (or a mailto:) in whatever app handles it.
+ *
+ * Wrapped in runCatching because a device with no browser — or no mail client
+ * for a mailto: — throws ActivityNotFoundException, and a dead link should not
+ * crash the About screen.
+ */
+private fun openExternalUrl(context: Context, url: String) {
+    runCatching {
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
+}
 
 @Composable
 fun NazoApp(launchDailyChallenge: Boolean = false) {
@@ -347,7 +385,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // possible in the landscape list-detail layout) should REPLACE it,
             // not stack on it.
             if (navigationStack.lastOrNull()?.asSettingsDetail() != null &&
-                screen.asSettingsDetail() != null
+                screen.asSettingsDetail() != null &&
+                !screen.isAboutDetail()
             ) {
                 navigationStack[navigationStack.lastIndex] = screen
                 return
@@ -1537,6 +1576,23 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     Screen.About -> AboutScreen(
                         onBackClick = { goBack() },
                         onHomeClick = { goHome() },
+                        onOpenChangelog = { navigate(Screen.Changelog) },
+                        onOpenLicenses = { navigate(Screen.Licenses) },
+                        onOpenCredits = { navigate(Screen.Credits) },
+                    )
+
+                    Screen.Changelog -> ChangelogScreen(
+                        onBackClick = { goBack() },
+                    )
+
+                    Screen.Licenses -> LicensesScreen(
+                        onBackClick = { goBack() },
+                        onOpenUrl = { url -> openExternalUrl(context, url) },
+                    )
+
+                    Screen.Credits -> CreditsScreen(
+                        onBackClick = { goBack() },
+                        onOpenUrl = { url -> openExternalUrl(context, url) },
                     )
 
                     Screen.Quiz -> ActiveQuizScreen(
