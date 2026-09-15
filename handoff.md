@@ -876,3 +876,60 @@ process-death safety net.
    the temp file is gone (`cacheDir/profile_drafts` empty).
 10. Airplane mode + a URL → a connection error, not a crash or a hang.
 11. Rotate the device with the preview open — it should survive.
+
+### 2026-09-15 — Profile picture: decode bug, URL fetching, avatar grid height
+
+Three fixes on top of the profile-picture work.
+
+**1. Nothing could be selected, from EITHER source (the big one).**
+`decodeForEditing` was written as:
+
+    openStream(...)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        ?: return@runCatching null
+
+`decodeStream` returns **null by contract** when `inJustDecodeBounds` is set --
+it only fills `outWidth`/`outHeight`. So the elvis fired on every valid image
+and the function returned null 100% of the time. The elvis must test the
+**stream**, never the decode result. `isDecodableImage` had the same shape and
+is now bounds-checked too. This single bug caused both reported symptoms:
+"we couldn't read that image" from Gallery AND "doesn't point to an image"
+from URL, because the URL path calls the same decoder after downloading.
+
+**2. URL fetching hardened for real-world hosts.**
+- Manual redirect following (max 5). `HttpURLConnection` auto-follows but
+  **refuses cross-protocol hops** (http <-> https), silently returning the 30x.
+  Very common on image hosts.
+- Browser-like `User-Agent`, `Accept`, `Accept-Language` and a same-origin
+  `Referer`. Many CDNs (pngwing included) serve 403 to unknown agents as
+  hotlink protection.
+- `normaliseUrl`: accepts a missing scheme ("host.com/x.png"), protocol-relative
+  "//host/x.png", uppercase schemes and stray whitespace.
+- `contentLengthLong` is -1 for chunked encoding -- only a positive value is
+  treated as a size limit. Empty responses are rejected.
+- Specific messages for 403/404, SSL and IO failures.
+
+**3. Transparent PNGs no longer save black.** JPEG has no alpha, so a
+transparent source encoded as black. `saveAvatar` now checks `hasAlpha()` and
+writes PNG in that case. (The reported phoenix PNG is transparent.)
+
+**4. Avatar grid height capped.** The Anime and Pixel tabs returned far more
+presets than the others and stretched the dialog to full screen. The grid is
+now `heightIn(max = 260.dp)` and scrolls internally. NOTE: the outer Column's
+`verticalScroll` had to be REMOVED -- nesting scrollers makes them fight.
+
+### How to test it live
+
+1. **Profile -> avatar -> From Gallery -> pick any photo.** It must now show the
+   square **Preview** (this previously always errored). Accept -> avatar updates.
+2. **Crop** from that preview: pinch to zoom, drag to pan, no blank gaps at the
+   edges. "Use this" saves. "Back" returns to the preview. (Untestable before.)
+3. **From URL** with the reported link:
+   `https://w7.pngwing.com/pngs/445/734/png-transparent-mythical-phoenix-watercolor-resplendent-flaming-phoenix-bird.png`
+   -> loads into the square preview. Accept -> the phoenix becomes the avatar
+   **with a transparent, not black, background**.
+4. Try a link with no scheme: `w7.pngwing.com/...png` -> still works.
+5. Try a Wikipedia/imgur/GitHub raw image link -> works.
+6. Bad link -> a specific message (404 / 403 / "not a readable image"), no crash.
+7. **Avatar dialog height:** open the picker and switch to the **Anime** and
+   **Pixel** tabs. The dialog must stay the same height as the other tabs, with
+   the grid scrolling inside itself. Header and tabs stay fixed while it scrolls.

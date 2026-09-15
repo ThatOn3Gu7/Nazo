@@ -13,6 +13,7 @@ import android.content.res.Configuration
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -568,10 +569,11 @@ fun ProfileScreen(
                 }
             },
             text = {
+                // The header and tabs stay put; only the avatar grid scrolls.
+                // Nesting a scroller inside a scrolling Column would make the
+                // two fight, so the outer Column must NOT scroll.
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
                         "Pick a default avatar or upload your own. Tap refresh for a new batch.",
@@ -594,8 +596,15 @@ fun ProfileScreen(
                         }
                     }
                     Spacer(Modifier.height(24.dp))
+                    // Some categories (Anime, Pixel) return far more presets
+                    // than the others, which stretched the dialog to the full
+                    // screen height. Capping it keeps every tab the same size
+                    // and lets the long ones scroll in place.
                     FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 260.dp)
+                            .verticalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.Center,
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {

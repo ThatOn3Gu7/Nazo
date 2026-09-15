@@ -64,79 +64,171 @@ object ProfileImageStore {
     suspend fun downloadDraft(context: Context, url: String): Result<File> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val parsed = URL(url)
-                require(parsed.protocol == "http" || parsed.protocol == "https") {
-                    "Only http and https links are supported."
-                }
-
-                val connection = (parsed.openConnection() as HttpURLConnection).apply {
-                    instanceFollowRedirects = true
-                    connectTimeout = 15_000
-                    readTimeout = 20_000
-                    // Some CDNs serve a 403 to the default Java user agent.
-                    setRequestProperty("User-Agent", "Nazo-Android")
-                    setRequestProperty("Accept", "image/*")
-                }
-
+                val normalised = normaliseUrl(url)
+                val target = File(draftDir(context), "draft_${System.nanoTime()}")
                 try {
-                    val code = connection.responseCode
-                    require(code in 200..299) { "Server returned HTTP $code." }
-
-                    val declaredLength = connection.contentLengthLong
-                    require(declaredLength <= MAX_DOWNLOAD_BYTES) {
-                        "That image is too large (over 16 MB)."
-                    }
-
-                    val target = File(draftDir(context), "draft_${System.nanoTime()}")
-                    var total = 0L
-                    connection.inputStream.use { input ->
-                        target.outputStream().use { output ->
-                            val buffer = ByteArray(16 * 1024)
-                            while (true) {
-                                val read = input.read(buffer)
-                                if (read == -1) break
-                                total += read
-                                if (total > MAX_DOWNLOAD_BYTES) {
-                                    target.delete()
-                                    error("That image is too large (over 16 MB).")
-                                }
-                                output.write(buffer, 0, read)
-                            }
-                        }
-                    }
-
-                    // Content-Type lies often enough that we verify by actually
-                    // decoding the bounds. This also rejects an HTML error page
-                    // that was served with a 200.
+                    fetchInto(normalised, target)
+                    // Content-Type lies often enough that the real test is
+                    // whether Android can decode what we actually received.
+                    // This also rejects an HTML error page served with a 200.
                     if (!isDecodableImage(target)) {
-                        target.delete()
-                        error("That link doesn't point to an image we can read.")
+                        error(
+                            "That link didn't return a readable image. SVG files " +
+                                "aren't supported -- try a JPG, PNG or WebP link.",
+                        )
                     }
                     target
-                } finally {
-                    connection.disconnect()
+                } catch (t: Throwable) {
+                    target.delete()
+                    throw t
                 }
             }.recoverCatching { throwable ->
                 throw IllegalStateException(friendlyMessage(throwable), throwable)
             }
         }
 
+    /**
+     * Accepts what a user would reasonably paste.
+     *
+     * People paste links with stray whitespace, without a scheme
+     * ("w7.pngwing.com/x.png"), or copied with the scheme uppercased. Rejecting
+     * those as "unsupported" is user-hostile when the fix is obvious.
+     */
+    private fun normaliseUrl(raw: String): URL {
+        val trimmed = raw.trim()
+        require(trimmed.isNotEmpty()) { "Enter a link first." }
+        val withScheme = when {
+            trimmed.startsWith("http://", ignoreCase = true) ||
+                trimmed.startsWith("https://", ignoreCase = true) -> trimmed
+            // Protocol-relative URLs, as copied from some page sources.
+            trimmed.startsWith("//") -> "https:$trimmed"
+            trimmed.contains("://") ->
+                throw IllegalArgumentException("Only http and https links are supported.")
+            else -> "https://$trimmed"
+        }
+        return runCatching { URL(withScheme) }.getOrElse {
+            throw IllegalArgumentException("That doesn't look like a valid link.")
+        }
+    }
+
+    /**
+     * Downloads [url] into [target], following redirects manually.
+     *
+     * HttpURLConnection follows redirects automatically but REFUSES to follow
+     * one that switches protocol (http -> https and vice versa), silently
+     * handing back the 30x instead. That is extremely common on image hosts, so
+     * the redirect chain is walked here.
+     *
+     * The request also mimics a browser. Many image CDNs (pngwing among them)
+     * serve 403 to unknown user agents or to requests with no Referer, as
+     * hotlink protection -- a plain library user agent gets refused for images
+     * that open fine in a browser.
+     */
+    private fun fetchInto(url: URL, target: File) {
+        var current = url
+        var redirects = 0
+
+        while (true) {
+            val connection = (current.openConnection() as HttpURLConnection).apply {
+                // Handled manually below so cross-protocol hops work.
+                instanceFollowRedirects = false
+                connectTimeout = 20_000
+                readTimeout = 30_000
+                setRequestProperty(
+                    "User-Agent",
+                    "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 " +
+                        "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+                )
+                setRequestProperty(
+                    "Accept",
+                    "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+                )
+                setRequestProperty("Accept-Language", "en-US,en;q=0.9")
+                // Same-origin referer satisfies the usual hotlink checks.
+                setRequestProperty("Referer", "${current.protocol}://${current.host}/")
+            }
+
+            try {
+                val code = connection.responseCode
+
+                if (code in 300..399) {
+                    val location = connection.getHeaderField("Location")
+                        ?: error("Server returned HTTP $code.")
+                    redirects++
+                    require(redirects <= 5) { "That link redirects too many times." }
+                    // Relative Locations are legal, so resolve against current.
+                    current = URL(current, location)
+                    continue
+                }
+
+                require(code in 200..299) {
+                    when (code) {
+                        403 -> "That site blocked the download (403). Try a direct image link."
+                        404 -> "Nothing found at that link (404)."
+                        else -> "Server returned HTTP $code."
+                    }
+                }
+
+                // contentLengthLong is -1 when the server uses chunked
+                // encoding, so only treat a POSITIVE value as a real limit.
+                val declared = connection.contentLengthLong
+                require(declared <= MAX_DOWNLOAD_BYTES) {
+                    "That image is too large (over 16 MB)."
+                }
+
+                var total = 0L
+                connection.inputStream.use { input ->
+                    target.outputStream().use { output ->
+                        val buffer = ByteArray(16 * 1024)
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read == -1) break
+                            total += read
+                            if (total > MAX_DOWNLOAD_BYTES) {
+                                error("That image is too large (over 16 MB).")
+                            }
+                            output.write(buffer, 0, read)
+                        }
+                    }
+                }
+                require(total > 0L) { "That link returned an empty file." }
+                return
+            } finally {
+                connection.disconnect()
+            }
+        }
+    }
+
     private fun friendlyMessage(throwable: Throwable): String {
         val message = throwable.message
         return when {
+            // require()/error() already produce user-facing wording.
             !message.isNullOrBlank() && throwable is IllegalArgumentException -> message
             !message.isNullOrBlank() && throwable is IllegalStateException -> message
             throwable is java.net.UnknownHostException ->
                 "Couldn't reach that site. Check the link and your connection."
             throwable is java.net.SocketTimeoutException ->
                 "That site took too long to respond."
+            throwable is javax.net.ssl.SSLException ->
+                "Couldn't establish a secure connection to that site."
+            throwable is java.io.IOException ->
+                "Couldn't download that image. Check your connection and try again."
             else -> "Couldn't load that image. Check the link and try again."
         }
     }
 
+    /**
+     * True if Android can actually decode [file] as an image.
+     *
+     * Checks the decoded BOUNDS rather than the return value: with
+     * inJustDecodeBounds set, decodeStream always returns null and only fills
+     * outWidth/outHeight.
+     */
     private fun isDecodableImage(file: File): Boolean {
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        file.inputStream().use { BitmapFactory.decodeStream(it, null, options) }
+        runCatching {
+            file.inputStream().use { BitmapFactory.decodeStream(it, null, options) }
+        }
         return options.outWidth > 0 && options.outHeight > 0
     }
 
@@ -159,9 +251,13 @@ object ProfileImageStore {
         maxEdge: Int = 2048,
     ): Bitmap? = withContext(Dispatchers.IO) {
         runCatching {
+            // NOTE: decodeStream returns null BY CONTRACT when
+            // inJustDecodeBounds is set -- it only populates outWidth/outHeight.
+            // The elvis must therefore test the STREAM, never the decode
+            // result, or every valid image is treated as unreadable.
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            openStream(context, source)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-                ?: return@runCatching null
+            val boundsStream = openStream(context, source) ?: return@runCatching null
+            boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
             if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
 
             var sample = 1
@@ -176,7 +272,8 @@ object ProfileImageStore {
                 inSampleSize = sample
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             }
-            val bitmap = openStream(context, source)?.use {
+            val pixelStream = openStream(context, source) ?: return@runCatching null
+            val bitmap = pixelStream.use {
                 BitmapFactory.decodeStream(it, null, decodeOptions)
             } ?: return@runCatching null
 
@@ -234,9 +331,21 @@ object ProfileImageStore {
         withContext(Dispatchers.IO) {
             runCatching {
                 val scaled = scaleToFit(bitmap, OUTPUT_SIZE)
-                val target = File(avatarDir(context), "avatar_${System.currentTimeMillis()}.jpg")
+                // Transparent source (very common for PNG logos and cut-outs):
+                // JPEG has no alpha channel, so transparent pixels would encode
+                // as BLACK. Save those as PNG instead of silently ruining them.
+                val transparent = scaled.hasAlpha()
+                val extension = if (transparent) "png" else "jpg"
+                val target = File(
+                    avatarDir(context),
+                    "avatar_${System.currentTimeMillis()}.$extension",
+                )
                 target.outputStream().use { out ->
-                    scaled.compress(Bitmap.CompressFormat.JPEG, 92, out)
+                    if (transparent) {
+                        scaled.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    } else {
+                        scaled.compress(Bitmap.CompressFormat.JPEG, 92, out)
+                    }
                 }
                 if (scaled != bitmap) scaled.recycle()
                 pruneOldAvatars(context, keep = target)
