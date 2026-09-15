@@ -818,3 +818,61 @@ rows now load the real GitHub profile pictures via the existing
 Test: Settings > About > Credits. Your GitHub photo fills the large ring and
 the two contributor rows show real pictures. Enable airplane mode and clear the
 app's cache, then reopen — you get 謎 and "A" instead of blank circles.
+
+### 2026-09-15 — Profile picture: picker, preview and crop
+
+Prompt 3 of 5. Reworked the profile-picture workflow for both sources.
+
+- **Gallery**: `ActivityResultContracts.PickVisualMedia` (system photo picker)
+  replaces `OpenDocument`. Gallery grid instead of a file manager, and it needs
+  no storage permission, so `takePersistableUriPermission` is gone too.
+- **URL**: `ProfileImageStore.downloadDraft` fetches the image to
+  `cacheDir/profile_drafts` and a square preview renders between the title and
+  the link field. Errors are readable ("Server returned HTTP 404", timeouts,
+  non-image links). Editing the URL clears the stale preview.
+- **Shared step**: `ProfileImagePreviewDialog` (preview -> optional crop ->
+  accept) is used by both sources, per the "same experience" requirement.
+- **Cropper**: `ProfileImageCropper` + `CropState`, hand-rolled. Pinch/pan,
+  clamped so the image always covers the window, circular guide.
+
+**Non-destructive guarantees.** Cropping only ever reads the source and
+allocates a new bitmap; accepted avatars are written to `filesDir/profile`.
+The user's original gallery file is never opened for writing. Drafts live in a
+*separate* directory from avatars so cleanup cannot delete a live avatar.
+
+**Draft lifecycle.** Deleted on cancel, on back, on URL edit, and in
+`DisposableEffect.onDispose` (covers navigating away mid-edit).
+`ProfileImageStore.clearAllDrafts` runs in `MainActivity.onCreate` as the
+process-death safety net.
+
+**Three traps worth remembering.**
+1. `BlendMode.Clear` needs `CompositingStrategy.Offscreen`, and the
+   `graphicsLayer` must come BEFORE `drawWithContent` or it clears the window.
+2. Full-size decode OOMs on modern camera photos — always downsample, and apply
+   EXIF rotation or portrait shots load sideways. Added `androidx-exifinterface`.
+3. The preview uses `ContentScale.Crop` (a centred square), so an un-cropped
+   "Accept" must `centerCropSquare` before saving, otherwise a wide photo is
+   stored as a rectangle and the avatar circle frames it differently from the
+   preview the user approved.
+
+### How to test it live
+
+1. **Profile → tap your avatar → From Gallery.** You should get the system
+   **photo grid**, not a file-manager/document browser. No permission prompt.
+2. Pick any photo → a **Preview** dialog shows it in a square. Tap **Accept** →
+   the avatar updates on Profile and Home.
+3. Repeat, but tap **Crop**. Pinch to zoom, drag to reposition. The image must
+   never detach from the edges of the square (no blank gaps). Tap **Use this**.
+4. In the cropper tap **Back** → returns to the plain preview, zoom reset.
+5. **Verify non-destructive:** open the same photo in Google Photos. It must be
+   unchanged — original resolution, uncropped.
+6. **From URL**: paste a direct image link, tap **Load image** → it appears in
+   the square preview above the field. **Accept** saves it.
+7. Paste a bad link (`https://example.com/nope.png`) → readable error under the
+   field, nothing saved. Paste a non-image page → "doesn't point to an image".
+8. Load a URL image, then tap **Crop** → goes to the crop step with no second
+   download.
+9. **Draft cleanup:** load a URL image, then **Cancel**. Nothing is saved and
+   the temp file is gone (`cacheDir/profile_drafts` empty).
+10. Airplane mode + a URL → a connection error, not a crash or a hang.
+11. Rotate the device with the preview open — it should survive.

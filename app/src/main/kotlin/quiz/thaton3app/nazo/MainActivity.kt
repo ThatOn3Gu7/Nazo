@@ -8,6 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import quiz.thaton3app.nazo.LauncherIconSwitcher
 import quiz.thaton3app.nazo.data.UpdatePrefs
+import quiz.thaton3app.nazo.data.profile.ProfileImageStore
 import quiz.thaton3app.nazo.data.UpdateScheduler
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.ui.NazoApp
@@ -29,6 +30,10 @@ open class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         // Schedule background update checks per the saved frequency preference.
         UpdateScheduler.apply(this, UpdatePrefs(this).updateFrequency)
+        // Safety net for profile-picture drafts: they are deleted as soon as
+        // the user backs out of the picker, but a process death mid-edit would
+        // strand one in the cache. Only touches cacheDir/profile_drafts.
+        ProfileImageStore.clearAllDrafts(this)
         // Re-render any placed widget from current storage on every launch.
         //
         // This is the supported recovery path after "Clear data". Android does

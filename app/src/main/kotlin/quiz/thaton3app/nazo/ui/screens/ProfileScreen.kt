@@ -1,6 +1,14 @@
 package quiz.thaton3app.nazo.ui.screens
 
-import android.content.Intent
+import java.io.File
+import quiz.thaton3app.nazo.ui.components.ProfileImagePreviewDialog
+import quiz.thaton3app.nazo.data.profile.ProfileImageStore
+import quiz.thaton3app.nazo.data.profile.ProfileImageSource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.Image
+import androidx.activity.result.PickVisualMediaRequest
 import android.content.res.Configuration
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -85,18 +93,22 @@ fun ProfileScreen(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
+    // The image being previewed/cropped, and the temp file behind it (URL only).
+    var pendingSource by remember { mutableStateOf<ProfileImageSource?>(null) }
+    var pendingDraft by remember { mutableStateOf<File?>(null) }
+
+    // PickVisualMedia is the system photo picker: a gallery grid scoped to
+    // images, with no storage permission and no filesystem browsing. It
+    // replaces OpenDocument, which dropped the user into a file manager.
     val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
+        contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri ->
             uri?.let {
-                try {
-                    context.contentResolver.takePersistableUriPermission(
-                        it,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    )
-                } catch (_: Exception) {
-                }
-                onProfilePictureChange(it.toString())
+                // Read-only access for the preview/crop step. We never write
+                // back to this URI -- accepting writes a fresh copy of our own,
+                // so the user's original photo is untouched.
+                pendingDraft = null
+                pendingSource = ProfileImageSource.ContentUri(it)
             }
         }
     )
@@ -673,7 +685,9 @@ fun ProfileScreen(
                     }) { Text("From URL") }
                     TextButton(onClick = {
                         showPictureDialog = false
-                        galleryLauncher.launch(arrayOf("image/*"))
+                        galleryLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
                     }) { Text("From Gallery") }
                     if (!profilePictureUri.isNullOrBlank()) {
                         TextButton(
@@ -697,28 +711,213 @@ fun ProfileScreen(
         var url by remember {
             mutableStateOf(profilePictureUri?.takeIf { !it.startsWith("emoji:") } ?: "")
         }
+        var fetching by remember { mutableStateOf(false) }
+        var fetchError by remember { mutableStateOf<String?>(null) }
+        // The image fetched for the inline square preview. Held as a draft file
+        // so that accepting or cropping does not download it a second time.
+        var previewBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+        var previewDraft by remember { mutableStateOf<File?>(null) }
+        val urlScope = rememberCoroutineScope()
+
+        fun clearPreview() {
+            ProfileImageStore.discardDraft(previewDraft)
+            previewDraft = null
+            previewBitmap = null
+        }
+
+        fun closeUrlDialog() {
+            // Abandoning the dialog must not strand the downloaded temp file.
+            clearPreview()
+            showUrlDialog = false
+        }
+
+        fun fetch() {
+            val target = url.trim()
+            if (target.isBlank() || fetching) return
+            fetching = true
+            fetchError = null
+            urlScope.launch {
+                clearPreview()
+                val result = ProfileImageStore.downloadDraft(context, target)
+                result.onSuccess { file ->
+                    val decoded = ProfileImageStore.decodeForEditing(
+                        context,
+                        ProfileImageSource.LocalFile(file),
+                        maxEdge = 1024,
+                    )
+                    if (decoded == null) {
+                        ProfileImageStore.discardDraft(file)
+                        fetchError = "That link doesn't point to an image we can read."
+                    } else {
+                        previewDraft = file
+                        previewBitmap = decoded
+                    }
+                }.onFailure { error ->
+                    fetchError = error.message ?: "Couldn't load that image."
+                }
+                fetching = false
+            }
+        }
+
         AlertDialog(
-            onDismissRequest = { showUrlDialog = false },
+            onDismissRequest = { if (!fetching) closeUrlDialog() },
             icon = { Icon(Icons.Rounded.Link, contentDescription = null) },
             title = { Text("Picture from URL") },
             text = {
-                OutlinedTextField(
-                    value = url,
-                    onValueChange = { url = it },
-                    singleLine = true,
-                    placeholder = { Text("https://...") },
-                    shape = MaterialTheme.shapes.large
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    // Square preview sits between the title and the field, so
+                    // the user sees the actual image before accepting it.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(NazoSurfaceVariant),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        val shown = previewBitmap
+                        when {
+                            fetching -> CircularProgressIndicator(
+                                modifier = Modifier.size(28.dp),
+                                strokeWidth = 3.dp,
+                                color = NazoPrimary,
+                            )
+
+                            shown != null -> Image(
+                                bitmap = shown.asImageBitmap(),
+                                contentDescription = "Image from the entered link",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+
+                            else -> Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Link,
+                                    contentDescription = null,
+                                    tint = NazoTextSecondary,
+                                    modifier = Modifier.size(28.dp),
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "Paste a link, then tap Load",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = NazoTextSecondary,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    OutlinedTextField(
+                        value = url,
+                        onValueChange = {
+                            url = it
+                            // The preview no longer matches the typed link.
+                            if (previewBitmap != null) clearPreview()
+                            fetchError = null
+                        },
+                        singleLine = true,
+                        placeholder = { Text("https://...") },
+                        shape = MaterialTheme.shapes.large,
+                        isError = fetchError != null,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+
+                    val error = fetchError
+                    if (error != null) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = error,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NazoError,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(
+                        onClick = { fetch() },
+                        enabled = url.isNotBlank() && !fetching,
+                    ) {
+                        Text(if (previewBitmap != null) "Reload" else "Load image")
+                    }
+                }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    onProfilePictureChange(url.trim().ifBlank { null })
-                    showUrlDialog = false
-                }) { Text("Save") }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (previewBitmap != null) {
+                        TextButton(onClick = {
+                            // Hand the already-downloaded draft to the shared
+                            // crop step; it takes over ownership of the file.
+                            val file = previewDraft
+                            previewDraft = null
+                            previewBitmap = null
+                            showUrlDialog = false
+                            if (file != null) {
+                                pendingDraft = file
+                                pendingSource = ProfileImageSource.LocalFile(file)
+                            }
+                        }) { Text("Crop") }
+                    }
+                    TextButton(
+                        onClick = {
+                            val bitmap = previewBitmap
+                            if (bitmap != null) {
+                                urlScope.launch {
+                                    // Square it first so the saved avatar
+                                    // matches the square preview shown above.
+                                    val squared =
+                                        ProfileImageStore.centerCropSquare(bitmap)
+                                    ProfileImageStore.saveAvatar(context, squared)
+                                        .onSuccess { saved ->
+                                            onProfilePictureChange(saved)
+                                            clearPreview()
+                                            showUrlDialog = false
+                                        }
+                                }
+                            } else {
+                                fetch()
+                            }
+                        },
+                        enabled = !fetching && url.isNotBlank(),
+                    ) {
+                        Text(if (previewBitmap != null) "Accept" else "Load")
+                    }
+                }
             },
             dismissButton = {
-                TextButton(onClick = { showUrlDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { closeUrlDialog() }, enabled = !fetching) {
+                    Text("Cancel")
+                }
             }
+        )
+    }
+
+    // Shared preview + crop step. Gallery picks arrive here directly; URL
+    // images arrive here already downloaded to a draft file.
+    val activeSource = pendingSource
+    if (activeSource != null) {
+        ProfileImagePreviewDialog(
+            source = activeSource,
+            draftFile = pendingDraft,
+            onDismiss = {
+                pendingSource = null
+                pendingDraft = null
+            },
+            onAccepted = { savedUri ->
+                onProfilePictureChange(savedUri)
+                pendingSource = null
+                pendingDraft = null
+            },
         )
     }
 }
