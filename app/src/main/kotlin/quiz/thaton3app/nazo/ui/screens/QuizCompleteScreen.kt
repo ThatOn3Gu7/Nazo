@@ -38,6 +38,8 @@ import quiz.thaton3app.nazo.records.NewRecordBadge
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
+import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.components.ShareResultCard
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
@@ -223,13 +225,11 @@ fun QuizCompleteScreen(
                     enter = slideInVertically(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow)) { 100 } + fadeIn()
                 ) {
                     Column {
-                        Button(
+                        NazoPrimaryButton(
                             onClick = onPlayAnother,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(56.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = NazoPrimary),
-                            shape = RoundedCornerShape(50)
                         ) {
                             Icon(Icons.Filled.Replay, contentDescription = null, tint = NazoOnPrimary, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
@@ -238,13 +238,12 @@ fun QuizCompleteScreen(
 
                         Spacer(Modifier.height(12.dp))
 
-                        Button(
+                        NazoSecondaryButton(
                             onClick = onReviewAnswers,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(56.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = NazoSurfaceVariant),
-                            shape = RoundedCornerShape(50)
+                            muted = true,
                         ) {
                             Icon(Icons.AutoMirrored.Filled.FactCheck, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
@@ -254,7 +253,7 @@ fun QuizCompleteScreen(
                         Spacer(Modifier.height(12.dp))
 
                         // Share the run as a themed image card (system share sheet).
-                        Button(
+                        NazoSecondaryButton(
                             onClick = {
                                 Haptics.light(context)
                                 ShareResultCard.share(
@@ -282,8 +281,7 @@ fun QuizCompleteScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(56.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = NazoSurfaceVariant),
-                            shape = RoundedCornerShape(50)
+                            muted = true,
                         ) {
                             Icon(Icons.Outlined.Share, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))

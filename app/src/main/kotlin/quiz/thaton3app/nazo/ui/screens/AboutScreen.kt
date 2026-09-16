@@ -113,6 +113,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.data.GITHUB_REPO
+import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.data.UpdateDownloader
 import quiz.thaton3app.nazo.data.UpdateFrequency
 import quiz.thaton3app.nazo.data.UpdatePrefs
@@ -291,7 +292,10 @@ fun AboutScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
-                .padding(bottom = 12.dp)
+                // Landscape needs real breathing room at the end of the scroll:
+                // the window is short, so without it the final card stops flush
+                // against the bottom edge and looks clipped.
+                .padding(bottom = if (isLandscape()) 48.dp else 12.dp)
         ) {
             Spacer(Modifier.height(28.dp))
             ScreenHeader(title = "About", onBackClick = onBackClick)
@@ -379,7 +383,10 @@ fun AboutScreen(
             },
             title = { Text("Send feedback", color = NazoTextPrimary) },
             text = {
-                Column {
+                // Landscape leaves an AlertDialog only a few hundred dp of
+                // body height, which hid the second option entirely. Scrolling
+                // the body keeps both choices reachable.
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     Text(
                         "Reports go to the public issue tracker, so you can follow " +
                             "progress and see if someone already raised it.",
@@ -1015,6 +1022,7 @@ private fun environmentBlock(context: android.content.Context): String {
     return buildString {
         appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
         appendLine("Android: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
+        appendLine("Architecture: ${Build.SUPPORTED_ABIS.joinToString()}")
         appendLine("App: Nazo $versionName (code $versionCode)")
     }
 }

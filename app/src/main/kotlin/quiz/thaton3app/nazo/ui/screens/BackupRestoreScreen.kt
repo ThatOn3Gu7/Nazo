@@ -22,6 +22,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.verticalScroll
+import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
+import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
+import quiz.thaton3app.nazo.ui.components.NazoAdaptiveDialog
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -567,52 +570,16 @@ private fun FadeDialog(
     dismissible: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    // Registered only while visible, so it never steals back from the screen.
-    BackHandler(enabled = visible) {
-        if (dismissible) onDismiss()
-        // Otherwise: consumed and ignored on purpose.
-    }
-    AnimatedVisibility(
+    // Delegates to the shared adaptive dialog: a centred card in portrait, a
+    // side panel that slides in from the edge in landscape. Landscape is only
+    // ~360 dp tall, so a centred card had to scroll awkwardly between two wide
+    // bands of scrim; the panel uses the height it actually has.
+    NazoAdaptiveDialog(
         visible = visible,
-        enter = fadeIn(tween(250)),
-        exit = fadeOut(tween(200)),
-        modifier = Modifier.fillMaxSize()
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.6f))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = { if (dismissible) onDismiss() }
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            // In landscape the viewport is only ~360 dp tall, and these cards
-            // (icon + copy + category list + action row) are taller than that.
-            // Centring unbounded content pushed the buttons off both ends of
-            // the screen, so the card scrolls as a whole and keeps clear of the
-            // system bars. Portrait is unaffected: the card is shorter than the
-            // viewport, so there is nothing to scroll.
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .safeDrawingPadding()
-                    .verticalScroll(rememberScrollState())
-                    .padding(vertical = 16.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(modifier = Modifier.clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {}
-                )) {
-                    content()
-                }
-            }
-        }
-    }
+        onDismiss = onDismiss,
+        dismissible = dismissible,
+        content = content,
+    )
 }
 
 /**
@@ -624,12 +591,25 @@ private fun FadeDialog(
  */
 @Composable
 private fun NothingToBackUpContent(onClose: () -> Unit) {
+    val landscape = isLandscape()
     Column(
         modifier = Modifier
-            .widthIn(max = 340.dp)
-            .clip(RoundedCornerShape(32.dp))
-            .background(NazoSurface)
-            .border(1.dp, NazoTextSecondary.copy(alpha = 0.15f), RoundedCornerShape(32.dp))
+            .then(
+                // The panel already provides the surface in landscape.
+                if (landscape) {
+                    Modifier.fillMaxWidth()
+                } else {
+                    Modifier
+                        .widthIn(max = 340.dp)
+                        .clip(RoundedCornerShape(32.dp))
+                        .background(NazoSurface)
+                        .border(
+                            1.dp,
+                            NazoTextSecondary.copy(alpha = 0.15f),
+                            RoundedCornerShape(32.dp),
+                        )
+                }
+            )
             .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -666,11 +646,9 @@ private fun NothingToBackUpContent(onClose: () -> Unit) {
             lineHeight = 22.sp
         )
         Spacer(Modifier.height(28.dp))
-        Button(
+        NazoPrimaryButton(
             onClick = onClose,
             modifier = Modifier.fillMaxWidth().height(54.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = NazoPrimary, contentColor = NazoOnPrimary),
-            shape = RoundedCornerShape(16.dp)
         ) {
             Text("Got it", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
@@ -698,12 +676,27 @@ private fun BackupContentsContent(
     var revealed by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { revealed = true }
 
+    val landscape = isLandscape()
     Column(
         modifier = Modifier
-            .widthIn(max = 340.dp)
-            .clip(RoundedCornerShape(32.dp))
-            .background(NazoSurface)
-            .border(1.dp, NazoTextSecondary.copy(alpha = 0.15f), RoundedCornerShape(32.dp))
+            .then(
+                // In the landscape side panel the surface is already drawn by
+                // the panel itself, so the card drops its own background,
+                // border and width cap and simply fills it.
+                if (landscape) {
+                    Modifier.fillMaxWidth()
+                } else {
+                    Modifier
+                        .widthIn(max = 340.dp)
+                        .clip(RoundedCornerShape(32.dp))
+                        .background(NazoSurface)
+                        .border(
+                            1.dp,
+                            NazoTextSecondary.copy(alpha = 0.15f),
+                            RoundedCornerShape(32.dp),
+                        )
+                }
+            )
             .padding(28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -778,21 +771,17 @@ private fun BackupContentsContent(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Button(
+            NazoSecondaryButton(
                 onClick = onCancel,
                 modifier = Modifier.weight(1f).height(54.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = NazoSurface, contentColor = NazoTextPrimary),
-                border = ButtonDefaults.outlinedButtonBorder.copy(brush = Brush.linearGradient(listOf(NazoTextSecondary.copy(0.3f), NazoTextSecondary.copy(0.3f)))),
-                shape = RoundedCornerShape(16.dp)
+                muted = true,
             ) {
                 Text("Cancel", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
 
-            Button(
+            NazoPrimaryButton(
                 onClick = onConfirm,
                 modifier = Modifier.weight(1f).height(54.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = NazoPrimary, contentColor = NazoOnPrimary),
-                shape = RoundedCornerShape(16.dp)
             ) {
                 Text(confirmLabel, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
@@ -868,12 +857,25 @@ private fun AutoBackupFreqContent(
     onSelect: (String, String) -> Unit,
     onClose: () -> Unit
 ) {
+    val landscape = isLandscape()
     Column(
         modifier = Modifier
-            .widthIn(max = 340.dp)
-            .clip(RoundedCornerShape(32.dp))
-            .background(NazoSurface)
-            .border(1.dp, NazoTextSecondary.copy(alpha = 0.15f), RoundedCornerShape(32.dp))
+            .then(
+                // The panel already provides the surface in landscape.
+                if (landscape) {
+                    Modifier.fillMaxWidth()
+                } else {
+                    Modifier
+                        .widthIn(max = 340.dp)
+                        .clip(RoundedCornerShape(32.dp))
+                        .background(NazoSurface)
+                        .border(
+                            1.dp,
+                            NazoTextSecondary.copy(alpha = 0.15f),
+                            RoundedCornerShape(32.dp),
+                        )
+                }
+            )
             .padding(28.dp),
     ) {
         Text(

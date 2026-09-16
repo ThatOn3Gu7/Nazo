@@ -19,6 +19,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import quiz.thaton3app.nazo.ui.components.NazoDangerButton
+import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.components.Haptics
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -726,23 +728,18 @@ fun ProfileScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    OutlinedButton(
+                    NazoSecondaryButton(
                         onClick = {
                             showPictureDialog = false
                             showUrlDialog = true
                         },
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(14.dp),
-                        border = BorderStroke(1.5.dp, NazoPrimary.copy(alpha = 0.6f)),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = NazoPrimary,
-                        ),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
                     ) {
                         Text("URL", maxLines = 1)
                     }
 
-                    OutlinedButton(
+                    NazoSecondaryButton(
                         onClick = {
                             showPictureDialog = false
                             galleryLauncher.launch(
@@ -752,18 +749,13 @@ fun ProfileScreen(
                             )
                         },
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(14.dp),
-                        border = BorderStroke(1.5.dp, NazoPrimary.copy(alpha = 0.6f)),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = NazoPrimary,
-                        ),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
                     ) {
                         Text("Gallery", maxLines = 1)
                     }
 
                     if (!profilePictureUri.isNullOrBlank()) {
-                        Button(
+                        NazoDangerButton(
                             onClick = {
                                 // Destructive, and irreversible from here, so
                                 // it gets a distinct double tap of feedback.
@@ -772,12 +764,6 @@ fun ProfileScreen(
                                 showPictureDialog = false
                             },
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(14.dp),
-                            border = BorderStroke(1.5.dp, NazoError),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = NazoError,
-                                contentColor = Color.White,
-                            ),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
                         ) {
                             Text("Remove", maxLines = 1)

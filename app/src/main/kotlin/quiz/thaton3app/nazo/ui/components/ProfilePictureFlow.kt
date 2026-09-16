@@ -226,7 +226,7 @@ fun ProfileImagePreviewDialog(
                 }
 
                 Spacer(Modifier.width(8.dp))
-                Button(
+                NazoPrimaryButton(
                     onClick = {
                         if (cropping) {
                             val result = cropState?.cropToBitmap()
@@ -236,10 +236,6 @@ fun ProfileImagePreviewDialog(
                         }
                     },
                     enabled = current != null && !saving,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = NazoPrimary,
-                        contentColor = NazoOnPrimary,
-                    ),
                 ) {
                     if (saving) {
                         CircularProgressIndicator(

@@ -1098,3 +1098,56 @@ also orientation-aware: 240.dp portrait, 132.dp landscape.
    Repeat for Restore (pick a backup file) and the auto-backup frequency
    dialog.
 6. Same screens in **portrait** must look and behave exactly as before.
+
+### 2026-09-15 — Landscape dialogs, button system, feedback fixes
+
+Five follow-ups.
+
+**1. Feedback chooser hid the second option in landscape.** An `AlertDialog`
+body gets only a few hundred dp in landscape, so "Suggest a feature" was
+clipped with no way to reach it. The body Column now scrolls.
+
+**2. `Architecture:` line restored in the email path.** I dropped it when
+splitting `sendFeedback` into `environmentBlock`/`openIssueForm`/
+`sendFeedbackEmail`. `Build.SUPPORTED_ABIS` is back in `environmentBlock`, so
+both the GitHub and email paths carry it.
+
+**3. About screen clipped at the bottom in landscape.** The scroll column ended
+with only 12.dp of bottom padding, so the final card sat flush against the
+edge. Now `48.dp` in landscape, `12.dp` in portrait.
+
+**4. Backup & Restore dialogs become a side panel in landscape.** New shared
+`ui/components/NazoAdaptiveDialog.kt`: portrait = the existing centred card;
+landscape = a panel (max 420.dp wide) sliding in from the trailing edge, full
+height, scrolling internally. `FadeDialog` now just delegates to it, so all
+three backup dialogs change at once. Each card drops its own width cap /
+background / border in landscape (`isLandscape()`), since the panel supplies
+the surface; portrait rendering is untouched.
+
+**5. Button system — `ui/components/NazoButtons.kt`.** Audit found genuine
+drift: corner radii of 50%, 14.dp and 16.dp in different places, and secondary
+actions that were sometimes a filled grey surface and sometimes bare text with
+no edge (reading as disabled next to a filled primary). Three roles now:
+- `NazoPrimaryButton` — filled accent, the one obvious action.
+- `NazoSecondaryButton` — outlined; `muted = true` for plain Cancel/dismiss.
+- `NazoDangerButton` — filled red, destructive.
+All share `NazoButtonShape` (16.dp) and a 1.5.dp edge, including the filled
+ones, so silhouettes match when placed side by side. Migrated: Backup preview
+Cancel/Confirm, "Got it", QuizComplete's three actions, the picture-preview
+Accept, and the Profile avatar row (URL / Gallery / Remove).
+
+### How to test it live
+
+1. **Landscape → About → Send Feedback**: BOTH options visible (scroll if
+   needed). Portrait unchanged.
+2. **Send feedback → Email instead**: the draft lists Device, Android,
+   **Architecture** and App version.
+3. **Landscape → About**: scroll to the very bottom; the last card is fully
+   visible with clear space beneath it, not cut off.
+4. **Landscape → Backup & Restore → Back up now**: a panel slides in from the
+   right at full height; Cancel and Confirm both reachable. Same for Restore
+   and the auto-backup frequency dialog. Tap the scrim to dismiss.
+5. **Portrait → same three dialogs**: still centred cards, exactly as before.
+6. **Buttons**: Quiz results (Play Another / Review / Share), Backup preview,
+   avatar row. Same corner radius, all with a visible edge, primary filled,
+   secondary outlined, Remove red.
