@@ -13,6 +13,8 @@ import android.content.res.Configuration
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import quiz.thaton3app.nazo.ui.components.Haptics
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.text.KeyboardOptions
@@ -687,32 +689,70 @@ fun ProfileScreen(
                 }
             },
             confirmButton = {
-                FlowRow(
+                // One row of equal-width actions rather than a FlowRow that
+                // wrapped Remove onto its own line. Each source button is
+                // outlined; Remove is a filled red container so a destructive
+                // action reads as destructive.
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TextButton(onClick = {
-                        showPictureDialog = false
-                        showUrlDialog = true
-                    }) { Text("From URL") }
-                    TextButton(onClick = {
-                        showPictureDialog = false
-                        galleryLauncher.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
-                    }) { Text("From Gallery") }
+                    OutlinedButton(
+                        onClick = {
+                            showPictureDialog = false
+                            showUrlDialog = true
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.5.dp, NazoPrimary.copy(alpha = 0.6f)),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = NazoPrimary,
+                        ),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
+                    ) {
+                        Text("URL", maxLines = 1)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            showPictureDialog = false
+                            galleryLauncher.launch(
+                                PickVisualMediaRequest(
+                                    ActivityResultContracts.PickVisualMedia.ImageOnly
+                                )
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.5.dp, NazoPrimary.copy(alpha = 0.6f)),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = NazoPrimary,
+                        ),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
+                    ) {
+                        Text("Gallery", maxLines = 1)
+                    }
+
                     if (!profilePictureUri.isNullOrBlank()) {
-                        TextButton(
+                        Button(
                             onClick = {
+                                // Destructive, and irreversible from here, so
+                                // it gets a distinct double tap of feedback.
+                                Haptics.doubleLight(context)
                                 onProfilePictureChange(null)
                                 showPictureDialog = false
                             },
-                            colors = ButtonDefaults.textButtonColors(
-                                contentColor = NazoError
-                            )
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.5.dp, NazoError),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = NazoError,
+                                contentColor = Color.White,
+                            ),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
                         ) {
-                            Text("Remove")
+                            Text("Remove", maxLines = 1)
                         }
                     }
                 }

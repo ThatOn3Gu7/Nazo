@@ -988,3 +988,56 @@ image is loaded instead of silently changing meaning.
 6. Once loaded the field icon becomes a **refresh**; Accept becomes enabled.
 7. Both dialogs: buttons on ONE row, right-aligned, Cancel | Crop | Accept, no
    wrapping.
+
+### 2026-09-15 — Fetch images from PAGE urls; avatar action row
+
+**1. Most pasted links are web PAGES, not image files.**
+Every URL the owner reported (Unsplash, Pixabay, iStock, Freepik/magnific, a
+Google Images results page) returns `text/html`. The fetcher downloaded them
+fine and then correctly failed `isDecodableImage`. Rejecting them is useless to
+a user who cannot tell a page URL from a file URL.
+
+`downloadDraft` now falls back to scraping: if the download is not decodable,
+read up to 512 KB of it as text and look for the page's main image, then fetch
+THAT. Priority order (metadata first, because it is curated by the site and is
+the page's actual subject; tag scraping last, because it can pick up a logo):
+`og:image:secure_url` -> `og:image:url` -> `og:image` -> `twitter:image:src` ->
+`twitter:image` -> `<link rel=image_src>` -> JSON-LD `contentUrl`/`image` ->
+`<img src>` filtered against logo/sprite/icon/avatar/placeholder/svg.
+
+Details that matter:
+- Candidates resolve against the FINAL url after redirects (`fetchInto` now
+  returns a `FetchResult`), so relative paths work.
+- `&amp;` etc. are decoded -- metadata URLs are HTML-escaped and would 404.
+- `Accept` now includes `text/html;q=0.9`; image-only made some sites 406.
+- Binary guard: `readTextPrefix` returns null if the first chunk has a NUL
+  byte, so a corrupt image is never regex-scanned.
+- Failure messages distinguish "that's a web page and we found no photo on it"
+  from SVG and from generic non-images.
+
+Regexes were validated in Python against realistic markup (both attribute
+orders, single/double quotes, extra attributes, entity-escaped query strings)
+before being written into Kotlin. NOTE: patterns are built by CONCATENATION,
+not raw strings -- `$escaped` would interpolate inside a Kotlin raw string.
+
+**2. Avatar dialog action row.** Was a FlowRow of three TextButtons that wrapped
+Remove onto its own line. Now one Row of equal-weight buttons: URL and Gallery
+are `OutlinedButton`s with a 1.5.dp accent border; Remove is a filled `NazoError`
+container with white text and fires `Haptics.doubleLight` (destructive, and not
+undoable from that dialog).
+
+### How to test it live
+
+1. Profile -> avatar -> **URL**. Paste an **Unsplash photo page** link
+   (`unsplash.com/photos/...`, no file extension) -> the photo loads in the
+   preview. Same for a **Pixabay photo page** and an **iStock photo page**.
+2. Paste a **direct** image link (`.../x.jpg`) -> still works, one request.
+3. Paste a site's HOME page (e.g. `example.com`) -> "That's a web page, and we
+   couldn't find a photo on it..." rather than a generic failure.
+4. Some sites genuinely block hotlinking -> expect a 403 message. That is the
+   site refusing, not a bug.
+5. Avatar dialog: **URL | Gallery | Remove** sit on ONE row, equal widths.
+   URL/Gallery are outlined; Remove is solid red with white text.
+6. Tap **Remove** -> double haptic pulse, avatar resets to initials.
+7. With no custom picture set, Remove is absent and the other two still fill
+   the row.

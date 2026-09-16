@@ -43,6 +43,9 @@ object ProfileImageStore {
     /** Refuse absurd downloads rather than OOM-ing on a hostile URL. */
     private const val MAX_DOWNLOAD_BYTES = 16L * 1024 * 1024
 
+    /** How much of a web page we read while looking for its image. */
+    private const val MAX_HTML_BYTES = 512 * 1024
+
     private fun avatarDir(context: Context): File =
         File(context.filesDir, AVATAR_DIR).apply { mkdirs() }
 
@@ -67,16 +70,21 @@ object ProfileImageStore {
                 val normalised = normaliseUrl(url)
                 val target = File(draftDir(context), "draft_${System.nanoTime()}")
                 try {
-                    fetchInto(normalised, target)
-                    // Content-Type lies often enough that the real test is
-                    // whether Android can decode what we actually received.
-                    // This also rejects an HTML error page served with a 200.
-                    if (!isDecodableImage(target)) {
-                        error(
-                            "That link didn't return a readable image. SVG files " +
-                                "aren't supported -- try a JPG, PNG or WebP link.",
-                        )
-                    }
+                    val fetched = fetchInto(normalised, target)
+
+                    if (isDecodableImage(target)) return@runCatching target
+
+                    // Not an image. Almost every link a user actually copies is
+                    // a PAGE about a photo (Unsplash, Pixabay, iStock, a Google
+                    // results page) rather than the photo itself, so rather
+                    // than rejecting it, look inside the HTML for the image it
+                    // is showing and fetch that.
+                    val html = readTextPrefix(target, MAX_HTML_BYTES)
+                    val embedded = html?.let { findImageInHtml(it, fetched.finalUrl) }
+                        ?: error(nonImageMessage(fetched))
+
+                    fetchInto(embedded, target)
+                    if (!isDecodableImage(target)) error(nonImageMessage(fetched))
                     target
                 } catch (t: Throwable) {
                     target.delete()
@@ -124,7 +132,10 @@ object ProfileImageStore {
      * hotlink protection -- a plain library user agent gets refused for images
      * that open fine in a browser.
      */
-    private fun fetchInto(url: URL, target: File) {
+    /** What a completed download turned out to be. */
+    private data class FetchResult(val finalUrl: URL, val contentType: String?)
+
+    private fun fetchInto(url: URL, target: File): FetchResult {
         var current = url
         var redirects = 0
 
@@ -139,9 +150,14 @@ object ProfileImageStore {
                     "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 " +
                         "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
                 )
+                // Images preferred, but HTML must be acceptable too: a user's
+                // link is usually the PAGE for a photo, and we scrape the real
+                // image out of it. Sending image-only here makes some sites
+                // answer 406.
                 setRequestProperty(
                     "Accept",
-                    "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+                    "image/avif,image/webp,image/apng,image/*," +
+                        "text/html;q=0.9,*/*;q=0.8",
                 )
                 setRequestProperty("Accept-Language", "en-US,en;q=0.9")
                 // Same-origin referer satisfies the usual hotlink checks.
@@ -192,10 +208,159 @@ object ProfileImageStore {
                     }
                 }
                 require(total > 0L) { "That link returned an empty file." }
-                return
+                return FetchResult(
+                    finalUrl = current,
+                    contentType = connection.contentType?.substringBefore(';')?.trim(),
+                )
             } finally {
                 connection.disconnect()
             }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Extracting an image from an HTML page
+    // -----------------------------------------------------------------------
+
+    /**
+     * Reads at most [limit] bytes of [file] as text, if it looks like markup.
+     *
+     * Returns null for binary content so we never try to regex a broken image.
+     */
+    private fun readTextPrefix(file: File, limit: Int): String? = runCatching {
+        val bytes = file.inputStream().use { input ->
+            val buffer = ByteArray(limit)
+            val read = input.read(buffer)
+            if (read <= 0) return null
+            buffer.copyOf(read)
+        }
+        // A NUL byte in the first chunk means binary, not a web page.
+        if (bytes.any { it == 0.toByte() }) return null
+        val text = String(bytes, Charsets.UTF_8)
+        if (text.contains('<')) text else null
+    }.getOrNull()
+
+    /**
+     * Finds the main image on a web page.
+     *
+     * Users overwhelmingly paste the PAGE for a photo rather than the file --
+     * an Unsplash or Pixabay photo page, a stock-site listing, even a Google
+     * Images results page. Every one of those advertises its main image in
+     * metadata, because that is what social previews use.
+     *
+     * Order matters: og:image and twitter:image are curated by the site and are
+     * the actual subject of the page. Only if both are missing do we fall back
+     * to scanning <img>/<link> tags, which can pick up a logo.
+     */
+    private fun findImageInHtml(html: String, baseUrl: URL): URL? {
+        val candidates = buildList {
+            metaContent(html, "og:image:secure_url")?.let { add(it) }
+            metaContent(html, "og:image:url")?.let { add(it) }
+            metaContent(html, "og:image")?.let { add(it) }
+            metaContent(html, "twitter:image:src")?.let { add(it) }
+            metaContent(html, "twitter:image")?.let { add(it) }
+            linkHref(html, "image_src")?.let { add(it) }
+            addAll(jsonLdImages(html))
+            addAll(largestImgTags(html))
+        }
+
+        for (raw in candidates) {
+            val resolved = runCatching { URL(baseUrl, decodeEntities(raw)) }.getOrNull()
+                ?: continue
+            if (resolved.protocol != "http" && resolved.protocol != "https") continue
+            // Data URIs and tracking pixels are never what the user wanted.
+            if (resolved.path.endsWith(".svg", ignoreCase = true)) continue
+            return resolved
+        }
+        return null
+    }
+
+    private fun metaContent(html: String, property: String): String? {
+        // Matches <meta property="og:image" content="..."> with either
+        // attribute order and single or double quotes. Built by concatenation
+        // because the property name is interpolated into the pattern.
+        val name = Regex.escape(property)
+        val q = "[\"']"
+        val patterns = listOf(
+            "<meta[^>]+(?:property|name)\\s*=\\s*" + q + name + q +
+                "[^>]*?content\\s*=\\s*" + q + "([^\"']+)" + q,
+            "<meta[^>]+content\\s*=\\s*" + q + "([^\"']+)" + q +
+                "[^>]*?(?:property|name)\\s*=\\s*" + q + name + q,
+        )
+        patterns.forEach { pattern ->
+            Regex(pattern, RegexOption.IGNORE_CASE).find(html)
+                ?.groupValues?.getOrNull(1)
+                ?.takeIf { it.isNotBlank() }
+                ?.let { return it }
+        }
+        return null
+    }
+
+    private fun linkHref(html: String, rel: String): String? {
+        val name = Regex.escape(rel)
+        val q = "[\"']"
+        val pattern = "<link[^>]+rel\\s*=\\s*" + q + name + q +
+            "[^>]*?href\\s*=\\s*" + q + "([^\"']+)" + q
+        return Regex(pattern, RegexOption.IGNORE_CASE).find(html)
+            ?.groupValues?.getOrNull(1)?.takeIf { it.isNotBlank() }
+    }
+
+    /** Pulls "image"/"contentUrl" values out of JSON-LD blocks. */
+    private fun jsonLdImages(html: String): List<String> {
+        val pattern = "\"(?:contentUrl|image)\"\\s*:\\s*\"(https?://[^\"]+)\""
+        return Regex(pattern)
+            .findAll(html)
+            .mapNotNull { it.groupValues.getOrNull(1) }
+            .distinct()
+            .take(5)
+            .toList()
+    }
+
+    /**
+     * Last resort: <img src>, preferring ones that look like real photos.
+     *
+     * Sorted so that larger, content-looking files beat sprites and logos.
+     */
+    private fun largestImgTags(html: String): List<String> {
+        val pattern = "<img[^>]+src\\s*=\\s*[\"']([^\"']+)[\"']"
+        return Regex(pattern, RegexOption.IGNORE_CASE)
+            .findAll(html)
+            .mapNotNull { it.groupValues.getOrNull(1) }
+            .filterNot { candidate ->
+                val lower = candidate.lowercase()
+                lower.startsWith("data:") ||
+                    lower.contains("logo") ||
+                    lower.contains("sprite") ||
+                    lower.contains("icon") ||
+                    lower.contains("avatar") ||
+                    lower.contains("placeholder") ||
+                    lower.endsWith(".svg")
+            }
+            .distinct()
+            .take(8)
+            .toList()
+    }
+
+    /** Minimal entity decoding; metadata URLs are usually &amp;-escaped. */
+    private fun decodeEntities(value: String): String = value
+        .replace("&amp;", "&")
+        .replace("&#38;", "&")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .trim()
+
+    /** Explains why a link that loaded fine still is not usable. */
+    private fun nonImageMessage(fetched: FetchResult): String {
+        val type = fetched.contentType.orEmpty()
+        return when {
+            type.startsWith("text/html") ->
+                "That's a web page, and we couldn't find a photo on it. Open the " +
+                    "image itself, then copy its direct link."
+            type.startsWith("image/svg") ->
+                "SVG images aren't supported. Try a JPG, PNG or WebP link."
+            else ->
+                "That link didn't return an image we can read. Try a direct JPG, " +
+                    "PNG or WebP link."
         }
     }
 
