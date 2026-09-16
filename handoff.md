@@ -933,3 +933,58 @@ now `heightIn(max = 260.dp)` and scrolls internally. NOTE: the outer Column's
 7. **Avatar dialog height:** open the picker and switch to the **Anime** and
    **Pixel** tabs. The dialog must stay the same height as the other tabs, with
    the grid scrolling inside itself. Header and tabs stay fixed while it scrolls.
+
+### 2026-09-15 — Crop rewrite (drag-handle box) and action-bar layout
+
+**1. Cropper was broken: "image chopped to a strip, zoom only pans".**
+Root cause in the old `ProfileImageCropper`:
+
+    Image(contentScale = ContentScale.None, modifier = Modifier.fillMaxSize()
+        .graphicsLayer { scaleX = effective; ... })
+
+`ContentScale.None` draws the bitmap at natural pixel size and `fillMaxSize`
+**clips it to the viewport BEFORE graphicsLayer scales it**. For any photo
+larger than the box, only a viewport-sized centre chunk survived; the layer
+then magnified that chunk, so pinching appeared to pan and the rest of the
+image was simply gone. Accept looked "restored" because it saved from the
+untouched source bitmap, not from what was displayed.
+
+**2. Replaced with a drag-handle square box** (owner's request; also the
+standard interaction). New model: the image is drawn `ContentScale.Fit` and is
+always fully visible; a square crop box with four corner handles sits over it.
+- `CropState` mirrors the Fit letterbox maths to place the box, so box->source
+  pixel mapping is exact.
+- Box locked square (avatar is circular; a free rect would be re-cropped on
+  save and stop matching what was framed).
+- Drag a corner = resize from that corner, opposite corner pinned; drag
+  anywhere else = move. `nearestCorner` uses a 32.dp touch radius vs an 18.dp
+  drawn handle.
+- Dimming is four rects around the box, NOT `BlendMode.Clear` — no offscreen
+  layer needed, which is what made the old circular mask fragile.
+- Rule-of-thirds guides + a circle outline showing the avatar mask.
+
+**3. Button layout consolidated.** `AlertDialog` lays out `confirmButton` and
+`dismissButton` in a FlowRow; with three actions they wrapped and scattered.
+Both dialogs now put every action in ONE `confirmButton` Row, `dismissButton`
+unset, fixed order: **Cancel | Crop | Accept** (Accept reads "Done" in the crop
+step).
+
+**4. Removed the duplicate Load button.** The URL dialog had "Load image" in the
+body AND a footer button that doubled as Load when nothing was loaded. Loading
+is now a trailing icon INSIDE the URL field (arrow, or refresh once loaded,
+spinner while fetching) plus IME "Go". The footer Accept is disabled until an
+image is loaded instead of silently changing meaning.
+
+### How to test it live
+
+1. Gallery -> pick a **wide/tall** photo -> **Crop**. The WHOLE image must be
+   visible, letterboxed, with a square box over it. (Before: a centre strip.)
+2. Drag each of the four corners -> box resizes, stays square, opposite corner
+   stays put, cannot leave the image or collapse.
+3. Drag the middle -> whole box moves, clamped to the image.
+4. **Done** -> the avatar matches exactly what was inside the box.
+5. URL dialog: paste a link -> the **arrow inside the field** loads it (or press
+   Go on the keyboard). No second Load button anywhere.
+6. Once loaded the field icon becomes a **refresh**; Accept becomes enabled.
+7. Both dialogs: buttons on ONE row, right-aligned, Cancel | Crop | Accept, no
+   wrapping.

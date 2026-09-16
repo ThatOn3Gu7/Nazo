@@ -13,6 +13,10 @@ import android.content.res.Configuration
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -839,6 +843,35 @@ fun ProfileScreen(
                         shape = MaterialTheme.shapes.large,
                         isError = fetchError != null,
                         modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                        keyboardActions = KeyboardActions(onGo = { fetch() }),
+                        // Loading belongs to the field, not to a separate
+                        // button floating below it.
+                        trailingIcon = {
+                            if (fetching) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                    color = NazoPrimary,
+                                )
+                            } else {
+                                IconButton(
+                                    onClick = { fetch() },
+                                    enabled = url.isNotBlank(),
+                                ) {
+                                    Icon(
+                                        imageVector = if (previewBitmap != null) {
+                                            Icons.Filled.Refresh
+                                        } else {
+                                            Icons.AutoMirrored.Filled.ArrowForward
+                                        },
+                                        contentDescription =
+                                            if (previewBitmap != null) "Reload image" else "Load image",
+                                        tint = if (url.isNotBlank()) NazoPrimary else NazoTextSecondary,
+                                    )
+                                }
+                            }
+                        },
                     )
 
                     val error = fetchError
@@ -852,62 +885,75 @@ fun ProfileScreen(
                         )
                     }
 
-                    Spacer(Modifier.height(8.dp))
-                    TextButton(
-                        onClick = { fetch() },
-                        enabled = url.isNotBlank() && !fetching,
-                    ) {
-                        Text(if (previewBitmap != null) "Reload" else "Load image")
-                    }
                 }
             },
             confirmButton = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (previewBitmap != null) {
-                        TextButton(onClick = {
-                            // Hand the already-downloaded draft to the shared
-                            // crop step; it takes over ownership of the file.
-                            val file = previewDraft
-                            previewDraft = null
-                            previewBitmap = null
-                            showUrlDialog = false
-                            if (file != null) {
-                                pendingDraft = file
-                                pendingSource = ProfileImageSource.LocalFile(file)
-                            }
-                        }) { Text("Crop") }
+                // Single action bar, same order as the preview dialog:
+                // Cancel | Crop | Accept. Splitting these between
+                // confirmButton and dismissButton made them wrap unpredictably.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = { closeUrlDialog() }, enabled = !fetching) {
+                        Text("Cancel", color = NazoTextSecondary)
                     }
-                    TextButton(
-                        onClick = {
-                            val bitmap = previewBitmap
-                            if (bitmap != null) {
-                                urlScope.launch {
-                                    // Square it first so the saved avatar
-                                    // matches the square preview shown above.
-                                    val squared =
-                                        ProfileImageStore.centerCropSquare(bitmap)
-                                    ProfileImageStore.saveAvatar(context, squared)
-                                        .onSuccess { saved ->
-                                            onProfilePictureChange(saved)
-                                            clearPreview()
-                                            showUrlDialog = false
-                                        }
+                    if (previewBitmap != null) {
+                        Spacer(Modifier.width(4.dp))
+                        TextButton(
+                            onClick = {
+                                // Hand the downloaded draft to the shared crop
+                                // step, which takes ownership of the file.
+                                val file = previewDraft
+                                previewDraft = null
+                                previewBitmap = null
+                                showUrlDialog = false
+                                if (file != null) {
+                                    pendingDraft = file
+                                    pendingSource = ProfileImageSource.LocalFile(file)
                                 }
-                            } else {
-                                fetch()
+                            },
+                            enabled = !fetching,
+                        ) {
+                            Icon(
+                                Icons.Filled.Crop,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = NazoPrimary,
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("Crop", color = NazoPrimary)
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            val bitmap = previewBitmap ?: return@Button
+                            urlScope.launch {
+                                // Square it so the saved avatar matches the
+                                // square preview shown above.
+                                val squared = ProfileImageStore.centerCropSquare(bitmap)
+                                ProfileImageStore.saveAvatar(context, squared)
+                                    .onSuccess { saved ->
+                                        onProfilePictureChange(saved)
+                                        clearPreview()
+                                        showUrlDialog = false
+                                    }
                             }
                         },
-                        enabled = !fetching && url.isNotBlank(),
+                        // Accept is only meaningful once an image is loaded, so
+                        // it is disabled rather than doubling as a Load button.
+                        enabled = previewBitmap != null && !fetching,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = NazoPrimary,
+                            contentColor = NazoOnPrimary,
+                        ),
                     ) {
-                        Text(if (previewBitmap != null) "Accept" else "Load")
+                        Text("Accept")
                     }
                 }
             },
-            dismissButton = {
-                TextButton(onClick = { closeUrlDialog() }, enabled = !fetching) {
-                    Text("Cancel")
-                }
-            }
         )
     }
 

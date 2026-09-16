@@ -186,56 +186,20 @@ fun ProfileImagePreviewDialog(
             }
         },
         confirmButton = {
-            if (cropping) {
-                Button(
-                    onClick = {
-                        val result = cropState?.cropToBitmap()
-                        if (result != null) accept(result, alreadySquare = true)
-                    },
-                    enabled = current != null && !saving,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = NazoPrimary,
-                        contentColor = NazoOnPrimary,
-                    ),
-                ) {
-                    if (saving) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = NazoOnPrimary,
-                        )
-                    } else {
-                        Text("Use this")
-                    }
-                }
-            } else {
-                Button(
-                    onClick = { current?.let { accept(it, alreadySquare = false) } },
-                    enabled = current != null && !saving,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = NazoPrimary,
-                        contentColor = NazoOnPrimary,
-                    ),
-                ) {
-                    if (saving) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = NazoOnPrimary,
-                        )
-                    } else {
-                        Text("Accept")
-                    }
-                }
-            }
-        },
-        dismissButton = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // One action bar instead of splitting buttons between
+            // confirmButton and dismissButton: AlertDialog lays those out as a
+            // FlowRow, so with three actions they wrapped and drifted around.
+            // Everything lives here, in a fixed order, and dismissButton is
+            // left unset.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 TextButton(
                     onClick = {
                         if (cropping) {
-                            // Back to the plain preview, discarding the crop
-                            // adjustments rather than the image itself.
+                            // Leave the crop step, keeping the image.
                             cropState?.reset()
                             cropping = false
                         } else {
@@ -246,7 +210,9 @@ fun ProfileImagePreviewDialog(
                 ) {
                     Text(if (cropping) "Back" else "Cancel", color = NazoTextSecondary)
                 }
+
                 if (!cropping && current != null) {
+                    Spacer(Modifier.width(4.dp))
                     TextButton(onClick = { cropping = true }, enabled = !saving) {
                         Icon(
                             Icons.Filled.Crop,
@@ -256,6 +222,33 @@ fun ProfileImagePreviewDialog(
                         )
                         Spacer(Modifier.width(6.dp))
                         Text("Crop", color = NazoPrimary)
+                    }
+                }
+
+                Spacer(Modifier.width(8.dp))
+                Button(
+                    onClick = {
+                        if (cropping) {
+                            val result = cropState?.cropToBitmap()
+                            if (result != null) accept(result, alreadySquare = true)
+                        } else {
+                            current?.let { accept(it, alreadySquare = false) }
+                        }
+                    },
+                    enabled = current != null && !saving,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = NazoPrimary,
+                        contentColor = NazoOnPrimary,
+                    ),
+                ) {
+                    if (saving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = NazoOnPrimary,
+                        )
+                    } else {
+                        Text(if (cropping) "Done" else "Accept")
                     }
                 }
             }
