@@ -263,9 +263,14 @@ fun DailyChallengeCard(
 }
 
 /**
- * "+70 XP · Daily Bonus" chip for the results screen — pops in with a bouncy
- * scale a beat AFTER the New Record badge would (1s), so the two celebrations
- * read as a sequence instead of clashing.
+ * "+70 XP · Daily Bonus" chip for the results screen — settles in a beat AFTER
+ * the New Record badge would (1s), so the two celebrations read as a sequence
+ * instead of clashing.
+ *
+ * The entrance is a restrained pop, NOT a bounce: a low-bounce spring that
+ * overshoots imperceptibly and settles once. The previous
+ * DampingRatioMediumBouncy visibly oscillated, which made the badge read as a
+ * separate jumping object rather than part of the result choreography.
  */
 @Composable
 fun DailyBonusChip(bonusXp: Int, modifier: Modifier = Modifier) {
@@ -277,8 +282,10 @@ fun DailyBonusChip(bonusXp: Int, modifier: Modifier = Modifier) {
     AnimatedVisibility(
         visible = shown,
         enter = scaleIn(
+            // Starts near full size so the motion is a settle, not a zoom.
+            initialScale = 0.88f,
             animationSpec = spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
+                dampingRatio = Spring.DampingRatioNoBouncy,
                 stiffness = Spring.StiffnessMediumLow,
             ),
         ) + fadeIn(tween(220)),

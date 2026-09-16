@@ -5,6 +5,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import quiz.thaton3app.nazo.data.settings.BackupPrefs
 import quiz.thaton3app.nazo.data.settings.BackupRepository
+import quiz.thaton3app.nazo.data.settings.toLastBackup
 
 /**
  * Writes the current data bundle to the app-external auto-backup file and stamps
@@ -15,11 +16,13 @@ class BackupWorker(context: Context, params: WorkerParameters) :
 
     override suspend fun doWork(): Result {
         return try {
-            BackupRepository.exportToPath(
+            val receipt = BackupRepository.exportToPath(
                 applicationContext,
                 BackupRepository.autoBackupPath(applicationContext),
             )
-            BackupPrefs(applicationContext).lastBackupEpoch = System.currentTimeMillis()
+            // Cache what was written, measured during the write, so the Last
+            // Backup card can describe an automatic backup without reopening it.
+            BackupPrefs(applicationContext).lastBackup = receipt.toLastBackup()
             Result.success()
         } catch (e: Exception) {
             Result.failure()

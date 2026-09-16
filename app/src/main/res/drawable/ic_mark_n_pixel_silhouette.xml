@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Flat blocky "N" mask matching the pixel art's grid, for the intro punch-out
+     and Android 13 themed icons. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M14,14 L34,14 L34,24 L14,24 Z M74,14 L94,14 L94,24 L74,24 Z M14,24 L44,24 L44,34 L14,34 Z M74,24 L94,24 L94,34 L74,34 Z M14,34 L54,34 L54,44 L14,44 Z M74,34 L94,34 L94,44 L74,44 Z M14,44 L34,44 L34,54 L14,54 Z M44,44 L64,44 L64,54 L44,54 Z M74,44 L94,44 L94,54 L74,54 Z M14,54 L34,54 L34,64 L14,64 Z M54,54 L94,54 L94,64 L54,64 Z M14,64 L34,64 L34,74 L14,74 Z M64,64 L94,64 L94,74 L64,74 Z M14,74 L34,74 L34,84 L14,84 Z M74,74 L94,74 L94,84 L74,84 Z M14,84 L34,84 L34,94 L14,94 Z M74,84 L94,84 L94,94 L74,94 Z" />
+</vector>

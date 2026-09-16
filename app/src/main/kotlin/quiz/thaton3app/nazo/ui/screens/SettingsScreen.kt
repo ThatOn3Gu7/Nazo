@@ -1,5 +1,6 @@
 package quiz.thaton3app.nazo.ui.screens
 
+import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.BuildConfig
 import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 import quiz.thaton3app.nazo.ui.components.Haptics
@@ -54,18 +55,26 @@ fun SettingsScreen(
     remindersEnabled: Boolean = false,
     onRemindersEnabledChange: (Boolean) -> Unit = {},
 ) {
-    Column(
+    // Box (not Column) so the content can scroll UNDER the bottom nav, which is
+    // drawn by NazoApp on top of this screen. The bottom padding below reserves
+    // room for it so the last row is always reachable.
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
     ) {
         Column(
             modifier = Modifier
-                .weight(1f)
+                .fillMaxSize()
                 .verticalScroll(scrollState)
                 .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
-                .padding(bottom = 12.dp)
+                // Portrait reserves room for the overlaid bottom nav bar.
+                // Landscape moves that bar to a RIGHT-EDGE RAIL, so the same
+                // 96.dp became dead space and the INFO section could be
+                // scrolled up into the middle of the screen. A small inset is
+                // all landscape needs.
+                .padding(bottom = if (isLandscape()) 16.dp else 96.dp)
         ) {
             Spacer(Modifier.height(24.dp))
             

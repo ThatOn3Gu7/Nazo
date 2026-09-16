@@ -96,6 +96,247 @@ Hard rules:
         }.onFailure { e -> Log.e(TAG, "generateQuiz failed", e) }
     }
 
+    /**
+     * Asks the configured provider for a short anime-flavoured nickname.
+     *
+     * Reuses the same endpoint abstraction as [generateQuiz] rather than
+     * introducing a second key/transport path, so a provider that works for
+     * quizzes works here with no extra configuration.
+     *
+     * The result is sanitised before it is returned: models like to answer in
+     * a sentence, wrap the name in quotes, or add an explanation. Only the
+     * first plausible token survives, capped at [NICKNAME_MAX_LENGTH]. Returns
+     * a failure when nothing usable comes back, which lets the caller keep the
+     * user's current name rather than writing junk into their profile.
+     */
+    /**
+     * Invents a handle for the player.
+     *
+     * [favouriteAnime] is the player's most-answered series, taken from their own
+     * stats, and is woven into the prompt so the result reflects what they
+     * actually play. Pass an empty list for a generic handle.
+     *
+     * [avoid] lists handles already offered in this sitting. An LLM asked a
+     * byte-identical question tends to give a byte-identical answer — that is
+     * what made repeated taps of Refresh return the same name forever — so the
+     * previous suggestions are named as forbidden and a random angle is added
+     * below to genuinely move the model off its favourite answer.
+     */
+    suspend fun generateNickname(
+        providerId: String,
+        apiKey: String,
+        model: String,
+        favouriteAnime: List<String> = emptyList(),
+        avoid: List<String> = emptyList(),
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val endpoint = providerById(providerId)
+                ?: throw IllegalArgumentException("Unknown provider: $providerId")
+
+            val taste = favouriteAnime
+                .filter { it.isNotBlank() }
+                .distinct()
+                .take(3)
+            val flavour = if (taste.isEmpty()) {
+                "It should sound like an anime fan's handle. "
+            } else {
+                "The player mainly plays quizzes about: ${taste.joinToString(", ")}. " +
+                    "Draw inspiration from those series — a character, place, term or " +
+                    "motif from them — but do not copy a character's full name verbatim. "
+            }
+
+            // A different angle each tap. Without this the request is
+            // byte-identical every time and the model simply repeats itself.
+            val angle = NICKNAME_ANGLES.random()
+            val recent = avoid.filter { it.isNotBlank() }.distinct().takeLast(8)
+            val exclusion = if (recent.isEmpty()) {
+                ""
+            } else {
+                "Do NOT suggest any of these, or anything close to them: " +
+                    "${recent.joinToString(", ")}. "
+            }
+
+            val prompt = "Invent ONE short username for an anime quiz app player. " +
+                "Rules: 3 to 16 characters, letters and digits only, no spaces, " +
+                "no punctuation, no quotes, no explanation. " +
+                flavour +
+                exclusion +
+                "$angle " +
+                "Reply with the username and nothing else. " +
+                // Gemini is forced into JSON mode below, so name the field
+                // explicitly rather than letting it invent its own wrapper.
+                """If you reply in JSON, use exactly {"username": "TheName"}."""
+
+            val url = endpoint.buildUrl(model, apiKey)
+            val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                doOutput = true
+                connectTimeout = 15_000
+                readTimeout = 20_000
+                endpoint.headers(apiKey).forEach { (k, v) -> setRequestProperty(k, v) }
+            }
+
+            try {
+                val body = endpoint.requestBody(
+                    prompt,
+                    model,
+                    "You invent short usernames. Reply with one username only.",
+                    // Without an explicit schema Gemini falls back to the QUIZ
+                    // schema, which is why this used to come back as the string
+                    // "theme" — the sanitizer was reading a quiz object's first
+                    // field name, not a nickname.
+                    textSchema("username"),
+                )
+                connection.outputStream.use { os ->
+                    os.write(body.toByteArray(StandardCharsets.UTF_8))
+                }
+                val code = connection.responseCode
+                val raw = if (code in 200..299) {
+                    connection.inputStream.bufferedReader().use { it.readText() }
+                } else {
+                    connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                }
+                if (code !in 200..299) {
+                    throw IOException(friendlyHttpError(code, endpoint.kind))
+                }
+                sanitizeNickname(extractContent(endpoint.kind, raw))
+                    ?: throw IllegalStateException("Provider returned no usable nickname")
+            } finally {
+                connection.disconnect()
+            }
+        }.onFailure { e ->
+            // Deliberately does not log the key or the raw body.
+            Log.e(TAG, "generateNickname failed: ${e.javaClass.simpleName}")
+        }
+    }
+
+    /**
+     * Rotating instructions that push the model somewhere new on each tap.
+     * Deliberately about STYLE rather than content, so a personalized handle
+     * stays personalized while still changing shape.
+     */
+    private val NICKNAME_ANGLES = listOf(
+        "Make it sound bold and heroic.",
+        "Make it playful and a little silly.",
+        "Make it mysterious and quiet.",
+        "Lean on a place or location.",
+        "Lean on a weapon, power or technique.",
+        "Use a compound of two short words.",
+        "Make it sound like a veteran competitor.",
+        "Include a number somewhere in it.",
+        "Make it short and punchy — under eight characters.",
+        "Make it sound elegant and old-fashioned.",
+    )
+
+    /** Longest nickname accepted from a model, matching the profile field's own limit. */
+    private const val NICKNAME_MAX_LENGTH = 16
+
+    /**
+     * Field names a model might wrap the answer in. Checked in order; the first
+     * present string wins.
+     */
+    private val NICKNAME_FIELDS = listOf(
+        "username", "nickname", "name", "handle", "value", "text", "result",
+    )
+
+    /**
+     * Words that are structure, not an answer. A model echoing its schema back
+     * ("theme", "question") or prefixing its reply ("Username: Shadow") must not
+     * have that label mistaken for the handle itself.
+     */
+    private val LABEL_WORDS = setOf(
+        "theme", "question", "questions", "options", "answer", "correctanswer",
+        "explanation", "username", "nickname", "name", "handle", "value", "text",
+        "result", "json", "sure", "here", "how", "about", "the", "your", "user",
+        "response", "output", "suggestion", "string", "object", "array", "null",
+    )
+
+    /**
+     * Reduces a model's reply to a single safe handle, or null when nothing
+     * usable is present.
+     *
+     * Handles the shapes providers actually return: a bare word, a quoted or
+     * markdown-wrapped word, prose around the name ("Sure! How about
+     * **ShadowRonin**?"), and JSON — either {"username": "X"} or a single-key
+     * object whose key we do not recognise.
+     *
+     * Structural words are rejected rather than returned. This is what the
+     * "theme" bug was: Gemini was being handed the quiz schema, replied with a
+     * quiz object, and the old first-plausible-token scan returned its first
+     * FIELD NAME as the nickname.
+     */
+    internal fun sanitizeNickname(content: String): String? {
+        val cleaned = coerceModelJson(content).trim()
+
+        // 1. Structured reply. Prefer a known field, else the sole value of a
+        //    one-key object, so an unexpected wrapper still works.
+        jsonCandidate(cleaned)?.let { fromJson ->
+            return pickToken(fromJson, allowLabels = true)
+        }
+
+        // 2. Well-formed JSON that carried no usable field is a FAILURE, not
+        //    something to scrape for words. Scraping is how a quiz object's
+        //    "One Piece" theme could surface as the handle "One".
+        if (looksLikeJson(cleaned)) return null
+
+        // 3. Plain text: first plausible token that is not a label word. A reply
+        //    that is nothing but a label yields null, so the caller keeps the
+        //    current username rather than showing bad output.
+        return pickToken(cleaned, allowLabels = false)
+    }
+
+    /** True for a reply that parses as a JSON object or array. */
+    private fun looksLikeJson(cleaned: String): Boolean = when {
+        cleaned.startsWith("{") -> runCatching { JSONObject(cleaned) }.isSuccess
+        cleaned.startsWith("[") -> runCatching { JSONArray(cleaned) }.isSuccess
+        else -> false
+    }
+
+    /** The string a JSON reply is really carrying, if it is JSON at all. */
+    private fun jsonCandidate(cleaned: String): String? {
+        if (!cleaned.startsWith("{")) return null
+        val obj = runCatching { JSONObject(cleaned) }.getOrNull() ?: return null
+        NICKNAME_FIELDS.forEach { field ->
+            obj.keys().asSequence().firstOrNull { it.equals(field, ignoreCase = true) }
+                ?.let { key ->
+                    val v = obj.optString(key, "")
+                    if (v.isNotBlank()) return v
+                }
+        }
+        // Unrecognised single-key wrapper, e.g. {"handleSuggestion": "X"}.
+        val keys = obj.keys().asSequence().toList()
+        if (keys.size == 1) {
+            val v = obj.optString(keys[0], "")
+            if (v.isNotBlank()) return v
+        }
+        return null
+    }
+
+    /**
+     * First token that could be a handle. When [allowLabels] is false, words
+     * that are almost certainly structure or filler are skipped — but if every
+     * token is filtered out that way, nothing is returned rather than falling
+     * back to a bad guess.
+     */
+    private fun pickToken(source: String, allowLabels: Boolean): String? {
+        val candidates = source
+            // Anything that is not a letter or digit is a separator, so
+            // markdown, quotes, brackets and punctuation all fall away without
+            // needing to enumerate them.
+            .split(Regex("""[^\p{L}\p{N}]+"""))
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+        val token = candidates.firstOrNull { candidate ->
+            candidate.length in 3..NICKNAME_MAX_LENGTH &&
+                candidate.all { it.isLetterOrDigit() } &&
+                candidate.any { it.isLetter() } &&
+                (allowLabels || candidate.lowercase() !in LABEL_WORDS)
+        } ?: return null
+        // Even inside JSON, never hand back a bare label.
+        if (token.lowercase() in LABEL_WORDS) return null
+        return token.take(NICKNAME_MAX_LENGTH)
+    }
+
     // internal (not private) so other modes (e.g. modes/guessing_game) can reuse
     // the same response-shape handling instead of duplicating it.
     internal fun extractContent(kind: ProviderKind, raw: String): String = when (kind) {
@@ -303,15 +544,20 @@ Hard rules:
 
 /** In-memory cache of generated quizzes for the current app session (keyed by request params). */
 object QuizCache {
+    // Guarded by [lock]: generateQuiz runs on Dispatchers.IO and several
+    // requests can be in flight at once (a quiz build plus a prefetch), so an
+    // unsynchronised LinkedHashMap could interleave a put() resize with a
+    // read and corrupt the map or throw ConcurrentModificationException.
+    private val lock = Any()
     private val map = LinkedHashMap<String, List<Question>>()
     private const val MAX = 20
 
     fun key(provider: String, model: String, topic: String, difficulty: String, count: Int): String =
         "$provider:$model:$topic:$difficulty:$count"
 
-    fun get(key: String): List<Question>? = map[key]
+    fun get(key: String): List<Question>? = synchronized(lock) { map[key] }
 
-    fun put(key: String, value: List<Question>) {
+    fun put(key: String, value: List<Question>) = synchronized(lock) {
         map.remove(key)
         map[key] = value
         while (map.size > MAX) map.remove(map.keys.first())
