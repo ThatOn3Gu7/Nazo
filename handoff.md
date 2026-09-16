@@ -1211,3 +1211,40 @@ so that inset was pure dead space and INFO could be dragged to mid-screen. Now
    Appearance → App icon → pick one (Apply & close = filled accent).
 6. Switch accent in Appearance → confirm/primary buttons follow the new theme
    colour.
+
+### 2026-09-15 — Bottom-sheet judder at the top of the screen (landscape)
+
+**Symptom.** Fling any sheet up hard in landscape (app icon, background
+effects, celebrations, sparkles, and now backup/restore). When it reaches the
+top it oscillates up/down rapidly until you drag it back down.
+
+**Root cause.** `NazoSheetColumn` capped content at
+`screenHeightDp * 0.78`, but that bounds the CONTENT only. The sheet is also as
+tall as the status-bar inset plus the 28.dp drag handle, and `screenHeightDp`
+EXCLUDES system bars while the sheet lays out against the full window. Measured:
+
+| | content cap | + chrome | headroom |
+|---|---|---|---|
+| portrait ~800dp | 624dp | 676dp | 124dp (16%) |
+| landscape ~360dp | 281dp | 333dp | **27dp (8%)** |
+
+Portrait's slack hides the error. In landscape the sheet is ~93% of the window,
+i.e. effectively full height, so a fast fling has leftover scroll velocity: the
+sheet hands it to the content, the content bounces it back, and the two fight
+over the same gesture. That is the same drag-vs-scroll conflict fixed once
+before — the cap was simply too generous once landscape chrome is counted.
+
+**Fix.** New shared `sheetContentMaxHeight()` in `NazoSheet.kt` subtracts the
+real chrome (`WindowInsets.statusBars` + `DRAG_HANDLE_HEIGHT`) from the
+fraction, with a 40%-of-screen floor so very short windows (split screen) stay
+usable. Headroom after the fix: portrait 176dp, landscape 79dp, landscape with
+a cutout 75dp, split-screen 44dp — the sheet always settles clear of the top so
+the drag terminates.
+
+`AboutScreen`'s update sheet rolled its own `0.78f` column; it now calls the
+same helper. NOTE: `DRAG_HANDLE_HEIGHT` is hard-coded to match
+`NazoDragHandle` (16 + 4 + 8) — keep in sync if that padding changes.
+
+Affects every sheet via `NazoSheetColumn`: app icon, background effects,
+celebrations, sparkles, What's New, Home's sheet, and backup/restore in
+landscape.

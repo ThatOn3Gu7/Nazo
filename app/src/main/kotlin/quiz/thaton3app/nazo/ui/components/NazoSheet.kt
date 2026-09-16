@@ -34,9 +34,11 @@ import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.node.DelegatableNode
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import quiz.thaton3app.nazo.ui.theme.NazoSurface
 import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
@@ -87,11 +89,51 @@ private object NoIndication : IndicationNodeFactory {
 }
 
 /**
- * Tallest a scrollable sheet may grow, as a fraction of the screen. Keeps the
- * sheet clear of the status bar / camera cutout and, more importantly, gives it
- * a fixed height so its drag cannot fight the content's scroll.
+ * Tallest a scrollable sheet may grow, as a fraction of the screen.
+ *
+ * This bounds the CONTENT only. The sheet itself is also as tall as the
+ * status-bar inset plus the drag handle, so the real figure to keep below 100%
+ * is `inset + handle + fraction * screen` — see [sheetContentMaxHeight].
  */
 private const val SHEET_MAX_HEIGHT_FRACTION = 0.78f
+
+/**
+ * Vertical space the drag handle occupies: 16.dp top padding + the 4.dp pill +
+ * 8.dp bottom padding. Hard-coded alongside [NazoDragHandle]; keep in sync.
+ */
+private val DRAG_HANDLE_HEIGHT = 28.dp
+
+/**
+ * Largest height a sheet's scrolling content may take.
+ *
+ * Why this is not simply `fraction * screenHeight`: a sheet is taller than its
+ * content by the status-bar inset plus the drag handle, and `screenHeightDp`
+ * EXCLUDES system bars while the sheet is laid out against the full window. In
+ * portrait the slack absorbs that (78% of ~800dp leaves ~120dp spare), but in
+ * landscape 78% of ~360dp plus ~52dp of chrome comes to ~93% of the window.
+ *
+ * With almost no headroom the sheet is effectively full-height, so a fast
+ * upward fling hands the leftover scroll to the content, the content bounces it
+ * back to the sheet, and the two oscillate — the violent up/down judder seen
+ * when the handle reaches the top of the screen.
+ *
+ * Subtracting the chrome guarantees a real gap between the settled sheet and
+ * the top of the window in EVERY orientation, so the drag always terminates.
+ */
+@Composable
+internal fun sheetContentMaxHeight(): Dp {
+    val configuration = LocalConfiguration.current
+    val screenHeight = configuration.screenHeightDp.dp
+    val statusBarInset = with(LocalDensity.current) {
+        WindowInsets.statusBars.getTop(this).toDp()
+    }
+    val chrome = statusBarInset + DRAG_HANDLE_HEIGHT
+    // Never let the sheet exceed this share of the window once chrome is added.
+    val ceiling = screenHeight * SHEET_MAX_HEIGHT_FRACTION - chrome
+    // Floor keeps very short windows (split screen) usable rather than clamping
+    // the content to nothing.
+    return maxOf(ceiling, screenHeight * 0.4f)
+}
 
 /** Top inset shared by every Nazo sheet: never draw under the status bar. */
 val NazoSheetInsets: WindowInsets
@@ -204,7 +246,7 @@ fun NazoSheetColumn(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val maxSheetHeight = LocalConfiguration.current.screenHeightDp.dp * SHEET_MAX_HEIGHT_FRACTION
+    val maxSheetHeight = sheetContentMaxHeight()
 
     Column(
         modifier = modifier

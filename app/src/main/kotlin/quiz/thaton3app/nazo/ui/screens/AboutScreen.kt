@@ -95,7 +95,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -117,6 +116,7 @@ import quiz.thaton3app.nazo.ui.components.NazoQuietButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.components.NazoDangerButton
 import quiz.thaton3app.nazo.ui.components.isLandscape
+import quiz.thaton3app.nazo.ui.components.sheetContentMaxHeight
 import quiz.thaton3app.nazo.data.UpdateDownloader
 import quiz.thaton3app.nazo.data.UpdateFrequency
 import quiz.thaton3app.nazo.data.UpdatePrefs
@@ -503,11 +503,13 @@ private fun UpdateMenuContent(
 
     // This sheet rolls its own column rather than using NazoSheetColumn, so it
     // needs the same cap + scroll: in landscape the update panel is taller than
-    // the window and the buttons at the bottom were unreachable.
+    // the window and the buttons at the bottom were unreachable. Uses the
+    // shared helper so it also leaves room for the status bar and drag handle,
+    // without which the sheet fills the window and judders on a fast fling.
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(max = LocalConfiguration.current.screenHeightDp.dp * 0.78f)
+            .heightIn(max = sheetContentMaxHeight())
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 16.dp)
             .padding(bottom = 32.dp)
