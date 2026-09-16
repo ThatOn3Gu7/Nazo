@@ -24,11 +24,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -219,21 +221,18 @@ fun QuizCompleteScreen(
                     ) {
                         StatCard(
                             modifier = Modifier.weight(1f),
-                            icon = Icons.Outlined.Timer,
                             title = "Time",
                             value = timeSpent,
                             motion = StatMotion.Tick,
                         )
                         StatCard(
                             modifier = Modifier.weight(1f),
-                            icon = Icons.Outlined.TrackChanges,
                             title = "Accuracy",
                             value = "$accuracy%",
                             motion = StatMotion.Spin,
                         )
                         StatCard(
                             modifier = Modifier.weight(1f),
-                            icon = Icons.Outlined.Speed,
                             title = "Difficulty",
                             value = difficulty,
                             motion = StatMotion.Rev,
@@ -511,28 +510,30 @@ private fun ScoreCardContent(
 private enum class StatMotion { Tick, Spin, Rev }
 
 /**
- * A result statistic whose icon plays a short animation when tapped.
+ * A result statistic whose icon animates when tapped.
  *
- * Each motion suits its subject: the clock ticks, the target spins, the gear
- * revs. They are one-shot and driven by a single `Animatable` per card, so they
- * never run continuously and never touch the entrance or score animations —
- * those animate different properties on different composables.
+ * The icons are drawn with [Canvas] rather than taken from the Material set,
+ * because each animation has to move ONE PART of the icon -- the stopwatch
+ * needle, the plotter arm, the gauge needle -- while the body stays put.
+ * A Material icon is a single static path, so rotating it spins the whole
+ * thing, bezel and all, which is not what any of these should do.
  *
- * The animation is read inside `graphicsLayer`, i.e. during the DRAW phase, so
- * playing it re-draws the icon without recomposing the card or the screen.
+ * Every motion is one-shot and driven by a single `Animatable`. The value is
+ * read inside the Canvas draw lambda, so a tap redraws only this 20dp surface
+ * and never recomposes the card, the screen, or the entrance/score animations.
  */
 @Composable
 private fun StatCard(
     modifier: Modifier = Modifier,
-    icon: ImageVector,
     title: String,
     value: String,
     motion: StatMotion,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    // One driver per card: 0f = at rest, 1f = animation complete.
+    // 0f = at rest, 1f = animation complete.
     val progress = remember { Animatable(0f) }
+    val iconTint = NazoTextSecondary
 
     fun play() {
         // Restarting mid-flight would jump; let the current pass finish.
@@ -540,24 +541,12 @@ private fun StatCard(
         scope.launch {
             Haptics.light(context)
             progress.snapTo(0f)
-            when (motion) {
-                // Clock: a wind-up then two crisp ticks, eased so it reads as
-                // mechanical rather than smooth.
-                StatMotion.Tick -> progress.animateTo(
-                    targetValue = 1f,
-                    animationSpec = tween(620, easing = LinearEasing),
-                )
-                // Target: a single full rotation that decelerates into place.
-                StatMotion.Spin -> progress.animateTo(
-                    targetValue = 1f,
-                    animationSpec = tween(560, easing = FastOutSlowInEasing),
-                )
-                // Gear: a throttle blip — snap one way, overshoot back, settle.
-                StatMotion.Rev -> progress.animateTo(
-                    targetValue = 1f,
-                    animationSpec = tween(520, easing = LinearEasing),
-                )
+            val duration = when (motion) {
+                StatMotion.Tick -> 900
+                StatMotion.Spin -> 1500
+                StatMotion.Rev -> 900
             }
+            progress.animateTo(1f, tween(duration, easing = LinearEasing))
             progress.snapTo(0f)
         }
     }
@@ -584,44 +573,204 @@ private fun StatCard(
                 ),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = NazoTextSecondary,
-                modifier = Modifier
-                    .size(20.dp)
-                    .graphicsLayer {
-                        val t = progress.value
-                        when (motion) {
-                            StatMotion.Tick -> {
-                                // Two discrete ticks: floor() quantises the
-                                // sweep so the hand jumps instead of gliding.
-                                val steps = 6f
-                                val stepped = kotlin.math.floor(t * steps) / steps
-                                rotationZ = stepped * 360f
-                            }
-                            StatMotion.Spin -> {
-                                rotationZ = t * 360f
-                                // Slight shrink at the midpoint gives the spin
-                                // some depth instead of looking like a decal.
-                                val dip = 1f - 0.12f * sin(t * PI).toFloat()
-                                scaleX = dip
-                                scaleY = dip
-                            }
-                            StatMotion.Rev -> {
-                                // Throttle blip: hard twist one way, past centre
-                                // on the way back, then a decaying wobble.
-                                val decay = (1f - t) * (1f - t)
-                                rotationZ = -26f * decay * sin(t * 3f * PI).toFloat()
-                            }
-                        }
-                    },
-            )
+            Canvas(modifier = Modifier.size(22.dp)) {
+                val t = progress.value
+                when (motion) {
+                    StatMotion.Tick -> drawStopwatch(t, iconTint)
+                    StatMotion.Spin -> drawPlotter(t, iconTint)
+                    StatMotion.Rev -> drawGauge(t, iconTint)
+                }
+            }
         }
         Spacer(Modifier.height(12.dp))
         Text(title, style = MaterialTheme.typography.labelSmall, color = NazoTextSecondary)
         Spacer(Modifier.height(4.dp))
         Text(value, style = MaterialTheme.typography.titleMedium, color = NazoTextPrimary, fontWeight = FontWeight.Bold)
     }
+}
+
+
+// ---------------------------------------------------------------------------
+// Stat icons, drawn by hand so one moving part can animate on its own.
+// ---------------------------------------------------------------------------
+
+/**
+ * Stopwatch whose needle sweeps while the case buzzes.
+ *
+ * The body shakes on a fast decaying sine -- the "buzzing alarm clock" read --
+ * while the needle sweeps a full turn. Shake amplitude decays so it rings hard
+ * and settles, rather than vibrating forever.
+ */
+private fun DrawScope.drawStopwatch(t: Float, tint: Color) {
+    val stroke = size.minDimension * 0.09f
+    val decay = (1f - t) * (1f - t)
+    // ~7 shakes across the play, dying out towards the end.
+    val shake = size.minDimension * 0.05f * decay * sin(t * 14f * PI).toFloat()
+    val cx = size.width / 2f + shake
+    val cy = size.height / 2f + size.height * 0.06f
+    val radius = size.minDimension * 0.36f
+
+    // Case.
+    drawCircle(
+        color = tint,
+        radius = radius,
+        center = Offset(cx, cy),
+        style = Stroke(width = stroke, cap = StrokeCap.Round),
+    )
+    // Crown and the two little side lugs of a wind-up alarm.
+    drawLine(
+        color = tint,
+        start = Offset(cx, cy - radius - stroke * 0.2f),
+        end = Offset(cx, cy - radius - stroke * 1.5f),
+        strokeWidth = stroke,
+        cap = StrokeCap.Round,
+    )
+    // Needle: one full sweep, eased so it starts fast and settles.
+    val sweep = (1f - (1f - t) * (1f - t)) * 360f
+    val angle = Math.toRadians((sweep - 90f).toDouble())
+    val needle = radius * 0.68f
+    drawLine(
+        color = tint,
+        start = Offset(cx, cy),
+        end = Offset(
+            cx + needle * kotlin.math.cos(angle).toFloat(),
+            cy + needle * sin(angle).toFloat(),
+        ),
+        strokeWidth = stroke * 0.9f,
+        cap = StrokeCap.Round,
+    )
+    drawCircle(color = tint, radius = stroke * 0.55f, center = Offset(cx, cy))
+}
+
+/**
+ * Sand-plotter: an arm sweeps out and traces a spiral, then retracts.
+ *
+ * First half draws the pattern as the arm swings out; second half pulls the arm
+ * back to its start while the drawing stays. The trail is built as a path of
+ * points along a spiral so the line genuinely follows the needle tip.
+ */
+private fun DrawScope.drawPlotter(t: Float, tint: Color) {
+    val stroke = size.minDimension * 0.07f
+    val cx = size.width / 2f
+    val cy = size.height / 2f
+    val radius = size.minDimension * 0.42f
+
+    // Tray.
+    drawCircle(
+        color = tint.copy(alpha = 0.45f),
+        radius = radius,
+        center = Offset(cx, cy),
+        style = Stroke(width = stroke * 0.8f),
+    )
+
+    // Outbound for the first 65%, retract over the rest.
+    val draw = (t / 0.65f).coerceAtMost(1f)
+    val retract = ((t - 0.65f) / 0.35f).coerceIn(0f, 1f)
+    val turns = 2.2f
+
+    if (draw > 0f) {
+        val path = Path()
+        val steps = 72
+        val upTo = (steps * draw).toInt().coerceAtLeast(1)
+        for (i in 0..upTo) {
+            val f = i / steps.toFloat()
+            val a = Math.toRadians((f * turns * 360f - 90f).toDouble())
+            val r = radius * 0.82f * f
+            val x = cx + r * kotlin.math.cos(a).toFloat()
+            val y = cy + r * sin(a).toFloat()
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        drawPath(
+            path = path,
+            color = tint,
+            style = Stroke(width = stroke * 0.7f, cap = StrokeCap.Round),
+        )
+    }
+
+    // Arm: tracks the tip while drawing, then swings back to centre.
+    val tipF = draw * (1f - retract)
+    val armAngle = Math.toRadians((tipF * turns * 360f - 90f).toDouble())
+    val armLen = radius * 0.82f * tipF
+    val tipX = cx + armLen * kotlin.math.cos(armAngle).toFloat()
+    val tipY = cy + armLen * sin(armAngle).toFloat()
+    drawLine(
+        color = tint,
+        start = Offset(cx, cy),
+        end = Offset(tipX, tipY),
+        strokeWidth = stroke * 0.8f,
+        cap = StrokeCap.Round,
+    )
+    drawCircle(color = tint, radius = stroke * 0.5f, center = Offset(cx, cy))
+    if (armLen > 0.01f) {
+        drawCircle(color = tint, radius = stroke * 0.42f, center = Offset(tipX, tipY))
+    }
+}
+
+/**
+ * Rev counter: the needle blips up the dial and drops back.
+ *
+ * Two throttle blips, the second smaller, each snapping up quickly and falling
+ * back more slowly -- how a real tacho behaves, since the engine picks up
+ * faster than it spins down. Only the needle moves; the dial and its ticks
+ * stay fixed.
+ */
+private fun DrawScope.drawGauge(t: Float, tint: Color) {
+    val stroke = size.minDimension * 0.08f
+    val cx = size.width / 2f
+    val cy = size.height * 0.62f
+    val radius = size.minDimension * 0.40f
+
+    // Dial arc: 180deg sweep, like a speedometer.
+    drawArc(
+        color = tint.copy(alpha = 0.5f),
+        startAngle = 180f,
+        sweepAngle = 180f,
+        useCenter = false,
+        topLeft = Offset(cx - radius, cy - radius),
+        size = Size(radius * 2f, radius * 2f),
+        style = Stroke(width = stroke * 0.7f, cap = StrokeCap.Round),
+    )
+    // Three ticks so the needle has something to read against.
+    for (i in 0..2) {
+        val a = Math.toRadians((180f + i * 90f).toDouble())
+        val outer = radius
+        val inner = radius * 0.78f
+        drawLine(
+            color = tint.copy(alpha = 0.5f),
+            start = Offset(
+                cx + inner * kotlin.math.cos(a).toFloat(),
+                cy + inner * sin(a).toFloat(),
+            ),
+            end = Offset(
+                cx + outer * kotlin.math.cos(a).toFloat(),
+                cy + outer * sin(a).toFloat(),
+            ),
+            strokeWidth = stroke * 0.5f,
+            cap = StrokeCap.Round,
+        )
+    }
+
+    // Two blips: fast attack, slower decay.
+    fun blip(local: Float, peak: Float): Float = when {
+        local <= 0f || local >= 1f -> 0f
+        local < 0.28f -> peak * (local / 0.28f)
+        else -> peak * (1f - (local - 0.28f) / 0.72f)
+    }
+    val rev = blip(t / 0.5f, 1f) + blip((t - 0.5f) / 0.5f, 0.62f)
+
+    // Rest at the left stop, sweeping right as revs climb.
+    val angle = Math.toRadians((180f + rev.coerceIn(0f, 1f) * 170f).toDouble())
+    val needle = radius * 0.86f
+    drawLine(
+        color = tint,
+        start = Offset(cx, cy),
+        end = Offset(
+            cx + needle * kotlin.math.cos(angle).toFloat(),
+            cy + needle * sin(angle).toFloat(),
+        ),
+        strokeWidth = stroke * 0.85f,
+        cap = StrokeCap.Round,
+    )
+    drawCircle(color = tint, radius = stroke * 0.6f, center = Offset(cx, cy))
 }
 

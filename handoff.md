@@ -1311,3 +1311,43 @@ run on the day a record is set.
    and Home behind it has NOT shifted or gained a scrollbar.
 8. Play today vs not → "Today: Done" vs "Not yet" plus the nudge line.
 9. Tap outside / Close / back → dismisses. Rotate with it open → survives.
+
+### 2026-09-15 — Stat icons redone: animate the PART, not the whole icon
+
+Owner feedback: the first attempt rotated each Material icon wholesale. What
+was wanted was the moving part inside each instrument.
+
+**Why it had to be rewritten, not tweaked.** A Material icon is ONE static
+vector path. `rotationZ` on it spins the bezel, the case and the needle
+together, so "spin the needle" is impossible with `Icons.Outlined.*`. The three
+icons are now hand-drawn with `Canvas`, which lets the body stay fixed while a
+single element moves. `StatCard` no longer takes an `icon` parameter.
+
+- **Time -> `drawStopwatch`** — case buzzes on a decaying sine
+  (`(1-t)^2 * sin(14*PI*t)`, ~7 shakes dying out) for the Japanese alarm-clock
+  read, while the needle sweeps a full 360 with an ease-out.
+- **Accuracy -> `drawPlotter`** — sand-plotter. The arm swings out over the
+  first 65% tracing a 2.2-turn spiral built point-by-point (so the trail truly
+  follows the tip), then retracts to centre over the remaining 35% while the
+  drawing stays.
+- **Difficulty -> `drawGauge`** — tacho with a fixed 180-degree dial and three
+  ticks. TWO blips, the second at 62% height, each with a fast attack (28%) and
+  slower decay (72%), because an engine picks up faster than it spins down.
+  Verified numerically: 0 -> .83 -> 0 -> .52 -> 0.
+
+Durations lengthened so the motion is legible: 900/1500/900ms.
+
+Removed now-unused imports `graphicsLayer` and `ImageVector` (an unused import
+fails this build), added `Offset`, `Size`, `Path`, `DrawScope`.
+
+### How to test it live
+
+1. Finish any quiz. On the results screen tap **Time**: the stopwatch body
+   shakes like an alarm bell AND the needle sweeps one full turn, both settling
+   together. The case must not rotate.
+2. Tap **Accuracy**: the arm swings out drawing a spiral in the tray, then
+   returns to the centre leaving the pattern behind.
+3. Tap **Difficulty**: the needle blips right and falls back TWICE, the second
+   blip smaller. The dial and its ticks stay still.
+4. Tap each repeatedly and mid-animation: no jump, it finishes then replays.
+5. Confirm the entrance and score animations still play normally on entry.
