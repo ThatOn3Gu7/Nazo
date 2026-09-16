@@ -507,7 +507,6 @@ private fun ScoreCardContent(
     }
 }
 
-@Composable
 /** Which tap animation a [StatCard] icon plays. */
 private enum class StatMotion { Tick, Spin, Rev }
 
