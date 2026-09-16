@@ -1,5 +1,6 @@
 package quiz.thaton3app.nazo.ui.screens
 
+import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.BuildConfig
 import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 import quiz.thaton3app.nazo.ui.components.Haptics
@@ -68,9 +69,12 @@ fun SettingsScreen(
                 .verticalScroll(scrollState)
                 .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
-                // Matches Home's bottom inset so the last row can always be
-                // scrolled clear of the overlaid nav bar.
-                .padding(bottom = 96.dp)
+                // Portrait reserves room for the overlaid bottom nav bar.
+                // Landscape moves that bar to a RIGHT-EDGE RAIL, so the same
+                // 96.dp became dead space and the INFO section could be
+                // scrolled up into the middle of the screen. A small inset is
+                // all landscape needs.
+                .padding(bottom = if (isLandscape()) 16.dp else 96.dp)
         ) {
             Spacer(Modifier.height(24.dp))
             

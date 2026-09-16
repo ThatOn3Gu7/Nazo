@@ -19,6 +19,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import quiz.thaton3app.nazo.ui.components.NazoConfirmButton
 import quiz.thaton3app.nazo.ui.components.NazoDangerButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.components.Haptics
@@ -544,13 +545,15 @@ fun ProfileScreen(
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
+                NazoConfirmButton(onClick = {
                     onUsernameChange(text.trim())
                     showUsernameDialog = false
                 }) { Text("Save") }
             },
             dismissButton = {
-                TextButton(onClick = { showUsernameDialog = false }) { Text("Cancel") }
+                NazoSecondaryButton(onClick = { showUsernameDialog = false }, muted = true) {
+                    Text("Cancel")
+                }
             }
         )
     }
@@ -956,8 +959,12 @@ fun ProfileScreen(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TextButton(onClick = { closeUrlDialog() }, enabled = !fetching) {
-                        Text("Cancel", color = NazoTextSecondary)
+                    NazoSecondaryButton(
+                        onClick = { closeUrlDialog() },
+                        enabled = !fetching,
+                        muted = true,
+                    ) {
+                        Text("Cancel")
                     }
                     if (previewBitmap != null) {
                         Spacer(Modifier.width(4.dp))

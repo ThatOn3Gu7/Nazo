@@ -27,10 +27,19 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
  * primary. These wrappers give every button a defined role and a visible edge,
  * so a screen's actions look deliberate rather than assembled ad hoc.
  *
- * Three roles:
+ * Four roles, chosen by how consequential the action is:
  *  - [NazoPrimaryButton]   the one obvious action. Filled accent.
- *  - [NazoSecondaryButton] alternatives and Cancel. Outlined, accent text.
- *  - [NazoDangerButton]    destructive. Filled red.
+ *  - [NazoConfirmButton]   commits a change (save, restore, accept). Filled
+ *                          accent, same as primary -- see below.
+ *  - [NazoSecondaryButton] alternatives, Cancel, Back. Outlined.
+ *  - [NazoDangerButton]    destructive and not undoable. Filled red.
+ *
+ * Confirm deliberately uses the theme accent rather than a fixed green. The
+ * app ships several colour schemes, and a hard-coded green would clash with
+ * every one of them and stop tracking the user's chosen theme; [NazoPrimary]
+ * IS each scheme's most vivid colour, so affirmative actions stay the boldest
+ * thing on screen whichever theme is active. Red is the one exception, because
+ * destructive means the same thing in every scheme.
  *
  * All three share [NazoButtonShape] and a 1.5.dp edge so they line up visually
  * when placed side by side.
@@ -99,6 +108,28 @@ fun NazoSecondaryButton(
     )
 }
 
+/**
+ * Commits a change: Save, Restore, Accept, Confirm.
+ *
+ * Currently identical to [NazoPrimaryButton] -- it exists as its own name so
+ * call sites state intent, and so the affirmative role can be restyled
+ * independently later without hunting through screens.
+ */
+@Composable
+fun NazoConfirmButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    contentPadding: PaddingValues = DefaultContentPadding,
+    content: @Composable RowScope.() -> Unit,
+) = NazoPrimaryButton(
+    onClick = onClick,
+    modifier = modifier,
+    enabled = enabled,
+    contentPadding = contentPadding,
+    content = content,
+)
+
 /** Destructive and not undoable: delete, remove, wipe. */
 @Composable
 fun NazoDangerButton(
@@ -119,6 +150,36 @@ fun NazoDangerButton(
             contentColor = Color.White,
             disabledContainerColor = NazoError.copy(alpha = 0.35f),
             disabledContentColor = Color.White.copy(alpha = 0.6f),
+        ),
+        contentPadding = contentPadding,
+        content = content,
+    )
+}
+
+/**
+ * Lowest emphasis: dismiss, "Not now", "Email instead".
+ *
+ * Still carries a faint outline. A bare text button sitting beside a filled
+ * one reads as disabled rather than optional, which is what made some screens
+ * look unfinished.
+ */
+@Composable
+fun NazoQuietButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+    content: @Composable RowScope.() -> Unit,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        shape = NazoButtonShape,
+        border = BorderStroke(1.dp, NazoTextSecondary.copy(alpha = 0.28f)),
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = NazoTextSecondary,
+            disabledContentColor = NazoTextSecondary.copy(alpha = 0.4f),
         ),
         contentPadding = contentPadding,
         content = content,

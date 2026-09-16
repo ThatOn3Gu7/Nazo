@@ -1151,3 +1151,63 @@ Accept, and the Profile avatar row (URL / Gallery / Remove).
 6. **Buttons**: Quiz results (Play Another / Review / Share), Backup preview,
    avatar row. Same corner radius, all with a visible edge, primary filled,
    secondary outlined, Remove red.
+
+### 2026-09-15 — Backup sheet in landscape, button roles, settings inset
+
+**1. Backup/restore dialogs now use the app-icon drag sheet in landscape.**
+`NazoAdaptiveDialog` was a right-edge side panel; the owner wanted the same
+component the app-icon picker uses. It now renders `NazoModalSheet` +
+`NazoSheetColumn` in landscape (slides up from the bottom, full width, dims the
+whole screen) and keeps the centred card in portrait. Portrait deliberately
+unchanged.
+
+IMPORTANT: the backup/restore previews are `dismissible = false`. Refusing
+`onDismissRequest` alone is NOT enough for a bottom sheet — the drag gesture
+would still hide it. `rememberModalBottomSheetState(confirmValueChange = ...)`
+rejects the transition to `Hidden`, which is what actually blocks the swipe.
+
+**2. Button roles — `ui/components/NazoButtons.kt`.** The previous pass only
+covered filled buttons; the owner was right that bare `TextButton`s were left.
+Roles now: `NazoPrimaryButton`, `NazoConfirmButton` (save/restore/accept),
+`NazoSecondaryButton` (`muted = true` for plain Cancel), `NazoDangerButton`
+(destructive), `NazoQuietButton` (lowest emphasis, still a faint outline).
+
+Owner initially asked for GREEN confirm buttons, then revised: use the theme's
+own vivid colour instead, since the app has multiple colour schemes.
+`NazoPrimary` already IS each scheme's accent, so confirm uses that and tracks
+the active theme. Red stays fixed, because destructive means the same in every
+scheme.
+
+Migrated: feedback chooser (Email instead -> quiet, Cancel -> secondary),
+update sheet "View on GitHub", APK cleanup prompt, **APK cleanup "Delete" ->
+danger** (it was accent-coloured, identical to Cancel, for a button that
+deletes files), username Save -> confirm / Cancel -> muted, URL dialog Cancel,
+picture preview Cancel-Back, app-icon "Apply & close" -> confirm / Cancel ->
+muted.
+
+Left alone deliberately: `LoadingScreen`'s and `GuessingPlayScreen`'s private
+Cancel/Quit buttons already draw their own 1.dp outline, and onboarding "Skip"
+is intentionally low-key over artwork.
+
+**3. Settings INFO section over-scrolled in landscape.** The scroll column
+reserved `96.dp` at the bottom for the overlaid bottom nav — but landscape
+moves the nav to a RIGHT-EDGE RAIL (`NazoBottomNav` switches to `NazoNavRail`),
+so that inset was pure dead space and INFO could be dragged to mid-screen. Now
+`16.dp` in landscape, `96.dp` in portrait.
+
+### How to test it live
+
+1. **Landscape → Backup & Restore → "Back up now"**: a sheet slides UP from the
+   bottom, full width, whole screen dimmed — same as Appearance → App icon.
+2. In that sheet, **try to swipe it down**: it must REFUSE to dismiss (the
+   preview is non-dismissible). Cancel/Confirm both reachable; scroll if the
+   category list is long. Same for Restore.
+3. **Portrait → same dialogs**: still the centred card, unchanged.
+4. **Landscape → Settings**: scroll to the bottom. INFO should sit just above
+   the bottom edge, NOT float mid-screen.
+5. **Buttons**: About → Send feedback (Email instead = faint outline, Cancel =
+   outlined); About → Clean up APKs → **Delete is RED**, Cancel outlined;
+   Profile → edit username (Save = filled accent, Cancel = outlined);
+   Appearance → App icon → pick one (Apply & close = filled accent).
+6. Switch accent in Appearance → confirm/primary buttons follow the new theme
+   colour.

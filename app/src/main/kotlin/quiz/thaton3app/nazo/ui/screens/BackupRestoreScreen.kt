@@ -570,10 +570,10 @@ private fun FadeDialog(
     dismissible: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    // Delegates to the shared adaptive dialog: a centred card in portrait, a
-    // side panel that slides in from the edge in landscape. Landscape is only
-    // ~360 dp tall, so a centred card had to scroll awkwardly between two wide
-    // bands of scrim; the panel uses the height it actually has.
+    // Delegates to the shared adaptive dialog: a centred card in portrait, and
+    // in landscape the same bottom drag sheet the app-icon picker uses, which
+    // spans the full width and dims the whole screen. A centred card in a
+    // ~360 dp-tall window had to scroll between two wide bands of scrim.
     NazoAdaptiveDialog(
         visible = visible,
         onDismiss = onDismiss,
@@ -595,7 +595,7 @@ private fun NothingToBackUpContent(onClose: () -> Unit) {
     Column(
         modifier = Modifier
             .then(
-                // The panel already provides the surface in landscape.
+                // The bottom sheet already provides the surface in landscape.
                 if (landscape) {
                     Modifier.fillMaxWidth()
                 } else {
@@ -680,9 +680,9 @@ private fun BackupContentsContent(
     Column(
         modifier = Modifier
             .then(
-                // In the landscape side panel the surface is already drawn by
-                // the panel itself, so the card drops its own background,
-                // border and width cap and simply fills it.
+                // In landscape this renders inside a bottom sheet, which
+                // already draws the surface, so the card drops its own
+                // background, border and width cap and simply fills it.
                 if (landscape) {
                     Modifier.fillMaxWidth()
                 } else {
@@ -743,9 +743,10 @@ private fun BackupContentsContent(
                 Column(
                     modifier = Modifier
                         // Long bundles stay scrollable instead of pushing the
-                        // buttons off-screen. Landscape gets a tighter cap so
-                        // the action row still fits in a ~360 dp viewport.
-                        .heightIn(max = if (isLandscape()) 132.dp else 240.dp)
+                        // buttons off-screen. In landscape the sheet itself is
+                        // already height-capped and scrolls, so the inner list
+                        // stays small to avoid two competing scroll regions.
+                        .heightIn(max = if (isLandscape()) 120.dp else 240.dp)
                         .verticalScroll(rememberScrollState())
                 ) {
                     categories.forEachIndexed { index, category ->
@@ -861,7 +862,7 @@ private fun AutoBackupFreqContent(
     Column(
         modifier = Modifier
             .then(
-                // The panel already provides the surface in landscape.
+                // The bottom sheet already provides the surface in landscape.
                 if (landscape) {
                     Modifier.fillMaxWidth()
                 } else {

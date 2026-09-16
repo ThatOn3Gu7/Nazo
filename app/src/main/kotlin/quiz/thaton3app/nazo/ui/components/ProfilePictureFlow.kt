@@ -196,7 +196,7 @@ fun ProfileImagePreviewDialog(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(
+                NazoSecondaryButton(
                     onClick = {
                         if (cropping) {
                             // Leave the crop step, keeping the image.
@@ -207,8 +207,9 @@ fun ProfileImagePreviewDialog(
                         }
                     },
                     enabled = !saving,
+                    muted = true,
                 ) {
-                    Text(if (cropping) "Back" else "Cancel", color = NazoTextSecondary)
+                    Text(if (cropping) "Back" else "Cancel")
                 }
 
                 if (!cropping && current != null) {

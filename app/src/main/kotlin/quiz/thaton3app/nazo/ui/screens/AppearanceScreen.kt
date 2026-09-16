@@ -69,6 +69,8 @@ import quiz.thaton3app.nazo.ui.components.CELEBRATION_STYLES
 import quiz.thaton3app.nazo.ui.components.CelebrationStyle
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
+import quiz.thaton3app.nazo.ui.components.NazoConfirmButton
+import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.components.NazoModalSheet
 import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
 import quiz.thaton3app.nazo.ui.components.NazoTab
@@ -711,19 +713,19 @@ fun AppearanceScreen(
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
+                NazoConfirmButton(onClick = {
                     Haptics.soft(context)
                     val chosen = option.id
                     pendingIcon = null
                     showIconSheet = false
                     onAppIconChange(chosen)
                 }) {
-                    Text("Apply & close", color = NazoPrimary, fontWeight = FontWeight.SemiBold)
+                    Text("Apply & close", fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pendingIcon = null }) {
-                    Text("Cancel", color = NazoTextSecondary)
+                NazoSecondaryButton(onClick = { pendingIcon = null }, muted = true) {
+                    Text("Cancel")
                 }
             },
         )

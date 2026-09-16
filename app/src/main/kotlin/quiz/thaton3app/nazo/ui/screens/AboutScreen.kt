@@ -113,6 +113,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.data.GITHUB_REPO
+import quiz.thaton3app.nazo.ui.components.NazoQuietButton
+import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
+import quiz.thaton3app.nazo.ui.components.NazoDangerButton
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.data.UpdateDownloader
 import quiz.thaton3app.nazo.data.UpdateFrequency
@@ -422,13 +425,13 @@ fun AboutScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     // Kept for anyone without a GitHub account.
-                    TextButton(onClick = {
+                    NazoQuietButton(onClick = {
                         showFeedback = false
                         sendFeedbackEmail(context)
-                    }) { Text("Email instead", color = NazoTextSecondary) }
+                    }) { Text("Email instead") }
                     Spacer(Modifier.width(8.dp))
-                    TextButton(onClick = { showFeedback = false }) {
-                        Text("Cancel", color = NazoPrimary)
+                    NazoSecondaryButton(onClick = { showFeedback = false }) {
+                        Text("Cancel")
                     }
                 }
             },
@@ -817,8 +820,8 @@ private fun UpdateMenuContent(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.End,
                                     ) {
-                                        TextButton(onClick = { onOpenBrowser(availableState.htmlUrl) }) {
-                                            Text("View on GitHub", color = NazoPrimary)
+                                        NazoSecondaryButton(onClick = { onOpenBrowser(availableState.htmlUrl) }) {
+                                            Text("View on GitHub")
                                         }
                                     }
                                 }
@@ -840,7 +843,7 @@ private fun UpdateMenuContent(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            TextButton(onClick = { promptApkCleanup() }) {
+                            NazoSecondaryButton(onClick = { promptApkCleanup() }) {
                                 Text(
                                     "Clean up APKs",
                                     maxLines = 1,
@@ -934,7 +937,9 @@ private fun UpdateMenuContent(
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
+                // Deletes files off the device: destructive, so it reads as
+                // destructive rather than sharing the accent with Cancel.
+                NazoDangerButton(onClick = {
                     val deleted = UpdateDownloader.deleteApkFiles(apkFilesToClean)
                     showCleanupConfirm = false
                     Toast.makeText(
@@ -944,11 +949,11 @@ private fun UpdateMenuContent(
                         Toast.LENGTH_SHORT,
                     ).show()
                 }) {
-                    Text("Delete", color = NazoPrimary)
+                    Text("Delete")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showCleanupConfirm = false }) { Text("Cancel", color = NazoTextSecondary) }
+                NazoSecondaryButton(onClick = { showCleanupConfirm = false }, muted = true) { Text("Cancel") }
             },
         )
     }
