@@ -17,8 +17,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -232,7 +234,7 @@ fun ProfileImageCropper(
                         if (corner != null) state.resize(corner, drag) else state.move(drag)
                     }
                 }
-                .drawWithContentSafe { scope ->
+                .drawBehind {
                     val box = Rect(
                         state.left,
                         state.top,
@@ -245,32 +247,32 @@ fun ProfileImageCropper(
                     // avoids BlendMode.Clear, which needs an offscreen layer
                     // and is easy to get wrong.
                     val shade = Color.Black.copy(alpha = 0.55f)
-                    scope.drawRect(
+                    drawRect(
                         shade,
                         topLeft = Offset(img.left, img.top),
-                        size = androidx.compose.ui.geometry.Size(img.width, box.top - img.top),
+                        size = Size(img.width, box.top - img.top),
                     )
-                    scope.drawRect(
+                    drawRect(
                         shade,
                         topLeft = Offset(img.left, box.bottom),
-                        size = androidx.compose.ui.geometry.Size(img.width, img.bottom - box.bottom),
+                        size = Size(img.width, img.bottom - box.bottom),
                     )
-                    scope.drawRect(
+                    drawRect(
                         shade,
                         topLeft = Offset(img.left, box.top),
-                        size = androidx.compose.ui.geometry.Size(box.left - img.left, box.height),
+                        size = Size(box.left - img.left, box.height),
                     )
-                    scope.drawRect(
+                    drawRect(
                         shade,
                         topLeft = Offset(box.right, box.top),
-                        size = androidx.compose.ui.geometry.Size(img.right - box.right, box.height),
+                        size = Size(img.right - box.right, box.height),
                     )
 
                     // Box outline.
-                    scope.drawRect(
+                    drawRect(
                         color = Color.White,
                         topLeft = Offset(box.left, box.top),
-                        size = androidx.compose.ui.geometry.Size(box.width, box.height),
+                        size = Size(box.width, box.height),
                         style = Stroke(width = strokePx),
                     )
 
@@ -278,13 +280,13 @@ fun ProfileImageCropper(
                     val third = box.width / 3f
                     val guide = Color.White.copy(alpha = 0.35f)
                     for (i in 1..2) {
-                        scope.drawLine(
+                        drawLine(
                             guide,
                             Offset(box.left + third * i, box.top),
                             Offset(box.left + third * i, box.bottom),
                             strokeWidth = strokePx / 2f,
                         )
-                        scope.drawLine(
+                        drawLine(
                             guide,
                             Offset(box.left, box.top + third * i),
                             Offset(box.right, box.top + third * i),
@@ -300,7 +302,7 @@ fun ProfileImageCropper(
                         Offset(box.right, box.bottom),
                     )
                     corners.forEach { c ->
-                        scope.drawCircle(
+                        drawCircle(
                             color = Color.White,
                             radius = handleDrawPx / 2f,
                             center = c,
@@ -309,7 +311,7 @@ fun ProfileImageCropper(
 
                     // Circle preview: the avatar is masked to a circle, so show
                     // which part of the crop actually survives.
-                    scope.drawCircle(
+                    drawCircle(
                         color = Color.White.copy(alpha = 0.5f),
                         radius = box.width / 2f,
                         center = box.center,
@@ -345,14 +347,3 @@ private fun nearestCorner(
     }
     return best
 }
-
-/**
- * Thin wrapper so the overlay's draw code reads as a single lambda. Compose's
- * drawWithContent gives a ContentDrawScope; the overlay never draws children,
- * so only the DrawScope is exposed.
- */
-private fun Modifier.drawWithContentSafe(
-    block: (androidx.compose.ui.graphics.drawscope.DrawScope) -> Unit,
-): Modifier = this.then(
-    androidx.compose.ui.draw.drawBehind { block(this) },
-)
