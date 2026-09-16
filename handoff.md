@@ -1041,3 +1041,60 @@ undoable from that dialog).
 6. Tap **Remove** -> double haptic pulse, avatar resets to initials.
 7. With no custom picture set, Remove is absent and the other two still fill
    the row.
+
+### 2026-09-15 — Feedback to GitHub, offline nickname, backup landscape
+
+Prompt 4 of 5. Parts were already done by earlier work; audited first.
+
+**Already satisfied, left alone:** retry re-enters Loading visibly
+(`MIN_LOADING_MS` dwell, added in 5f0c0b7) and duplicate taps are already
+guarded (`generationToken`/`guessToken`; `if (generatingName) return`;
+`if (fetching) return`). The dwell is 900 ms and only applies to FAILURES that
+return faster than that, so it is not an artificial delay on the happy path.
+
+**1. Send feedback -> GitHub.** Now opens a chooser: *Report an issue* /
+*Suggest a feature*, each opening GitHub's new-issue form for a template.
+Added `.github/ISSUE_TEMPLATE/bug_report.yml` and `feature_request.yml`
+(neither existed). The bug form is pre-filled with device/Android/app-version
+via a `&device=` query param — GitHub ignores unknown params, so a renamed
+template degrades gracefully. "Email instead" is kept for users with no GitHub
+account; `sendFeedback` was split into `environmentBlock` + `openIssueForm` +
+`sendFeedbackEmail`.
+
+**2. Offline nickname.** `ProfileScreen` takes `offline: Boolean` (wired from
+`NazoApp.offlineMode`). The Refresh handler now short-circuits to
+`randomAnimeUsername()` when offline, instead of spinning for the full network
+timeout and then showing an error for something doable on-device.
+
+**3. Error messages animate.** The nickname `supportingText` and the URL
+`fetchError` now fade + expand/shrink via `AnimatedVisibility` instead of
+snapping in and resizing the dialog. The nickname supportingText slot is now
+ALWAYS present (holding the animation) rather than null-or-absent, which is
+what made the field jump.
+
+**4. Backup & Restore landscape.** Root cause: `FadeDialog` centres unbounded
+content in a `fillMaxSize` Box. In landscape the viewport is ~360 dp tall while
+the preview card (icon + copy + category list + 54 dp action row) is taller, so
+the buttons were pushed off BOTH ends and were unreachable. Fixed at the
+`FadeDialog` level, so all three dialogs benefit: the card now sits in a
+`safeDrawingPadding().verticalScroll()` Box. Portrait is unchanged (card is
+shorter than the viewport, nothing to scroll). The inner category list cap is
+also orientation-aware: 240.dp portrait, 132.dp landscape.
+
+### How to test it live
+
+1. **About -> Send Feedback** -> chooser appears. "Report an issue" opens
+   GitHub's bug form in a browser with the device block pre-filled. Back, then
+   "Suggest a feature" -> the feature form. "Email instead" -> mail draft.
+2. **Offline nickname:** Settings -> turn ON offline mode. Profile -> edit
+   username -> tap Refresh. A new name appears **instantly**, no spinner, no
+   error. Tap repeatedly: it changes every time.
+3. Turn offline OFF (with a provider key set) -> Refresh still calls the AI.
+4. **Error animation:** with a provider key set but no network, tap Refresh ->
+   the error text **fades/slides in**, and disappears smoothly on the next tap.
+5. **Backup landscape (the bug):** rotate to landscape, Settings -> Backup &
+   Restore -> "Back up now". The preview card must be fully usable: scroll it
+   if needed, and **Cancel and Confirm must both be reachable and tappable**.
+   Repeat for Restore (pick a backup file) and the auto-backup frequency
+   dialog.
+6. Same screens in **portrait** must look and behave exactly as before.

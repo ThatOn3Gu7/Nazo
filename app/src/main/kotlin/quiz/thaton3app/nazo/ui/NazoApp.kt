@@ -1465,6 +1465,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         username = profileName,
                         profilePictureUri = profilePictureUri,
                         quizStats = quizStats,
+                        offline = offlineMode,
                         onBack = { goBack() },
                         onUsernameChange = { name ->
                             profileName = name

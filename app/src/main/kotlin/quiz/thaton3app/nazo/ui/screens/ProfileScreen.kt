@@ -12,6 +12,12 @@ import androidx.activity.result.PickVisualMediaRequest
 import android.content.res.Configuration
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import quiz.thaton3app.nazo.ui.components.Haptics
 import androidx.compose.foundation.BorderStroke
@@ -83,6 +89,8 @@ fun ProfileScreen(
     username: String,
     profilePictureUri: String?,
     quizStats: QuizStats = QuizStats(),
+    /** When true, never hit the network: use the local generator directly. */
+    offline: Boolean = false,
     onBack: () -> Unit = {},
     onUsernameChange: (String) -> Unit,
     onProfilePictureChange: (String?) -> Unit,
@@ -446,7 +454,15 @@ fun ProfileScreen(
                                 val provider = apiKeyStore.getGenerationProvider()
                                 val key = provider?.let { apiKeyStore.getKey(it) }
                                 val model = provider?.let { apiKeyStore.getModel(it) }
-                                if (provider == null || key.isNullOrBlank() || model.isNullOrBlank()) {
+                                // Offline: go straight to the local generator.
+                                // Attempting the request would spin for the
+                                // whole timeout and then show a network error
+                                // for something we can do instantly on-device.
+                                if (offline ||
+                                    provider == null ||
+                                    key.isNullOrBlank() ||
+                                    model.isNullOrBlank()
+                                ) {
                                     // Local generator: keep drawing until it
                                     // differs from what is already in the field,
                                     // so a tap always visibly changes something.
@@ -507,8 +523,20 @@ fun ProfileScreen(
                             }
                         }
                     },
-                    supportingText = nameError?.let { msg ->
-                        { Text(msg, style = MaterialTheme.typography.bodySmall) }
+                    // Always present, so the field does not jump as the error
+                    // appears and disappears; AnimatedVisibility fades and
+                    // expands the text instead of snapping it in.
+                    supportingText = {
+                        AnimatedVisibility(
+                            visible = nameError != null,
+                            enter = fadeIn(tween(180)) + expandVertically(tween(180)),
+                            exit = fadeOut(tween(140)) + shrinkVertically(tween(140)),
+                        ) {
+                            Text(
+                                text = nameError.orEmpty(),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                     },
                     isError = nameError != null
                 )
@@ -914,15 +942,21 @@ fun ProfileScreen(
                         },
                     )
 
-                    val error = fetchError
-                    if (error != null) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = error,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = NazoError,
-                            textAlign = TextAlign.Center,
-                        )
+                    // Fades/expands rather than snapping the dialog taller.
+                    AnimatedVisibility(
+                        visible = fetchError != null,
+                        enter = fadeIn(tween(180)) + expandVertically(tween(180)),
+                        exit = fadeOut(tween(140)) + shrinkVertically(tween(140)),
+                    ) {
+                        Column {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = fetchError.orEmpty(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NazoError,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
                     }
 
                 }

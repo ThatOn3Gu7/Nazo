@@ -20,7 +20,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.verticalScroll
+import quiz.thaton3app.nazo.ui.components.isLandscape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -587,12 +589,27 @@ private fun FadeDialog(
                 ),
             contentAlignment = Alignment.Center
         ) {
-            Box(modifier = Modifier.clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = {}
-            )) {
-                content()
+            // In landscape the viewport is only ~360 dp tall, and these cards
+            // (icon + copy + category list + action row) are taller than that.
+            // Centring unbounded content pushed the buttons off both ends of
+            // the screen, so the card scrolls as a whole and keeps clear of the
+            // system bars. Portrait is unaffected: the card is shorter than the
+            // viewport, so there is nothing to scroll.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .safeDrawingPadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(vertical = 16.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(modifier = Modifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {}
+                )) {
+                    content()
+                }
             }
         }
     }
@@ -732,8 +749,10 @@ private fun BackupContentsContent(
             ) {
                 Column(
                     modifier = Modifier
-                        // Long bundles stay scrollable instead of pushing the buttons off-screen.
-                        .heightIn(max = 240.dp)
+                        // Long bundles stay scrollable instead of pushing the
+                        // buttons off-screen. Landscape gets a tighter cap so
+                        // the action row still fits in a ~360 dp viewport.
+                        .heightIn(max = if (isLandscape()) 132.dp else 240.dp)
                         .verticalScroll(rememberScrollState())
                 ) {
                     categories.forEachIndexed { index, category ->

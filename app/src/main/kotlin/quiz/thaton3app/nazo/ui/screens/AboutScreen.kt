@@ -46,6 +46,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.Balance
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
@@ -133,6 +135,8 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 
 private const val FEEDBACK_EMAIL = "socialzoneop@gmail.com"
+private const val BUG_TEMPLATE = "bug_report.yml"
+private const val FEATURE_TEMPLATE = "feature_request.yml"
 
 /** 17.3-style megabyte formatting for the download progress line. */
 private fun formatMb(bytes: Long): String = String.format(java.util.Locale.US, "%.1f", bytes / 1048576.0)
@@ -191,6 +195,7 @@ fun AboutScreen(
     }
 
     var showUpdate by remember { mutableStateOf(false) }
+    var showFeedback by remember { mutableStateOf(false) }
 
     var updateState by remember { mutableStateOf<UpdateState>(UpdateState.Idle) }
     var checkLabel by remember { mutableStateOf("Check Now") }
@@ -314,7 +319,7 @@ fun AboutScreen(
                     icon = Icons.Filled.ChatBubbleOutline,
                     title = "Send Feedback",
                     subtitle = "Report issues or share ideas",
-                    onClick = { sendFeedback(context) }
+                    onClick = { showFeedback = true }
                 )
                 RowDivider()
                 ActionRow(
@@ -364,6 +369,63 @@ fun AboutScreen(
 
             Spacer(Modifier.height(32.dp))
         }
+    }
+
+    if (showFeedback) {
+        AlertDialog(
+            onDismissRequest = { showFeedback = false },
+            icon = {
+                Icon(Icons.Filled.ChatBubbleOutline, contentDescription = null, tint = NazoPrimary)
+            },
+            title = { Text("Send feedback", color = NazoTextPrimary) },
+            text = {
+                Column {
+                    Text(
+                        "Reports go to the public issue tracker, so you can follow " +
+                            "progress and see if someone already raised it.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = NazoTextSecondary,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    FeedbackChoice(
+                        icon = Icons.Filled.BugReport,
+                        title = "Report an issue",
+                        subtitle = "Something is broken or behaving oddly",
+                        onClick = {
+                            showFeedback = false
+                            openIssueForm(context, BUG_TEMPLATE)
+                        },
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    FeedbackChoice(
+                        icon = Icons.Filled.Lightbulb,
+                        title = "Suggest a feature",
+                        subtitle = "An idea or improvement for Nazo",
+                        onClick = {
+                            showFeedback = false
+                            openIssueForm(context, FEATURE_TEMPLATE)
+                        },
+                    )
+                }
+            },
+            confirmButton = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // Kept for anyone without a GitHub account.
+                    TextButton(onClick = {
+                        showFeedback = false
+                        sendFeedbackEmail(context)
+                    }) { Text("Email instead", color = NazoTextSecondary) }
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(onClick = { showFeedback = false }) {
+                        Text("Cancel", color = NazoPrimary)
+                    }
+                }
+            },
+        )
     }
 
     if (showUpdate) {
@@ -906,30 +968,91 @@ private fun openUrl(context: android.content.Context, url: String) {
     }
 }
 
-private fun sendFeedback(context: android.content.Context) {
+/** One tappable option in the feedback chooser. */
+@Composable
+private fun FeedbackChoice(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(NazoSurfaceVariant)
+            .clickable(onClick = onClick)
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = NazoPrimary, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = NazoTextPrimary,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = NazoTextSecondary)
+        }
+        Icon(
+            Icons.Filled.ChevronRight,
+            contentDescription = null,
+            tint = NazoTextSecondary,
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+/** Device/app details appended to a new issue so reports are actionable. */
+private fun environmentBlock(context: android.content.Context): String {
     val pkgInfo = runCatching {
         context.packageManager.getPackageInfo(context.packageName, 0)
     }.getOrNull()
     val versionName = pkgInfo?.versionName ?: "?"
     val versionCode = pkgInfo?.let { PackageInfoCompat.getLongVersionCode(it) }
-
-    val info = buildString {
+    return buildString {
         appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
         appendLine("Android: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
-        appendLine("Architecture: ${Build.SUPPORTED_ABIS.joinToString()}")
         appendLine("App: Nazo $versionName (code $versionCode)")
-        appendLine()
-        appendLine("--- Write your feedback after this line ---")
-        appendLine()
     }
+}
 
+/**
+ * Opens GitHub's "new issue" form for the chosen template.
+ *
+ * Feedback goes to the public tracker rather than the developer's inbox, so it
+ * is searchable, can be linked from a release, and does not depend on the user
+ * having a mail client configured.
+ *
+ * The device block is passed as a query parameter matching the template's
+ * field id; GitHub ignores parameters it does not recognise, so this stays
+ * harmless if a template is renamed.
+ */
+private fun openIssueForm(context: android.content.Context, template: String) {
+    val environment = Uri.encode(environmentBlock(context))
+    val url = "https://github.com/$GITHUB_REPO/issues/new" +
+        "?template=$template" +
+        if (template == BUG_TEMPLATE) "&device=$environment" else ""
+    runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    }.onFailure {
+        Toast.makeText(context, "No browser available", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/** Last-resort path for users who would rather email than open GitHub. */
+private fun sendFeedbackEmail(context: android.content.Context) {
     val intent = Intent(Intent.ACTION_SENDTO).apply {
         data = Uri.parse("mailto:")
         putExtra(Intent.EXTRA_EMAIL, arrayOf(FEEDBACK_EMAIL))
         putExtra(Intent.EXTRA_SUBJECT, "Nazo Feedback")
-        putExtra(Intent.EXTRA_TEXT, info)
+        putExtra(
+            Intent.EXTRA_TEXT,
+            environmentBlock(context) + "\n--- Write your feedback after this line ---\n\n",
+        )
     }
-
     runCatching {
         context.startActivity(intent)
     }.onFailure {
