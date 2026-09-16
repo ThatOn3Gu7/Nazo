@@ -38,6 +38,22 @@ data class ChangelogEntry(
  */
 val NAZO_CHANGELOG: List<ChangelogEntry> = listOf(
     ChangelogEntry(
+        version = "10.0",
+        date = "15 Sep 2026",
+        changes = listOf(
+            "Profile pictures from the system photo picker or a pasted link, with a preview before you accept.",
+            "Links to a photo's page work too — Nazo finds the actual image instead of rejecting the link.",
+            "Crop your profile picture with a draggable square box; your original photo is never modified.",
+            "New About section: changelog, licence, third-party libraries and a credits page.",
+            "Send feedback now opens a pre-filled GitHub issue form, with email still available.",
+            "Tap the daily streak flame for your current and best streak, quizzes played and today's status.",
+            "Backup and Restore are usable in landscape — the confirmation buttons were previously off-screen.",
+            "Fixed bottom sheets juddering when flung to the top of the screen in landscape.",
+            "Buttons share one visual language, so a destructive action never looks like a cancel.",
+            "Nickname suggestions no longer repeat, and fall back instantly when offline.",
+        ),
+    ),
+    ChangelogEntry(
         version = "9.0",
         date = "10 Sep 2026",
         changes = listOf(
@@ -166,6 +182,10 @@ val NAZO_LIBRARIES: List<ThirdPartyLibrary> = listOf(
     ThirdPartyLibrary(
         "Coil", "2.7.0", "Apache-2.0",
         "https://github.com/coil-kt/coil",
+    ),
+    ThirdPartyLibrary(
+        "AndroidX ExifInterface", "1.3.7", "Apache-2.0",
+        "https://developer.android.com/jetpack/androidx/releases/exifinterface",
     ),
     ThirdPartyLibrary(
         "Compose BOM", "2025.10.01", "Apache-2.0",

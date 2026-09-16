@@ -1351,3 +1351,50 @@ fails this build), added `Offset`, `Size`, `Path`, `DrawScope`.
    blip smaller. The dial and its ticks stay still.
 4. Tap each repeatedly and mid-animation: no jump, it finishes then replays.
 5. Confirm the entrance and score animations still play normally on entry.
+
+### 2026-09-15 — Drop the stat-icon animations; release notes workflow; v10.0
+
+**1. Stat-icon animations REMOVED.** Two attempts (whole-icon transforms, then
+hand-drawn Canvas instruments) both missed what the owner pictured, and the
+hand-drawn icons looked unnatural next to the rest of the Material set.
+`QuizCompleteScreen.kt` is reverted to its state at 8c1f511, so the three stats
+are plain `Icons.Outlined.Timer/TrackChanges/Speed` again with no tap handler.
+
+Do NOT retry this without a reference image. A Material icon is a single static
+path, so animating one part of it REQUIRES redrawing the icon by hand — and a
+hand-drawn instrument will not match the Material icons beside it. That
+trade-off is the reason this was dropped, not a detail of the maths.
+
+The streak card from the same prompt was kept; it lives in `HomeScreen.kt` and
+was unaffected by the revert. The button-system migration inside
+`QuizCompleteScreen.kt` predates 8c1f511 and survived.
+
+**2. Release-note workflow — `docs/release-notes/`.** New `README.md` documents
+the rules; `<version>.md` is the working file for the version in development.
+Core rule: **one entry per user-facing change, edited in place** — a reworked
+approach updates its entry rather than appending, and something tried then
+dropped gets NO entry (hence no stat-animation line in 10.0). At release time
+the file is copied to `RELEASE_NOTES_<version>.md` in the root, which
+`build-release.yml` publishes verbatim.
+
+Parser contract preserved: `<!--NAZO_NOTES_START-->`/`<!--NAZO_NOTES_END-->`,
+`## New`/`## Fixed`/`## Improved`, FLAT bullets only (the parser trims
+indentation, so a nested bullet is silently promoted). Validated 10.0.md:
+0 nested bullets, 3 sections, 20 bullets.
+
+**3. v10.0 prepared.** versionCode 9 -> 10, versionName "9.0" -> "10.0".
+`RELEASE_NOTES_10.0.md` written; `NAZO_CHANGELOG` gained a 10.0 entry.
+
+Also closed a maintenance-contract gap: `androidx.exifinterface` (added during
+the profile-picture work) was missing from `NAZO_LIBRARIES`, so the in-app
+Licenses screen under-reported. Added at 1.3.7, matching libs.versions.toml.
+
+**Tag is NOT pushed.** Awaiting a green CI and the owner's go-ahead.
+
+### How to test it live
+
+1. **Quiz results**: the Time, Accuracy and Difficulty icons are back to normal
+   and do nothing when tapped. Entrance and score animations unchanged.
+2. **Home**: the streak flame still expands into its card (that feature stayed).
+3. **Settings -> About**: version reads **10.0**; Changelog lists 10.0 at the
+   top; Licenses now includes **AndroidX ExifInterface**.
