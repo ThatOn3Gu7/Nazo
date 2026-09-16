@@ -1398,3 +1398,43 @@ Licenses screen under-reported. Added at 1.3.7, matching libs.versions.toml.
 2. **Home**: the streak flame still expands into its card (that feature stayed).
 3. **Settings -> About**: version reads **10.0**; Changelog lists 10.0 at the
    top; Licenses now includes **AndroidX ExifInterface**.
+
+### 2026-09-15 — In-app updater downloaded the DEBUG apk
+
+**Symptom (owner, on the v9.0 release build).** Tapping download in About
+fetched ~20 MB instead of the ~2.4 MB release APK.
+
+**Root cause.** `fetchLatestRelease` looped the release assets and took the
+FIRST name ending in `.apk`, then `break`. Every release ships two APKs and the
+GitHub API returns them alphabetically, so `Nazo-debug-<v>.apk` always precedes
+`Nazo-release-<v>.apk`. Verified against the live API for both v9.0 and v10.0.
+
+Worse than the size: the debug APK is signed with the debug key, so it cannot
+install over a release build — the update would fail outright for anyone who
+got that far.
+
+**Fix.** Preference order when scanning assets: a name containing `release`
+wins; otherwise the first apk that is NOT a debug build; otherwise anything.
+The fallbacks matter so a release whose assets are renamed later still updates
+instead of silently offering nothing. `apkSizeBytes` comes from the same asset,
+so the size shown in the UI now matches what is downloaded.
+
+Simulated against real asset lists: correct for API order, reverse order,
+debug-only, a single unnamed apk, and apk-plus-non-apk assets.
+
+NOTE: the debug APK is still attached to releases on purpose (`apks/*.apk` in
+`build-release.yml`) — it is useful for bug reports. The updater simply must
+not choose it.
+
+**Release note updated IN PLACE** in `docs/release-notes/10.0.md` and
+`RELEASE_NOTES_10.0.md` rather than appended, per the workflow added this
+session. v10.0 is being re-tagged, not superseded, so there is one entry
+describing the net change users receive.
+
+### How to test it live
+
+1. Install the **release** APK from the v10.0 GitHub release.
+2. Settings -> About -> Check for updates. When an update is offered, the size
+   shown must be ~2.5 MB, NOT ~21 MB.
+3. Start the download and confirm the progress total matches that size, and
+   that the install prompt appears and succeeds over the existing app.

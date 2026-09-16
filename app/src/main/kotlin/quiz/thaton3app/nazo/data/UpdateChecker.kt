@@ -56,18 +56,61 @@ suspend fun fetchLatestRelease(repo: String = GITHUB_REPO): GitHubRelease? =
             val html = json.optString("html_url")
             val body = playerFacingNotes(json.optString("body"))
 
+            // Pick the RELEASE apk, not merely the first one.
+            //
+            // Each release ships two APKs and the API lists them
+            // alphabetically, so "Nazo-debug-<v>.apk" comes before
+            // "Nazo-release-<v>.apk". Taking the first match therefore handed
+            // users the ~21 MB debug build instead of the ~2.5 MB release
+            // build: far larger, slower to download, and signed with the debug
+            // key, so it cannot upgrade an installed release build.
+            //
+            // Preference order: an explicit "release" asset, then any apk that
+            // is not a debug build, and only then anything else -- so a release
+            // whose assets are named differently still updates rather than
+            // offering nothing.
             var apkUrl: String? = null
             var apkSize = -1L
             val assets = json.optJSONArray("assets")
             if (assets != null) {
+                var fallbackUrl: String? = null
+                var fallbackSize = -1L
+                var lastResortUrl: String? = null
+                var lastResortSize = -1L
+
                 for (i in 0 until assets.length()) {
                     val asset = assets.getJSONObject(i)
                     val name = asset.optString("name")
-                    if (name.endsWith(".apk", ignoreCase = true)) {
-                        apkUrl = asset.optString("browser_download_url")
-                        apkSize = asset.optLong("size", -1L)
-                        break
+                    if (!name.endsWith(".apk", ignoreCase = true)) continue
+
+                    val url = asset.optString("browser_download_url")
+                    val size = asset.optLong("size", -1L)
+                    val lower = name.lowercase()
+
+                    when {
+                        lower.contains("release") -> {
+                            apkUrl = url
+                            apkSize = size
+                        }
+                        !lower.contains("debug") -> {
+                            if (fallbackUrl == null) {
+                                fallbackUrl = url
+                                fallbackSize = size
+                            }
+                        }
+                        else -> {
+                            if (lastResortUrl == null) {
+                                lastResortUrl = url
+                                lastResortSize = size
+                            }
+                        }
                     }
+                    if (apkUrl != null) break
+                }
+
+                if (apkUrl == null) {
+                    apkUrl = fallbackUrl ?: lastResortUrl
+                    apkSize = if (fallbackUrl != null) fallbackSize else lastResortSize
                 }
             }
 

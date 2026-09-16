@@ -20,6 +20,7 @@
 - **Retry after a failed quiz generation** visibly returns to loading, so a fast failure is no longer invisible.
 - **The Settings page scrolled too far in landscape**, letting the Info section drift into the middle of the screen.
 - **The About page cut off its last card** in landscape.
+- **In-app updates downloaded the wrong build.** The updater picked the first APK attached to a release, which is the ~21 MB debug build, instead of the ~2.5 MB release build. Updating is now much smaller and faster, and installs correctly over an existing copy.
 
 ## Improved
 
