@@ -1427,6 +1427,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         dailyBonus = dailyStore.lastBonus(),
                         onPlayDaily = { startDailyChallenge() },
                         streakDays = quizStats.currentStreakDays,
+                        bestStreakDays = quizStats.bestStreakDays,
+                        lastQuizEpochDay = quizStats.lastQuizEpochDay,
+                        totalQuizzes = quizStats.totalQuizzes,
                         practiceCount = missedCount,
                         onStartPractice = { startPractice() },
                     )

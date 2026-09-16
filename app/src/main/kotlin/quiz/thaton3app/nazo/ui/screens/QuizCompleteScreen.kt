@@ -7,6 +7,8 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -23,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -32,6 +35,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlin.math.sin
+import kotlin.math.PI
+import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.daily.DailyBonusChip
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.records.NewRecordBadge
@@ -211,9 +217,27 @@ fun QuizCompleteScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.Timer, title = "Time", value = timeSpent)
-                        StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.TrackChanges, title = "Accuracy", value = "$accuracy%")
-                        StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.Speed, title = "Difficulty", value = difficulty)
+                        StatCard(
+                            modifier = Modifier.weight(1f),
+                            icon = Icons.Outlined.Timer,
+                            title = "Time",
+                            value = timeSpent,
+                            motion = StatMotion.Tick,
+                        )
+                        StatCard(
+                            modifier = Modifier.weight(1f),
+                            icon = Icons.Outlined.TrackChanges,
+                            title = "Accuracy",
+                            value = "$accuracy%",
+                            motion = StatMotion.Spin,
+                        )
+                        StatCard(
+                            modifier = Modifier.weight(1f),
+                            icon = Icons.Outlined.Speed,
+                            title = "Difficulty",
+                            value = difficulty,
+                            motion = StatMotion.Rev,
+                        )
                     }
                 }
 
@@ -484,7 +508,61 @@ private fun ScoreCardContent(
 }
 
 @Composable
-private fun StatCard(modifier: Modifier = Modifier, icon: ImageVector, title: String, value: String) {
+/** Which tap animation a [StatCard] icon plays. */
+private enum class StatMotion { Tick, Spin, Rev }
+
+/**
+ * A result statistic whose icon plays a short animation when tapped.
+ *
+ * Each motion suits its subject: the clock ticks, the target spins, the gear
+ * revs. They are one-shot and driven by a single `Animatable` per card, so they
+ * never run continuously and never touch the entrance or score animations —
+ * those animate different properties on different composables.
+ *
+ * The animation is read inside `graphicsLayer`, i.e. during the DRAW phase, so
+ * playing it re-draws the icon without recomposing the card or the screen.
+ */
+@Composable
+private fun StatCard(
+    modifier: Modifier = Modifier,
+    icon: ImageVector,
+    title: String,
+    value: String,
+    motion: StatMotion,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    // One driver per card: 0f = at rest, 1f = animation complete.
+    val progress = remember { Animatable(0f) }
+
+    fun play() {
+        // Restarting mid-flight would jump; let the current pass finish.
+        if (progress.isRunning) return
+        scope.launch {
+            Haptics.light(context)
+            progress.snapTo(0f)
+            when (motion) {
+                // Clock: a wind-up then two crisp ticks, eased so it reads as
+                // mechanical rather than smooth.
+                StatMotion.Tick -> progress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(620, easing = LinearEasing),
+                )
+                // Target: a single full rotation that decelerates into place.
+                StatMotion.Spin -> progress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(560, easing = FastOutSlowInEasing),
+                )
+                // Gear: a throttle blip — snap one way, overshoot back, settle.
+                StatMotion.Rev -> progress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(520, easing = LinearEasing),
+                )
+            }
+            progress.snapTo(0f)
+        }
+    }
+
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(24.dp))
@@ -497,10 +575,49 @@ private fun StatCard(modifier: Modifier = Modifier, icon: ImageVector, title: St
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .background(NazoTextSecondary.copy(alpha = 0.08f)),
+                .background(NazoTextSecondary.copy(alpha = 0.08f))
+                // No ripple: the icon's own motion is the feedback, and a
+                // ripple on a 40dp circle swamps it.
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = { play() },
+                ),
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, contentDescription = null, tint = NazoTextSecondary, modifier = Modifier.size(20.dp))
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = NazoTextSecondary,
+                modifier = Modifier
+                    .size(20.dp)
+                    .graphicsLayer {
+                        val t = progress.value
+                        when (motion) {
+                            StatMotion.Tick -> {
+                                // Two discrete ticks: floor() quantises the
+                                // sweep so the hand jumps instead of gliding.
+                                val steps = 6f
+                                val stepped = kotlin.math.floor(t * steps) / steps
+                                rotationZ = stepped * 360f
+                            }
+                            StatMotion.Spin -> {
+                                rotationZ = t * 360f
+                                // Slight shrink at the midpoint gives the spin
+                                // some depth instead of looking like a decal.
+                                val dip = 1f - 0.12f * sin(t * PI).toFloat()
+                                scaleX = dip
+                                scaleY = dip
+                            }
+                            StatMotion.Rev -> {
+                                // Throttle blip: hard twist one way, past centre
+                                // on the way back, then a decaying wobble.
+                                val decay = (1f - t) * (1f - t)
+                                rotationZ = -26f * decay * sin(t * 3f * PI).toFloat()
+                            }
+                        }
+                    },
+            )
         }
         Spacer(Modifier.height(12.dp))
         Text(title, style = MaterialTheme.typography.labelSmall, color = NazoTextSecondary)

@@ -1248,3 +1248,66 @@ same helper. NOTE: `DRAG_HANDLE_HEIGHT` is hard-coded to match
 Affects every sheet via `NazoSheetColumn`: app icon, background effects,
 celebrations, sparkles, What's New, Home's sheet, and backup/restore in
 landscape.
+
+### 2026-09-15 — Stat-icon micro-interactions and expandable streak card
+
+Prompt 5 of 5.
+
+**1. Quiz Complete stat icons are tappable.** `StatCard` gained a `StatMotion`
+(`Tick` / `Spin` / `Rev`) and each icon plays a one-shot animation on tap:
+- **Time** — `floor()` quantises the sweep into 6 discrete steps, so the clock
+  JUMPS like a tick rather than gliding.
+- **Accuracy** — one full rotation on `FastOutSlowInEasing`, with a slight
+  mid-spin scale dip for depth.
+- **Difficulty** — `-26f * (1-t)^2 * sin(3*PI*t)`: a damped oscillation, i.e. a
+  throttle blip that overshoots centre and settles.
+
+Each card owns ONE `Animatable`; `if (progress.isRunning) return` stops a
+re-tap jumping mid-flight. Values are read inside `graphicsLayer` (DRAW phase),
+so tapping redraws only the icon — no recomposition of the card or screen, and
+no interference with the entrance/score animations, which animate different
+properties on different composables. Ripple is suppressed (the motion IS the
+feedback) and each tap fires `Haptics.light`.
+
+**2. Daily streak pill expands.** Tapping it opens `StreakDetailDialog` with
+decorative flame art (concentric rings + the same three-sine flicker as the
+chip), current streak, best streak, quizzes played, and today's status with a
+nudge if not yet played.
+
+KEY DECISION — it is a `Dialog`, NOT inline expansion. Expanding the chip in
+place would reflow Home and push the mode cards down; in landscape, where Home
+is already short, straight off the bottom. A dialog floats above the layout, so
+Home never moves and no new scroll region is created — which is exactly what
+the prompt warned against. Landscape puts the art BESIDE the stats (a stacked
+card does not fit ~360dp) and caps height at 300dp with a scroll of last
+resort; portrait stacks as normal.
+
+`HomeScreen` now also takes `bestStreakDays`, `lastQuizEpochDay` and
+`totalQuizzes`, wired from `quizStats` in `NazoApp`. `best` is
+`maxOf(bestStreakDays, streakDays)` because the stored best can lag the current
+run on the day a record is set.
+
+### How to test it live
+
+**Sheet judder fix (committed earlier, unpushed until now):**
+1. Landscape → Appearance → App icon. **Fling the sheet UP hard.** It must
+   settle below the top and NOT oscillate. Repeat for Background effects,
+   Celebrations, Sparkles, and Backup & Restore → Back up now.
+2. Portrait → same sheets still scroll normally and look unchanged.
+
+**Stat icons:**
+3. Finish any quiz → on the results screen tap the **Time** icon (ticks in
+   steps), **Accuracy** (spins once), **Difficulty** (revs left-right). Each
+   with a light haptic.
+4. Tap one repeatedly and mid-animation — no jump or stutter; it finishes then
+   replays.
+5. Re-enter the results screen — the entrance/score animations still play
+   exactly as before.
+
+**Streak card:**
+6. Home, with a streak of 1+ → tap the flame pill → card opens with art, best
+   streak, quizzes played, today's status.
+7. **Landscape** → tap the pill → art sits LEFT of the stats, Close reachable,
+   and Home behind it has NOT shifted or gained a scrollbar.
+8. Play today vs not → "Today: Done" vs "Not yet" plus the nudge line.
+9. Tap outside / Close / back → dismisses. Rotate with it open → survives.

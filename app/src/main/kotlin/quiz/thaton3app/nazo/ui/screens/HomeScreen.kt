@@ -40,6 +40,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,6 +68,8 @@ import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.daily.DailyChallengeCard
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
+import quiz.thaton3app.nazo.data.QuizStats
 import quiz.thaton3app.nazo.ui.components.NazoModalSheet
 import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
@@ -129,6 +133,9 @@ fun HomeScreen(
     dailyBonus: Int = 0,
     onPlayDaily: () -> Unit = {},
     streakDays: Int = 0,
+    bestStreakDays: Int = 0,
+    lastQuizEpochDay: Long? = null,
+    totalQuizzes: Int = 0,
     practiceCount: Int = 0,
     onStartPractice: () -> Unit = {},
 ) {
@@ -179,7 +186,12 @@ fun HomeScreen(
             )
             Spacer(Modifier.weight(1f))
             if (streakDays >= 1) {
-                StreakFlameChip(streakDays = streakDays)
+                StreakFlameChip(
+                    streakDays = streakDays,
+                    bestStreakDays = bestStreakDays,
+                    lastQuizEpochDay = lastQuizEpochDay,
+                    totalQuizzes = totalQuizzes,
+                )
             }
         }
 
@@ -707,7 +719,14 @@ private val PROVIDER_ICONS = mapOf(
  * fire in every accent/theme.
  */
 @Composable
-private fun StreakFlameChip(streakDays: Int) {
+private fun StreakFlameChip(
+    streakDays: Int,
+    bestStreakDays: Int,
+    lastQuizEpochDay: Long?,
+    totalQuizzes: Int,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
     val flameColor = when {
         streakDays >= 7 -> Color(0xFFE53935) // red-hot
         streakDays >= 3 -> Color(0xFFFF6D00) // deep orange
@@ -723,6 +742,10 @@ private fun StreakFlameChip(streakDays: Int) {
             .clip(RoundedCornerShape(50))
             .background(flameColor.copy(alpha = 0.12f))
             .border(1.dp, flameColor.copy(alpha = 0.35f), RoundedCornerShape(50))
+            .clickable {
+                Haptics.soft(context)
+                expanded = true
+            }
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -772,6 +795,221 @@ private fun StreakFlameChip(streakDays: Int) {
         Text(
             text = if (streakDays == 1) "1-day streak" else "$streakDays-day streak",
             color = flameColor,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+
+    if (expanded) {
+        StreakDetailDialog(
+            streakDays = streakDays,
+            bestStreakDays = bestStreakDays,
+            lastQuizEpochDay = lastQuizEpochDay,
+            totalQuizzes = totalQuizzes,
+            flameColor = flameColor,
+            onDismiss = { expanded = false },
+        )
+    }
+}
+
+/**
+ * The expanded streak card.
+ *
+ * Rendered in a [Dialog] rather than inline on Home. Expanding a chip in place
+ * would reflow the page and shove the mode cards down — and in landscape, where
+ * Home is already short, straight off the bottom. A dialog floats above the
+ * layout, so Home never moves and no new scroll region appears.
+ *
+ * Landscape puts the art beside the stats instead of above them, because a
+ * stacked card does not fit a ~360dp-tall window; the content is identical.
+ */
+@Composable
+private fun StreakDetailDialog(
+    streakDays: Int,
+    bestStreakDays: Int,
+    lastQuizEpochDay: Long?,
+    totalQuizzes: Int,
+    flameColor: Color,
+    onDismiss: () -> Unit,
+) {
+    val landscape = isLandscape()
+    val today = QuizStats.localEpochDay()
+    val playedToday = lastQuizEpochDay == today
+    // Best is stored separately and can lag the current run on the very day a
+    // record is set, so show whichever is actually larger.
+    val best = maxOf(bestStreakDays, streakDays)
+
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = if (landscape) 460.dp else 340.dp)
+                // A short window still gets a scroll of last resort rather than
+                // clipping the dismiss button.
+                .heightIn(max = if (landscape) 300.dp else 560.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(NazoSurface)
+                .border(1.dp, flameColor.copy(alpha = 0.25f), RoundedCornerShape(28.dp))
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (landscape) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StreakArt(streakDays = streakDays, flameColor = flameColor, compact = true)
+                    Spacer(Modifier.width(20.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        StreakHeadline(streakDays, flameColor, centered = false)
+                        Spacer(Modifier.height(12.dp))
+                        StreakFacts(best, totalQuizzes, playedToday, flameColor)
+                    }
+                }
+            } else {
+                StreakArt(streakDays = streakDays, flameColor = flameColor, compact = false)
+                Spacer(Modifier.height(14.dp))
+                StreakHeadline(streakDays, flameColor, centered = true)
+                Spacer(Modifier.height(16.dp))
+                StreakFacts(best, totalQuizzes, playedToday, flameColor)
+            }
+
+            Spacer(Modifier.height(18.dp))
+            NazoSecondaryButton(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(),
+                muted = true,
+            ) {
+                Text("Close")
+            }
+        }
+    }
+}
+
+/**
+ * Decorative flame badge. Concentric rings behind a large flame, with the same
+ * three-sine flicker as the chip so the two clearly belong together.
+ */
+@Composable
+private fun StreakArt(streakDays: Int, flameColor: Color, compact: Boolean) {
+    val outer = if (compact) 84.dp else 108.dp
+    val flame = if (compact) 40.dp else 54.dp
+    val glow = rememberInfiniteTransition(label = "streakArt")
+    val t by glow.animateFloat(
+        initialValue = 0f,
+        targetValue = (2f * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(2600, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "streakArtPhase",
+    )
+    Box(
+        modifier = Modifier.size(outer),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(CircleShape)
+                .background(flameColor.copy(alpha = 0.10f)),
+        )
+        Box(
+            modifier = Modifier
+                .size(outer * 0.72f)
+                .clip(CircleShape)
+                .background(flameColor.copy(alpha = 0.16f)),
+        )
+        Icon(
+            imageVector = Icons.Filled.LocalFireDepartment,
+            contentDescription = null,
+            tint = flameColor,
+            modifier = Modifier
+                .size(flame)
+                .graphicsLayer {
+                    transformOrigin = TransformOrigin(0.5f, 1f)
+                    scaleY = 1f + 0.08f * sin(t)
+                    scaleX = 1f - 0.05f * sin(t + 0.6f)
+                    rotationZ = 2.6f * sin(t * 0.73f + 1.1f)
+                },
+        )
+    }
+}
+
+@Composable
+private fun StreakHeadline(streakDays: Int, flameColor: Color, centered: Boolean) {
+    Column(
+        horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
+    ) {
+        Text(
+            text = "$streakDays",
+            color = flameColor,
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = if (streakDays == 1) "day streak" else "days in a row",
+            color = NazoTextSecondary,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}
+
+@Composable
+private fun StreakFacts(
+    best: Int,
+    totalQuizzes: Int,
+    playedToday: Boolean,
+    flameColor: Color,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        StreakFactRow(
+            icon = Icons.Filled.EmojiEvents,
+            label = "Best streak",
+            value = if (best == 1) "1 day" else "$best days",
+            tint = flameColor,
+        )
+        Spacer(Modifier.height(10.dp))
+        StreakFactRow(
+            icon = Icons.Filled.Quiz,
+            label = "Quizzes played",
+            value = "$totalQuizzes",
+            tint = flameColor,
+        )
+        Spacer(Modifier.height(10.dp))
+        StreakFactRow(
+            icon = if (playedToday) Icons.Filled.CheckCircle else Icons.Filled.Schedule,
+            label = "Today",
+            value = if (playedToday) "Done" else "Not yet",
+            tint = if (playedToday) flameColor else NazoTextSecondary,
+        )
+        if (!playedToday) {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = "Play a quiz today to keep the streak alive.",
+                color = NazoTextSecondary,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun StreakFactRow(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    tint: Color,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = label,
+            color = NazoTextSecondary,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = value,
+            color = NazoTextPrimary,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
         )
