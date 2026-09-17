@@ -6,6 +6,10 @@ on:
     paths:
       - 'mindrelay/**'
       - '.github/workflows/mindrelay-release.yml'
+  pull_request:
+    paths:
+      - 'mindrelay/**'
+      - '.github/workflows/mindrelay-release.yml'
   workflow_dispatch:
 
 permissions:
