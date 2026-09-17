@@ -40,7 +40,7 @@ jobs:
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" --licenses </dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" \
-            'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+            'platform-tools' 'platforms;android-37.0' 'build-tools;37.0.0'
 
       - name: Set up Gradle 9.6
         uses: gradle/actions/setup-gradle@v6
@@ -51,17 +51,15 @@ jobs:
         shell: bash
         run: |
           STORE_PASS="$(openssl rand -hex 24)"
-          KEY_PASS="$(openssl rand -hex 24)"
           keytool -genkeypair -v \
             -keystore app/mindrelay-release.jks \
             -storepass "$STORE_PASS" \
-            -keypass "$KEY_PASS" \
             -alias mindrelay-ci \
             -keyalg RSA -keysize 2048 -validity 10000 \
             -dname 'CN=MindRelay CI, OU=Release, O=MindRelay, C=US'
           {
             echo "releaseStorePassword=$STORE_PASS"
-            echo "releaseKeyPassword=$KEY_PASS"
+            echo "releaseKeyPassword=$STORE_PASS"
             echo "releaseKeyAlias=mindrelay-ci"
           } >> gradle.properties
 
