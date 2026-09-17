@@ -1,0 +1,79 @@
+name: MindRelay release APK
+
+on:
+  push:
+    branches: [mindrelay-app]
+    paths:
+      - 'mindrelay/**'
+      - '.github/workflows/mindrelay-release.yml'
+  pull_request:
+    paths:
+      - 'mindrelay/**'
+      - '.github/workflows/mindrelay-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ANDROID_HOME: /usr/local/lib/android/sdk
+  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mindrelay
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare Android SDK
+        shell: bash
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" --licenses </dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" \
+            'platform-tools' 'platforms;android-37.0' 'build-tools;37.0.0'
+
+      - name: Set up Gradle 9.6
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Generate ephemeral release signing key
+        shell: bash
+        run: |
+          STORE_PASS="$(openssl rand -hex 24)"
+          keytool -genkeypair -v \
+            -keystore app/mindrelay-release.jks \
+            -storepass "$STORE_PASS" \
+            -alias mindrelay-ci \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname 'CN=MindRelay CI, OU=Release, O=MindRelay, C=US'
+          {
+            echo "releaseStorePassword=$STORE_PASS"
+            echo "releaseKeyPassword=$STORE_PASS"
+            echo "releaseKeyAlias=mindrelay-ci"
+          } >> gradle.properties
+
+      - name: Assemble release APK
+        run: gradle :app:assembleRelease --stacktrace
+
+      - name: Generate checksum
+        run: sha256sum app/build/outputs/apk/release/app-release.apk > app/build/outputs/apk/release/SHA256SUMS.txt
+
+      - name: Upload signed APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: MindRelay-release
+          path: |
+            mindrelay/app/build/outputs/apk/release/app-release.apk
+            mindrelay/app/build/outputs/apk/release/SHA256SUMS.txt
+          retention-days: 14
