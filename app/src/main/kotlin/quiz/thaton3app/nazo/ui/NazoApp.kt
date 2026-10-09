@@ -228,6 +228,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var lastDailyBonus by remember { mutableIntStateOf(0) }
     // Sound effects (Phase 7): opt-in, persisted in the Sounds store.
     var soundEnabled by remember { mutableStateOf(Sounds.isEnabled(context)) }
+    var soundTheme by remember { mutableStateOf(Sounds.getTheme(context)) }
     // Daily reminder notification (final polish pack): opt-in, evening-only.
     var remindersEnabled by remember { mutableStateOf(ReminderScheduler.isEnabled(context)) }
     val profilePrefs = remember { ProfilePreferences(context) }
@@ -1480,6 +1481,11 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     onSoundEnabledChange = { v ->
                         soundEnabled = v
                         Sounds.setEnabled(context, v)
+                    },
+                    soundTheme = soundTheme,
+                    onSoundThemeChange = { t ->
+                        soundTheme = t
+                        Sounds.setTheme(context, t)
                     },
                     remindersEnabled = remindersEnabled,
                     onRemindersEnabledChange = { v ->

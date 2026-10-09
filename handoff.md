@@ -1700,3 +1700,66 @@ decoded bitmap is intentionally not retained — it re-decodes on rotation (brie
    tap **Cancel**. The temp file is removed and the avatar is unchanged.
 8. Open a URL preview, rotate, then accept, and confirm the picture is correct
    and no stale draft is reused on the next open.
+
+## 2026-10-09 — Selectable sound-effect styles
+
+**Added.** Settings → Feedback → **Sound style**: Chime (default), Arcade,
+Marimba, Bell. The choice applies to every sound the app plays.
+
+**Why this shape.** `Sounds` has NO audio assets — every effect is a short
+soft-synth tone rendered to PCM at runtime. So a "sound type" is a TIMBRE, not a
+file: the new `SoundTheme` enum carries a waveform, a decay rate, an attack and
+a per-theme gain, while the note sequences (which notes, how long) stay exactly
+as they were. Adding voices therefore costs zero APK size and needs no new
+dependency.
+
+- `chime` — sine + quiet 2nd harmonic, decay 3.0, 4ms attack, gain 0.32
+- `arcade` — square wave (odd harmonics, chiptune), decay 1.2, 1ms, gain 0.20
+- `marimba` — pure sine, decay 6.0 (fast), 2ms, gain 0.34
+- `bell` — inharmonic partials at 2.76x and 5.40x, decay 2.0, 4ms, gain 0.28
+
+**The default is byte-identical.** The refactor was verified by re-implementing
+both the old and new renderers in Python and comparing every sample of all four
+effects: `correct` 5071, `wrong` 6173, `complete` 10914, `record` 11244 samples,
+all identical. Existing users hear no change until they pick another style.
+Peak levels were checked too — loudest is Marimba at 32.7% of full scale, so
+nothing clips, and RMS sits in a 2000–3000 band across all four so no style is
+jarringly louder.
+
+**Wiring.** `Sounds.getTheme` / `setTheme` persist to the existing `nazo_sound`
+prefs under a new `theme` key; unknown/absent ids fall back to the default.
+`play()` resolves the theme on the caller's thread and includes it in the PCM
+cache key (`"<theme>:<effect>"`) — without that, switching styles would keep
+replaying the previously cached voice. Because the lookup lives in `play()`,
+**every existing call site follows the setting without being touched**:
+correct, wrong, complete, record and all five celebration cues.
+
+**UI.** A standard `SettingsRow` inside the EXISTING Feedback card (below the
+Sound effects switch), subtitle showing the current choice, opening the same
+`NazoModalSheet` + option-card pattern Appearance already uses for "pick a
+style". No new design language and no change to the existing rows. Tapping a
+style persists it and then auditions it, so the preview is the voice just
+chosen. The sheet flag uses `rememberRetained`, so it survives rotation.
+
+Deliberate: the preview still respects the master Sound effects switch — "sound
+effects off" has to mean silence everywhere — so the sheet says "Turn on Sound
+effects above to hear these" when the toggle is off. Onboarding's own sound
+toggle was left alone; it only enables sounds and gets the default style.
+
+### How to test it live
+
+1. Settings → Feedback → turn **Sound effects** ON.
+2. Tap **Sound style**. The sheet lists Chime / Arcade / Marimba / Bell with
+   Chime ticked.
+3. Tap **Arcade** — it plays immediately and the tick moves. Tap **Marimba**
+   and **Bell**; each sounds clearly different.
+4. Close the sheet. The Sound style row's subtitle now names your choice.
+5. Play a quiz: right/wrong answers, the completion arpeggio, a new-record
+   fanfare and the celebration cue all use the chosen voice.
+6. Reopen the app — the choice persisted.
+7. Set it back to **Chime** and confirm it sounds exactly like before this
+   change.
+8. Turn **Sound effects** OFF, open Sound style: the hint changes and tapping a
+   style is silent but still records the choice. Turn sound back on and the
+   chosen style plays.
+9. Rotate with the sheet open — it survives.
