@@ -32,7 +32,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -79,29 +78,51 @@ fun ProfileImagePreviewDialog(
     draftFile: File?,
     onDismiss: () -> Unit,
     onAccepted: (String) -> Unit,
+    /**
+     * Screen name that owns this dialog, used to namespace the retained crop
+     * state so it is pruned when the user leaves that screen. See
+     * RetainedState.kt.
+     */
+    stateKeyPrefix: String,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     var bitmap by remember(source) { mutableStateOf<Bitmap?>(null) }
     var loadFailed by remember(source) { mutableStateOf(false) }
-    var cropping by remember(source) { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
-    var accepted by remember { mutableStateOf(false) }
+
+    // Which image the user is currently cropping, rather than a bare boolean.
+    //
+    // Rotation re-creates this dialog, so a `remember(source)` flag dropped the
+    // user out of the crop step. Retaining the SOURCE IDENTITY instead of a
+    // boolean keeps both behaviours: it survives the re-creation, and it still
+    // resets automatically when a different image is opened, which is what
+    // keying the old flag on `source` was for.
+    val sourceKey = when (source) {
+        is ProfileImageSource.LocalFile -> "file:" + source.file.absolutePath
+        is ProfileImageSource.ContentUri -> "uri:" + source.uri
+    }
+    var croppingSource by rememberRetained<String?>("$stateKeyPrefix.croppingSource") { null }
+    val cropping = croppingSource == sourceKey
 
     LaunchedEffect(source) {
         val decoded = ProfileImageStore.decodeForEditing(context, source)
         if (decoded == null) loadFailed = true else bitmap = decoded
     }
 
-    // Any exit that is not an accept must not leave a temp file behind. Putting
-    // this in onDispose covers dismissal, back, and the user navigating away
-    // mid-edit, which an onClick handler alone would miss.
-    DisposableEffect(source) {
-        onDispose {
-            if (!accepted) ProfileImageStore.discardDraft(draftFile)
-        }
-    }
+    // NOTE: the draft used to be deleted from an onDispose here. That is wrong
+    // now the dialog can be re-created by a rotation: the swap disposed this
+    // composable with accepted == false and deleted the temp file out from
+    // under a dialog that was about to come straight back.
+    //
+    // Deletion therefore belongs to the CALLER, which owns the draft and is the
+    // only thing that knows the difference between "the user backed out" and
+    // "the layout changed shape". Every user-initiated exit goes through
+    // onDismiss (Cancel and onDismissRequest both call it), and accepting
+    // discards the draft below, so the only uncovered case is process death
+    // mid-edit -- already handled by ProfileImageStore.clearAllDrafts() in
+    // MainActivity.onCreate, which is not called on rotation.
 
     val current = bitmap
     val cropState = current?.let { rememberCropState(it) }
@@ -120,9 +141,7 @@ fun ProfileImagePreviewDialog(
             val saved = ProfileImageStore.saveAvatar(context, squared)
             saving = false
             saved.onSuccess { uri ->
-                // Mark accepted BEFORE dismissing so onDispose does not delete
-                // the draft we just consumed.
-                accepted = true
+                croppingSource = null
                 ProfileImageStore.discardDraft(draftFile)
                 onAccepted(uri)
             }.onFailure {
@@ -201,7 +220,7 @@ fun ProfileImagePreviewDialog(
                         if (cropping) {
                             // Leave the crop step, keeping the image.
                             cropState?.reset()
-                            cropping = false
+                            croppingSource = null
                         } else {
                             onDismiss()
                         }
@@ -214,7 +233,7 @@ fun ProfileImagePreviewDialog(
 
                 if (!cropping && current != null) {
                     Spacer(Modifier.width(4.dp))
-                    TextButton(onClick = { cropping = true }, enabled = !saving) {
+                    TextButton(onClick = { croppingSource = sourceKey }, enabled = !saving) {
                         Icon(
                             Icons.Filled.Crop,
                             contentDescription = null,

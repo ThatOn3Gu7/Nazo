@@ -119,8 +119,12 @@ fun ProfileScreen(
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     // The image being previewed/cropped, and the temp file behind it (URL only).
-    var pendingSource by remember { mutableStateOf<ProfileImageSource?>(null) }
-    var pendingDraft by remember { mutableStateOf<File?>(null) }
+    // Retained so a rotation does not throw away an edit in progress. The draft
+    // FILE is now deleted here rather than from the dialog's onDispose, because
+    // only this side can tell "the user backed out" (onDismiss) apart from "the
+    // layout swapped shape" (dispose) -- see ProfileImagePreviewDialog.
+    var pendingSource by rememberRetained<ProfileImageSource?>("Profile.pendingSource") { null }
+    var pendingDraft by rememberRetained<File?>("Profile.pendingDraft") { null }
 
     // PickVisualMedia is the system photo picker: a gallery grid scoped to
     // images, with no storage permission and no filesystem browsing. It
@@ -1142,14 +1146,18 @@ fun ProfileScreen(
             source = activeSource,
             draftFile = pendingDraft,
             onDismiss = {
+                // A real user-initiated exit, so the temp download goes with it.
+                ProfileImageStore.discardDraft(pendingDraft)
                 pendingSource = null
                 pendingDraft = null
             },
             onAccepted = { savedUri ->
+                // The dialog already consumed and discarded the draft.
                 onProfilePictureChange(savedUri)
                 pendingSource = null
                 pendingDraft = null
             },
+            stateKeyPrefix = "Profile",
         )
     }
 }

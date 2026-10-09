@@ -86,6 +86,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -199,14 +200,17 @@ fun AboutScreen(
         } ?: "Unknown"
     }
 
-    var showUpdate by remember { mutableStateOf(false) }
     // Rotation swaps the whole layout subtree, discarding plain `remember` and
     // closing any open dialog. rememberRetained holds these above that swap so
     // the dialog survives the orientation change. See RetainedState.kt.
     var showFeedback by rememberRetained("About.showFeedback") { false }
 
-    var updateState by remember { mutableStateOf<UpdateState>(UpdateState.Idle) }
-    var checkLabel by remember { mutableStateOf("Check Now") }
+    // The update sheet is retained together with the release information it
+    // renders. Retaining the flag alone would have reopened an empty sheet, so
+    // the fetched result and the button label travel with it.
+    var showUpdate by rememberRetained("About.showUpdate") { false }
+    var updateState by rememberRetained<UpdateState>("About.updateState") { UpdateState.Idle }
+    var checkLabel by rememberRetained("About.checkLabel") { "Check Now" }
     var frequency by remember { mutableStateOf(UpdatePrefs(context).updateFrequency) }
     var downloadState by remember { mutableStateOf<ApkDownloadState>(ApkDownloadState.Idle) }
     var downloadJob by remember { mutableStateOf<Job?>(null) }
@@ -260,6 +264,18 @@ fun AboutScreen(
     fun onOpenBrowser(url: String) {
         runCatching {
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }
+    }
+
+    // A check runs in this screen's CoroutineScope, which the rotation layout
+    // swap cancels. Checking therefore can NEVER still be in flight in a newly
+    // created composition, so a retained one is stale -- clear it instead of
+    // leaving a spinner that never resolves. Runs once per composition, so a
+    // check genuinely in progress is untouched.
+    LaunchedEffect(Unit) {
+        if (updateState == UpdateState.Checking) {
+            updateState = UpdateState.Idle
+            checkLabel = "Check Now"
         }
     }
 
@@ -492,8 +508,11 @@ private fun UpdateMenuContent(
     var showFrequencyDropdown by remember { mutableStateOf(false) }
 
     val appContext = LocalContext.current.applicationContext
-    var apkFilesToClean by remember { mutableStateOf<List<File>>(emptyList()) }
-    var showCleanupConfirm by remember { mutableStateOf(false) }
+    // Retained with its file list for the same reason as the sheet around it:
+    // a confirm dialog that came back without the files it is about to delete
+    // would be both useless and dangerous.
+    var apkFilesToClean by rememberRetained<List<File>>("About.apkFilesToClean") { emptyList() }
+    var showCleanupConfirm by rememberRetained("About.showCleanupConfirm") { false }
 
     fun promptApkCleanup() {
         val found = UpdateDownloader.findApkFiles(appContext)

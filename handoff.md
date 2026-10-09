@@ -1643,3 +1643,60 @@ never changes what `record()` produces; it only fixes the value BETWEEN plays.
 6. Check the home-screen widget and Profile/Statistics — all show the same
    number as Home.
 7. Restore automatic date/time afterwards.
+
+## 2026-10-09 — Update sheet and profile crop flow survive rotation
+
+Completes the two items deliberately deferred in the first rotation pass.
+
+**About update sheet.** `showUpdate` is retained together with the data it
+renders — `updateState` and `checkLabel` — so the sheet cannot come back empty.
+`UpdateState.Checking` is cleared by a `LaunchedEffect(Unit)` on every new
+composition: a check runs in the screen's `CoroutineScope`, which the layout
+swap cancels, so a retained `Checking` is always stale and would otherwise spin
+forever. The APK cleanup confirm keeps its `apkFilesToClean` list for the same
+"never return without your data" reason.
+
+NOT retained: `downloadState` / `downloadJob`. A download in progress is
+cancelled by the scope teardown on rotation — unchanged from before this work —
+and letting the state reset to Idle keeps the UI HONEST rather than showing a
+frozen progress bar. Making a download itself survive rotation needs an
+application-scoped coroutine; raised separately rather than bolted on here.
+
+**Profile crop flow.** `pendingSource` and `pendingDraft` are retained. The
+blocker was `ProfileImagePreviewDialog`'s `DisposableEffect`, which deleted the
+draft on ANY dispose — including the rotation swap, which deleted the temp file
+out from under a dialog that was about to come straight back. Draft deletion
+therefore moved to the CALLER's `onDismiss`, the only place that can tell "the
+user backed out" from "the layout changed shape". Every user-initiated exit goes
+through `onDismiss` (Cancel and `onDismissRequest` both call it) and accepting
+still discards the draft, leaving only process-death mid-edit — already covered
+by `ProfileImageStore.clearAllDrafts()` in `MainActivity.onCreate`, which is not
+called on rotation.
+
+The crop step is held as `croppingSource` (the source's identity) rather than a
+boolean: that survives the re-creation AND still resets automatically for a
+different image, which is what keying the old flag on `source` achieved. The
+decoded bitmap is intentionally not retained — it re-decodes on rotation (brief
+"Loading…") rather than parking a full-size Bitmap in a store with no lifecycle.
+
+### How to test it live
+
+1. Settings → About → **Check Now**, wait for the result, then rotate: the sheet
+   stays open and still shows the same result and release notes.
+2. Rotate WHILE it says "Checking": the sheet survives and returns to **Check
+   Now** rather than spinning forever. Tap it again — the check works.
+3. If an update is available, start the download, then rotate: the sheet stays,
+   the progress resets to idle and the download is cancelled (as before). Start
+   it again and it completes.
+4. About → update sheet → APK cleanup → Delete prompt, rotate: the confirm
+   dialog survives and still lists the files.
+5. Profile → avatar → **Gallery**, pick a photo. With the preview showing,
+   rotate: the preview survives and re-decodes the same image. Tap **Accept** —
+   the picture is applied.
+6. Same with **URL**: load a link, then at the preview tap **Crop**, drag the
+   box, and rotate. You stay in the CROP step (the box resets, since the canvas
+   changed size). Tap **Done** — the cropped picture is applied.
+7. Draft safety: load a URL image, reach the preview, rotate a few times, then
+   tap **Cancel**. The temp file is removed and the avatar is unchanged.
+8. Open a URL preview, rotate, then accept, and confirm the picture is correct
+   and no stale draft is reused on the next open.
