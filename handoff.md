@@ -1505,3 +1505,45 @@ as a separate decision.
    pop-up is **closed**, as before.
 8. **Nothing else changed.** Home's Switch API Key sheet, the portrait↔landscape
    cross-fade, and all dialog visuals behave exactly as they did.
+
+## 2026-10-09 — "Change profile picture" pop-up in landscape
+
+**Bug:** the avatar pop-up looked cramped in landscape.
+
+**Cause.** It is a plain `AlertDialog` (not `NazoAdaptiveDialog`). A landscape
+phone leaves it roughly 330dp of height, but the portrait layout asks for about
+500dp: title row 48, description ~40, spacer 16, tab row 48, spacer 24, a FIXED
+`heightIn(max = 260.dp)` avatar grid, and the action row. The M3 AlertDialog
+text slot is `weight(1f, fill = false)`, so it is the only part that can give —
+it absorbed the entire ~170dp overflow and the grid collapsed to less than one
+64dp row, bunching everything against the buttons.
+
+Not a width problem: in landscape the dialog is actually WIDER (clamped at the
+560dp M3 max vs ~363dp in portrait), so URL / Gallery / Remove each get more
+room than in portrait.
+
+**Fix (landscape only).** In landscape the content Column scrolls as a whole and
+the grid drops its fixed cap and its own scroller; portrait keeps the original
+behaviour (header + tabs pinned, only the grid scrolls). The two scrollers are
+mutually exclusive by construction, so they can never fight — the long-standing
+nested-scroller trap. Landscape spacers tightened 16→12 and 24→16. Both
+`ScrollState`s are created unconditionally and selected with `.then(...)`,
+because a `remember*` call must not sit behind an `if`.
+
+Nothing else on the profile screen changed: same dialog, same controls, same
+order, same portrait appearance.
+
+### How to test it live
+
+1. Portrait: Profile → tap the avatar. Confirm it looks exactly as before —
+   description, tabs, a grid about 260dp tall that scrolls on its own while the
+   title and tabs stay put, and URL / Gallery / Remove along the bottom.
+2. Rotate to landscape with the dialog open (it now survives rotation). The
+   avatar circles are full 64dp again, not squashed, and the action row is clear
+   of the grid. Scroll the dialog body — title, tabs and grid scroll together.
+3. In landscape pick a long tab (Anime or Pixel) and scroll to the bottom: every
+   avatar is reachable and tapping one applies it and closes the dialog.
+4. In landscape check the tab row still scrolls horizontally, and Refresh in the
+   title still fetches a new batch with the spinner.
+5. URL, Gallery and Remove still work in both orientations; Remove only appears
+   when a picture is set.

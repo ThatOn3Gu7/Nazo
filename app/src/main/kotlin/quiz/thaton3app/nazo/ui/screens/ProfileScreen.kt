@@ -588,6 +588,23 @@ fun ProfileScreen(
             loadingDynamic = false
         }
 
+        // LANDSCAPE SPACING ONLY -- portrait is untouched.
+        //
+        // A landscape phone gives this dialog roughly 330dp of height, but the
+        // portrait layout asks for about 500dp (title, description, tab row,
+        // the two spacers, a fixed 260dp avatar grid and the action row). The
+        // AlertDialog text slot is the only flexible part, so it absorbed the
+        // whole overflow: the grid collapsed to well under one row of avatars
+        // and the whole thing bunched up against the buttons.
+        //
+        // Fix: in landscape the CONTENT scrolls as a whole and the grid drops
+        // its fixed cap, so nothing has to be squeezed to fit and every control
+        // keeps its natural size. Portrait keeps the original behaviour (header
+        // and tabs pinned, only the grid scrolls) -- the two scrollers are
+        // mutually exclusive, so they can never fight.
+        val contentScroll = rememberScrollState()
+        val gridScroll = rememberScrollState()
+
         AlertDialog(
             onDismissRequest = { showPictureDialog = false },
             title = {
@@ -616,14 +633,19 @@ fun ProfileScreen(
                 // Nesting a scroller inside a scrolling Column would make the
                 // two fight, so the outer Column must NOT scroll.
                 Column(
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (isLandscape) Modifier.verticalScroll(contentScroll)
+                            else Modifier
+                        )
                 ) {
                     Text(
                         "Pick a default avatar or upload your own. Tap refresh for a new batch.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = NazoTextSecondary
                     )
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(if (isLandscape) 12.dp else 16.dp))
                     PrimaryScrollableTabRow(
                         selectedTabIndex = safeTab,
                         containerColor = Color.Transparent,
@@ -638,7 +660,7 @@ fun ProfileScreen(
                             )
                         }
                     }
-                    Spacer(Modifier.height(24.dp))
+                    Spacer(Modifier.height(if (isLandscape) 16.dp else 24.dp))
                     // Some categories (Anime, Pixel) return far more presets
                     // than the others, which stretched the dialog to the full
                     // screen height. Capping it keeps every tab the same size
@@ -646,8 +668,12 @@ fun ProfileScreen(
                     FlowRow(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 260.dp)
-                            .verticalScroll(rememberScrollState()),
+                            .then(
+                                if (isLandscape) Modifier
+                                else Modifier
+                                    .heightIn(max = 260.dp)
+                                    .verticalScroll(gridScroll)
+                            ),
                         horizontalArrangement = Arrangement.Center,
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
