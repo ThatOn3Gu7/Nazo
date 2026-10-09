@@ -65,6 +65,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.abs
@@ -110,6 +111,8 @@ fun ProfileScreen(
     val nicknameStats = remember(nicknameContext) { QuizStatsStore(nicknameContext) }
     val scope = rememberCoroutineScope()
     var showPictureDialog by rememberRetained("Profile.showPictureDialog") { false }
+    // Press-and-hold the avatar to see the current picture full size.
+    var showAvatarPreview by rememberRetained("Profile.showAvatarPreview") { false }
     var showUrlDialog by rememberRetained("Profile.showUrlDialog") { false }
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
@@ -160,6 +163,17 @@ fun ProfileScreen(
             )
         }
     ) { padding ->
+        // Only offered when there is actually a picture to preview; with no
+        // picture set the avatar is just initials, so a hold would open an
+        // empty viewer. Null disables the gesture and leaves the original
+        // tap-only Surface path in place.
+        val avatarLongPress: (() -> Unit)? = if (!profilePictureUri.isNullOrBlank()) {
+            {
+                Haptics.light(context)
+                showAvatarPreview = true
+            }
+        } else null
+
         if (isLandscape) {
             // --- LANDSCAPE LAYOUT ---
             Row(
@@ -184,6 +198,7 @@ fun ProfileScreen(
                         pictureUri = profilePictureUri,
                         size = 132.dp,
                         onClick = { showPictureDialog = true },
+                        onLongClick = avatarLongPress,
                         modifier = Modifier.padding(bottom = 16.dp),
                     )
 
@@ -266,6 +281,7 @@ fun ProfileScreen(
                     pictureUri = profilePictureUri,
                     size = 132.dp,
                     onClick = { showPictureDialog = true },
+                    onLongClick = avatarLongPress,
                     modifier = Modifier.padding(bottom = 16.dp),
                 )
 
@@ -560,6 +576,70 @@ fun ProfileScreen(
                 }
             }
         )
+    }
+
+    // Press-and-hold preview of the avatar. The stored picture is already
+    // square, so ContentScale.Fit shows exactly what is saved -- including the
+    // edges the circular avatar crops off, which is the point of a preview.
+    // Sized off the SHORTER screen edge so it fits landscape as well as
+    // portrait. Tapping outside or pressing back closes it; nothing here can
+    // change the picture, it is a viewer only.
+    if (showAvatarPreview && !profilePictureUri.isNullOrBlank()) {
+        val uri = profilePictureUri.orEmpty()
+        val previewSize = (
+            minOf(configuration.screenWidthDp, configuration.screenHeightDp) * 0.62f
+            ).dp.coerceIn(160.dp, 320.dp)
+        Dialog(onDismissRequest = { showAvatarPreview = false }) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = NazoSurface,
+                modifier = Modifier.clip(RoundedCornerShape(24.dp)),
+            ) {
+                Box(
+                    modifier = Modifier.size(previewSize),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (uri.startsWith("emoji:")) {
+                        Text(
+                            text = uri.removePrefix("emoji:"),
+                            fontSize = (previewSize.value * 0.5f).sp,
+                            textAlign = TextAlign.Center,
+                        )
+                    } else {
+                        SafeRemoteImage(
+                            url = uri,
+                            contentDescription = "Profile picture preview",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit,
+                            placeholder = {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(28.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                }
+                            },
+                            errorContent = {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        "Couldn\u2019t load this picture",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = NazoTextSecondary,
+                                        textAlign = TextAlign.Center,
+                                    )
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
     }
 
     if (showPictureDialog) {

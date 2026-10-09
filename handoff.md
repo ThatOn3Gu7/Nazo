@@ -1547,3 +1547,51 @@ order, same portrait appearance.
    title still fetches a new batch with the spinner.
 5. URL, Gallery and Remove still work in both orientations; Remove only appears
    when a picture is set.
+
+## 2026-10-09 — Long-press the profile avatar to preview the picture
+
+**Added.** Press-and-hold the 132dp avatar on the Profile screen opens a viewer
+showing the current profile picture full size. Tap is unchanged — it still
+opens the "Change profile picture" dialog.
+
+**`ui/components/ProfileAvatar.kt`.** `Surface(onClick = ...)` cannot express a
+long press, so `ProfileAvatar` gained an optional `onLongClick`. It is strictly
+opt-in: the composable now picks one of three branches, and a caller that does
+not pass `onLongClick` takes the ORIGINAL `Surface(onClick = ...)` path
+untouched. Home's 42dp avatar therefore behaves exactly as before. All call
+sites use named arguments, so inserting the parameter before `modifier` is safe.
+
+The long-press branch is a plain `Surface` plus `combinedClickable`, applied
+after `clip(shape)` so the ripple stays inside the circle, with
+`role = Role.Button` to keep the semantics `Surface(onClick)` adds.
+
+**`ui/screens/ProfileScreen.kt`.** `avatarLongPress` is built once above the
+landscape/portrait branch and passed to both avatar call sites, so the two
+layouts cannot drift. It is **null when no picture is set** — with only initials
+there is nothing to preview, and null also disables `combinedClickable`
+entirely, falling back to the original tap-only path. Long press fires
+`Haptics.light` then opens the viewer.
+
+The viewer is a plain `Dialog`: a rounded `NazoSurface` with the picture at
+`ContentScale.Fit`. Fit, not Crop, is deliberate — the stored avatar is already
+square, so Fit shows exactly what is saved including the edges the circular
+avatar crops off, which is the point of a preview. Sized at 62% of the SHORTER
+screen edge, clamped 160–320dp, so it fits landscape as well as portrait. Emoji
+avatars render as a large glyph. It is a viewer only: nothing in it can change
+the picture. Its flag uses `rememberRetained`, so it survives rotation like the
+other profile dialogs.
+
+### How to test it live
+
+1. Profile → **tap** the avatar. The "Change profile picture" dialog opens
+   exactly as before. This is the main no-regression check.
+2. Set a picture (Gallery, URL or a preset avatar). **Press and hold** the
+   avatar: a short vibration, then the picture appears full size. Tap outside or
+   press back to close. The picture is unchanged afterwards.
+3. Hold again and rotate while the preview is open — it survives and resizes.
+4. Pick an **emoji** preset, then press and hold: the emoji shows large on the
+   same panel.
+5. Remove the picture (so only initials show) and press and hold: **nothing
+   happens**, by design, and a normal tap still opens the change dialog.
+6. Home screen: the small avatar in the top bar still opens Profile on tap and
+   has no long-press behaviour.
