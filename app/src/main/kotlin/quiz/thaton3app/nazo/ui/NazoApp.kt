@@ -300,7 +300,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) connectivityProbe++
+            if (event == Lifecycle.Event.ON_RESUME) {
+                connectivityProbe++
+                // The day can roll over while the app sits in the background,
+                // which is exactly how a streak gets broken. Re-reading on
+                // resume lets QuizStatsStore.get() apply the streak expiry, so
+                // coming back the day after a missed day shows the reset
+                // immediately instead of a stale number.
+                quizStats = statsStore.get()
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }

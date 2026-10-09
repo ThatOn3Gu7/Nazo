@@ -1595,3 +1595,51 @@ other profile dialogs.
    happens**, by design, and a normal tap still opens the change dialog.
 6. Home screen: the small avatar in the top bar still opens Profile on tap and
    has no long-press behaviour.
+
+## 2026-10-09 — Daily streak did not reset after an inactive day
+
+**Bug:** skip a day and the old streak kept showing until the next quiz was
+finished.
+
+**Cause.** `currentStreakDays` was only ever recomputed inside
+`QuizStats.record` / `recordGuessing`. Missing a day is a NON-EVENT — no code
+runs when the user simply does not play — so the stored number stayed "correct
+as of `lastQuizEpochDay`" and was displayed verbatim. `record()` already got the
+reset right (`else -> 1`); the gap was purely between plays.
+
+**Fix.** New pure `QuizStats.withStreakExpiry(today = localEpochDay())`:
+last quiz today or yesterday -> streak stands (today is not over, so yesterday's
+streak can still be continued); anything older -> 0. `lastQuizEpochDay` and
+`bestStreakDays` are never touched. A clock moved BACKWARDS
+(`today < lastQuizEpochDay`) deliberately leaves the streak alone rather than
+destroying it on a clock artefact.
+
+Applied in `QuizStatsStore.get()`, which is the single read path for Home,
+Profile, Statistics, the widget and the reminder scheduler — so one change fixes
+every surface with no UI edits at all. The corrected value is written back when
+it changed, so those surfaces can never disagree and the work happens once per
+expiry rather than on every read.
+
+`NazoApp` additionally re-reads the stats on `ON_RESUME` (the existing
+connectivity observer), because the day rolls over while the app sits in the
+background — that is exactly how a streak gets broken.
+
+Verified the rule against the table `record()` already encodes: played today
+5->5, played yesterday 5->5 (and 6 after playing), missed one day 5->0 (1 after
+playing), missed a week 5->0, never played 0, clock back a day 5->5. The expiry
+never changes what `record()` produces; it only fixes the value BETWEEN plays.
+
+### How to test it live
+
+1. Finish a quiz today — Home's flame shows 1 (or your continuing streak).
+2. Force a missed day without waiting: Settings → System → Date & time, turn off
+   automatic time and move the device date **forward 2 days**. Reopen Nazo (or
+   just bring it back to the foreground). The flame now reads **0**.
+3. Move the date forward only **1 day** instead: the streak is UNCHANGED, which
+   is correct — yesterday's streak is still live until today ends.
+4. Tap the flame: the detail card agrees with the chip, and **best streak is
+   still your old best**.
+5. Play a quiz after the reset: the streak starts again at 1.
+6. Check the home-screen widget and Profile/Statistics — all show the same
+   number as Home.
+7. Restore automatic date/time afterwards.

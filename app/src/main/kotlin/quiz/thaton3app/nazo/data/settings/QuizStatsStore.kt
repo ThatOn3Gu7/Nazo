@@ -16,7 +16,27 @@ class QuizStatsStore(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("nazo_stats", Context.MODE_PRIVATE)
 
-    fun get(): QuizStats = QuizStats.fromJson(prefs.getString(KEY, null))
+    /**
+     * Every consumer of the stats — Home, Profile, Statistics, the widget and
+     * the reminder scheduler — reads through here, so this is the one place an
+     * expired streak has to be caught.
+     *
+     * Missing a day is a non-event: no code runs when the user simply does not
+     * play, so a streak broken by an inactive day stayed on disk (and on
+     * screen) until the next quiz was recorded. Folding
+     * [QuizStats.withStreakExpiry] into the read makes the reset happen the
+     * first time anything looks at the stats on the new day.
+     *
+     * The corrected value is written back when it changed, so the widget, the
+     * notification scheduler and the UI can never disagree, and the work
+     * happens once per expiry rather than on every read.
+     */
+    fun get(): QuizStats {
+        val stored = QuizStats.fromJson(prefs.getString(KEY, null))
+        val current = stored.withStreakExpiry()
+        if (current != stored) save(current)
+        return current
+    }
 
     fun save(stats: QuizStats) {
         prefs.edit().putString(KEY, stats.toJson()).apply()
