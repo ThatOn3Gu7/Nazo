@@ -1438,3 +1438,70 @@ describing the net change users receive.
    shown must be ~2.5 MB, NOT ~21 MB.
 3. Start the download and confirm the progress total matches that size, and
    that the install prompt appears and succeeds over the existing app.
+
+## 2026-10-09 — Dialogs survive orientation change
+
+**Bug:** opening the Backup or Restore-from-backup pop-up and rotating made it
+disappear. The Switch API Key sheet on Home did not have the problem.
+
+**Cause (not what it looked like).** The activity is NOT recreated on rotation —
+`AndroidManifest.xml` declares `configChanges="orientation|screenSize|..."` — so
+`rememberSaveable` was never the issue. The real cause is in `NazoApp.kt`: the
+layout-mode `AnimatedContent(targetState = showListDetail)` swaps a whole
+subtree on rotate. Portrait renders every screen in one full-screen
+`AnimatedContent`; landscape Settings renders a master/detail `Row`. A settings
+sub-screen is therefore removed and re-created at a different position in the
+tree, so every plain `remember` inside it is discarded. Home sits in the same
+branch in both orientations, which is exactly why its API key sheet survived.
+
+**Fix:** new `ui/components/RetainedState.kt` — `RetainedStateStore`,
+`LocalRetainedStateStore`, `rememberRetained(key) { init }`. The store is
+remembered at the top of `NazoApp` (above the swap) and provided around the
+layout switch, so both the outgoing and incoming copy of a screen share one
+`MutableState`. Keys are `"<ScreenName>.<field>"`; a `LaunchedEffect(currentScreen)`
+calls `forgetAllExcept` so navigating away still closes a screen's dialogs
+(rotation does not change `currentScreen`, so it never fires on rotate).
+
+**Rejected: `rememberSaveable` + `SaveableStateHolder`.** During the cross-fade
+both layout branches are composed for a few frames, so the same screen key is
+registered twice and `SaveableStateProvider` throws
+"Key ... was used multiple times" (verified in the androidx source). Sharing one
+entry is safe under that overlap.
+
+**Converted:** BackupRestore (`showRestoreConfirm`, `restoreUri`, `showFreqDialog`,
+`backupPreview`, `showBackupPreview`, `restorePreview`, `restoreFromAuto` — the
+preview payloads are retained with their flag so a dialog can never return
+empty), Profile (`showUsernameDialog`, `showPictureDialog`, `showUrlDialog`),
+About (`showFeedback`), Appearance (the four sheets + `pendingIcon`).
+
+**Deliberately NOT converted:** the About update sheet (`showUpdate`) and its
+nested `showCleanupConfirm`, and the profile crop flow (`pendingSource`,
+`pendingDraft`). Both hold data whose lifetime is tied to other machinery
+(fetched release info; the draft-cleanup `DisposableEffect`), so retaining only
+the flag would show an empty sheet or strand a draft file. Raised with the owner
+as a separate decision.
+
+### How to test it live
+
+1. **Backup preview.** Settings → Backup & Restore → tap **Back up now** so the
+   contents preview appears. Rotate to landscape: the pop-up **stays open** and
+   becomes the slide-up drag sheet with the same categories listed. Rotate back
+   to portrait: still open, back to the centred card. Cancel still closes it.
+2. **Restore preview.** Same screen → **Restore from backup**, pick a valid
+   backup file. With the confirmation showing, rotate both ways — it survives
+   and keeps the file's category list. Repeat with **Restore from Auto-Backup**.
+3. **Auto-backup frequency.** Tap the frequency row, rotate while the chooser is
+   open — it survives; picking a value still applies it.
+4. **Profile.** Profile → tap the avatar (picture dialog) and rotate; then
+   **Link**, rotate with the URL dialog open; then the username dialog. All three
+   survive, and typed text in the URL/username fields is kept.
+5. **Appearance.** Settings → Appearance → open App icon, rotate (sheet
+   survives), tap a different icon so the confirm dialog appears, rotate again —
+   the confirm dialog and the chosen icon both survive. Repeat for Background
+   effects, Celebrations and Sparkles.
+6. **About.** Settings → About → **Send feedback**, rotate — the chooser stays.
+7. **Navigating away still closes dialogs (no regression).** Open the Backup
+   preview, press back to leave Backup & Restore, then go back into it — the
+   pop-up is **closed**, as before.
+8. **Nothing else changed.** Home's Switch API Key sheet, the portrait↔landscape
+   cross-fade, and all dialog visuals behave exactly as they did.

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import quiz.thaton3app.nazo.ui.components.rememberRetained
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -109,17 +110,30 @@ fun BackupRestoreScreen(
         summaryParts.joinToString(" · ")
     }
 
-    var showRestoreConfirm by remember { mutableStateOf(false) }
-    var restoreUri by remember { mutableStateOf<Uri?>(null) }
-    var showFreqDialog by remember { mutableStateOf(false) }
+    // Rotating swaps the whole layout subtree (full-screen in portrait,
+    // master/detail in landscape), which discards plain `remember` and used to
+    // make an open Backup or Restore preview vanish. rememberRetained keeps the
+    // value in a store held above that swap, so the dialog stays open and
+    // simply re-renders in the other orientation's form -- a centred card in
+    // portrait, the drag sheet in landscape. See RetainedState.kt.
+    //
+    // The preview payloads are retained alongside their flag so the dialog can
+    // never come back without its contents.
+    var showRestoreConfirm by rememberRetained("BackupRestore.showRestoreConfirm") { false }
+    var restoreUri by rememberRetained<Uri?>("BackupRestore.restoreUri") { null }
+    var showFreqDialog by rememberRetained("BackupRestore.showFreqDialog") { false }
 
     // Contents preview state. Categories always come from the real bundle:
     // live SharedPreferences for an export, the parsed file for a restore.
-    var backupPreview by remember { mutableStateOf<List<BackupRepository.BackupCategory>>(emptyList()) }
-    var showBackupPreview by remember { mutableStateOf(false) }
-    var restorePreview by remember { mutableStateOf<List<BackupRepository.BackupCategory>>(emptyList()) }
+    var backupPreview by rememberRetained<List<BackupRepository.BackupCategory>>(
+        "BackupRestore.backupPreview"
+    ) { emptyList() }
+    var showBackupPreview by rememberRetained("BackupRestore.showBackupPreview") { false }
+    var restorePreview by rememberRetained<List<BackupRepository.BackupCategory>>(
+        "BackupRestore.restorePreview"
+    ) { emptyList() }
     // Set when the pending restore is the on-device auto-backup rather than a picked file.
-    var restoreFromAuto by remember { mutableStateOf(false) }
+    var restoreFromAuto by rememberRetained("BackupRestore.restoreFromAuto") { false }
 
     val createLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")

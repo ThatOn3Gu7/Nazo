@@ -35,6 +35,7 @@ import androidx.compose.material.icons.outlined.ModeNight
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import quiz.thaton3app.nazo.ui.components.rememberRetained
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -142,16 +143,19 @@ fun AppearanceScreen(
     var iconFollowsOsThemeChecked by remember { mutableStateOf(iconFollowsOsTheme) }
     var floatingNavBarChecked by remember { mutableStateOf(floatingNavBar) }
     var guessAutoCropChecked by remember { mutableStateOf(guessAutoCrop) }
-    var showEffectsSheet by remember { mutableStateOf(false) }
+    // Rotation swaps the whole layout subtree, discarding plain `remember` and
+    // closing any open dialog. rememberRetained holds these above that swap so
+    // the dialog survives the orientation change. See RetainedState.kt.
+    var showEffectsSheet by rememberRetained("Appearance.showEffectsSheet") { false }
     val effectsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var showCelebrationSheet by remember { mutableStateOf(false) }
+    var showCelebrationSheet by rememberRetained("Appearance.showCelebrationSheet") { false }
     val celebrationSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var showIconSheet by remember { mutableStateOf(false) }
-    var showSparkleSheet by remember { mutableStateOf(false) }
+    var showIconSheet by rememberRetained("Appearance.showIconSheet") { false }
+    var showSparkleSheet by rememberRetained("Appearance.showSparkleSheet") { false }
     val iconSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val sparkleSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     // Icon awaiting the "the app will close" confirmation, or null.
-    var pendingIcon by remember { mutableStateOf<AppIconOption?>(null) }
+    var pendingIcon by rememberRetained<AppIconOption?>("Appearance.pendingIcon") { null }
 
 
     Column(

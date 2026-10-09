@@ -26,6 +26,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import quiz.thaton3app.nazo.ui.components.LocalRetainedStateStore
+import quiz.thaton3app.nazo.ui.components.RetainedStateStore
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -356,6 +358,20 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // in-app back arrows pop this stack, so a user always returns to the screen they came from.
     val navigationStack = remember { mutableStateListOf<Screen>(Screen.Home) }
     val currentScreen = navigationStack.last()
+
+    // Dialog state that has to outlive the portrait <-> landscape layout swap.
+    // Remembered HERE, above the layout-mode AnimatedContent, so it is not part
+    // of the subtree that rotation replaces. See RetainedState.kt.
+    val retainedState = remember { RetainedStateStore() }
+    // Rotation does not change currentScreen, so this never fires on rotate --
+    // only on real navigation, which preserves the old behaviour of leaving a
+    // screen closing its dialogs. Settings is kept because it stays composed as
+    // the master pane while a detail screen is open in landscape.
+    LaunchedEffect(currentScreen) {
+        retainedState.forgetAllExcept(
+            listOf(currentScreen.toString(), Screen.Settings.toString())
+        )
+    }
     var backPressedOnce by remember { mutableStateOf(false) }
 
     fun navigate(screen: Screen) {
@@ -1749,6 +1765,11 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             val showListDetail = landscape && !showOnboarding &&
                 (currentScreen == Screen.Settings || settingsDetail != null)
 
+            // Screens below are re-created when showListDetail flips on
+            // rotation; rememberRetained reaches past that swap to the store
+            // held at the top of NazoApp, so an open dialog carries over.
+            CompositionLocalProvider(LocalRetainedStateStore provides retainedState) {
+
             // The Home <-> landscape-Settings switch is a STRUCTURAL change:
             // one branch is a full-screen AnimatedContent, the other a
             // master/detail Row. An `if` between them replaced the whole
@@ -1819,6 +1840,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     }
                 }
             }
+            } // CompositionLocalProvider(LocalRetainedStateStore)
 
             // The bottom nav lives OUTSIDE AnimatedContent, for the same reason
             // AmbientBackground does: anything inside gets torn down and rebuilt

@@ -49,6 +49,7 @@ import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material3.*
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.*
+import quiz.thaton3app.nazo.ui.components.rememberRetained
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -100,13 +101,16 @@ fun ProfileScreen(
     onNavigateToStatistics: () -> Unit,
     onNavigateToSettings: () -> Unit = {},
 ) {
-    var showUsernameDialog by remember { mutableStateOf(false) }
+    // Rotation swaps the whole layout subtree, discarding plain `remember` and
+    // closing any open dialog. rememberRetained holds these above that swap so
+    // the dialog survives the orientation change. See RetainedState.kt.
+    var showUsernameDialog by rememberRetained("Profile.showUsernameDialog") { false }
     val nicknameContext = LocalContext.current
     val apiKeyStore = remember(nicknameContext) { ApiKeyStore(nicknameContext) }
     val nicknameStats = remember(nicknameContext) { QuizStatsStore(nicknameContext) }
     val scope = rememberCoroutineScope()
-    var showPictureDialog by remember { mutableStateOf(false) }
-    var showUrlDialog by remember { mutableStateOf(false) }
+    var showPictureDialog by rememberRetained("Profile.showPictureDialog") { false }
+    var showUrlDialog by rememberRetained("Profile.showUrlDialog") { false }
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE

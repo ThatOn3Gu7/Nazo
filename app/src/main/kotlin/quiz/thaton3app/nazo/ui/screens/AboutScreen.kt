@@ -91,6 +91,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import quiz.thaton3app.nazo.ui.components.rememberRetained
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -199,7 +200,10 @@ fun AboutScreen(
     }
 
     var showUpdate by remember { mutableStateOf(false) }
-    var showFeedback by remember { mutableStateOf(false) }
+    // Rotation swaps the whole layout subtree, discarding plain `remember` and
+    // closing any open dialog. rememberRetained holds these above that swap so
+    // the dialog survives the orientation change. See RetainedState.kt.
+    var showFeedback by rememberRetained("About.showFeedback") { false }
 
     var updateState by remember { mutableStateOf<UpdateState>(UpdateState.Idle) }
     var checkLabel by remember { mutableStateOf("Check Now") }
