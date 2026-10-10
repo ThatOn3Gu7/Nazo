@@ -1976,3 +1976,64 @@ and surface on the PR like compile errors.
 
 Not testable from this sandbox: the live provider runs in steps 1–5 (no
 network egress to AI providers here) — they are for the owner's device.
+
+## 2026-10-10 — Daily Challenge: deterministic from the bank up
+
+Third ChatGPT-audit prompt; audited before changing anything (owner rule).
+
+### Audit verdict
+
+- **"getQuestions() shuffles the questions and their options before the daily
+  seed" — CONFIRMED.** `getQuestions` runs two unseeded `.shuffled()` passes
+  and `withShuffledOptions()` over all 985 entries.
+- **"repeated calls not guaranteed identical questions or option order" —
+  CONFIRMED, with precision.** Option order was genuinely nondeterministic:
+  `options.shuffled(Random(seed))` is a fixed permutation OF ITS INPUT, and the
+  input was `withShuffledOptions()`'s unseeded shuffle — a seeded permutation
+  of a random list is random. Question selection only held deterministically by
+  accident of the previous identity fix (unique keys laundered through
+  `sortedBy`), not by construction, so "not guaranteed" is fair. (I missed
+  this in the question-bank pass — that fix stopped text-collision survivor
+  drift but not the option-order drift.)
+- **"repeatedly shuffles, deduplicates, sorts and filters the whole bank for
+  5 questions" — CONFIRMED** (985 option-shuffles + 2 full shuffles + sort +
+  distinctBy per call).
+- Day boundary already `QuizStats.localEpochDay()` — unchanged. Cross-franchise
+  identity dedup kept as-is (old text-only logic NOT reintroduced).
+
+### Changes
+
+- `data/LocalQuestionBank.kt`: new `stablePool()` — the identity-deduped bank
+  in authored order with options exactly as written, precomputed once
+  (`canonical`). `getQuestions` stays the randomized path for normal quizzes.
+- `daily/Daily.kt`: `questionsFor` now starts from `stablePool()`; the
+  `distinctBy`/`sortedBy` laundering is gone (the pool is stable by
+  construction). The epoch-day seed drives both selection and each question's
+  option shuffle (`Random(epochDay * 31 + 7)` for picks,
+  `Random(epochDay * 131 + i)` for options), the 2 Easy / 2 Medium / 1
+  Hard-or-Otaku ramp and its top-up fallback are unchanged (bank pools:
+  548 / 213 / 224, always satisfiable).
+- Deliberately NO cache: the only caller is one daily-start path in NazoApp,
+  and the fix removes the heavy full-bank work — a day-keyed cache would add
+  date-change state for no measurable gain. `DailyStore` completion tracking
+  (day-keyed `last_day`) is untouched.
+- New tests `app/src/test/.../daily/DailyChallengeTest.kt` (7): same day is
+  identical across repeated calls (full signature: identities + option order +
+  answers), interleaving other days never perturbs a run (the regression that
+  motivated the suite), different days differ, exactly 5 questions, four
+  distinct nonblank options with the scored answer among them, the 2/2/1
+  difficulty ramp, and `todayEpochDay() == QuizStats.localEpochDay()`.
+
+### How to test it live
+
+1. Home → Daily Challenge → start today's run. Write down the 5 questions and
+   the order of their answer options.
+2. Back out of the run (do not complete it), then force-close Nazo and reopen.
+3. Start the Daily Challenge again the same day: the 5 questions and every
+   option order must be IDENTICAL to your notes.
+4. Finish the run completely. The home/daily card and widget must mark today
+   as completed (score + bonus shown), the streak advances once, and starting
+   again the same day is not offered as a fresh run.
+5. After midnight (local time), the challenge offers a NEW run — different
+   questions are expected; repeat steps 1–3 to confirm the new day is equally
+   stable.

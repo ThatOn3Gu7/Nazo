@@ -1075,6 +1075,21 @@ object LocalQuestionBank {
         Question(anime = "Darling in the Franxx", theme = "UNRESOLVED", difficulty = "Otaku Master", text = "Which organisation directs the Parasites and their plantations?", options = listOf("APE", "VIRM", "SEELE", "NERV"), correctAnswer = "APE", explanation = "APE is the governing council of adults that directs the Parasite children."),
     )
     /**
+     * Identity-deduped bank in its AUTHORED order, options exactly as written —
+     * a stable, unshuffled source for callers that drive their own seeded
+     * shuffle (the daily challenge must reproduce the same pick for the same
+     * date; feeding it [getQuestions]'s randomized output made the option
+     * order depend on an unseeded shuffle). [getQuestions] remains the
+     * randomized path for regular quizzes. Identity dedup keeps same-franchise
+     * duplicates out without ever dropping another franchise's copy of a
+     * generic question.
+     */
+    private val canonical: List<Question> = allQuestions.distinctBy { it.identity }
+
+    /** See [canonical]. */
+    fun stablePool(): List<Question> = canonical
+
+    /**
      * Returns up to [count] questions, optionally filtered by a free-text [topic]
      * (matched against anime / theme / text) and biased toward the chosen
      * [difficulty] tier. The selected tier is served first (shuffled) and the
