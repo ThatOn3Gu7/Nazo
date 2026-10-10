@@ -85,7 +85,7 @@ Hard rules:
                 }
 
                 val content = extractContent(endpoint.kind, raw)
-                val questions = parseQuestions(content, topic)
+                val questions = parseQuestions(content, topic, count)
                 if (questions.isEmpty()) {
                     throw IllegalStateException("Provider returned no questions")
                 }
@@ -439,21 +439,69 @@ Hard rules:
         throw JSONException("Model returned no parsable JSON question array")
     }
 
-    private fun parseQuestions(raw: String, topic: String): List<Question> {
+    /**
+     * Canonical form for matching a declared correctAnswer to its option and
+     * for detecting duplicate options: trimmed, whitespace-collapsed,
+     * case-folded. Display strings are never altered beyond trimming.
+     */
+    private fun canon(s: String): String =
+        s.trim().lowercase().replace(Regex("\\s+"), " ")
+
+    /**
+     * Coerces one raw `options` entry to display text, or null when the entry
+     * is not a usable scalar (missing, JSON null, nested object/array).
+     * Numbers and booleans become their string form — the device's org.json
+     * already did this in getString, and quiz options legitimately include
+     * numbers ("How many tails...?" -> 9).
+     */
+    private fun optionText(v: Any?): String? = when (v) {
+        null -> null
+        JSONObject.NULL -> null
+        is String -> v.trim().takeIf { it.isNotEmpty() }
+        is Number, is Boolean -> v.toString()
+        else -> null
+    }
+
+    /**
+     * Parses and STRICTLY validates a model reply into questions.
+     *
+     * An accepted question must have exactly four nonblank, mutually distinct
+     * options and a nonblank question text, and its declared `correctAnswer`
+     * must resolve to one of those options (case/whitespace-insensitive).
+     * Nothing is ever invented: a question whose answer does not match its
+     * options is REJECTED rather than papered over with a guessed "correct"
+     * answer, and malformed entries are dropped individually instead of
+     * poisoning the batch.
+     *
+     * The reply as a whole must yield at least [expectedCount] valid questions
+     * (extras are truncated to the request); anything less throws, which routes
+     * the failure through generateQuiz's existing error handling — the one-shot
+     * alternate-model retry, then the error card with "Use local quiz" — instead
+     * of silently serving a short or mis-scored quiz. No extra API requests are
+     * made here.
+     */
+    internal fun parseQuestions(raw: String, topic: String, expectedCount: Int = 0): List<Question> {
         val arr = extractQuestionArray(raw)
         val list = mutableListOf<Question>()
         for (i in 0 until arr.length()) {
-            val o = arr.getJSONObject(i)
-            val options = o.optJSONArray("options")?.let { a ->
-                (0 until a.length()).map { a.getString(it) }
-            }?.filter { it.isNotBlank() } ?: emptyList()
-            // Skip malformed entries so a single bad question can't break the whole quiz.
-            if (options.isEmpty()) continue
-            val rawQuestion = o.optString("question", o.optString("text", ""))
-            if (rawQuestion.isBlank()) continue
-            val questionText = rawQuestion
+            // A non-object element is one malformed question, not a dead batch.
+            val o = arr.optJSONObject(i) ?: continue
+            val questionText = o.optString("question", o.optString("text", "")).trim()
+            if (questionText.isBlank()) continue
+
+            val optionsArr = o.optJSONArray("options") ?: continue
+            if (optionsArr.length() != 4) continue
+            val options = (0 until 4).map { optionText(optionsArr.opt(it)) ?: "" }
+            if (options.any { it.isEmpty() }) continue
+            if (options.map { canon(it) }.toSet().size != 4) continue
+
             val rawCorrect = o.optString("correctAnswer", "")
-            val correctAnswer = if (rawCorrect in options) rawCorrect else options.first()
+            if (rawCorrect.isBlank()) continue
+            // Resolve the declared answer to its option by reasonable
+            // case/whitespace matching — NEVER guess. No match rejects the
+            // question instead of promoting options.first() to "correct".
+            val correctAnswer = options.firstOrNull { canon(it) == canon(rawCorrect) } ?: continue
+
             list += Question(
                 id = list.size + 1,
                 anime = topic.ifBlank {
@@ -466,7 +514,12 @@ Hard rules:
                 explanation = o.optString("explanation", ""),
             )
         }
-        return list
+        if (expectedCount > 0 && list.size < expectedCount) {
+            throw IllegalStateException(
+                "Provider returned only ${list.size} of $expectedCount valid questions"
+            )
+        }
+        return if (expectedCount > 0) list.take(expectedCount) else list
     }
 
     private fun buildUserPrompt(

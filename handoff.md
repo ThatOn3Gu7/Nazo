@@ -1880,3 +1880,99 @@ franchise's quiz — it suppresses repeats, it never shows a wrong answer.
    questions in the identical order.
 8. Sanity: Frieren's "Who is the priest?" shows Heiter/Himmel/Eisen/Fern with
    **Heiter** correct; Trigun's own "Who is the priest?" still answers Wolfwood.
+
+## 2026-10-10 — AI quiz parser: reject bad replies, never guess answers
+
+Owner note for this and future audit prompts: the prompts come from a
+ChatGPT audit and must NOT be trusted blindly — audit the code first, fix
+only what is actually broken, and flag misleading claims. This entry's
+"Audit verdict" section is that audit.
+
+### Audit verdict (prompt claims checked against the code)
+
+All three problem claims in the prompt are REAL:
+
+1. **`options.first()` fallback — CONFIRMED** (old `parseQuestions`):
+   `val correctAnswer = if (rawCorrect in options) rawCorrect else options.first()`.
+   A missing answer, or an answer that differed only by case/whitespace
+   ("tsunade" vs "Tsunade"), silently made option 1 the scored answer —
+   a wrong key with no warning. The exact `in` match means the trigger was
+   broader than the prompt stated.
+2. **Malformed option sets accepted — CONFIRMED** (and worse than stated):
+   only EMPTY option lists were rejected. 1–3 or 5+ options passed, exact
+   duplicates passed, and blank options were silently filtered out (a
+   4-with-one-blank became a 3-option question; a 5-with-one-blank was
+   accepted as 4).
+3. **Short batches — CONFIRMED**: malformed entries were skipped with
+   `continue` and only `isEmpty()` guarded the result, so a 10-question
+   request could silently become 3.
+
+The prompt's assumed mechanisms are also real: `launchGeneration` retries
+ONCE with the next configured model (`isFallback`), then shows
+`GenerationState.Error` with Retry / "Use local quiz" (and an empty result
+falls back to the local bank). One extra finding the prompt missed: a
+non-object array element made `arr.getJSONObject(i)` THROW, killing the
+whole batch — the opposite failure mode to the silent skip.
+
+### Changes (`data/remote/ApiClient.kt`)
+
+`parseQuestions(raw, topic, expectedCount)` is now strict and internal
+(testable without network):
+
+- **Per question** (all required, else the question is rejected):
+  exactly 4 options, each nonblank (numbers coerce to text — that is what
+  Android's org.json did anyway), mutually distinct under trim/case/
+  whitespace-folded canonical form; nonblank question text; a nonblank
+  `correctAnswer` that RESOLVES to one of the four options under the same
+  canonical matching (the option's own exact text becomes the scored
+  answer). **No match = reject — `options.first()` is gone. Nothing is
+  invented.**
+- **Per batch**: fewer than `expectedCount` valid questions throws
+  ("Provider returned only 3 of 10 valid questions"), riding the existing
+  fallback chain — zero additional API requests. Extras are truncated to
+  the request. A non-object element is skipped as one bad question instead
+  of aborting the parse.
+- JSON extraction/coercion (`coerceModelJson`, `firstBalancedBlock`,
+  `extractQuestionArray`, `extractContent`) and all provider formats are
+  untouched.
+
+### Tests (new: `app/src/test/.../QuizResponseParserTest.kt`)
+
+First test suite in the repo. JUnit4 + real `org.json` for the JVM
+(`org.json:json` — android.jar's org.json is stubbed in unit tests). 17
+tests over fixtures: valid bare/wrapped/fenced/reasoning payloads, case &
+whitespace answer matching, numeric options, malformed JSON, missing
+answer, answer matching no option (incl. letter "A"), blank answer,
+duplicate options (exact + case), option counts 3/5, blank option, missing
+options, blank question text, non-object batch element, incomplete set
+("1 of 10"), all-invalid set ("0 of 5"), truncation of extras, and the
+scoring invariant `correctAnswer in options` for every accepted question.
+
+`PR-assemble.yml` now runs `./gradlew testDebugUnitTest` before
+`assembleDebug`, so the tests execute on every push (this sandbox has no
+JDK — CI is the only executor). Test failures tee into `gradle-build.log`
+and surface on the PR like compile errors.
+
+### How to test it live
+
+1. Configure an AI provider (Settings → AI & Model Configuration) with a
+   primary model AND a second model for the same provider.
+2. Generate 3–4 quizzes (different topics). Every question must show 4
+   distinct, nonblank options; answering each question must highlight the
+   choice you selected as right/wrong consistently on the question screen
+   and the review screen (both compare against the same stored answer).
+3. Answer all questions and open the review screen: the green "correct"
+   highlight must match the option that was marked correct while playing,
+   and the explanation must describe that same option.
+4. In AI & Model Configuration, set the primary model to a bogus/wrong
+   model id (or an id your key cannot use) while keeping the second model
+   valid. Generate a quiz: the loading card shows "(auto-retry)", the
+   alternate model produces the quiz — still 4 distinct options each.
+5. Set BOTH models invalid and generate: the error card appears (no
+   partial/short quiz is ever started) with working "Try again" and
+   "Use local quiz" buttons; "Use local quiz" starts a full local quiz.
+6. Malformed-model behaviour is covered by the unit tests (fixtures), not
+   by hoping a live model misbehaves on cue.
+
+Not testable from this sandbox: the live provider runs in steps 1–5 (no
+network egress to AI providers here) — they are for the owner's device.

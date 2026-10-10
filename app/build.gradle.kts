@@ -69,6 +69,10 @@ dependencies {
     implementation(libs.androidx.exifinterface)
     // WorkManager for background update checks + notifications
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    // JVM unit tests for the AI response parser (app/src/test). org.json is the
+    // real implementation for tests — the android.jar stubs would throw.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }

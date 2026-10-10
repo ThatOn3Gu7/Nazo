@@ -118,6 +118,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
       - name: Make gradlew executable
         run: chmod +x ./gradlew
+      # JVM unit tests (app/src/test) run before the APK is assembled, so a
+      # parser regression fails the build even when it still compiles. The log
+      # is tee'd to the same file the failure-report step reads, so test
+      # failures surface on the PR like compile errors do.
+      - name: Run unit tests
+        run: |
+          ./gradlew testDebugUnitTest --stacktrace 2>&1 | tee gradle-build.log
+          exit ${PIPESTATUS[0]}
       - name: Assemble debug APK
         run: |
           ./gradlew assembleDebug --stacktrace 2>&1 | tee gradle-build.log
