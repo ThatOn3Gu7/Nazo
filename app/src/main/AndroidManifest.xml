@@ -14,9 +14,41 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.ComposeEmptyActivity">
+        <!--
+            configChanges: handle rotation (and the related size/layout changes)
+            in-process instead of letting Android destroy and recreate the
+            activity.
+
+            Why this is safe HERE specifically:
+              * NazoApp holds the navigation stack, the generated question list,
+                quiz/guessing session state, timers and in-flight coroutines in
+                plain `remember` state — about 60 values, only a handful of them
+                rememberSaveable. A recreate wiped all of it, so rotating during
+                a quiz restarted the round and rotating anywhere reset the
+                back stack to Home.
+              * The app has NO orientation- or size-qualified resources
+                (res/ has only values, values-night, drawable, layout), so there
+                is nothing for the system to re-resolve on rotation. This is the
+                usual reason configChanges is discouraged, and it does not
+                apply.
+              * Every orientation-dependent layout reads LocalConfiguration
+                (isLandscape(), the sheet height caps, the guessing card height).
+                Compose updates that composition local on a configuration change
+                whether or not the activity restarts, so landscape/portrait
+                layouts still switch correctly and recompose normally.
+
+            screenSize/smallestScreenSize/orientation must be listed together:
+            orientation alone is not enough on API 13+, and omitting the size
+            entries would still trigger a recreate.
+
+            If orientation-qualified resources are ever added, this must be
+            revisited — they would go stale.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
             android:theme="@style/Theme.Nazo.Splash" />
 
         <!-- Launcher entries (the real activity is never disabled). Exactly one is
@@ -54,6 +86,164 @@
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
         </activity-alias>
+
+
+
+
+
+
+
+        <!-- Sakura: a real <activity> (not an alias) so its manifest theme sets the
+             cold-start starting window color before the process exists. -->
+        <activity
+            android:name=".LauncherSakura"
+            android:label="@string/app_name"
+            android:icon="@mipmap/ic_launcher_sakura"
+            android:roundIcon="@mipmap/ic_launcher_round_sakura"
+            android:theme="@style/Theme.Nazo.Splash.Sakura"
+            android:launchMode="singleTask"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="quiz.thaton3app.nazo.action.DAILY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+        </activity>
+
+
+
+        <!-- Midnight: a real <activity> (not an alias) so its manifest theme sets the
+             cold-start starting window color before the process exists. -->
+        <activity
+            android:name=".LauncherMidnight"
+            android:label="@string/app_name"
+            android:icon="@mipmap/ic_launcher_midnight"
+            android:roundIcon="@mipmap/ic_launcher_round_midnight"
+            android:theme="@style/Theme.Nazo.Splash.Midnight"
+            android:launchMode="singleTask"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="quiz.thaton3app.nazo.action.DAILY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+        </activity>
+
+        <!-- Ocean: a real <activity> (not an alias) so its manifest theme sets the
+             cold-start starting window color before the process exists. -->
+        <activity
+            android:name=".LauncherOcean"
+            android:label="@string/app_name"
+            android:icon="@mipmap/ic_launcher_ocean"
+            android:roundIcon="@mipmap/ic_launcher_round_ocean"
+            android:theme="@style/Theme.Nazo.Splash.Ocean"
+            android:launchMode="singleTask"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="quiz.thaton3app.nazo.action.DAILY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+        </activity>
+
+        <!-- Lantern: illustrated mark. Real <activity> so its manifest theme colors the
+             starting window before the process exists. -->
+        <activity
+            android:name=".LauncherLantern"
+            android:label="@string/app_name"
+            android:icon="@mipmap/ic_launcher_lantern"
+            android:roundIcon="@mipmap/ic_launcher_round_lantern"
+            android:theme="@style/Theme.Nazo.Splash.Lantern"
+            android:launchMode="singleTask"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="quiz.thaton3app.nazo.action.DAILY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+        </activity>
+
+
+
+
+
+
+
+        <!-- Brush: "N" mark. Real <activity> so its manifest theme colors the starting
+             window before the process exists. -->
+        <activity
+            android:name=".LauncherBrush"
+            android:label="@string/app_name"
+            android:icon="@mipmap/ic_launcher_nbrush"
+            android:roundIcon="@mipmap/ic_launcher_round_nbrush"
+            android:theme="@style/Theme.Nazo.Splash.Brush"
+            android:launchMode="singleTask"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="quiz.thaton3app.nazo.action.DAILY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+        </activity>
+
+        <!-- Pixel: "N" mark. Real <activity> so its manifest theme colors the starting
+             window before the process exists. -->
+        <activity
+            android:name=".LauncherPixel"
+            android:label="@string/app_name"
+            android:icon="@mipmap/ic_launcher_npixel"
+            android:roundIcon="@mipmap/ic_launcher_round_npixel"
+            android:theme="@style/Theme.Nazo.Splash.Pixel"
+            android:launchMode="singleTask"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="quiz.thaton3app.nazo.action.DAILY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+        </activity>
 
         <!-- Home-screen widget: streak + daily-challenge status. -->
         <receiver

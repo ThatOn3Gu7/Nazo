@@ -1,6 +1,8 @@
 package quiz.thaton3app.nazo.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -13,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -60,12 +63,19 @@ fun ProfileInitials(username: String, size: Dp, modifier: Modifier = Modifier) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ProfileAvatar(
     name: String,
     pictureUri: String?,
     size: Dp = 40.dp,
     onClick: (() -> Unit)? = null,
+    /**
+     * Optional press-and-hold action. Opt-in: callers that do not pass one keep
+     * the original `Surface(onClick = ...)` path untouched, so tap behaviour is
+     * unchanged everywhere this avatar is used.
+     */
+    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val shape = CircleShape
@@ -101,12 +111,29 @@ fun ProfileAvatar(
         }
     }
     val base = modifier.size(size).clip(shape).background(NazoSurface)
-    if (onClick != null) {
-        Surface(onClick = onClick, modifier = base, shape = shape, color = NazoSurface) {
+    when {
+        // Surface(onClick = ...) cannot express a long press, so a caller that
+        // wants one gets a plain Surface plus combinedClickable. The clickable
+        // is applied AFTER clip(shape), so the ripple stays inside the circle
+        // exactly as the Surface version does, and Role.Button keeps the same
+        // accessibility semantics Surface(onClick) adds.
+        onLongClick != null -> Surface(
+            modifier = base.combinedClickable(
+                role = Role.Button,
+                onClick = onClick ?: {},
+                onLongClick = onLongClick,
+            ),
+            shape = shape,
+            color = NazoSurface,
+        ) {
             content()
         }
-    } else {
-        Surface(modifier = base, shape = shape, color = NazoSurface) {
+
+        onClick != null -> Surface(onClick = onClick, modifier = base, shape = shape, color = NazoSurface) {
+            content()
+        }
+
+        else -> Surface(modifier = base, shape = shape, color = NazoSurface) {
             content()
         }
     }

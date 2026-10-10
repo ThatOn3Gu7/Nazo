@@ -1,7 +1,6 @@
 package quiz.thaton3app.nazo.vision
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.PointF
@@ -9,18 +8,15 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.media.FaceDetector
 import android.util.Log
-import java.io.ByteArrayOutputStream
 import kotlin.math.max
 import kotlin.math.min
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * Passport-style portrait reframing for the Guessing Game's mystery images.
  *
  * Fetched images are often full-body art or wide scenes where the character's
  * face — the thing the player is meant to recognise — is a small fraction of
- * the frame. [toPassportPortrait] finds the face and re-crops the image to a
+ * the frame. [reframe] finds the face and re-crops the image to a
  * 3:4 portrait in which the face sits in the TOP third while the neck, chest
  * and upper body stay visible below (owner: an earlier, tighter "passport"
  * crop zoomed in too far and showed only the face), regardless of the source
@@ -49,15 +45,11 @@ import kotlinx.coroutines.withContext
  *
  * Runs in the play screen's pre-warm coroutine BEFORE the countdown starts
  * (typically 30–80 ms on a mid-range phone), so the round timer is never
- * affected. Decoding is capped at [MAX_SRC_DIM] via power-of-two sampling —
- * the full-resolution image is never held in memory (same policy as
- * PixelReveal).
+ * affected. The caller supplies an already-decoded bitmap, so this object
+ * never decodes or re-encodes anything.
  */
 object PortraitCrop {
     private const val TAG = "NazoPortraitCrop"
-
-    /** Longest edge the source is decoded at (low-RAM cap, same as PixelReveal). */
-    private const val MAX_SRC_DIM = 1600
 
     /** Longest edge of the framework-detector bitmap (RGB_565, speed cap). */
     private const val DETECT_DIM = 480
@@ -69,7 +61,7 @@ object PortraitCrop {
     private const val OUT_H_MAX = 1200
 
     /** Passport aspect: width / height. */
-    private const val ASPECT = 3f / 4f
+    private const val ASPECT = 4f / 5f
 
     /**
      * Frame height as a multiple of the detected face height — THE zoom
@@ -78,7 +70,7 @@ object PortraitCrop {
      * (owner: 2.25 "still zooms in a lot — shows only the face"; see
      * [passportFrame] for the full progression).
      */
-    private const val FRAME_TIMES_FACE = 3.25f
+    private const val FRAME_TIMES_FACE = 4.6f
 
     /**
      * Fraction of the frame height reserved ABOVE the top of the face
@@ -101,65 +93,39 @@ object PortraitCrop {
      * as JPEG (or PNG when the source has transparency). Returns the ORIGINAL
      * array when no face is found with confidence or anything at all fails.
      */
-    suspend fun toPassportPortrait(bytes: ByteArray): ByteArray = withContext(Dispatchers.Default) {
-        try {
-            val src = decodeCapped(bytes) ?: return@withContext bytes
-            val face = detectWithFramework(src) ?: detectAnimeHeuristic(src)
-            if (face == null) {
-                Log.i(TAG, "no confident face — keeping original image")
-                src.recycle()
-                return@withContext bytes
-            }
-            val frame = passportFrame(face, src.width, src.height)
-            if (frame == null) {
-                // Face too small to trust, or the frame is basically the whole
-                // image already (e.g. AniList head-shots) — nothing to gain.
-                src.recycle()
-                return@withContext bytes
-            }
-            var out = Bitmap.createBitmap(src, frame.left, frame.top, frame.width(), frame.height())
-            if (out !== src) src.recycle()
-            if (out.height > OUT_H_MAX) {
-                val s = OUT_H_MAX / out.height.toFloat()
-                val scaled = Bitmap.createScaledBitmap(
-                    out, max(1, (out.width * s).toInt()), OUT_H_MAX, true,
-                )
-                if (scaled !== out) out.recycle()
-                out = scaled
-            }
-            val bos = ByteArrayOutputStream(128 * 1024)
-            val ok = if (out.hasAlpha()) {
-                out.compress(Bitmap.CompressFormat.PNG, 100, bos)
-            } else {
-                out.compress(Bitmap.CompressFormat.JPEG, 92, bos)
-            }
-            out.recycle()
-            if (ok) {
-                Log.i(TAG, "cropped to passport portrait ${frame.width()}x${frame.height()}")
-                bos.toByteArray()
-            } else {
-                bytes
-            }
+    /**
+     * Reframes an already-decoded [src] around the detected face and returns a
+     * NEW bitmap, or [src] unchanged when no face is found with confidence.
+     *
+     * This is the bitmap-level entry point and the only one the play screen
+     * uses. Unlike the old byte-level path it performs NO decode and NO
+     * re-encode: the surviving pixels are exactly the pixels Coil decoded. That
+     * round trip (decode → crop → rescale → JPEG/PNG encode → decode again) was
+     * a needless quality loss on every round.
+     *
+     * Framing is deliberately gentle (see [FRAME_TIMES_FACE]): the goal is to
+     * centre the character, not to zoom into the face. When the computed frame
+     * covers most of the image anyway, the original is returned untouched so a
+     * well-composed portrait is never re-cropped for nothing.
+     */
+    fun reframe(src: Bitmap): Bitmap {
+        return try {
+            val face = detectWithFramework(src) ?: detectAnimeHeuristic(src) ?: return src
+            val frame = passportFrame(face, src.width, src.height) ?: return src
+            // Not worth cropping if we would keep ~85%+ of the pixels.
+            val srcArea = src.width.toLong() * src.height.toLong()
+            val frameArea = frame.width().toLong() * frame.height().toLong()
+            if (srcArea > 0 && frameArea * 100L / srcArea >= 85L) return src
+            val out = Bitmap.createBitmap(src, frame.left, frame.top, frame.width(), frame.height())
+            Log.i(TAG, "reframed ${src.width}x${src.height} -> ${out.width}x${out.height}")
+            out
         } catch (e: Exception) {
-            Log.w(TAG, "portrait crop failed — keeping original image", e)
-            bytes
+            Log.w(TAG, "reframe failed — keeping original", e)
+            src
         } catch (e: OutOfMemoryError) {
-            Log.w(TAG, "portrait crop OOM — keeping original image")
-            bytes
+            Log.w(TAG, "reframe OOM — keeping original")
+            src
         }
-    }
-
-    // ---- decoding -------------------------------------------------------
-
-    private fun decodeCapped(bytes: ByteArray): Bitmap? {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-        var sample = 1
-        val dim = max(bounds.outWidth, bounds.outHeight)
-        while (dim / sample > MAX_SRC_DIM) sample *= 2
-        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
     }
 
     // ---- stage 1: framework eye-pair detector ----------------------------

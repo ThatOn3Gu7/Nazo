@@ -12,6 +12,20 @@ import java.net.URL
 // relies on HttpURLConnection + org.json, both already used elsewhere in the app.
 const val GITHUB_REPO = "ThatOn3Gu7/Nazo"
 
+// Markers written by .github/scripts/gen_release_notes.py around the curated,
+// player-facing part of the notes. They are HTML comments, so GitHub shows
+// nothing for them. Changing either string means changing that script too.
+private const val NOTES_START_MARKER = "<!--NAZO_NOTES_START-->"
+private const val NOTES_END_MARKER = "<!--NAZO_NOTES_END-->"
+
+// Compiled once rather than per line.
+private val COMMIT_LINE_RE = Regex("""^[-*]\s+[0-9a-f]{7,40}\s+""")
+private val HEADING_RE = Regex("""^#{1,6}\s*""")
+private val BULLET_RE = Regex("""^[-*]\s+""")
+private val BOLD_RE = Regex("""\*\*(.+?)\*\*""")
+private val CODE_RE = Regex("""`(.+?)`""")
+private val BLANK_RUN_RE = Regex("""\n{3,}""")
+
 data class GitHubRelease(
     val tag: String,
     val htmlUrl: String,
@@ -40,20 +54,63 @@ suspend fun fetchLatestRelease(repo: String = GITHUB_REPO): GitHubRelease? =
             val json = JSONObject(text)
             val tag = json.optString("tag_name")
             val html = json.optString("html_url")
-            val body = json.optString("body")
+            val body = playerFacingNotes(json.optString("body"))
 
+            // Pick the RELEASE apk, not merely the first one.
+            //
+            // Each release ships two APKs and the API lists them
+            // alphabetically, so "Nazo-debug-<v>.apk" comes before
+            // "Nazo-release-<v>.apk". Taking the first match therefore handed
+            // users the ~21 MB debug build instead of the ~2.5 MB release
+            // build: far larger, slower to download, and signed with the debug
+            // key, so it cannot upgrade an installed release build.
+            //
+            // Preference order: an explicit "release" asset, then any apk that
+            // is not a debug build, and only then anything else -- so a release
+            // whose assets are named differently still updates rather than
+            // offering nothing.
             var apkUrl: String? = null
             var apkSize = -1L
             val assets = json.optJSONArray("assets")
             if (assets != null) {
+                var fallbackUrl: String? = null
+                var fallbackSize = -1L
+                var lastResortUrl: String? = null
+                var lastResortSize = -1L
+
                 for (i in 0 until assets.length()) {
                     val asset = assets.getJSONObject(i)
                     val name = asset.optString("name")
-                    if (name.endsWith(".apk", ignoreCase = true)) {
-                        apkUrl = asset.optString("browser_download_url")
-                        apkSize = asset.optLong("size", -1L)
-                        break
+                    if (!name.endsWith(".apk", ignoreCase = true)) continue
+
+                    val url = asset.optString("browser_download_url")
+                    val size = asset.optLong("size", -1L)
+                    val lower = name.lowercase()
+
+                    when {
+                        lower.contains("release") -> {
+                            apkUrl = url
+                            apkSize = size
+                        }
+                        !lower.contains("debug") -> {
+                            if (fallbackUrl == null) {
+                                fallbackUrl = url
+                                fallbackSize = size
+                            }
+                        }
+                        else -> {
+                            if (lastResortUrl == null) {
+                                lastResortUrl = url
+                                lastResortSize = size
+                            }
+                        }
                     }
+                    if (apkUrl != null) break
+                }
+
+                if (apkUrl == null) {
+                    apkUrl = fallbackUrl ?: lastResortUrl
+                    apkSize = if (fallbackUrl != null) fallbackSize else lastResortSize
                 }
             }
 
@@ -62,6 +119,69 @@ suspend fun fetchLatestRelease(repo: String = GITHUB_REPO): GitHubRelease? =
             null
         }
     }
+
+/**
+ * Extracts the player-facing part of a GitHub release body.
+ *
+ * `gen_release_notes.py` wraps a short curated "What's New" list in HTML-comment
+ * markers, then appends the full commit log inside a <details> block. GitHub
+ * renders that nicely, but the app was showing the *whole* body verbatim — so
+ * players saw raw `<details>`/`<summary>` tags, commit hashes and every trivial
+ * `chore:`/`ci:` commit.
+ *
+ * This keeps only the marked section and strips the Markdown that has no
+ * meaning in a plain [androidx.compose.material3.Text].
+ *
+ * Releases published before the markers existed have none, so we fall back to
+ * sanitising the whole body: drop HTML blocks and hash-prefixed commit lines.
+ */
+fun playerFacingNotes(rawBody: String): String {
+    if (rawBody.isBlank()) return ""
+
+    val start = rawBody.indexOf(NOTES_START_MARKER)
+    val end = rawBody.indexOf(NOTES_END_MARKER)
+    val section = if (start >= 0 && end > start) {
+        rawBody.substring(start + NOTES_START_MARKER.length, end)
+    } else {
+        // Legacy release (published before the markers existed): keep only the
+        // commit SUBJECTS and drop the rest. Everything indented belongs to a
+        // <details> body, so indentation is the reliable signal here — the
+        // subject lines all start at column 0.
+        rawBody
+            .lineSequence()
+            .filter { line ->
+                val t = line.trim()
+                when {
+                    t.isEmpty() -> false
+                    // Anything indented is commit-description detail.
+                    line != line.trimStart() -> false
+                    t.startsWith("<") -> false            // <details>, <summary>
+                    t.startsWith("**Full Changelog**") -> false
+                    t.startsWith("#") -> false            // "## What's Changed"
+                    else -> true
+                }
+            }
+            // "- a1b2c3d feat(home): subject" -> "feat(home): subject"
+            .map { it.trim().replace(COMMIT_LINE_RE, "• ") }
+            .joinToString("\n")
+    }
+
+    return section
+        .lineSequence()
+        .map { line ->
+            line.trim()
+                // Headings: "## What's New" / "### Fixed" -> plain text.
+                .replace(HEADING_RE, "")
+                // Bullets: normalise "-" and "*" to a real bullet.
+                .replace(BULLET_RE, "• ")
+                // Inline emphasis/code markers that would show as literals.
+                .replace(BOLD_RE, "\$1")
+                .replace(CODE_RE, "\$1")
+        }
+        .joinToString("\n")
+        .replace(BLANK_RUN_RE, "\n\n")
+        .trim()
+}
 
 fun isNewerVersion(latest: String, current: String): Boolean {
     fun split(v: String): Pair<List<Int>, String?> {

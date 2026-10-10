@@ -82,20 +82,21 @@ object DailyChallenge {
     fun questionsForToday(): List<Question> = questionsFor(todayEpochDay())
 
     /**
-     * Deterministic selection: the bank's getQuestions() shuffles internally,
-     * so the universe is re-sorted by question text first, then a seeded
-     * Random picks a difficulty ramp (2 Easy, 2 Medium, 1 Hard/Otaku).
-     * Option order is re-shuffled with a per-question seed so a mid-day
-     * restart shows the identical quiz.
+     * Deterministic selection from the local bank. The pool is the bank's
+     * stable, unshuffled order (LocalQuestionBank.stablePool) — no unseeded
+     * shuffle stands anywhere in this pipeline — and the epoch-day seed drives
+     * BOTH the pick (a difficulty ramp of 2 Easy, 2 Medium, 1 Hard/Otaku
+     * Master, topped up from the whole bank when a pool runs short) and each
+     * question's option order. Repeated calls for the same day therefore return
+     * the identical five questions in the identical order with the identical
+     * options, across restarts. The day boundary is QuizStats.localEpochDay.
      */
     fun questionsFor(epochDay: Long): List<Question> {
-        val all = LocalQuestionBank.getQuestions(Int.MAX_VALUE)
-            .distinctBy { it.text }
-            .sortedBy { it.text }
+        val all = LocalQuestionBank.stablePool()
         val rng = Random(epochDay * 31 + 7)
         val picked = mutableListOf<Question>()
         fun pickFrom(pool: List<Question>, n: Int) {
-            val remaining = pool.filter { p -> picked.none { it.text == p.text } }
+            val remaining = pool.filter { p -> picked.none { it.identity == p.identity } }
             picked += remaining.shuffled(rng).take(n)
         }
         fun pool(vararg difficulties: String) =
@@ -263,9 +264,14 @@ fun DailyChallengeCard(
 }
 
 /**
- * "+70 XP · Daily Bonus" chip for the results screen — pops in with a bouncy
- * scale a beat AFTER the New Record badge would (1s), so the two celebrations
- * read as a sequence instead of clashing.
+ * "+70 XP · Daily Bonus" chip for the results screen — settles in a beat AFTER
+ * the New Record badge would (1s), so the two celebrations read as a sequence
+ * instead of clashing.
+ *
+ * The entrance is a restrained pop, NOT a bounce: a low-bounce spring that
+ * overshoots imperceptibly and settles once. The previous
+ * DampingRatioMediumBouncy visibly oscillated, which made the badge read as a
+ * separate jumping object rather than part of the result choreography.
  */
 @Composable
 fun DailyBonusChip(bonusXp: Int, modifier: Modifier = Modifier) {
@@ -277,8 +283,10 @@ fun DailyBonusChip(bonusXp: Int, modifier: Modifier = Modifier) {
     AnimatedVisibility(
         visible = shown,
         enter = scaleIn(
+            // Starts near full size so the motion is a settle, not a zoom.
+            initialScale = 0.88f,
             animationSpec = spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
+                dampingRatio = Spring.DampingRatioNoBouncy,
                 stiffness = Spring.StiffnessMediumLow,
             ),
         ) + fadeIn(tween(220)),

@@ -258,6 +258,19 @@ val PROVIDERS: List<ProviderEndpoint> = listOf(
 fun providerById(id: String): ProviderEndpoint? = PROVIDERS.firstOrNull { it.id == id }
 
 /**
+ * Schema for a single free-text answer, used by non-quiz calls such as the
+ * nickname generator. Without an explicit schema those calls fall back to the
+ * quiz question schema, and a JSON-mode provider (Gemini) will dutifully return
+ * quiz objects instead of the one string that was asked for.
+ */
+fun textSchema(field: String): JSONObject = JSONObject().apply {
+    put("type", "OBJECT")
+    put("properties", JSONObject().put(field, JSONObject().put("type", "STRING")))
+    put("required", JSONArray().put(field))
+}
+
+
+/**
  * The model to auto-select when the user hasn't explicitly picked one.
  * Owner-tested (2026-08-31): on Gemini, "gemini-3.1-flash-lite" is the model
  * that reliably works with generateContent (several 2.5-era ids 404 even when

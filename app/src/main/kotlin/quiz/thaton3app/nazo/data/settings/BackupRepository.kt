@@ -3,8 +3,12 @@ package quiz.thaton3app.nazo.data.settings
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import quiz.thaton3app.nazo.data.profile.AvatarPayload
+import quiz.thaton3app.nazo.data.profile.ProfileImageStore
 import java.io.File
 import java.util.LinkedHashSet
 
@@ -21,11 +25,26 @@ import java.util.LinkedHashSet
  * SharedPreferences values are type-tagged on export so they round-trip exactly
  * (Boolean / Int / Long / Float / String / Set<String>). A `content://` gallery
  * profile picture is skipped because that URI is not portable across devices —
- * the username and any emoji/remote-url picture are kept.
+ * the username and any emoji/remote-url picture are kept. An owned custom
+ * avatar (`file://` into this app's private storage) additionally travels as
+ * the bundle's optional `picture` payload (see [AvatarPayload]) so the image
+ * itself survives a restore on this or any other device.
+ *
+ * Bundle versions: 1 = stores only (every backup exported before picture
+ * support); 2 = stores plus an optional `picture` object. Restore accepts both
+ * and refuses anything else rather than misreading it.
+ *
+ * Restore is validated in full before a single preference is touched: the
+ * bundle must carry a supported `version`, and any store name outside [STORES]
+ * is dropped, so a crafted file can never address — or `clear()` — a
+ * preferences file that is not part of the backup set. The restore writes
+ * commit synchronously (and reports failure) so the caller only reports
+ * success after the data is durably applied.
  */
 object BackupRepository {
 
-    private val STORES = listOf(
+    /** Store-name allowlist: the only preferences files export/restore may touch. */
+    internal val STORES = listOf(
         "nazo_stats",
         "nazo_theme",
         "nazo_profile",
@@ -40,24 +59,145 @@ object BackupRepository {
     )
     private const val PROFILE_PICTURE_KEY = "profile_picture_uri"
 
+    /** Bundle format written by [buildJson]. 1 = stores only; 2 = + optional `picture`. */
+    private const val SCHEMA_VERSION = 2
+
+    /**
+     * One human-readable line of a backup bundle's contents.
+     *
+     * [entries] is the real number of stored values in that category, counted
+     * either from the live SharedPreferences (before an export) or from the
+     * parsed bundle (before a restore) — never a hard-coded list.
+     */
+    data class BackupCategory(
+        val store: String,
+        val label: String,
+        val description: String,
+        val entries: Int,
+        /**
+         * True for stores that hold things the user actually produced (stats,
+         * records, profile, practice deck). False for pure preference stores,
+         * which exist on a brand-new install and so must not make an otherwise
+         * empty backup look like it contains progress.
+         */
+        val isProgress: Boolean,
+    )
+
+    /** Stores that represent earned progress rather than settings. */
+    private val PROGRESS_STORES = setOf(
+        "nazo_stats", "nazo_records", "nazo_daily", "nazo_qhistory", "nazo_missed", "nazo_profile",
+    )
+
+    private fun labelFor(store: String): Pair<String, String> = when (store) {
+        "nazo_stats" -> "Quiz statistics" to "Quizzes played, accuracy and totals"
+        "nazo_theme" -> "Appearance" to "Theme, accent colour and icon"
+        "nazo_profile" -> "Profile" to "Username and avatar"
+        "nazo_provider_models" -> "AI providers" to "Selected provider and models"
+        "nazo_secure" -> "API keys" to "Encrypted — only usable on this device"
+        "nazo_records" -> "Personal records" to "Best scores and streaks"
+        "nazo_daily" -> "Daily challenge" to "Streak days and daily bonus state"
+        "nazo_sound" -> "Sound & haptics" to "Audio and vibration preferences"
+        "nazo_reminders" -> "Reminders" to "Scheduled practice notifications"
+        "nazo_qhistory" -> "Question history" to "Anti-repeat memory of seen questions"
+        "nazo_missed" -> "Practice deck" to "Questions you answered incorrectly"
+        else -> store.removePrefix("nazo_").replaceFirstChar { it.uppercase() } to "App data"
+    }
+
+    /**
+     * What a manual backup taken right now would contain. Empty stores are left
+     * out so the preview never promises data the user does not have.
+     */
+    fun summarizeLocal(context: Context): List<BackupCategory> {
+        val stores = buildJson(context).optJSONObject("stores") ?: return emptyList()
+        return STORES.mapNotNull { name ->
+            val count = stores.optJSONObject(name)?.length() ?: 0
+            if (count == 0) return@mapNotNull null
+            val (label, description) = labelFor(name)
+            BackupCategory(name, label, description, count, name in PROGRESS_STORES)
+        }
+    }
+
+    /** Parse + validate, then describe the bundle. Null when the file is invalid. */
+    fun inspectUri(context: Context, uri: Uri): List<BackupCategory>? = try {
+        val content = context.contentResolver.openInputStream(uri)
+            ?.bufferedReader()?.use { it.readText() }
+        if (content == null) null else summarizeParsed(parseAndValidate(content))
+    } catch (_: Exception) {
+        null
+    }
+
+    /** Same as [inspectUri] for the on-device automatic backup file. */
+    fun inspectPath(context: Context, path: String): List<BackupCategory>? = try {
+        summarizeParsed(parseAndValidate(File(path).readText(Charsets.UTF_8)))
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun summarizeParsed(
+        parsed: ParsedBackup
+    ): List<BackupCategory> = parsed.stores.mapNotNull { (name, entry) ->
+        if (entry.isEmpty()) return@mapNotNull null
+        val (label, description) = labelFor(name)
+        BackupCategory(name, label, description, entry.size, name in PROGRESS_STORES)
+    }
+
     fun autoBackupPath(context: Context): String =
         File(context.getExternalFilesDir(null), "Nazo/auto_backup.json").absolutePath
 
-    suspend fun exportToUri(context: Context, uri: Uri) {
+    /**
+     * What was actually written, measured during the write itself.
+     *
+     * Captured here rather than recomputed later so the Last Backup card never
+     * has to reopen (or even keep) the file to describe it — which matters for
+     * manual backups, whose SAF uri we deliberately do not retain.
+     */
+    data class BackupReceipt(
+        val epoch: Long,
+        val sizeBytes: Long,
+        val records: Int,
+        val categories: List<BackupCategory>,
+        val automatic: Boolean,
+    )
+
+    suspend fun exportToUri(context: Context, uri: Uri): BackupReceipt {
+        val json = buildJson(context)
+        val bytes = json.toString().toByteArray(Charsets.UTF_8)
         context.contentResolver.openOutputStream(uri)?.use { out ->
-            out.write(buildJson(context).toString().toByteArray(Charsets.UTF_8))
+            out.write(bytes)
         } ?: throw IllegalStateException("Unable to open backup destination")
+        return receiptFor(json, bytes.size.toLong(), automatic = false)
     }
 
-    suspend fun exportToPath(context: Context, path: String) {
+    suspend fun exportToPath(context: Context, path: String): BackupReceipt {
+        val json = buildJson(context)
+        val text = json.toString()
         val file = File(path)
         file.parentFile?.mkdirs()
-        file.writeText(buildJson(context).toString(), Charsets.UTF_8)
+        file.writeText(text, Charsets.UTF_8)
+        return receiptFor(json, text.toByteArray(Charsets.UTF_8).size.toLong(), automatic = true)
+    }
+
+    /** Describes an export from the bundle already in hand — no re-read. */
+    private fun receiptFor(json: JSONObject, sizeBytes: Long, automatic: Boolean): BackupReceipt {
+        val stores = json.optJSONObject("stores")
+        val categories = STORES.mapNotNull { name ->
+            val count = stores?.optJSONObject(name)?.length() ?: 0
+            if (count == 0) return@mapNotNull null
+            val (label, description) = labelFor(name)
+            BackupCategory(name, label, description, count, name in PROGRESS_STORES)
+        }
+        return BackupReceipt(
+            epoch = System.currentTimeMillis(),
+            sizeBytes = sizeBytes,
+            records = categories.sumOf { it.entries },
+            categories = categories,
+            automatic = automatic,
+        )
     }
 
     private fun buildJson(context: Context): JSONObject {
         val root = JSONObject()
-        root.put("version", 1)
+        root.put("version", SCHEMA_VERSION)
         root.put("createdAt", System.currentTimeMillis())
         val stores = JSONObject()
         for (name in STORES) {
@@ -75,6 +215,14 @@ object BackupRepository {
             stores.put(name, map)
         }
         root.put("stores", stores)
+        // Carry the accepted avatar's BYTES alongside its path when it is one
+        // of our own files (emoji/remote values need nothing; a missing or
+        // unusable file simply yields no payload and restores as a v1 bundle).
+        val picture = AvatarPayload.pictureJsonFor(
+            context.getSharedPreferences("nazo_profile", Context.MODE_PRIVATE)
+                .getString(PROFILE_PICTURE_KEY, null),
+        ) { path -> File(path).readBytes() }
+        if (picture != null) root.put("picture", picture)
         return root
     }
 
@@ -116,15 +264,50 @@ object BackupRepository {
     }
 
     suspend fun importFromUri(context: Context, uri: Uri) {
-        val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-            ?: throw IllegalStateException("Unable to read backup file")
-        applyValidated(context, parseAndValidate(content))
+        // File I/O + synchronous commit below stay off the main thread.
+        withContext(Dispatchers.IO) {
+            val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                ?: throw IllegalStateException("Unable to read backup file")
+            val parsed = parseAndValidate(content)
+            applyValidated(context, parsed.stores)
+            applyPicture(context, parsed)
+        }
     }
 
     suspend fun importFromPath(context: Context, path: String) {
-        val file = File(path)
-        if (!file.exists()) throw IllegalStateException("No auto-backup file found")
-        applyValidated(context, parseAndValidate(file.readText(Charsets.UTF_8)))
+        withContext(Dispatchers.IO) {
+            val file = File(path)
+            if (!file.exists()) throw IllegalStateException("No auto-backup file found")
+            val parsed = parseAndValidate(file.readText(Charsets.UTF_8))
+            applyValidated(context, parsed.stores)
+            applyPicture(context, parsed)
+        }
+    }
+
+    /**
+     * Rewrites `profile_picture_uri` after the stores have been restored.
+     *
+     * With a picture payload the image is written to a NEW local avatar file
+     * (see [ProfileImageStore.restoreAvatar]) and the pref points at it — never
+     * at the source device's path. Without one (legitimate v1 backups) the
+     * restored value is kept only while its file still exists here. Either way
+     * the user's gallery original is never touched, and a missing, corrupt or
+     * oversized payload just falls back to no picture (the initials avatar).
+     * Does nothing unless `nazo_profile` was part of this restore.
+     */
+    private suspend fun applyPicture(context: Context, parsed: ParsedBackup) {
+        val entry = parsed.stores["nazo_profile"] ?: return
+        val prefs = context.getSharedPreferences("nazo_profile", Context.MODE_PRIVATE)
+        val restoredValue = entry[PROFILE_PICTURE_KEY]?.second as? String
+        val newAvatarUri = parsed.picture?.let { payload ->
+            ProfileImageStore.restoreAvatar(context, payload).getOrNull()
+        }
+        val resolved = AvatarPayload.resolveRestoredPictureUri(restoredValue, newAvatarUri) { path ->
+            File(path).exists()
+        }
+        if (!prefs.edit().putString(PROFILE_PICTURE_KEY, resolved).commit()) {
+            throw IllegalStateException("Unable to write restored profile picture")
+        }
     }
 
     /** True only if the file is a well-formed Nazo backup bundle. */
@@ -148,17 +331,38 @@ object BackupRepository {
         }
     }
 
+    /** A fully validated bundle: the stores to write plus the optional avatar payload. */
+    internal data class ParsedBackup(
+        val stores: Map<String, Map<String, Pair<String, Any?>>>,
+        val picture: AvatarPayload.Payload?,
+    )
+
     /**
      * Parse and fully validate the backup JSON into memory. Throws if the file is
      * malformed or structurally invalid, so [applyValidated] only ever runs on a
      * verified bundle (no partial / corrupting restores).
+     *
+     * Two hard gates protect preferences that are not part of the backup set:
+     * the bundle must declare a supported `version` (1 = stores only, 2 =
+     * stores + optional picture — anything else is a future format or a corrupt
+     * file, and is refused rather than misread), and store names outside
+     * [STORES] are skipped entirely, so they never reach the apply step and can
+     * never be addressed or cleared. The picture payload is decoded leniently
+     * ([AvatarPayload.decode]): a missing/corrupt/oversized image becomes a
+     * null payload and the restore falls back like a v1 bundle — only the
+     * bundle's structure is a hard error.
      */
-    private fun parseAndValidate(content: String): Map<String, Map<String, Pair<String, Any?>>> {
+    internal fun parseAndValidate(content: String): ParsedBackup {
         val root = JSONObject(content)
+        when (root.optInt("version", -1)) {
+            1, 2 -> Unit
+            else -> throw IllegalArgumentException("Invalid backup file (unsupported version)")
+        }
         val stores = root.optJSONObject("stores")
             ?: throw IllegalArgumentException("Invalid backup file (missing 'stores')")
         val pending = LinkedHashMap<String, MutableMap<String, Pair<String, Any?>>>()
         for (name in stores.keys().asSequence().toList()) {
+            if (name !in STORES) continue
             val map = stores.optJSONObject(name)
                 ?: throw IllegalArgumentException("Invalid backup file (store '$name')")
             val entry = LinkedHashMap<String, Pair<String, Any?>>()
@@ -184,13 +388,29 @@ object BackupRepository {
             }
             pending[name] = entry
         }
-        return pending
+        return ParsedBackup(pending, AvatarPayload.decode(root.optJSONObject("picture")))
     }
 
-    private fun applyValidated(context: Context, pending: Map<String, Map<String, Pair<String, Any?>>>) {
-        for ((name, entry) in pending) {
-            val prefs = context.getSharedPreferences(name, Context.MODE_PRIVATE)
-            val edit = prefs.edit()
+    private fun applyValidated(
+        context: Context,
+        pending: Map<String, Map<String, Pair<String, Any?>>>,
+    ) = applyValidated({ name -> context.getSharedPreferences(name, Context.MODE_PRIVATE) }, pending)
+
+    /**
+     * Writes a validated bundle into SharedPreferences. Only names in [STORES]
+     * are ever written — the loop follows the allowlist, not the bundle — so
+     * even a hand-crafted [pending] map can never touch (or `clear()`) a
+     * preferences file outside the backup set. Writes commit synchronously and
+     * a failed commit throws, so the caller never reports success for a restore
+     * that did not durably land.
+     */
+    internal fun applyValidated(
+        getPrefs: (String) -> SharedPreferences,
+        pending: Map<String, Map<String, Pair<String, Any?>>>,
+    ) {
+        for (name in STORES) {
+            val entry = pending[name] ?: continue
+            val edit = getPrefs(name).edit()
             edit.clear()
             for ((k, pair) in entry) {
                 val (t, v) = pair
@@ -206,7 +426,19 @@ object BackupRepository {
                     )
                 }
             }
-            edit.apply()
+            if (!edit.commit()) {
+                throw IllegalStateException("Unable to write restored store '$name'")
+            }
         }
     }
 }
+
+/** Bridges a fresh export's measurements into the cached [BackupPrefs.LastBackup]. */
+fun BackupRepository.BackupReceipt.toLastBackup(): BackupPrefs.LastBackup =
+    BackupPrefs.LastBackup(
+        epoch = epoch,
+        sizeBytes = sizeBytes,
+        records = records,
+        categories = categories.map { it.label },
+        automatic = automatic,
+    )
