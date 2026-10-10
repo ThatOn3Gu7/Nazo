@@ -13,17 +13,23 @@ import quiz.thaton3app.nazo.data.Question
  * anywhere (normal quiz, daily, practice run…) removes it — the deck always
  * reflects what the player still hasn't mastered.
  *
- * Own prefs file ("nazo_missed", part of the backup set). Loaded once,
- * kept in memory, persisted on every mutation.
+ * Own prefs file ("nazo_missed", part of the backup set). Cached in memory
+ * for the practice deck, persisted on every mutation, reloaded via [reload]
+ * after a backup restore.
  */
-class MissedQuestionsStore(context: Context) {
+class MissedQuestionsStore internal constructor(
+    private val prefs: SharedPreferences,
+) {
 
-    private val prefs: SharedPreferences =
-        context.getSharedPreferences("nazo_missed", Context.MODE_PRIVATE)
+    constructor(context: Context) : this(
+        context.getSharedPreferences("nazo_missed", Context.MODE_PRIVATE),
+    )
 
-    private val questions: MutableList<Question> = run {
+    private val questions: MutableList<Question> = load()
+
+    private fun load(): MutableList<Question> {
         val raw = prefs.getString(KEY_QUESTIONS, null)
-        if (raw == null) mutableListOf() else runCatching {
+        return if (raw == null) mutableListOf() else runCatching {
             val arr = JSONArray(raw)
             MutableList(arr.length()) { i ->
                 val o = arr.getJSONObject(i)
@@ -40,6 +46,17 @@ class MissedQuestionsStore(context: Context) {
                 )
             }
         }.getOrDefault(mutableListOf())
+    }
+
+    /**
+     * Re-reads prefs into the in-memory cache. Called after a backup restore:
+     * without it the cached pre-restore list would be written back over the
+     * restored practice deck by the next [recordMiss]/[recordCorrect].
+     */
+    @Synchronized
+    fun reload() {
+        questions.clear()
+        questions.addAll(load())
     }
 
     private fun save() {

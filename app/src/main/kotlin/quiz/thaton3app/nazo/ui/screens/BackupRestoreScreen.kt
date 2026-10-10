@@ -68,6 +68,13 @@ import java.util.Locale
 fun BackupRestoreScreen(
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
+    /**
+     * Called only after a restore has been durably applied. The app root uses
+     * this to re-read every piece of hoisted state (theme, accent, profile,
+     * sound, statistics, question history, practice deck) so the whole UI
+     * reflects the restored backup without an app restart.
+     */
+    onRestored: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val backupPrefs = remember { BackupPrefs(context) }
@@ -321,10 +328,17 @@ fun BackupRestoreScreen(
                         try {
                             if (fromAuto) {
                                 BackupRepository.importFromPath(context, autoBackupPath)
+                                // importFrom* only returns after every store has
+                                // been committed; refresh the app state first, then
+                                // tell the user it is done.
+                                onRestored()
                                 Toast.makeText(context, "Restored from auto-backup", Toast.LENGTH_SHORT).show()
                             } else if (uri != null) {
                                 BackupRepository.importFromUri(context, uri)
+                                onRestored()
                                 Toast.makeText(context, "Data restored successfully", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Restore failed: no backup selected", Toast.LENGTH_SHORT).show()
                             }
                         } catch (e: Exception) {
                             Toast.makeText(context, "Restore failed: ${e.message}", Toast.LENGTH_SHORT).show()

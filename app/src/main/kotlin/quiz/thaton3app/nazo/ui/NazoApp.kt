@@ -1605,6 +1605,39 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     Screen.BackupRestore -> BackupRestoreScreen(
                         onBackClick = { goBack() },
                         onHomeClick = { goHome() },
+                        onRestored = {
+                            // A backup just landed durably in SharedPreferences.
+                            // Everything below was read from prefs at startup and
+                            // cached here — re-read it all or the app keeps showing
+                            // pre-restore data until the next launch. The two list
+                            // stores cache their contents in memory too, so they get
+                            // an explicit reload() or their next write would put the
+                            // stale pre-restore list back on disk.
+                            questionHistory.reload()
+                            missedStore.reload()
+                            missedCount = missedStore.count()
+                            quizStats = statsStore.get()
+                            profileName = profilePrefs.username
+                            profilePictureUri = profilePrefs.profilePictureUri
+                            themeMode = themePrefs.mode
+                            accentName = themePrefs.accent
+                            navBarFloating = themePrefs.floatingNavBar
+                            backgroundStyle = themePrefs.backgroundStyle
+                            celebrationStyle = themePrefs.celebrationStyle
+                            sparkleStyle = themePrefs.sparkleStyle
+                            guessRevealStyle = themePrefs.guessRevealStyle
+                            guessAutoCrop = themePrefs.guessAutoCrop
+                            soundEnabled = Sounds.isEnabled(context)
+                            soundTheme = Sounds.getTheme(context)
+                            appIcon = LauncherIconSwitcher.sanitize(context, themePrefs.appIcon)
+                            selectedProvider = apiKeyStore.getSelectedProvider()
+                            // Re-arm or cancel the reminder worker to match the
+                            // restored pref (syncSchedule only runs at app start).
+                            ReminderScheduler.setEnabled(
+                                context.applicationContext,
+                                ReminderScheduler.isEnabled(context.applicationContext),
+                            )
+                        },
                     )
 
                     Screen.About -> AboutScreen(

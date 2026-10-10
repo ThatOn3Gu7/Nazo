@@ -2037,3 +2037,84 @@ Third ChatGPT-audit prompt; audited before changing anything (owner rule).
 5. After midnight (local time), the challenge offers a NEW run — different
    questions are expected; repeat steps 1–3 to confirm the new day is equally
    stable.
+
+## 2026-10-10 — Backup restore: validate, apply for real, refresh the UI
+
+Fourth ChatGPT-audit prompt; audited before changing anything (owner rule).
+
+### Audit verdict
+
+- **"Restore only updates SharedPreferences; the app's live state stays
+  stale" — CONFIRMED.** NazoApp hoists prefs-backed state into `remember`
+  (stats, theme/accent, profile, sounds, guessing style, provider); nothing
+  re-read it after `importFromUri` returned, so the whole UI kept pre-restore
+  data until the next app launch.
+- **"QuestionHistoryStore / MissedQuestionsStore load their list once and
+  their next save() writes it back over restored data" — CONFIRMED.** Both
+  caches load in the constructor and `save()` serializes the cached list.
+- **"No validation of the backup version" — CONFIRMED.** `parseAndValidate`
+  never looked at `version` (exports have always written `version: 1`).
+- **"A JSON file can clear() arbitrary named preference stores" —
+  CONFIRMED, and it is the most serious claim.** `applyValidated` iterated
+  whatever store names the file contained and ran `edit().clear()` on each
+  `context.getSharedPreferences(name)` — a crafted file naming
+  `nazo_onboarding` (or any other file) could wipe it.
+- **"Success message can appear before the restore has completed" —
+  CONFIRMED in substance.** Writes used fire-and-forget `apply()`, so the
+  toast could show while the data was still unwritten; the `else` branch also
+  silently did nothing when no file was picked.
+- "Restore dialogs" complaints (layout/orientation) were NOT re-audited here —
+  those were fixed in the rotation rounds.
+
+### Changes
+
+- `data/settings/BackupRepository.kt`: `parseAndValidate` now requires
+  `version == 1` (the only format ever exported — legit v1 backups are
+  untouched) and drops any store name outside the `STORES` allowlist;
+  `applyValidated` iterates the allowlist (never the file), so even a
+  hand-crafted map cannot write or `clear()` anything else, and it `commit()`s
+  with the result checked (throws on failure). Import I/O moved to
+  `Dispatchers.IO` since the write is now synchronous.
+- `data/settings/QuestionHistoryStore.kt` + `MissedQuestionsStore.kt`:
+  extracted the constructor load into `load()` and added `reload()`; internal
+  `SharedPreferences` constructor for tests.
+- `ui/screens/BackupRestoreScreen.kt`: new `onRestored` callback invoked only
+  after the import returns (i.e. after every store committed); success toast
+  then shows. "No backup selected" is now a failure toast instead of a silent
+  no-op.
+- `ui/NazoApp.kt`: `onRestored` re-reads every piece of hoisted state —
+  `questionHistory.reload()`, `missedStore.reload()`, missedCount, quizStats,
+  profile name/picture, theme mode/accent/nav/background/celebrations/
+  sparkles, guess reveal style + auto-crop, sound enabled + style, launcher
+  icon, AI provider — and re-arms/cancels the reminder worker to match the
+  restored pref (`ReminderScheduler.syncSchedule` only runs at app start).
+- Tests `app/src/test/.../data/settings/BackupRestoreTest.kt` (9) +
+  `FakeSharedPreferences.kt`: value-type round-trip, every allowlisted store
+  restores from a legit v1 bundle, version 2/0/"abc"/missing all rejected,
+  malformed bundles rejected, unknown store names dropped at parse AND
+  ignored by apply (a crafted map cannot touch them), profile/appearance/
+  sound restore replaces (not merges) prefs, quiz stats round-trip through
+  `QuizStatsStore`, and the stale-cache regression: after restore + `reload()`
+  the history/deck show the restored items and the next write cannot resurrect
+  the pre-restore list.
+
+### How to test it live
+
+1. Settings → Backup & Restore → Back up now. Note the created file.
+2. Change the device state so the restore is visible: Settings → Appearance →
+   set theme mode to Light (or a different accent), Settings → change your
+   username, Settings → Feedback → Sound style → pick a different style, and
+   miss a couple of quiz questions to grow the practice deck.
+3. Settings → Backup & Restore → Restore → pick the file from step 1 →
+   confirm. Expect the success toast.
+4. WITHOUT closing the app, check immediately: theme mode/accent snap back to
+   the backed-up values, the username/profile picture revert, the sound style
+   and statistics are the backed-up ones, and the practice deck / question
+   history match the backup (Home's deck badge included). No restart.
+5. Play one more quiz, miss a question, and answer some questions: the new
+   data must merge with the restored data (the deck/history must NOT jump back
+   to the pre-restore contents).
+6. Negative: tap Restore and cancel the file picker — you get a "no backup
+   selected" failure toast (never a false success). A hand-edited JSON file
+   with `"version": 2` or a made-up store name must fail or restore only the
+   known stores — other settings (e.g. onboarding) must survive.

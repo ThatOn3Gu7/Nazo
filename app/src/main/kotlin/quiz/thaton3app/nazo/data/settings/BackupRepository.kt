@@ -3,6 +3,8 @@ package quiz.thaton3app.nazo.data.settings
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -22,10 +24,18 @@ import java.util.LinkedHashSet
  * (Boolean / Int / Long / Float / String / Set<String>). A `content://` gallery
  * profile picture is skipped because that URI is not portable across devices —
  * the username and any emoji/remote-url picture are kept.
+ *
+ * Restore is validated in full before a single preference is touched: the
+ * bundle must carry the `version` written by [buildJson] (1 — the only format
+ * ever exported), and any store name outside [STORES] is dropped, so a crafted
+ * file can never address — or `clear()` — a preferences file that is not part
+ * of the backup set. The restore writes commit synchronously (and reports
+ * failure) so the caller only reports success after the data is durably applied.
  */
 object BackupRepository {
 
-    private val STORES = listOf(
+    /** Store-name allowlist: the only preferences files export/restore may touch. */
+    internal val STORES = listOf(
         "nazo_stats",
         "nazo_theme",
         "nazo_profile",
@@ -234,15 +244,20 @@ object BackupRepository {
     }
 
     suspend fun importFromUri(context: Context, uri: Uri) {
-        val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-            ?: throw IllegalStateException("Unable to read backup file")
-        applyValidated(context, parseAndValidate(content))
+        // File I/O + synchronous commit below stay off the main thread.
+        withContext(Dispatchers.IO) {
+            val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                ?: throw IllegalStateException("Unable to read backup file")
+            applyValidated(context, parseAndValidate(content))
+        }
     }
 
     suspend fun importFromPath(context: Context, path: String) {
-        val file = File(path)
-        if (!file.exists()) throw IllegalStateException("No auto-backup file found")
-        applyValidated(context, parseAndValidate(file.readText(Charsets.UTF_8)))
+        withContext(Dispatchers.IO) {
+            val file = File(path)
+            if (!file.exists()) throw IllegalStateException("No auto-backup file found")
+            applyValidated(context, parseAndValidate(file.readText(Charsets.UTF_8)))
+        }
     }
 
     /** True only if the file is a well-formed Nazo backup bundle. */
@@ -270,13 +285,23 @@ object BackupRepository {
      * Parse and fully validate the backup JSON into memory. Throws if the file is
      * malformed or structurally invalid, so [applyValidated] only ever runs on a
      * verified bundle (no partial / corrupting restores).
+     *
+     * Two hard gates protect preferences that are not part of the backup set:
+     * the bundle must declare `version == 1` (the only format ever exported —
+     * anything else is a future format or a corrupt file, and is refused rather
+     * than misread), and store names outside [STORES] are skipped entirely, so
+     * they never reach the apply step and can never be addressed or cleared.
      */
-    private fun parseAndValidate(content: String): Map<String, Map<String, Pair<String, Any?>>> {
+    internal fun parseAndValidate(content: String): Map<String, Map<String, Pair<String, Any?>>> {
         val root = JSONObject(content)
+        if (root.optInt("version", -1) != 1) {
+            throw IllegalArgumentException("Invalid backup file (unsupported version)")
+        }
         val stores = root.optJSONObject("stores")
             ?: throw IllegalArgumentException("Invalid backup file (missing 'stores')")
         val pending = LinkedHashMap<String, MutableMap<String, Pair<String, Any?>>>()
         for (name in stores.keys().asSequence().toList()) {
+            if (name !in STORES) continue
             val map = stores.optJSONObject(name)
                 ?: throw IllegalArgumentException("Invalid backup file (store '$name')")
             val entry = LinkedHashMap<String, Pair<String, Any?>>()
@@ -305,10 +330,26 @@ object BackupRepository {
         return pending
     }
 
-    private fun applyValidated(context: Context, pending: Map<String, Map<String, Pair<String, Any?>>>) {
-        for ((name, entry) in pending) {
-            val prefs = context.getSharedPreferences(name, Context.MODE_PRIVATE)
-            val edit = prefs.edit()
+    private fun applyValidated(
+        context: Context,
+        pending: Map<String, Map<String, Pair<String, Any?>>>,
+    ) = applyValidated({ name -> context.getSharedPreferences(name, Context.MODE_PRIVATE) }, pending)
+
+    /**
+     * Writes a validated bundle into SharedPreferences. Only names in [STORES]
+     * are ever written — the loop follows the allowlist, not the bundle — so
+     * even a hand-crafted [pending] map can never touch (or `clear()`) a
+     * preferences file outside the backup set. Writes commit synchronously and
+     * a failed commit throws, so the caller never reports success for a restore
+     * that did not durably land.
+     */
+    internal fun applyValidated(
+        getPrefs: (String) -> SharedPreferences,
+        pending: Map<String, Map<String, Pair<String, Any?>>>,
+    ) {
+        for (name in STORES) {
+            val entry = pending[name] ?: continue
+            val edit = getPrefs(name).edit()
             edit.clear()
             for ((k, pair) in entry) {
                 val (t, v) = pair
@@ -324,7 +365,9 @@ object BackupRepository {
                     )
                 }
             }
-            edit.apply()
+            if (!edit.commit()) {
+                throw IllegalStateException("Unable to write restored store '$name'")
+            }
         }
     }
 }

@@ -11,10 +11,13 @@ import quiz.thaton3app.nazo.data.QuizStats
  * with the project's other local stores (ThemePreferences / SecureStorage) and
  * using only the always-available [org.json] API (no extra dependencies).
  */
-class QuizStatsStore(context: Context) {
+class QuizStatsStore internal constructor(
+    private val prefs: SharedPreferences,
+) {
 
-    private val prefs: SharedPreferences =
-        context.getSharedPreferences("nazo_stats", Context.MODE_PRIVATE)
+    constructor(context: Context) : this(
+        context.getSharedPreferences("nazo_stats", Context.MODE_PRIVATE),
+    )
 
     /**
      * Every consumer of the stats — Home, Profile, Statistics, the widget and
