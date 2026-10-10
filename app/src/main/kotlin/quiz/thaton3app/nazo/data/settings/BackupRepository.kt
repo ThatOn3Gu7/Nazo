@@ -7,6 +7,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import quiz.thaton3app.nazo.data.profile.AvatarPayload
+import quiz.thaton3app.nazo.data.profile.ProfileImageStore
 import java.io.File
 import java.util.LinkedHashSet
 
@@ -23,14 +25,21 @@ import java.util.LinkedHashSet
  * SharedPreferences values are type-tagged on export so they round-trip exactly
  * (Boolean / Int / Long / Float / String / Set<String>). A `content://` gallery
  * profile picture is skipped because that URI is not portable across devices —
- * the username and any emoji/remote-url picture are kept.
+ * the username and any emoji/remote-url picture are kept. An owned custom
+ * avatar (`file://` into this app's private storage) additionally travels as
+ * the bundle's optional `picture` payload (see [AvatarPayload]) so the image
+ * itself survives a restore on this or any other device.
+ *
+ * Bundle versions: 1 = stores only (every backup exported before picture
+ * support); 2 = stores plus an optional `picture` object. Restore accepts both
+ * and refuses anything else rather than misreading it.
  *
  * Restore is validated in full before a single preference is touched: the
- * bundle must carry the `version` written by [buildJson] (1 — the only format
- * ever exported), and any store name outside [STORES] is dropped, so a crafted
- * file can never address — or `clear()` — a preferences file that is not part
- * of the backup set. The restore writes commit synchronously (and reports
- * failure) so the caller only reports success after the data is durably applied.
+ * bundle must carry a supported `version`, and any store name outside [STORES]
+ * is dropped, so a crafted file can never address — or `clear()` — a
+ * preferences file that is not part of the backup set. The restore writes
+ * commit synchronously (and reports failure) so the caller only reports
+ * success after the data is durably applied.
  */
 object BackupRepository {
 
@@ -49,6 +58,9 @@ object BackupRepository {
         "nazo_missed",     // practice deck (missed questions)
     )
     private const val PROFILE_PICTURE_KEY = "profile_picture_uri"
+
+    /** Bundle format written by [buildJson]. 1 = stores only; 2 = + optional `picture`. */
+    private const val SCHEMA_VERSION = 2
 
     /**
      * One human-readable line of a backup bundle's contents.
@@ -122,8 +134,8 @@ object BackupRepository {
     }
 
     private fun summarizeParsed(
-        parsed: Map<String, Map<String, Pair<String, Any?>>>
-    ): List<BackupCategory> = parsed.mapNotNull { (name, entry) ->
+        parsed: ParsedBackup
+    ): List<BackupCategory> = parsed.stores.mapNotNull { (name, entry) ->
         if (entry.isEmpty()) return@mapNotNull null
         val (label, description) = labelFor(name)
         BackupCategory(name, label, description, entry.size, name in PROGRESS_STORES)
@@ -185,7 +197,7 @@ object BackupRepository {
 
     private fun buildJson(context: Context): JSONObject {
         val root = JSONObject()
-        root.put("version", 1)
+        root.put("version", SCHEMA_VERSION)
         root.put("createdAt", System.currentTimeMillis())
         val stores = JSONObject()
         for (name in STORES) {
@@ -203,6 +215,14 @@ object BackupRepository {
             stores.put(name, map)
         }
         root.put("stores", stores)
+        // Carry the accepted avatar's BYTES alongside its path when it is one
+        // of our own files (emoji/remote values need nothing; a missing or
+        // unusable file simply yields no payload and restores as a v1 bundle).
+        val picture = AvatarPayload.pictureJsonFor(
+            context.getSharedPreferences("nazo_profile", Context.MODE_PRIVATE)
+                .getString(PROFILE_PICTURE_KEY, null),
+        ) { path -> File(path).readBytes() }
+        if (picture != null) root.put("picture", picture)
         return root
     }
 
@@ -248,7 +268,9 @@ object BackupRepository {
         withContext(Dispatchers.IO) {
             val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                 ?: throw IllegalStateException("Unable to read backup file")
-            applyValidated(context, parseAndValidate(content))
+            val parsed = parseAndValidate(content)
+            applyValidated(context, parsed.stores)
+            applyPicture(context, parsed)
         }
     }
 
@@ -256,7 +278,35 @@ object BackupRepository {
         withContext(Dispatchers.IO) {
             val file = File(path)
             if (!file.exists()) throw IllegalStateException("No auto-backup file found")
-            applyValidated(context, parseAndValidate(file.readText(Charsets.UTF_8)))
+            val parsed = parseAndValidate(file.readText(Charsets.UTF_8))
+            applyValidated(context, parsed.stores)
+            applyPicture(context, parsed)
+        }
+    }
+
+    /**
+     * Rewrites `profile_picture_uri` after the stores have been restored.
+     *
+     * With a picture payload the image is written to a NEW local avatar file
+     * (see [ProfileImageStore.restoreAvatar]) and the pref points at it — never
+     * at the source device's path. Without one (legitimate v1 backups) the
+     * restored value is kept only while its file still exists here. Either way
+     * the user's gallery original is never touched, and a missing, corrupt or
+     * oversized payload just falls back to no picture (the initials avatar).
+     * Does nothing unless `nazo_profile` was part of this restore.
+     */
+    private suspend fun applyPicture(context: Context, parsed: ParsedBackup) {
+        val entry = parsed.stores["nazo_profile"] ?: return
+        val prefs = context.getSharedPreferences("nazo_profile", Context.MODE_PRIVATE)
+        val restoredValue = entry[PROFILE_PICTURE_KEY]?.second as? String
+        val newAvatarUri = parsed.picture?.let { payload ->
+            ProfileImageStore.restoreAvatar(context, payload).getOrNull()
+        }
+        val resolved = AvatarPayload.resolveRestoredPictureUri(restoredValue, newAvatarUri) { path ->
+            File(path).exists()
+        }
+        if (!prefs.edit().putString(PROFILE_PICTURE_KEY, resolved).commit()) {
+            throw IllegalStateException("Unable to write restored profile picture")
         }
     }
 
@@ -281,21 +331,32 @@ object BackupRepository {
         }
     }
 
+    /** A fully validated bundle: the stores to write plus the optional avatar payload. */
+    internal data class ParsedBackup(
+        val stores: Map<String, Map<String, Pair<String, Any?>>>,
+        val picture: AvatarPayload.Payload?,
+    )
+
     /**
      * Parse and fully validate the backup JSON into memory. Throws if the file is
      * malformed or structurally invalid, so [applyValidated] only ever runs on a
      * verified bundle (no partial / corrupting restores).
      *
      * Two hard gates protect preferences that are not part of the backup set:
-     * the bundle must declare `version == 1` (the only format ever exported —
-     * anything else is a future format or a corrupt file, and is refused rather
-     * than misread), and store names outside [STORES] are skipped entirely, so
-     * they never reach the apply step and can never be addressed or cleared.
+     * the bundle must declare a supported `version` (1 = stores only, 2 =
+     * stores + optional picture — anything else is a future format or a corrupt
+     * file, and is refused rather than misread), and store names outside
+     * [STORES] are skipped entirely, so they never reach the apply step and can
+     * never be addressed or cleared. The picture payload is decoded leniently
+     * ([AvatarPayload.decode]): a missing/corrupt/oversized image becomes a
+     * null payload and the restore falls back like a v1 bundle — only the
+     * bundle's structure is a hard error.
      */
-    internal fun parseAndValidate(content: String): Map<String, Map<String, Pair<String, Any?>>> {
+    internal fun parseAndValidate(content: String): ParsedBackup {
         val root = JSONObject(content)
-        if (root.optInt("version", -1) != 1) {
-            throw IllegalArgumentException("Invalid backup file (unsupported version)")
+        when (root.optInt("version", -1)) {
+            1, 2 -> Unit
+            else -> throw IllegalArgumentException("Invalid backup file (unsupported version)")
         }
         val stores = root.optJSONObject("stores")
             ?: throw IllegalArgumentException("Invalid backup file (missing 'stores')")
@@ -327,7 +388,7 @@ object BackupRepository {
             }
             pending[name] = entry
         }
-        return pending
+        return ParsedBackup(pending, AvatarPayload.decode(root.optJSONObject("picture")))
     }
 
     private fun applyValidated(

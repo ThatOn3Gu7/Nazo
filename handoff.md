@@ -2116,5 +2116,80 @@ Fourth ChatGPT-audit prompt; audited before changing anything (owner rule).
    to the pre-restore contents).
 6. Negative: tap Restore and cancel the file picker — you get a "no backup
    selected" failure toast (never a false success). A hand-edited JSON file
-   with `"version": 2` or a made-up store name must fail or restore only the
-   known stores — other settings (e.g. onboarding) must survive.
+   with `"version": 3` (or any version outside 1–2) or a made-up store name
+   must fail or restore only the known stores — other settings (e.g.
+   onboarding) must survive.
+
+## 2026-10-10 — Profile picture travels inside backups
+
+Follow-up to the backup-restore fix: custom profile pictures must survive
+backup/restore.
+
+### Audit verdict
+
+- **"saveAvatar() returns a file:// URI and BackupRepository only backs up the
+  preference value, not the image file" — CONFIRMED.** Avatars are private
+  files in `filesDir/profile/`; the bundle carried just the path string.
+- **"Restoring an older backup can point to an avatar file that has been
+  deleted" — CONFIRMED.** `saveAvatar`/`pruneOldAvatars` delete every previous
+  avatar as soon as a new one is saved, so the backed-up path goes stale the
+  moment the user changes their picture.
+- **"Restoring on another device produces a broken picture" — CONFIRMED** —
+  the private file simply does not exist there. Display already degrades to
+  the initials avatar (`ProfileAvatar` error fallback), so "broken" = wrong
+  picture shown, not a crash.
+- The `content://` gallery-URI skip on export (existing, documented) is
+  unchanged; the gallery original is never read for backup or deleted.
+
+### Changes
+
+- **Bundle schema version 2** = version 1 + optional top-level `picture`
+  object (`{mime, data:<base64>}`). `parseAndValidate` explicitly accepts
+  versions 1 and 2 and refuses anything else; v1 bundles (no payload) restore
+  exactly as before. Bundles are now written as version 2.
+- New `data/profile/AvatarPayload.kt` (pure JVM): magic-byte sniffing
+  (JPEG/PNG — what saveAvatar writes), encode/decode with a 4 MB decoded cap
+  and a pre-decode base64 length guard, the export decision
+  (`pictureJsonFor`), and the restore decision (`resolveRestoredPictureUri`).
+- `ProfileImageStore.restoreAvatar()` writes payload bytes as-is (no re-encode
+  — quality preserved) to a NEW timestamped file in `filesDir/profile/` and
+  prunes older avatars — the exact `saveAvatar` cleanup rule, drafts
+  (`cacheDir/profile_drafts/`) untouched. `writeAvatarFile` is the shared,
+  testable core.
+- `BackupRepository`: export packs the owned avatar's bytes alongside its
+  path; restore rewrites `profile_picture_uri` to the NEW local file URI —
+  never the source device's path. Without a payload (v1 backups) the restored
+  path is kept only while its file exists locally (same-device restore keeps
+  working), otherwise the pref falls back to no picture (initials avatar).
+  Missing/corrupt/oversized image data skips just the picture and still
+  restores everything else. The pref rewrite is commit-checked like the rest.
+- Tests: `AvatarPayloadTest` (14) covers export packing/skips, decode of
+  corrupt/oversized/hostile payloads, the new-file restore chain (bytes and
+  path), the v1 missing-image fallback matrix, and the prune-vs-drafts rule.
+  `BackupRestoreTest` now has 10 (added explicit v1/v2 acceptance; version 2
+  moved from "rejected" to "accepted").
+
+### How to test it live
+
+1. Settings → Profile → set a custom profile picture A (gallery crop or a
+   downloaded image) → Accept. Check Settings → Backup & Restore → Back up
+   now. Note where the file went.
+2. Change the profile picture to B (any other picture) → Accept. A's file is
+   now deleted locally (existing cleanup behaviour) and the old backup is the
+   only copy of A.
+3. Settings → Backup & Restore → Restore → pick the file from step 1 →
+   confirm. Expected: picture A reappears IMMEDIATELY (no restart) on the
+   profile screen and in the nav/avatar widgets.
+4. Leave the Profile screen and reopen it (and force-close + reopen the app):
+   A must still be there and still render.
+5. Clean-install path: install the app fresh (or clear app data), restore the
+   same backup. Expected: A appears even though that device never had the
+   file — the picture travelled inside the backup.
+6. Compatibility: restore a backup made BEFORE this change (it has no
+   picture payload). Expected: everything restores as before; the picture
+   shows if its file still exists on this device, otherwise the initials
+   avatar (no broken image). A backup with a corrupt/oversized picture field
+   must restore all other data and simply show the initials avatar.
+7. Backup size sanity: a backup with a custom picture is a few hundred KB to
+   a few MB larger than before (base64 image); a backup with an emoji/remote
+   picture is unchanged.

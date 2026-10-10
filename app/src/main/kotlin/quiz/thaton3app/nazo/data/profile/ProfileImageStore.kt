@@ -513,10 +513,44 @@ object ProfileImageStore {
                     }
                 }
                 if (scaled != bitmap) scaled.recycle()
-                pruneOldAvatars(context, keep = target)
+                pruneOldAvatars(avatarDir(context), keep = target)
                 Uri.fromFile(target).toString()
             }
         }
+
+    /**
+     * Writes an avatar restored from a backup into accepted-avatar storage and
+     * returns its `file://` URI.
+     *
+     * The bytes are written as-is (they are already the compressed file
+     * [saveAvatar] produced, so nothing is lost to a re-encode) under a NEW
+     * timestamped name — the restored URI never echoes the source device's
+     * path. [writeAvatarFile] applies the same "keep only the newest avatar"
+     * cleanup as a fresh save, so a restore behaves exactly like the user
+     * re-picking the picture.
+     */
+    internal suspend fun restoreAvatar(context: Context, payload: AvatarPayload.Payload): Result<String> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                Uri.fromFile(
+                    writeAvatarFile(avatarDir(context), payload.bytes, payload.extension)
+                ).toString()
+            }
+        }
+
+    /**
+     * Writes [bytes] as a new avatar file in [dir] (timestamped name) and
+     * deletes any other avatar there — the [saveAvatar] cleanup rule, shared
+     * with restore. Only [dir] is touched; drafts live elsewhere and are never
+     * affected. Returns the new file.
+     */
+    internal fun writeAvatarFile(dir: File, bytes: ByteArray, extension: String): File {
+        dir.mkdirs()
+        val target = File(dir, "avatar_${System.currentTimeMillis()}.$extension")
+        target.outputStream().use { it.write(bytes) }
+        pruneOldAvatars(dir, keep = target)
+        return target
+    }
 
     /**
      * Centre-crops to a square.
@@ -549,9 +583,9 @@ object ProfileImageStore {
         )
     }
 
-    private fun pruneOldAvatars(context: Context, keep: File) {
+    private fun pruneOldAvatars(dir: File, keep: File) {
         runCatching {
-            avatarDir(context).listFiles()?.forEach { file ->
+            dir.listFiles()?.forEach { file ->
                 if (file != keep) file.delete()
             }
         }

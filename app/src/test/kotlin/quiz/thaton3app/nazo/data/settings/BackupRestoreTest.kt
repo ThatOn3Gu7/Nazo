@@ -87,7 +87,7 @@ class BackupRestoreTest {
                 )
             )
         )
-        val entry = parsed.getValue("nazo_theme")
+        val entry = parsed.stores.getValue("nazo_theme")
         assertEquals("dark", entry.getValue("mode").second)
         assertEquals(true, entry.getValue("nav_bar_floating").second)
         assertEquals(5, entry.getValue("level").second)
@@ -100,13 +100,21 @@ class BackupRestoreTest {
     fun everyStoreInTheAllowlistRestoresFromALegitimateV1Bundle() {
         val content = bundle(stores = BackupRepository.STORES.associateWith { emptyMap<String, JSONObject>() })
         val parsed = BackupRepository.parseAndValidate(content)
-        assertEquals(BackupRepository.STORES.toSet(), parsed.keys)
+        assertEquals(BackupRepository.STORES.toSet(), parsed.stores.keys)
+    }
+
+    @Test
+    fun parseAcceptsSchemaVersionsOneAndTwo() {
+        val stores = mapOf("nazo_profile" to mapOf("username" to tag("string", "x")))
+        // v1 = the pre-picture format every existing backup uses; v2 = current.
+        assertEquals(setOf("nazo_profile"), BackupRepository.parseAndValidate(bundle(stores, version = 1)).stores.keys)
+        assertEquals(setOf("nazo_profile"), BackupRepository.parseAndValidate(bundle(stores, version = 2)).stores.keys)
     }
 
     @Test
     fun parseRejectsUnsupportedOrMissingVersions() {
         val stores = mapOf("nazo_profile" to mapOf("username" to tag("string", "x")))
-        for (version in listOf(2, 0, -1, "abc")) {
+        for (version in listOf(0, 3, -1, "abc")) {
             assertThrows(IllegalArgumentException::class.java) {
                 BackupRepository.parseAndValidate(bundle(stores, version = version))
             }
@@ -155,7 +163,7 @@ class BackupRestoreTest {
                 )
             )
         )
-        assertEquals(setOf("nazo_profile"), parsed.keys)
+        assertEquals(setOf("nazo_profile"), parsed.stores.keys)
     }
 
     @Test
@@ -197,33 +205,31 @@ class BackupRestoreTest {
         backend.created["nazo_theme"] = theme
         backend.created["nazo_sound"] = sound
 
-        BackupRepository.applyValidated(
-            backend.provider(),
-            BackupRepository.parseAndValidate(
-                bundle(
-                    stores = mapOf(
-                        "nazo_profile" to mapOf(
-                            "username" to tag("string", "restored-user"),
-                            "profile_picture_uri" to tag("string", "emoji:cherry_blossom"),
-                        ),
-                        "nazo_theme" to mapOf(
-                            "mode" to tag("string", "dark"),
-                            "accent" to tag("string", "sakura"),
-                            "guess_reveal_style" to tag("string", "pixel"),
-                            "guess_auto_crop" to tag("bool", true),
-                            "background_style" to tag("string", "sakura_petals"),
-                            "celebration_style" to tag("string", "confetti"),
-                            "sparkle_style" to tag("string", "stars"),
-                            "nav_bar_floating" to tag("bool", true),
-                        ),
-                        "nazo_sound" to mapOf(
-                            "enabled" to tag("bool", false),
-                            "theme" to tag("string", "arcade"),
-                        ),
-                    )
+        val parsed = BackupRepository.parseAndValidate(
+            bundle(
+                stores = mapOf(
+                    "nazo_profile" to mapOf(
+                        "username" to tag("string", "restored-user"),
+                        "profile_picture_uri" to tag("string", "emoji:cherry_blossom"),
+                    ),
+                    "nazo_theme" to mapOf(
+                        "mode" to tag("string", "dark"),
+                        "accent" to tag("string", "sakura"),
+                        "guess_reveal_style" to tag("string", "pixel"),
+                        "guess_auto_crop" to tag("bool", true),
+                        "background_style" to tag("string", "sakura_petals"),
+                        "celebration_style" to tag("string", "confetti"),
+                        "sparkle_style" to tag("string", "stars"),
+                        "nav_bar_floating" to tag("bool", true),
+                    ),
+                    "nazo_sound" to mapOf(
+                        "enabled" to tag("bool", false),
+                        "theme" to tag("string", "arcade"),
+                    ),
                 )
             )
         )
+        BackupRepository.applyValidated(backend.provider(), parsed.stores)
 
         assertEquals("restored-user", profile.getString("username", null))
         assertEquals("emoji:cherry_blossom", profile.getString("profile_picture_uri", null))
@@ -259,12 +265,10 @@ class BackupRestoreTest {
         val backend = Backend()
         backend.created["nazo_stats"] = target
 
-        BackupRepository.applyValidated(
-            backend.provider(),
-            BackupRepository.parseAndValidate(
-                bundle(stores = mapOf("nazo_stats" to mapOf("quiz_stats_v1" to tag("string", statsJson))))
-            )
+        val parsed = BackupRepository.parseAndValidate(
+            bundle(stores = mapOf("nazo_stats" to mapOf("quiz_stats_v1" to tag("string", statsJson))))
         )
+        BackupRepository.applyValidated(backend.provider(), parsed.stores)
 
         assertEquals(fixture, QuizStatsStore(target).get())
     }
@@ -290,21 +294,19 @@ class BackupRestoreTest {
         val backend = Backend()
         backend.created["nazo_qhistory"] = qhPrefs
         backend.created["nazo_missed"] = missedPrefs
-        BackupRepository.applyValidated(
-            backend.provider(),
-            BackupRepository.parseAndValidate(
-                bundle(
-                    stores = mapOf(
-                        "nazo_qhistory" to mapOf(
-                            "texts" to tag("string", freshQh.getString("texts", null)!!),
-                        ),
-                        "nazo_missed" to mapOf(
-                            "questions" to tag("string", freshMissed.getString("questions", null)!!),
-                        ),
-                    )
+        val parsed = BackupRepository.parseAndValidate(
+            bundle(
+                stores = mapOf(
+                    "nazo_qhistory" to mapOf(
+                        "texts" to tag("string", freshQh.getString("texts", null)!!),
+                    ),
+                    "nazo_missed" to mapOf(
+                        "questions" to tag("string", freshMissed.getString("questions", null)!!),
+                    ),
                 )
             )
         )
+        BackupRepository.applyValidated(backend.provider(), parsed.stores)
 
         // Without reload() the caches still hold the pre-restore lists.
         history.reload()
