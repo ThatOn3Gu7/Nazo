@@ -771,9 +771,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
 
     /** Appends a fresh batch of local-bank questions, skipping anything already loaded or seen. */
     fun appendLocalSurvivalBatch() {
-        val loaded = questions.map { it.text }.toSet()
+        val loaded = questions.map { it.identity }.toSet()
         val pool = LocalQuestionBank.getQuestions(40, homeTopic, quizDifficulty)
-            .filter { it.text !in loaded }
+            .filter { it.identity !in loaded }
         val (seen, fresh) = pool.partition {
             SessionMemory.isQuestionSeen(it.text) || questionHistory.isSeen(it.text)
         }
@@ -798,9 +798,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 )
                     .onSuccess { qs ->
                         if (quizMode == "survival") {
-                            val loaded = questions.map { it.text }.toSet()
+                            val loaded = questions.map { it.identity }.toSet()
                             val fresh = qs.filter {
-                                it.text !in loaded && !SessionMemory.isQuestionSeen(it.text)
+                                it.identity !in loaded && !SessionMemory.isQuestionSeen(it.text)
                             }
                             if (fresh.isNotEmpty()) {
                                 questions = questions + fresh.map { it.withShuffledOptions() }
@@ -971,7 +971,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // graduates it out. Versus is excluded — guest answers must not
             // pollute the owner's deck.
             if (quizMode != "versus") {
-                if (isCorrect) missedStore.recordCorrect(q.text) else missedStore.recordMiss(q)
+                if (isCorrect) missedStore.recordCorrect(q) else missedStore.recordMiss(q)
             }
         }
         userAnswers = userAnswers + selected

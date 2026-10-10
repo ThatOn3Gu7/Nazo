@@ -1763,3 +1763,120 @@ toggle was left alone; it only enables sounds and gets the default style.
    style is silent but still records the choice. Turn sound back on and the
    chosen style plays.
 9. Rotate with the sheet open — it survives.
+
+## 2026-10-10 — Question bank: attribution, dedup identity, franchise labels
+
+First item of the owner's sequential repair pass. Scope: `LocalQuestionBank.kt`
+content quality + the selection/display logic around it.
+
+### What was found (full-bank audit, 985 entries, all parsed)
+
+- **Structural validation: 0 invalid entries.** Every question has exactly four
+  nonblank, case-distinct options and `correctAnswer` is one of them.
+- **0 duplicate (anime, text) identities** — no genuine same-franchise
+  duplicates existed to remove.
+- **4 question texts shared across different anime** (16 entries): "first arc" /
+  "second arc" / "third arc" (AoT, MHA, Demon Slayer, Jujutsu Kaisen, Mob
+  Psycho 100) and "Who is the priest?" (Frieren + Trigun). These are KEPT —
+  they are valid questions from each franchise — and are now labelled in the UI.
+- **1 misattributed entry** (the owner's example, and the only one in the bank —
+  confirmed by an identical-option-set scan and a full-name cross-franchise
+  scan): Frieren's "Who is the priest?" had four Trigun options (a verbatim copy
+  of the Trigun entry) with Wolfwood as the answer, while its own explanation
+  said "Heiter is the priest."
+- **7 factually wrong answers**, all in the generic "which arc" questions plus
+  one broken One Piece question (details below).
+
+### Fixes (data)
+
+1. **Frieren "Who is the priest?"** → options now Heiter / Himmel / Eisen /
+   Fern, answer **Heiter**. Verified: the hero party is Himmel (hero), Heiter
+   (priest), Eisen (warrior), Frieren (mage) — official cast lists "Hiroki Tochi
+   as the priest Heiter". The entry's own explanation already named Heiter.
+2. **"Which is NOT one of Luffy's Gear 4 forms?"** was self-defeating: "Bound
+   Man" and "Bounce Man" are the SAME form (Boundman; English versions call it
+   Bounce Man), so no option was actually wrong. Options are now Bounce Man /
+   Tank Man / Snake Man / **Gear 5**, answer Gear 5. Verified: Gear 4 has
+   exactly three forms.
+3. **Arc-number answers corrected against reference arc lists** (manga chapter
+   order, cross-checked with 2-3 sources each):
+   - AoT third arc: "Clash of Titans" → **The Female Titan** (3rd; Clash is 4th)
+   - MHA second arc: "The Battle Trial" → **The Quirk Apprehension Test**
+   - MHA third arc: "The Sports Festival" → **The Battle Trial** (Sports
+     Festival is 5th)
+   - Demon Slayer second arc: "The Mount Natagumo" → **The Kidnapper's Bog**
+     (official wiki name; Natagumo is 5th)
+   - Demon Slayer third arc: "The Mugen Train" → **The Asakusa arc** (Mugen
+     Train is 7th)
+   - Jujutsu Kaisen second arc: "The Origin of Obedience" → **The Vs. Mahito
+     arc** (Origin of Obedience is 4th)
+   Verified as correct and left alone: AoT 1st/2nd, MHA 1st, DS 1st, JJK 1st
+   ("Cursed Womb" = fandom "Fearsome Womb" translation variant) and JJK 3rd
+   (Goodwill Event).
+
+**Reported, NOT changed** (cannot confidently verify): Mob Psycho 100's three
+"arc" questions name "The Spirits and Such" / "The Telepathy Club" / "The Body
+Improvement Club" as story arcs. Those are episode premises, not standard arc
+names (fandom arc lists don't use them), but no authoritative arc list exists to
+correct them against — guessing a replacement would be worse than flagging.
+Also soft wording (left as-is): "What is the Fourth Great Ninja War fought
+over?" (answer emphasises the tailed beasts; defensible), and the Kakashi face
+question's "anime filler" explanation.
+
+### Fixes (code) — one stable identity everywhere dedup happened
+
+`Question.identity` (new, `QuizData.kt`): normalized `anime + "||" + text`.
+Text alone is NOT unique across anime, so text-keyed dedup let one franchise
+silently drop another's valid question — the exact "arbitrary survivor" bug.
+
+- `LocalQuestionBank.getQuestions`: `distinctBy { it.text }` → `identity`. A
+  mixed quiz can now carry both AoT's and MHA's "first arc" question — each
+  labelled — instead of randomly losing one.
+- `DailyChallenge`: same identity dedup in `distinctBy` and `pickFrom`. This
+  ALSO fixes a determinism bug: which question survived a text collision
+  depended on an unseeded shuffle, so the "same daily for the same date" was not
+  actually guaranteed for those 16 questions. (`sortedBy { it.identity }`
+  because identity is unique after the distinctBy, so ties can't reorder.)
+- `MissedQuestionsStore`: `recordMiss`/`recordCorrect` now match on identity —
+  missing AoT's "first arc" no longer evicts MHA's from the practice deck, and
+  answering one no longer graduates the other. `recordCorrect` now takes the
+  `Question` (sole caller updated in `NazoApp`).
+- `NazoApp` survival batch fill: "already loaded" set is identity-based.
+
+Deliberately untouched: `SessionMemory` / `QuestionHistoryStore` keep matching
+on normalized TEXT — that is a documented feature (AI rewording tolerance for
+the prompt avoid-lists and the session "don't repeat" rules) and their
+persistence format is text-keyed. Side effect kept: after answering a generic
+question in one franchise, the same wording may be skipped as "seen" in another
+franchise's quiz — it suppresses repeats, it never shows a wrong answer.
+
+### Fixes (display)
+
+- `ActiveQuizScreen` header: `question.theme` → `"anime: theme"` (e.g.
+  "Attack on Titan: STORY" / "Jujutsu Kaisen: Shibuya Arc" — the format the old
+  comment already wanted). Question card label: `"ANIME · THEME"`.
+- `ReviewAnswersScreen` card: "QUESTION n · ANIME".
+
+### How to test it live
+
+1. Start an offline/local quiz (no AI provider), topic **Attack on Titan**,
+   difficulty Easy. Every question's header must read "Attack on Titan: …" and
+   the card label "ATTACK ON TITAN · …". "What is the name of the first arc?"
+   must answer **The Fall of Shiganshina**, third arc → **The Female Titan**.
+2. Repeat with **My Hero Academia**: second arc → **The Quirk Apprehension
+   Test**, third arc → **The Battle Trial**.
+3. Repeat with **Demon Slayer**: second arc → **The Kidnapper's Bog**, third
+   arc → **The Asakusa arc**.
+4. Repeat with **Jujutsu Kaisen**: second arc → **The Vs. Mahito arc**, third
+   arc → **The Goodwill Event arc**.
+5. Start a quiz with NO topic (mixed). If "What is the name of the first arc?"
+   appears, its header/card label must name its anime and the answer must match
+   that anime's first arc (e.g. labelled "Mob Psycho 100" → "The Spirits and
+   Such"); the wrong franchise's answer can never appear.
+6. Wrong-answer one question, then open the Practice deck (Profile → missed
+   questions/practice): the question is there once, with its anime label on the
+   review card ("QUESTION 1 · …").
+7. Finish a daily challenge twice in a row: both runs show the identical 5
+   questions in the identical order.
+8. Sanity: Frieren's "Who is the priest?" shows Heiter/Himmel/Eisen/Fern with
+   **Heiter** correct; Trigun's own "Who is the priest?" still answers Wolfwood.

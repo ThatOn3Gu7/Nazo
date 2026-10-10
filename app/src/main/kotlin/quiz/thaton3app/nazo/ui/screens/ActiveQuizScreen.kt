@@ -229,7 +229,11 @@ fun ActiveQuizScreen(
                 Spacer(Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = question.theme, // e.g., "Jujutsu Kaisen: Shibuya Arc"
+                        // anime: theme, e.g. "Jujutsu Kaisen: Shibuya Arc" — the
+                        // anime name makes generic questions ("What is the name of
+                        // the first arc?") unambiguous about their franchise.
+                        text = listOf(question.anime, question.theme)
+                            .filter { it.isNotBlank() }.joinToString(": "),
                         style = MaterialTheme.typography.titleMedium,
                         color = NazoTextPrimary,
                         fontWeight = FontWeight.Bold
@@ -410,7 +414,8 @@ fun ActiveQuizScreen(
                         .padding(if (landscape) 18.dp else 24.dp)
                 ) {
                     Text(
-                        text = q.theme.uppercase(),
+                        text = listOf(q.anime, q.theme)
+                            .filter { it.isNotBlank() }.joinToString(" · ").uppercase(),
                         style = MaterialTheme.typography.labelSmall,
                         color = NazoPrimary,
                         fontWeight = FontWeight.Bold

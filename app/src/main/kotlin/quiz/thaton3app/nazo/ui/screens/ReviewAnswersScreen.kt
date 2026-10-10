@@ -117,7 +117,8 @@ private fun ReviewCard(question: Question, userAnswer: String?, index: Int) {
             .padding(20.dp),
     ) {
         Text(
-            text = "QUESTION $index",
+            text = if (question.anime.isNotBlank()) "QUESTION $index · ${question.anime.uppercase()}"
+            else "QUESTION $index",
             style = MaterialTheme.typography.labelSmall,
             color = NazoPrimary,
             fontWeight = FontWeight.Bold,

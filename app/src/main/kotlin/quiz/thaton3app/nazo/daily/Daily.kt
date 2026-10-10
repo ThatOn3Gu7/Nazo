@@ -90,12 +90,12 @@ object DailyChallenge {
      */
     fun questionsFor(epochDay: Long): List<Question> {
         val all = LocalQuestionBank.getQuestions(Int.MAX_VALUE)
-            .distinctBy { it.text }
-            .sortedBy { it.text }
+            .distinctBy { it.identity }
+            .sortedBy { it.identity }
         val rng = Random(epochDay * 31 + 7)
         val picked = mutableListOf<Question>()
         fun pickFrom(pool: List<Question>, n: Int) {
-            val remaining = pool.filter { p -> picked.none { it.text == p.text } }
+            val remaining = pool.filter { p -> picked.none { it.identity == p.identity } }
             picked += remaining.shuffled(rng).take(n)
         }
         fun pool(vararg difficulties: String) =

@@ -42,9 +42,6 @@ class MissedQuestionsStore(context: Context) {
         }.getOrDefault(mutableListOf())
     }
 
-    private fun normalize(text: String): String =
-        text.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
-
     private fun save() {
         val arr = JSONArray()
         questions.forEach { q ->
@@ -62,12 +59,11 @@ class MissedQuestionsStore(context: Context) {
         prefs.edit().putString(KEY_QUESTIONS, arr.toString()).apply()
     }
 
-    /** Adds a question the player just missed (deduped by text, FIFO cap). */
+    /** Adds a question the player just missed (deduped by franchise + text, FIFO cap). */
     @Synchronized
     fun recordMiss(question: Question) {
         if (question.text.isBlank() || question.options.isEmpty()) return
-        val norm = normalize(question.text)
-        questions.removeAll { normalize(it.text) == norm }
+        questions.removeAll { it.identity == question.identity }
         questions.add(question)
         while (questions.size > MAX_MISSED) questions.removeAt(0)
         save()
@@ -75,9 +71,8 @@ class MissedQuestionsStore(context: Context) {
 
     /** The player finally got it right — drop it from the deck. */
     @Synchronized
-    fun recordCorrect(questionText: String) {
-        val norm = normalize(questionText)
-        if (questions.removeAll { normalize(it.text) == norm }) save()
+    fun recordCorrect(question: Question) {
+        if (questions.removeAll { it.identity == question.identity }) save()
     }
 
     @Synchronized
