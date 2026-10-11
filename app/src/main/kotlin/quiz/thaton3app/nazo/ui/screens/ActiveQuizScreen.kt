@@ -37,7 +37,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -77,6 +77,8 @@ fun ActiveQuizScreen(
     livesLeft: Int = 0,
     // Versus mode: whose turn it is ("P1" / "P2"), shown as a header badge.
     playerLabel: String? = null,
+    // Daily Challenge: a header badge marking the once-a-day run.
+    daily: Boolean = false,
     // Blitz mode: one GLOBAL deadline replaces the per-question countdown;
     // answers auto-advance and the run ends via [onBlitzTimeUp].
     blitzDeadlineMs: Long? = null,
@@ -193,11 +195,18 @@ fun ActiveQuizScreen(
     val chromeGap = if (landscape) 8.dp else 16.dp
     val topGap = if (landscape) 8.dp else 20.dp
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            // Reading scrim: the app-wide ambient particles drift behind every
+            // screen; gameplay is a reading surface, so they are dimmed here to
+            // a whisper instead of passing under the question text.
+            .background(NazoBackground.copy(alpha = 0.9f))
+    ) {
         Column(
             modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding()
+                .fillMaxSize()
+                .statusBarsPadding()
         ) {
         Column(
             modifier = Modifier
@@ -229,22 +238,45 @@ fun ActiveQuizScreen(
                 Spacer(Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        // anime: theme, e.g. "Jujutsu Kaisen: Shibuya Arc" — the
-                        // anime name makes generic questions ("What is the name of
-                        // the first arc?") unambiguous about their franchise.
-                        text = listOf(question.anime, question.theme)
-                            .filter { it.isNotBlank() }.joinToString(": "),
+                        // Orientation first: which question am I on.
+                        // Survival is endless — no meaningful "of y".
+                        text = if (endless) "Question ${currentQuestionIndex + 1}"
+                        else "Question ${currentQuestionIndex + 1} of $totalQuestions",
                         style = MaterialTheme.typography.titleMedium,
                         color = NazoTextPrimary,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        // Survival is endless — no meaningful "of y".
-                        text = if (endless) "Question ${currentQuestionIndex + 1}"
-                        else "Question ${currentQuestionIndex + 1} of $totalQuestions",
+                        // anime: theme, e.g. "Jujutsu Kaisen: Shibuya Arc" — the
+                        // anime name makes generic questions ("What is the name of
+                        // the first arc?") unambiguous about their franchise. It is
+                        // context, so it rides under the progress instead of
+                        // competing with it (and with the question card below).
+                        text = listOf(question.anime, question.theme)
+                            .filter { it.isNotBlank() }.joinToString(": "),
                         style = MaterialTheme.typography.bodyMedium,
                         color = NazoTextSecondary
                     )
+                }
+                if (daily) {
+                    // Daily Challenge: same rules as a quiz, one run a day —
+                    // labelled so the player knows why there is no AI label.
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50.dp))
+                            .background(NazoPrimary.copy(alpha = 0.16f))
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "☀ DAILY",
+                            color = NazoPrimary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
                 }
                 if (playerLabel != null) {
                     // Versus: whose turn is it (P1 / P2).
@@ -303,7 +335,16 @@ fun ActiveQuizScreen(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
-                        .background(NazoSurface),
+                        // Urgency shows on the whole chip, not just the digit:
+                        // in a row of badges the tinted disc is what the eye
+                        // finds at a glance.
+                        .background(
+                            animateColorAsState(
+                                targetValue = if (isTimeUp || remainingSeconds <= 5) NazoErrorBg else NazoSurface,
+                                animationSpec = tween(400),
+                                label = "timerBg",
+                            ).value
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     // Smoothly animate the timer color when hitting the final 5 seconds
@@ -338,7 +379,7 @@ fun ActiveQuizScreen(
             }
 
             Spacer(Modifier.height(chromeGap))
-            // Endless/blitz runs have no meaningful fraction — skip the bar.
+            // Endless runs have no meaningful fraction — skip the bar.
             if (!endless && !isBlitz) {
                 val progressAnim = animateFloatAsState(
                     targetValue = (currentQuestionIndex + 1) / totalQuestions.toFloat(),
@@ -352,6 +393,27 @@ fun ActiveQuizScreen(
                         .height(6.dp)
                         .clip(RoundedCornerShape(50)),
                     color = NazoPrimary,
+                    trackColor = NazoSurface
+                )
+            } else if (isBlitz) {
+                // Blitz has no question fraction but it does have one global
+                // clock — show THAT as the bar so the run's remaining time is
+                // readable at a glance, not only as a digit in the corner.
+                val blitzTotalMs = remember(blitzDeadlineMs) {
+                    ((blitzDeadlineMs ?: 0L) - SystemClock.elapsedRealtime()).coerceAtLeast(1_000L)
+                }
+                val timeAnim = animateFloatAsState(
+                    targetValue = (remainingSeconds * 1000f / blitzTotalMs).coerceIn(0f, 1f),
+                    animationSpec = tween(durationMillis = 200),
+                    label = "blitzProgress"
+                ).value
+                LinearProgressIndicator(
+                    progress = { timeAnim },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(50)),
+                    color = if (remainingSeconds <= 10) NazoError else NazoPrimary,
                     trackColor = NazoSurface
                 )
             }
@@ -405,7 +467,9 @@ fun ActiveQuizScreen(
                 TwoPaneQuizBody(
                     landscape = landscape,
                     question = {
-                // Question Card
+                // Question Card. The franchise label used to repeat here as a
+                // kicker; it now lives once in the header, so the card's whole
+                // job is the question itself — the main thing to read.
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -413,14 +477,6 @@ fun ActiveQuizScreen(
                         .background(NazoSurface)
                         .padding(if (landscape) 18.dp else 24.dp)
                 ) {
-                    Text(
-                        text = listOf(q.anime, q.theme)
-                            .filter { it.isNotBlank() }.joinToString(" · ").uppercase(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = NazoPrimary,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(8.dp))
                     Text(
                         text = q.text,
                         style = MaterialTheme.typography.headlineSmall,
@@ -529,9 +585,44 @@ fun ActiveQuizScreen(
                                 .padding(20.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Outlined.Lightbulb, contentDescription = null, tint = NazoPrimary, modifier = Modifier.size(20.dp))
+                                // The outcome IS the news; the explanation is the
+                                // follow-up. "Time's up!" names the timed-out
+                                // state explicitly — previously only the red
+                                // timer digit implied it.
+                                val outcomeTitle = when {
+                                    isTimeUp -> "Time's up!"
+                                    isCorrect -> "Correct!"
+                                    else -> "Not quite"
+                                }
+                                val outcomeColor = when {
+                                    isCorrect && !isTimeUp -> NazoSuccess
+                                    else -> NazoError
+                                }
+                                Icon(
+                                    imageVector = when {
+                                        isTimeUp -> Icons.Filled.Schedule
+                                        isCorrect && !isTimeUp -> Icons.Filled.Check
+                                        else -> Icons.Filled.Close
+                                    },
+                                    contentDescription = null,
+                                    tint = outcomeColor,
+                                    modifier = Modifier.size(20.dp),
+                                )
                                 Spacer(Modifier.width(8.dp))
-                                Text("Explanation", style = MaterialTheme.typography.titleMedium, color = NazoTextPrimary, fontWeight = FontWeight.Bold)
+                                Text(
+                                    outcomeTitle,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = outcomeColor,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Spacer(Modifier.weight(1f))
+                                Text(
+                                    "EXPLANATION",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = NazoTextSecondary,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                )
                             }
                             Spacer(Modifier.height(8.dp))
                             Text(

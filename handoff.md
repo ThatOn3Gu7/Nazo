@@ -2442,3 +2442,56 @@ pinned overlay risky without device checks. CI run 38155566195 green
    (Settings), come back — all retained as before.
 6. Landscape: two panes (brand/status/daily/mode | topic/difficulty/
    count/start); same hierarchy, no overlap.
+
+## Visual 3/11: Active gameplay hierarchy (2026-10-11)
+Question-first across all play surfaces (quiz/Daily/Survival/Blitz/
+Versus + Guessing Game). Rules, timers, scoring, hints, image
+verification/cropping and network behavior untouched.
+
+Changed: header flip in both games — bold line is orientation ("Question
+X of Y" / "Round X of Y"; Survival = "Question N"), second line is
+franchise/context ("anime: theme" / "Guessing Game • difficulty");
+question card and image card no longer repeat the franchise/round
+(guessing source badge kept — host·ext, never the character). Outcome is
+named: the explanation panel header reads "Correct!" / "Not quite" /
+"Time's up!" with a check/close/schedule icon + "EXPLANATION" kicker —
+timed-out was previously implied only by a red digit. Timer chips (quiz +
+guessing) tint the whole disc red at ≤5s / time-up. Blitz gains a global
+time bar where the question-progress bar sits (60s total from the
+deadline, red in the last 10s). "☀ DAILY" quiz-header chip wired from the
+existing isDailyQuiz state. Reading scrim (NazoBackground @ 0.9) on the
+quiz, guessing and versus-handoff roots so ambient particles can never
+drift under gameplay text. Hint pills, option state colours, reveal
+cards, choice input and the guessing fetch/crop pipeline were audited and
+deliberately left alone (already correct).
+
+### How to test it live
+1. Home → type an anime → Generate → start a quiz: bold "Question 1 of 10"
+   on top, muted "anime: theme" under it; the question card has NO kicker
+   text above the question.
+2. Same quiz: at 5s left the whole timer disc turns red (digit red too).
+   Let one time out: the panel below shows a clock icon + "Time's up!"
+   with the explanation and the correct option revealed.
+3. Answer one correctly and one wrongly: panel header "Correct!" (green)
+   / "Not quite" (red) with matching icons; "EXPLANATION" at the row's
+   right end.
+4. Home → ☀ card → Play today's challenge: "☀ DAILY" chip in the header;
+   run behaves exactly as a quiz.
+5. Home → Survival: header "Question N" (no fraction), hearts chip, no
+   fraction bar. Home → Blitz: strip under the header is a draining time
+   bar (full at 60s), chip counts down, bar red in the last 10s.
+6. Home → Versus: "P1 turn →" handoff shows the dimmed reading scrim;
+   in-round P1/P2 chip and outcome panel as in step 3.
+7. Guessing Game (any difficulty): bold "Round 1 of 8", under it
+   "Guessing Game • difficulty"; image card shows only the mystery image
+   + source badge (bottom-left, host·filetype) — no round overlay; timer
+   disc red at ≤5s; wrong guess → reveal panel names the outcome; retry
+   chip on self-quiz (3+ rounds); hint pill unchanged (unrevealed images).
+8. Settings → Image Quality → auto-crop OFF → guessing round: image
+   letterboxed on black (crop behaviour unchanged), same layout.
+9. Rotate mid-quiz and mid-guessing: two-pane layout, question stays the
+   largest text, no clipped chrome; split-screen/short height — question
+   pane scrolls, answer taps stay reachable.
+Not verifiable on-device: particle dimming is an alpha change (effective
+0.35 → 0.035 under the 0.9 scrim) — visible as lanterns barely drifting
+behind play screens.

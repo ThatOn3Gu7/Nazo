@@ -58,6 +58,7 @@ import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
@@ -86,6 +87,9 @@ fun VersusHandoffScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            // Reading scrim, same as the quiz screen: the pass-the-phone
+            // instructions are a reading surface over the ambient layer.
+            .background(NazoBackground.copy(alpha = 0.9f))
             .statusBarsPadding()
             .navigationBarsPadding()
             .padding(horizontal = 28.dp),

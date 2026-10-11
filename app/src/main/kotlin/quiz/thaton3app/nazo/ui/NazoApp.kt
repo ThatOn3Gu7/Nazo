@@ -1671,6 +1671,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         endless = quizMode == "survival",
                         livesLeft = 3 - survivalWrongs,
                         playerLabel = if (quizMode == "versus") "P$versusStage" else null,
+                        daily = isDailyQuiz,
                         blitzDeadlineMs = if (quizMode == "blitz") blitzDeadline else null,
                         onBlitzTimeUp = { finishBlitz() },
                         onNextQuestion = { isCorrect, selected -> answer(isCorrect, selected) },

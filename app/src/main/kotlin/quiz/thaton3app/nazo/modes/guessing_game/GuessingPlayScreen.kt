@@ -293,7 +293,14 @@ fun GuessingPlayScreen(
 
     BackHandler(enabled = true) { showQuitDialog = !showQuitDialog }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            // Reading scrim: gameplay is a reading surface, so the app-wide
+            // ambient particles are dimmed to a whisper behind it instead of
+            // passing under the question/answer text.
+            .background(NazoBackground.copy(alpha = 0.9f))
+    ) {
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             Column(
                 modifier = Modifier
@@ -318,13 +325,15 @@ fun GuessingPlayScreen(
                     Spacer(Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Guessing Game",
+                            // Orientation first, same hierarchy as the quiz:
+                            // which round am I on.
+                            text = "Round $round of $totalRounds",
                             style = MaterialTheme.typography.titleMedium,
                             color = NazoTextPrimary,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Round $round of $totalRounds • $difficultyLabel",
+                            text = "Guessing Game • $difficultyLabel",
                             style = MaterialTheme.typography.bodyMedium,
                             color = NazoTextSecondary
                         )
@@ -421,7 +430,6 @@ fun GuessingPlayScreen(
                                 imageReady = imageReady,
                                 imageFetchFailed = imageFetchFailed,
                                 query = phase.payload.imageQuery.ifBlank { topic },
-                                round = round,
                                 progress = timerFrac,
                                 revealed = revealed,
                                 revealStyle = revealStyle,
@@ -506,7 +514,15 @@ private fun TimerCircle(seconds: Int) {
         modifier = Modifier
             .size(40.dp)
             .clip(CircleShape)
-            .background(NazoSurface),
+            // Same urgency treatment as the quiz timer: the tinted disc is
+            // what the eye finds in the badge row at a glance.
+            .background(
+                animateColorAsState(
+                    targetValue = if (seconds <= 5) NazoErrorBg else NazoSurface,
+                    animationSpec = tween(400),
+                    label = "guessTimerBg",
+                ).value
+            ),
         contentAlignment = Alignment.Center
     ) {
         AnimatedContent(
@@ -577,7 +593,6 @@ private fun MysteryImageCard(
     imageReady: Boolean,
     imageFetchFailed: Boolean,
     query: String,
-    round: Int,
     progress: () -> Float,
     revealed: Boolean,
     revealStyle: String,
@@ -669,10 +684,10 @@ private fun MysteryImageCard(
                 )
             }
         }
-        // Source label (diagnostic): the host and file type actually being
-        // rendered. Different sources serve different formats, and knowing
-        // which one is on screen when the colour is wrong is the single most
-        // useful fact left — it separates "one bad source" from "every image".
+        // The round badge used to sit here (top-start); the header line now
+        // carries the round, and the card's whole area belongs to the mystery
+        // image. The source badge (bottom-start) stays — it names the image
+        // host, never the character.
         imageUrl?.let { u ->
             Box(
                 modifier = Modifier
@@ -693,22 +708,6 @@ private fun MysteryImageCard(
                     style = MaterialTheme.typography.labelSmall,
                 )
             }
-        }
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(14.dp)
-                .clip(RoundedCornerShape(50.dp))
-                .background(Color.Black.copy(alpha = 0.45f))
-                .padding(horizontal = 10.dp, vertical = 5.dp)
-        ) {
-            Text(
-                text = "ROUND $round",
-                color = Color.White,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp,
-            )
         }
     }
 }
