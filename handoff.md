@@ -2405,3 +2405,40 @@ this task.
    text on the tinted chip is readable in Light mode.
 6. Typography: dialog buttons and chips now match the app font (compare a
    Material button label to a heading — same typeface).
+
+## Visual 2/11: Home screen hierarchy (2026-10-11)
+
+Audit verdicts: mode dropdown / status badge / practice entry / start
+button were already sound; real issues were the logo wearing chip chrome
+(same pill styling as interactive chips), the topic field wrapped in a
+full card around a field that already has its own surface, a 28sp
+two-line hero duplicating the mode blurb, and a loose 22-28dp spacer
+rhythm — together pushing the start button a screen below the fold.
+
+Changed (HomeScreen.kt only): logo is a mark+wordmark lockup (pills now
+mean status/selection); topic joins the label+control rhythm of
+DIFFICULTY/QUESTIONS; per-mode pitch is one supporting line (AnimatedContent
+kept); spacer scale unified at 16/8. ~150dp shorter, no control shrunk.
+Logic, callbacks, defaults, saved selections untouched. DailyChallengeCard
+left alone (distinctive, compact). Sticky bottom button was assessed and
+skipped: the floating nav bar and the landscape two-pane layout make a
+pinned overlay risky without device checks. CI run 38155566195 green
+(unit tests + assembleDebug).
+
+### How to test it live
+
+1. Home (portrait): top-to-bottom reads brand → API/offline chip + streak
+   → Daily Challenge → MODE → one-line pitch → TOPIC → DIFFICULTY →
+   QUESTIONS/ROUNDS → start button. The Generate/Start button is near the
+   bottom of the first screenful (small scroll if any).
+2. Logo area: solid rounded-square mark + "Nazo" wordmark (no pill
+   background). Chips below still pill-shaped — only brand changed.
+3. Topic: type "Juj" — suggestion rows appear under the field with no
+   surrounding card; tap one — field fills, list closes. Clear (×) works.
+4. Mode selector: tap — expands to the other 4 modes with blurbs; pick
+   Guessing Game — pitch line flips to "Can you spot the mystery image?",
+   QUESTIONS becomes ROUNDS 1/3/5.
+5. Saved selections: change difficulty to Hard, count to 10, leave Home
+   (Settings), come back — all retained as before.
+6. Landscape: two panes (brand/status/daily/mode | topic/difficulty/
+   count/start); same hierarchy, no overlap.

@@ -163,7 +163,7 @@ fun HomeScreen(
 
     // Group 1: Profile, Badges, Daily Challenge, and Mode Selection
     val leftContent: @Composable () -> Unit = {
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(16.dp))
 
         HomeHeader(
             onSettingsClick = onSettingsClick,
@@ -172,7 +172,7 @@ fun HomeScreen(
             onProfileClick = onProfileClick,
         )
 
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(14.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -196,7 +196,7 @@ fun HomeScreen(
             }
         }
 
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(16.dp))
 
         DailyChallengeCard(
             completed = dailyCompleted,
@@ -205,10 +205,10 @@ fun HomeScreen(
             onPlay = onPlayDaily,
         )
 
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(16.dp))
 
         SectionLabel("MODE")
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
         ModeSelector(
             selected = nazoMode,
             onSelect = { m ->
@@ -217,8 +217,11 @@ fun HomeScreen(
             },
         )
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(8.dp))
 
+        // One line of flavor per mode. The old 28sp two-line hero duplicated
+        // the blurb inside the selector above and pushed the setup controls a
+        // full screen down; the pitch stays, the wall of text goes.
         AnimatedContent(
             targetState = nazoMode,
             transitionSpec = {
@@ -229,19 +232,15 @@ fun HomeScreen(
         ) { m ->
             Text(
                 text = when (m) {
-                    NazoMode.GUESSING -> "Can you spot the\nmystery image?"
-                    NazoMode.SURVIVAL -> "How long can\nyou survive?"
-                    NazoMode.BLITZ -> "How many in\n60 seconds?"
-                    NazoMode.VERSUS -> "Who knows their\nanime better?"
-                    else -> "Ready to test your\nanime knowledge?"
+                    NazoMode.GUESSING -> "Can you spot the mystery image?"
+                    NazoMode.SURVIVAL -> "How long can you survive?"
+                    NazoMode.BLITZ -> "How many in 60 seconds?"
+                    NazoMode.VERSUS -> "Who knows their anime better?"
+                    else -> "Ready to test your anime knowledge?"
                 },
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 28.sp,
-                    lineHeight = 34.sp,
-                    letterSpacing = (-0.5).sp
-                ),
-                color = NazoTextPrimary,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = NazoTextSecondary,
             )
         }
     }
@@ -249,14 +248,14 @@ fun HomeScreen(
     // Group 2: Topic, Difficulty, Rounds/Questions, and the Generate Button
     val rightContent: @Composable () -> Unit = {
         // Top alignment spacer for landscape
-        if (landscape) Spacer(Modifier.height(24.dp))
+        if (landscape) Spacer(Modifier.height(16.dp))
 
         TopicInputCard(topic = topic, onTopicChange = onTopicChange)
-        
-        Spacer(Modifier.height(24.dp))
-        
+
+        Spacer(Modifier.height(16.dp))
+
         SectionLabel("DIFFICULTY")
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             listOf(Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD).forEach { level ->
                 PillButton(
@@ -270,7 +269,7 @@ fun HomeScreen(
                 )
             }
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
         PillButton(
             text = Difficulty.OTAKU_MASTER.label,
             selected = difficulty == Difficulty.OTAKU_MASTER,
@@ -280,12 +279,12 @@ fun HomeScreen(
                 onDifficultyChange(Difficulty.OTAKU_MASTER.name)
             },
         )
-        
-        Spacer(Modifier.height(24.dp))
+
+        Spacer(Modifier.height(16.dp))
 
         if (isGuessing) {
             SectionLabel("ROUNDS")
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 listOf(1, 3, 5).forEach { count ->
                     PillButton(
@@ -301,7 +300,7 @@ fun HomeScreen(
             }
         } else if (nazoMode == NazoMode.QUIZ || nazoMode == NazoMode.VERSUS) {
             SectionLabel("QUESTIONS")
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 listOf(5, 10, 15).forEach { count ->
                     PillButton(
@@ -349,7 +348,7 @@ fun HomeScreen(
             }
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(20.dp))
 
         GenerateButton(
             sparkleStyle = sparkleStyle,
@@ -429,7 +428,7 @@ fun HomeScreen(
             ) {
                 leftContent()
                 // Spacer separating the sections dynamically when in portrait
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(16.dp))
                 rightContent()
             }
         }
@@ -599,25 +598,30 @@ private fun HomeHeader(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .clip(RoundedCornerShape(50))
-                .background(NazoPillUnselected)
-                .padding(horizontal = 18.dp, vertical = 8.dp),
-        ) {
-            Text(
-                text = "謎",
-                style = MaterialTheme.typography.titleLarge.copy(fontSize = 26.sp),
-                color = NazoPrimary,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(Modifier.width(8.dp))
+        // Brand lockup: solid mark + wordmark. Deliberately NOT pill-shaped —
+        // pills on this screen mean "status or selection", and the logo used
+        // to wear the same chrome as the interactive chips below it.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(NazoPrimary),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "謎",
+                    color = NazoOnPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 19.sp,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
             Text(
                 text = "Nazo",
                 style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp),
                 color = NazoTextPrimary,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
             )
         }
         Spacer(Modifier.weight(1f))
@@ -1178,15 +1182,15 @@ private fun TopicInputCard(topic: String, onTopicChange: (String) -> Unit) {
         else LocalQuestionBank.suggestions().filter { it.contains(topic, ignoreCase = true) }.take(8)
     }
 
+    // Label + control, the same rhythm as DIFFICULTY and QUESTIONS below.
+    // The old wrapper card put a surface around a field that already has its
+    // own surface — one input wore more chrome than the mode selector, which
+    // muddled both the hierarchy and the page's card rhythm.
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
-            .background(NazoSurface)
-            .padding(18.dp)
+        modifier = Modifier.fillMaxWidth()
     ) {
         SectionLabel("TOPIC")
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -1248,9 +1252,9 @@ private fun TopicInputCard(topic: String, onTopicChange: (String) -> Unit) {
         }
 
         if (suggestions.isNotEmpty()) {
-            Spacer(Modifier.height(12.dp))
-            HorizontalDivider(color = NazoSurfaceVariant, thickness = 1.dp)
             Spacer(Modifier.height(8.dp))
+            HorizontalDivider(color = NazoSurfaceVariant, thickness = 1.dp)
+            Spacer(Modifier.height(6.dp))
             suggestions.forEach { suggestion ->
                 Row(
                     modifier = Modifier
