@@ -95,6 +95,7 @@ import androidx.compose.ui.unit.sp
 import coil.ImageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
+import java.nio.ByteBuffer
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -202,15 +203,26 @@ fun GuessingPlayScreen(
             imageReady = true
             return@LaunchedEffect
         }
-        val request = ImageRequest.Builder(context)
-            .data(imageUrl)
-            .allowHardware(false)
-            .allowRgb565(false)
-            .crossfade(false)
-            .build()
         val decoded = withContext(Dispatchers.IO) {
             runCatching {
                 withTimeout(20_000L) {
+                    // Reuse the bytes the URL search verified / the next-round
+                    // prefetch downloaded (GuessImageFetcher's one-slot cache)
+                    // so the image is downloaded once, not once here and once
+                    // again by the prefetch. On a cache miss or download
+                    // failure this falls back to the plain URL request —
+                    // exactly the historical behaviour.
+                    val prefetched = GuessImageFetcher.fetchImageBytes(imageUrl)
+                    val request = ImageRequest.Builder(context)
+                        // A ByteBuffer decodes through the same
+                        // SourceResult -> BitmapFactoryDecoder path as a URL
+                        // request (Coil 2.7), so pixels, colour and EXIF
+                        // handling are identical to before.
+                        .data(prefetched?.let { ByteBuffer.wrap(it) } ?: imageUrl)
+                        .allowHardware(false)
+                        .allowRgb565(false)
+                        .crossfade(false)
+                        .build()
                     val result = imageLoader.execute(request)
                     ((result as? SuccessResult)?.drawable as? BitmapDrawable)?.bitmap
                 }

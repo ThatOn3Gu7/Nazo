@@ -43,6 +43,12 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    // JVM unit tests hit android.util.Log in ordinary code paths (e.g. the
+    // image fetcher's failure logging); default values keep those calls
+    // from crashing the test with "not mocked".
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
     kotlin {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget("17"))

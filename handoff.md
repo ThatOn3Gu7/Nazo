@@ -2262,3 +2262,58 @@ backup/restore.
 7. Cancellation: start a large restore and press Back/Home mid-operation.
    Expected: no "Restore failed" toast appears (cancellation is not an
    error), and the app behaves normally afterwards.
+
+## Guessing game: one download per image + bounded fetches (2026-10-11)
+
+Audit of ChatGPT's claim set (prompt 7):
+
+| Claim | Verdict | Evidence |
+|---|---|---|
+| Prefetch and display download the same URL twice | **REAL** | `kickGuessPrefetch`/`animeVerified` warmed `GuessImageBytes`' one-slot cache, but `GuessingPlayScreen` gave Coil the raw URL — Coil re-downloaded. The `fetchImageBytes` KDoc saying bytes were "passed to AsyncImage as a ByteArray model" was **stale** (no such call existed). |
+| `fetchImageBytes()` read unbounded | **REAL** | body was `inputStream.readBytes()` — no Content-Length check, no cap. |
+| Cache could show a wrong-round image | **Not real** | the slot is keyed by exact URL (`cachedUrl == url`), and the decode `LaunchedEffect` is phase-keyed with a synchronous reset; wrong-round bytes are structurally impossible. |
+
+Fixes (no new dependencies; verification gate, official-art ladder, software
+decode flags, PortraitCrop/auto-crop, reveal, and the source badge all
+untouched):
+
+- `GuessingPlayScreen` now hands Coil the prefetched bytes as a
+  `ByteBuffer` and falls back to the plain URL request on any miss/failure
+  (the historical behaviour). Coil 2.7 decodes ByteBuffers through the same
+  `SourceResult -> BitmapFactoryDecoder` path as URL requests (verified in
+  coil source at tag 2.7.0), so pixels/colour/EXIF are unchanged.
+- `fetchImageBytes()` reads through `readBounded()`: declared Content-Length
+  over 8 MB is refused before buffering, and the actual stream is capped too
+  so chunked/lying responses cannot bypass it. Oversized/failed downloads
+  are never cached. One-slot cache extracted as `OneSlotBytesCache`, still
+  exact-URL-keyed.
+
+Tests `app/src/test/.../modes/guessing_game/GuessImageCacheTest.kt` (11):
+key association + slot replacement (never another URL's bytes), mock
+request counter (second fetch of a URL = 0 downloads), retry-not-cache on
+failure, and bounded reads (declared oversize rejected with 0 bytes read,
+streaming oversize with unknown and lying lengths, exact-limit OK).
+`app/build.gradle.kts` now sets `unitTests.isReturnDefaultValues = true` so
+`Log.w` in failure paths is testable.
+
+### How to test it live
+
+1. Enable Settings → Appearance → "Auto-crop portrait characters" ON.
+   Play the Guessing Game through 3+ rounds. Expected each round: the
+   countdown starts with the mystery blur already showing a photo (no
+   blank), reveal shows the correct character for that round, colours look
+   natural (no magenta/washed-out tint), and the source badge never names
+   the character.
+2. Repeat 3+ rounds with auto-crop OFF. Expected: same, but uncropped
+   framing; colours again correct in both modes.
+3. Prefetch benefit: after a round finishes and the next round's URL is
+   prepared, wait 3–5 s on the result screen before pressing Next.
+   Expected: the next round's image appears essentially instantly (bytes
+   were prefetched once and reused — no second network fetch on display).
+4. Failed-load recovery: turn on Airplane Mode just as a round's image
+   would load (or play where reception drops). Expected: the mystery layer
+   stays (no wrong/previous image), no crash; after connectivity returns
+   and a new round's search succeeds, images load normally again.
+5. Oversized protection is not directly visible (8 MB cap); if you host a
+   huge file as a custom image source test, it is refused rather than
+   buffered, and the game falls back instead of stalling.
