@@ -12,8 +12,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -67,6 +65,9 @@ import quiz.thaton3app.nazo.records.NewRecordBadge
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.NazoButtonShape
+import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
+import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.components.ShareResultCard
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
@@ -142,6 +143,17 @@ fun GuessingResultsScreen(
 
     val landscape = isLandscape()
     Box(modifier = Modifier.fillMaxSize()) {
+        // Celebration overlay — same variants + preference as the quiz's
+        // complete screen (Appearance → Celebrations); fires when at least
+        // half the rounds were solved, mirroring the quiz's success rule.
+        // Drawn FIRST so it renders behind the content layer: confetti can
+        // never cross the score card, the round list, or the action buttons.
+        if (triggerConfetti) {
+            CelebrationOverlay(
+                style = celebrationStyle,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -299,71 +311,69 @@ fun GuessingResultsScreen(
                     enter = slideInVertically(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow)) { 100 } + fadeIn()
                 ) {
                     Column {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
+                        NazoPrimaryButton(
+                            onClick = {
+                                Haptics.light(context)
+                                onPlayAgain()
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(56.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(NazoPrimary)
-                                .clickable {
-                                    Haptics.light(context)
-                                    onPlayAgain()
-                                }
+                                .height(56.dp),
                         ) {
                             Icon(Icons.Filled.Replay, contentDescription = null, tint = NazoOnPrimary, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Play Again", color = NazoOnPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("Play Again", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         }
+
                         Spacer(Modifier.height(12.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
+
+                        NazoSecondaryButton(
+                            onClick = {
+                                Haptics.light(context)
+                                onHomeClick()
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(56.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(NazoSurfaceVariant)
-                                .clickable {
-                                    Haptics.light(context)
-                                    onHomeClick()
-                                }
+                                // Solid bed: a control is an island the
+                                // celebration can never show through.
+                                .background(NazoBackground, NazoButtonShape),
+                            muted = true,
                         ) {
                             Icon(Icons.Filled.Home, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
                             Text("Home", color = NazoTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         }
+
                         Spacer(Modifier.height(12.dp))
+
                         // Share the run as a themed image card (system share sheet).
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
+                        NazoSecondaryButton(
+                            onClick = {
+                                Haptics.light(context)
+                                ShareResultCard.share(
+                                    context = context,
+                                    heading = "Guessing Game",
+                                    headline = "$score",
+                                    headlineCaption = "points",
+                                    stats = listOf(
+                                        "Rounds solved" to "$solved / $total",
+                                        "Difficulty" to difficulty,
+                                        "Topic" to topic.ifBlank { "Any popular anime" },
+                                    ),
+                                    background = NazoBackground,
+                                    surface = NazoSurface,
+                                    primary = NazoPrimary,
+                                    onPrimary = NazoOnPrimary,
+                                    textPrimary = NazoTextPrimary,
+                                    textSecondary = NazoTextSecondary,
+                                )
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(56.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(NazoSurfaceVariant)
-                                .clickable {
-                                    Haptics.light(context)
-                                    ShareResultCard.share(
-                                        context = context,
-                                        heading = "Guessing Game",
-                                        headline = "$score",
-                                        headlineCaption = "points",
-                                        stats = listOf(
-                                            "Rounds solved" to "$solved / $total",
-                                            "Difficulty" to difficulty,
-                                            "Topic" to topic.ifBlank { "Any popular anime" },
-                                        ),
-                                        background = NazoBackground,
-                                        surface = NazoSurface,
-                                        primary = NazoPrimary,
-                                        onPrimary = NazoOnPrimary,
-                                        textPrimary = NazoTextPrimary,
-                                        textSecondary = NazoTextSecondary,
-                                    )
-                                }
+                                .background(NazoBackground, NazoButtonShape),
+                            muted = true,
                         ) {
                             Icon(Icons.Filled.Share, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
@@ -377,15 +387,6 @@ fun GuessingResultsScreen(
             }
         }
 
-        // Celebration overlay — same variants + preference as the quiz's
-        // complete screen (Appearance → Celebrations); fires when at least
-        // half the rounds were solved, mirroring the quiz's success rule.
-        if (triggerConfetti) {
-            CelebrationOverlay(
-                style = celebrationStyle,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
     }
 }
 
@@ -453,6 +454,10 @@ private fun ScoreCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(32.dp))
+            // Opaque bed under the gradient (same as the quiz's score card):
+            // this is score information — the celebration layer behind the
+            // content must never show through the numbers.
+            .background(NazoBackground)
             .background(
                 brush = Brush.verticalGradient(
                     colors = listOf(NazoSurface, NazoSurfaceVariant.copy(alpha = 0.3f))

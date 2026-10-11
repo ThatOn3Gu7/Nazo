@@ -36,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoTab
@@ -130,6 +131,17 @@ private fun ReviewCard(question: Question, userAnswer: String?, index: Int) {
             color = NazoTextPrimary,
             fontWeight = FontWeight.Bold,
         )
+        if (userAnswer == null) {
+            // Timed-out / skipped questions used to look like questions that
+            // needed no review. Say the empty state out loud.
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "No answer given",
+                style = MaterialTheme.typography.bodySmall,
+                color = NazoTextSecondary,
+                fontWeight = FontWeight.Medium,
+            )
+        }
         Spacer(Modifier.height(16.dp))
 
         question.options.forEachIndexed { optIndex, option ->
@@ -205,22 +217,49 @@ private fun ReviewCard(question: Question, userAnswer: String?, index: Int) {
                     style = MaterialTheme.typography.bodyLarge,
                     color = NazoTextPrimary,
                     fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f),
                 )
+                // The pill's fill and icon carry the state; the tag names it in
+                // words so "your pick" and "the correct answer" are never
+                // guessed at — including where both are the same pill.
+                if (isCorrectOption || isUserOption) {
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = if (isUserOption) "YOUR ANSWER" else "CORRECT ANSWER",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isCorrectOption) NazoSuccess else NazoError,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp,
+                    )
+                }
             }
         }
 
-        Spacer(Modifier.height(12.dp))
-        Text(
-            text = "Explanation",
-            style = MaterialTheme.typography.titleMedium,
-            color = NazoTextPrimary,
-            fontWeight = FontWeight.Bold,
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = question.explanation,
-            style = MaterialTheme.typography.bodyMedium,
-            color = NazoTextSecondary,
-        )
+        // The explanation is its own tinted zone — visually separate from the
+        // option list so it reads as the answer's justification, not another
+        // option. Shown only when there is one.
+        if (question.explanation.isNotBlank()) {
+            Spacer(Modifier.height(12.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(NazoSurfaceVariant)
+                    .padding(16.dp),
+            ) {
+                Text(
+                    text = "Explanation",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = NazoTextPrimary,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = question.explanation,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NazoTextSecondary,
+                )
+            }
+        }
     }
 }

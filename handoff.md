@@ -2495,3 +2495,67 @@ deliberately left alone (already correct).
 Not verifiable on-device: particle dimming is an alpha change (effective
 0.35 → 0.035 under the 0.9 scrim) — visible as lanterns barely drifting
 behind play screens.
+
+## Visual 4/11: Results, celebrations, review (2026-10-11)
+Confetti-over-content fixed at the rendering layer; result priority
+cleared; review states named. Scores, record calculations, review data,
+confetti physics and share behavior unchanged.
+
+Audit note: the prompt cited "repository screenshots" showing confetti
+over results — debug/ actually holds three old design-reference shots
+(credits/changelog/licenses) with no results screen in them. The z-order
+bug is real in code: CelebrationOverlay was the LAST child of the root
+Box on all three result screens.
+
+Changed: celebration overlay now draws FIRST (behind the content layer)
+on QuizCompleteScreen, GuessingResultsScreen and VersusResultsScreen —
+all six styles and their physics/triggers untouched, but confetti can
+never paint over score text or buttons. Score cards got an opaque bed
+under their gradient (identical composite) so numbers never sit on
+particles. Secondary buttons got solid beds; guessing + versus results
+now use the shared NazoPrimaryButton/NazoSecondaryButton vocabulary
+(same as the quiz: filled primary, outlined muted secondaries).
+Survival/Blitz hero = correct count + "CORRECT" caption (accuracy becomes
+the pill) matching heading/records/share; quiz hero = accuracy +
+"ACCURACY" caption, score pill unchanged. ReviewAnswersScreen: "YOUR
+ANSWER"/"CORRECT ANSWER" tags on the state pills, "No answer given" line
+for unanswered questions, explanation in a tinted zone (hidden when
+blank). VersusReviewScreen: "Correct answer:" label + per-question
+explanation (maxLines 3).
+
+### How to test it live
+1. Finish any quiz with ≥50% so the celebration fires (e.g. 5-question
+   quiz, answer 3+ right). While confetti is active: the % ring, the
+   score pill, the record badge and all three buttons stay fully visible
+   and un-crossed — confetti drifts in the margins/gaps BEHIND them only.
+   Tap every button mid-confetti: all respond immediately.
+2. Same result screen: the big number is "NN%" with "ACCURACY" under it;
+   the pill below reads "N / N Correct". Play Another Quiz is the only
+   filled button; Review and Share are outlined.
+3. Home → Survival → die out. Result hero = the count ("you survived N"
+   heading matches) with "CORRECT" under it and "NN% accuracy" in the
+   pill. Home → Blitz → same shape of result.
+4. From a finished quiz tap "Review Answers & Explanations": each option
+   pill names its state in words — "YOUR ANSWER" (green on a right pick,
+   red on a wrong one), "CORRECT ANSWER" on the right option when you
+   missed it. Let one question time out first: that card shows "No answer
+   given". Each card's explanation sits in its own tinted block under the
+   options; questions without one show no empty block. Check in dark
+   theme too (Settings → Appearance).
+5. Play a multi-round Guessing Game (3+ rounds) to the results: confetti
+   behind content as in 1; "Play Again" filled, "Home"/"Share Result"
+   outlined; ROUNDS list intact; the per-round reveal card during play is
+   unchanged. Best-score badge pops under the score card as before.
+6. Home → Versus → finish a match (P1 ≠ P2 so a winner exists): winner
+   banner + both score cards stay clear of confetti; "Rematch" filled,
+   "Review Answers"/"Home" outlined. Open Review Answers: swipe between
+   player cards — each question shows the pick (✓/✕ + colour), "Correct
+   answer: …" when missed, and the explanation line (capped at 3 lines).
+7. Share buttons on all results: same share card and content as before
+   (unchanged behavior — worth one tap to confirm).
+8. Rotate on the quiz result and guessing result: two-pane layout keeps
+   ring/records left and stats/buttons right; nothing overlaps.
+On-device reading of item 1 (what must remain visible): score ring, both
+numbers, "New Record!" badge if any, daily bonus chip, Time/Accuracy/
+Difficulty cards, and the full labels of all action buttons — for the
+entire life of the confetti.

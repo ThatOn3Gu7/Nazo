@@ -38,6 +38,7 @@ import quiz.thaton3app.nazo.records.NewRecordBadge
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.NazoButtonShape
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.components.ShareResultCard
@@ -113,6 +114,16 @@ fun QuizCompleteScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        // Celebration overlay — variant is a user preference (Appearance →
+        // Celebrations). Drawn FIRST so it renders behind the content layer:
+        // confetti drifts through the margins and gaps but can never cross the
+        // score card, the stats, or the action buttons.
+        if (triggerConfetti) {
+            CelebrationOverlay(
+                style = celebrationStyle,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -165,7 +176,8 @@ fun QuizCompleteScreen(
                         animatedScore = animatedScore,
                         totalQuestions = totalQuestions,
                         progressAnim = progressAnim,
-                        isSuccess = isSuccess
+                        isSuccess = isSuccess,
+                        modeLabel = modeLabel,
                     )
                 }
 
@@ -242,7 +254,10 @@ fun QuizCompleteScreen(
                             onClick = onReviewAnswers,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(56.dp),
+                                .height(56.dp)
+                                // Solid bed: a control is an island the
+                                // celebration can never show through.
+                                .background(NazoBackground, NazoButtonShape),
                             muted = true,
                         ) {
                             Icon(Icons.AutoMirrored.Filled.FactCheck, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
@@ -280,7 +295,8 @@ fun QuizCompleteScreen(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(56.dp),
+                                .height(56.dp)
+                                .background(NazoBackground, NazoButtonShape),
                             muted = true,
                         ) {
                             Icon(Icons.Outlined.Share, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
@@ -294,13 +310,6 @@ fun QuizCompleteScreen(
             }
         }
 
-        // Celebration overlay — variant is a user preference (Appearance → Celebrations)
-        if (triggerConfetti) {
-            CelebrationOverlay(
-                style = celebrationStyle,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
     }
 }
 
@@ -358,7 +367,8 @@ private fun ScoreCardContent(
     animatedScore: Int,
     totalQuestions: Int,
     progressAnim: Float,
-    isSuccess: Boolean
+    isSuccess: Boolean,
+    modeLabel: String?,
 ) {
     // Continuous floating animation for trophy (scoped here so it doesn't recompose the whole screen)
     val floatInfinite = rememberInfiniteTransition(label = "float")
@@ -385,6 +395,11 @@ private fun ScoreCardContent(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(32.dp))
+            // Opaque bed under the gradient: the celebration renders behind
+            // the content layer, and this card is score information — nothing
+            // may show through the surface the numbers sit on. The two
+            // background layers composite to exactly the old look.
+            .background(NazoBackground)
             .background(
                 brush = Brush.verticalGradient(
                     colors = listOf(NazoSurface, NazoSurfaceVariant.copy(alpha = 0.3f))
@@ -451,12 +466,22 @@ private fun ScoreCardContent(
 
         Spacer(Modifier.height(24.dp))
 
-        // Animated Numbers
+        // Animated Numbers. The hero follows the mode's headline metric —
+        // accuracy for a quiz (the score rides in the pill below), the correct
+        // COUNT for Survival/Blitz, matching their heading, record captions
+        // and share card.
         Text(
-            text = "$animatedAccuracy%",
+            text = if (modeLabel != null) "$animatedScore" else "$animatedAccuracy%",
             style = MaterialTheme.typography.displayMedium.copy(fontSize = 56.sp),
             color = NazoPrimary,
             fontWeight = FontWeight.ExtraBold
+        )
+        Text(
+            text = if (modeLabel != null) "CORRECT" else "ACCURACY",
+            style = MaterialTheme.typography.labelSmall,
+            color = NazoTextSecondary,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 2.sp,
         )
 
         Surface(
@@ -465,7 +490,8 @@ private fun ScoreCardContent(
             modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
         ) {
             Text(
-                text = "$animatedScore / $totalQuestions Correct",
+                text = if (modeLabel != null) "$animatedAccuracy% accuracy"
+                else "$animatedScore / $totalQuestions Correct",
                 style = MaterialTheme.typography.titleMedium,
                 color = NazoPrimary,
                 fontWeight = FontWeight.Bold,

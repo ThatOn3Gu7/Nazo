@@ -58,6 +58,9 @@ import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.NazoButtonShape
+import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
+import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
@@ -177,6 +180,15 @@ fun VersusResultsScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        // Celebration overlay — drawn FIRST so it renders behind the content
+        // layer: confetti can never cross the winner banner, the score cards,
+        // or the action buttons. (Only fires when the match has a winner.)
+        if (triggerConfetti) {
+            CelebrationOverlay(
+                style = celebrationStyle,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -254,54 +266,48 @@ fun VersusResultsScreen(
 
             Spacer(Modifier.height(36.dp))
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
+            NazoPrimaryButton(
+                onClick = {
+                    Haptics.light(context)
+                    onPlayAgain()
+                },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(NazoPrimary)
-                    .clickable {
-                        Haptics.light(context)
-                        onPlayAgain()
-                    },
+                    .height(56.dp),
             ) {
                 Icon(Icons.Filled.Replay, contentDescription = null, tint = NazoOnPrimary, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Rematch", color = NazoOnPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("Rematch", fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(12.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
+            NazoSecondaryButton(
+                onClick = {
+                    Haptics.light(context)
+                    onReviewAnswers()
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(NazoSurfaceVariant)
-                    .clickable {
-                        Haptics.light(context)
-                        onReviewAnswers()
-                    },
+                    // Solid bed: a control is an island the celebration can
+                    // never show through.
+                    .background(NazoBackground, NazoButtonShape),
+                muted = true,
             ) {
                 Icon(Icons.Filled.FactCheck, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("Review Answers", color = NazoTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(12.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
+            NazoSecondaryButton(
+                onClick = {
+                    Haptics.light(context)
+                    onHomeClick()
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(NazoSurfaceVariant)
-                    .clickable {
-                        Haptics.light(context)
-                        onHomeClick()
-                    },
+                    .background(NazoBackground, NazoButtonShape),
+                muted = true,
             ) {
                 Icon(Icons.Filled.Home, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
@@ -309,12 +315,6 @@ fun VersusResultsScreen(
             }
         }
 
-        if (triggerConfetti) {
-            CelebrationOverlay(
-                style = celebrationStyle,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
     }
 }
 
@@ -546,9 +546,23 @@ private fun PlayerReviewCard(
                     if (!correct) {
                         Spacer(Modifier.height(3.dp))
                         Text(
-                            text = "Correct: ${q.correctAnswer}",
+                            text = "Correct answer: ${q.correctAnswer}",
                             style = MaterialTheme.typography.bodySmall,
                             color = NazoSuccess,
+                        )
+                    }
+                    // Same review facts as the quiz's review screen: which
+                    // answer was correct (above), what the player picked (above),
+                    // and why — capped so a long explanation can't drown the
+                    // head-to-head comparison.
+                    if (q.explanation.isNotBlank()) {
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = q.explanation,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NazoTextSecondary,
+                            maxLines = 3,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         )
                     }
                 }
