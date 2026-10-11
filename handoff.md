@@ -2358,3 +2358,50 @@ random draw. Total suite: **74 tests**, all green in CI run 38132175153
    Expected: correct character each round, image ready quickly (single
    download reused), failed loads recover, colours correct both ways,
    badge never names the character.
+
+## Visual 1/11: design-system contrast, typography, touch targets (2026-10-11)
+
+Audit (measured, WCAG math over all 15 accents x 2 modes) found real
+failures — placeholder text 2.8–3.8:1 everywhere, success/error chip text
+3.3–3.7:1 light, white labels on bright dark-mode fills 3.1–4.4:1, dark
+accent fills 1.9–2.9:1 vs their surfaces (control contrast), disabled
+labels 1.4:1 light. Also: M3 buttons rendered labelLarge which was
+undefined (Roboto leak), and button min height was Material's 40dp.
+
+Fixes (all systemic, not Mint-only):
+- `ui/theme/Contrast.kt` (new): pure WCAG math + adaptive on-color +
+  disabled/border recipes. `Color.kt` `enforceContrast` runs once per
+  palette and only moves failing roles (HSL lightness only — hues and
+  identities preserved; passing roles byte-identical). onPrimary stays
+  near-white where it passes, flips near-black on bright fills; mid-tone
+  fills follow their label to 4.5:1 while holding 3:1 as controls.
+- `Type.kt`: full Material role scale on NazoFontFamily (buttons stop
+  leaking Roboto). `NazoButtons.kt`: 48dp touch targets, legible disabled
+  states, adaptive danger label, 90%-alpha 3:1 outline (floor was 0.87).
+- Tests `ui/theme/NazoContrastTest.kt` (8): the full 15x2 palette matrix
+  (text 4.5:1, controls 3:1, disabled 3:1), WCAG reference values for the
+  math, identity pins for the mockup base colors. Suite total 82, green
+  in CI run 38153472788.
+
+Known limitations: QuietButton/muted-secondary whisper borders stay under
+3:1 on purpose (their 4.5:1 labels identify the control); large-text 3:1
+isn't separately asserted (all text is held to the stricter 4.5:1);
+image/text over photos and per-screen inline colors are out of scope for
+this task.
+
+### How to test it live
+
+1. Settings → Appearance → Theme: System / Light / Dark, accent Mint Green.
+   Compare placeholder text in the AI topic field and API-key fields —
+   clearly readable grey instead of washed out in both modes.
+2. Same screen, accents Gold and Slate in Dark mode: primary/confirm
+   button labels now read crisply (dark label on the bright fill where
+   white used to be murky); fills stay the same colour family.
+3. Long-press nothing — just tap: every button (primary/secondary/danger/
+   quiet) is at least 48dp tall; small hands get bigger targets.
+4. Disable a primary action (e.g. Next/Submit before answering) — the
+   disabled label is still readable while clearly "off".
+5. Success/error chips (daily completed chip, restore error toasts):
+   text on the tinted chip is readable in Light mode.
+6. Typography: dialog buttons and chips now match the app font (compare a
+   Material button label to a heading — same typeface).

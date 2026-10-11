@@ -145,6 +145,78 @@ private fun Hsl.toColor(): Color {
 
 private val REFERENCE_HUE = LightNazoColors.primary.toHsl().h
 
+/**
+ * Accessibility correction pass, applied once to every palette the app can
+ * actually select (all 15 accents x light/dark). It changes a role ONLY when
+ * that role fails its WCAG bar on the palette it belongs to:
+ *
+ *  - placeholder / success / error text -> >= 4.5:1 on the surfaces behind it;
+ *  - textSecondary -> >= 4.5:1 on every surface it lands on (hue-shifted
+ *    accents dipped under on badge/pill washes);
+ *  - successBg / errorBg chips -> >= 4.5:1 behind their own semantic text;
+ *  - primary as a control fill -> >= 3:1 on the surfaces it sits on (the
+ *    dark themes' hue-shifted accents drifted below this);
+ *  - onPrimary -> the readable label for the (possibly adjusted) fill,
+ *    keeping the existing near-white whenever it already passes, and the
+ *    fill nudged along when neither label could reach 4.5 on it alone.
+ *
+ * Adjustments move a color's HSL lightness away from the background it must
+ * beat, so hue and saturation — Nazo's identity — never change. Roles that
+ * already pass come out byte-identical.
+ */
+private fun NazoColors.enforceContrast(): NazoColors {
+    val textBackdrops = listOf(background, surface, surfaceVariant, navBar)
+    val secondaryBackdrops = textBackdrops + listOf(badge, pillUnselected)
+    val textPlaceholder = withMinContrast(textPlaceholder, textBackdrops, 4.5f)
+    val textSecondary = withMinContrast(textSecondary, secondaryBackdrops, 4.5f)
+    val success = withMinContrast(success, textBackdrops, 4.5f)
+    val error = withMinContrast(error, textBackdrops, 4.5f)
+    val successBg = withMinContrast(successBg, listOf(success), 4.5f)
+    val errorBg = withMinContrast(errorBg, listOf(error), 4.5f)
+    var primary = withMinContrast(primary, textBackdrops, 3f)
+    val onPrimary = readableTextOn(primary, minContrast = 4.5f, preferred = onPrimary)
+    // Mid-tone fills (the dark themes' bronze/slate accents) can leave both
+    // labels short of 4.5 — the fill then follows its chosen label the rest
+    // of the way, then re-checks its 3:1 control bar (both moves point the
+    // same direction in each mode, so this cannot oscillate).
+    primary = withMinContrast(primary, listOf(onPrimary), 4.5f)
+    primary = withMinContrast(primary, textBackdrops, 3f)
+    return copy(
+        textPlaceholder = textPlaceholder,
+        textSecondary = textSecondary,
+        success = success,
+        error = error,
+        successBg = successBg,
+        errorBg = errorBg,
+        primary = primary,
+        onPrimary = onPrimary,
+    )
+}
+
+/**
+ * Nudges [color]'s lightness away from each backdrop in [backdrops] (keeping
+ * hue/saturation) until [contrastRatio] clears [min] on all of them.
+ */
+private fun withMinContrast(color: Color, backdrops: List<Color>, min: Float): Color {
+    var c = color
+    for (bg in backdrops) {
+        val bgL = bg.toHsl().l
+        var guard = 0
+        while (contrastRatio(c, bg) < min && guard < 120) {
+            val hsl = c.toHsl()
+            val newL = if (hsl.l >= bgL) {
+                (hsl.l + 0.01f).coerceAtMost(1f)
+            } else {
+                (hsl.l - 0.01f).coerceAtLeast(0f)
+            }
+            if (newL == hsl.l) break
+            c = Hsl(hsl.h, hsl.s, newL).toColor()
+            guard++
+        }
+    }
+    return c
+}
+
 private fun NazoColors.recolorToHue(targetHue: Float): NazoColors {
     val delta = targetHue - REFERENCE_HUE
     fun Color.shift(): Color {
@@ -240,22 +312,29 @@ private val MonoDarkNazoColors = NazoColors(
 // gradient. Hues are picked to stay visually distinct from their neighbours —
 // packing them any tighter makes two accents look like duplicates, which is why
 // the list stops at 15 rather than growing further.
+//
+// Every palette is passed through [enforceContrast] here: the raw mockup
+// values above stay untouched as the identity base, and the correction pass
+// only moves roles that would otherwise fail their contrast bar.
+private fun accent(id: String, label: String, light: NazoColors, dark: NazoColors) =
+    Accent(id, label, light.enforceContrast(), dark.enforceContrast())
+
 val Accents: List<Accent> = listOf(
-    Accent("mint", "Mint Green", LightNazoColors, DarkNazoColors),
-    Accent("crimson", "Crimson", LightNazoColors.recolorToHue(5f), DarkNazoColors.recolorToHue(5f)),
-    Accent("orange", "Orange", LightNazoColors.recolorToHue(22f), DarkNazoColors.recolorToHue(22f)),
-    Accent("bronze", "Bronze", LightNazoColors.recolorToHue(35f), DarkNazoColors.recolorToHue(35f)),
-    Accent("gold", "Gold", LightNazoColors.recolorToHue(48f), DarkNazoColors.recolorToHue(48f)),
-    Accent("lime", "Lime", LightNazoColors.recolorToHue(95f), DarkNazoColors.recolorToHue(95f)),
-    Accent("teal", "Teal", LightNazoColors.recolorToHue(172f), DarkNazoColors.recolorToHue(172f)),
-    Accent("slate", "Slate", LightNazoColors.recolorToHue(200f), DarkNazoColors.recolorToHue(200f)),
-    Accent("indigo", "Indigo", LightNazoColors.recolorToHue(230f), DarkNazoColors.recolorToHue(230f)),
-    Accent("sapphire", "Sapphire", LightNazoColors.recolorToHue(252f), DarkNazoColors.recolorToHue(252f)),
-    Accent("violet", "Violet", LightNazoColors.recolorToHue(275f), DarkNazoColors.recolorToHue(275f)),
-    Accent("magenta", "Magenta", LightNazoColors.recolorToHue(300f), DarkNazoColors.recolorToHue(300f)),
-    Accent("pink", "Pink", LightNazoColors.recolorToHue(322f), DarkNazoColors.recolorToHue(322f)),
-    Accent("rose", "Rose", LightNazoColors.recolorToHue(345f), DarkNazoColors.recolorToHue(345f)),
-    Accent("mono", "Mono", MonoLightNazoColors, MonoDarkNazoColors),
+    accent("mint", "Mint Green", LightNazoColors, DarkNazoColors),
+    accent("crimson", "Crimson", LightNazoColors.recolorToHue(5f), DarkNazoColors.recolorToHue(5f)),
+    accent("orange", "Orange", LightNazoColors.recolorToHue(22f), DarkNazoColors.recolorToHue(22f)),
+    accent("bronze", "Bronze", LightNazoColors.recolorToHue(35f), DarkNazoColors.recolorToHue(35f)),
+    accent("gold", "Gold", LightNazoColors.recolorToHue(48f), DarkNazoColors.recolorToHue(48f)),
+    accent("lime", "Lime", LightNazoColors.recolorToHue(95f), DarkNazoColors.recolorToHue(95f)),
+    accent("teal", "Teal", LightNazoColors.recolorToHue(172f), DarkNazoColors.recolorToHue(172f)),
+    accent("slate", "Slate", LightNazoColors.recolorToHue(200f), DarkNazoColors.recolorToHue(200f)),
+    accent("indigo", "Indigo", LightNazoColors.recolorToHue(230f), DarkNazoColors.recolorToHue(230f)),
+    accent("sapphire", "Sapphire", LightNazoColors.recolorToHue(252f), DarkNazoColors.recolorToHue(252f)),
+    accent("violet", "Violet", LightNazoColors.recolorToHue(275f), DarkNazoColors.recolorToHue(275f)),
+    accent("magenta", "Magenta", LightNazoColors.recolorToHue(300f), DarkNazoColors.recolorToHue(300f)),
+    accent("pink", "Pink", LightNazoColors.recolorToHue(322f), DarkNazoColors.recolorToHue(322f)),
+    accent("rose", "Rose", LightNazoColors.recolorToHue(345f), DarkNazoColors.recolorToHue(345f)),
+    accent("mono", "Mono", MonoLightNazoColors, MonoDarkNazoColors),
 )
 
 fun resolveAccent(id: String, dark: Boolean): NazoColors =
@@ -268,7 +347,7 @@ fun previewColors(id: String, dark: Boolean): List<Color> {
 
 // Active palette. Updated by NazoTheme; read by every screen through the accessors below.
 // Reading/writing the plain State is non-composable, so it's safe from property getters.
-private val _nazoColors = mutableStateOf(LightNazoColors)
+private val _nazoColors = mutableStateOf(LightNazoColors.enforceContrast())
 
 internal fun setNazoColors(colors: NazoColors) {
     _nazoColors.value = colors

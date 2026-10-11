@@ -2,21 +2,26 @@ package quiz.thaton3app.nazo.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.RowScope
+import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
+import quiz.thaton3app.nazo.ui.theme.disabledContainer
+import quiz.thaton3app.nazo.ui.theme.disabledContent
+import quiz.thaton3app.nazo.ui.theme.outlineBorderComposite
+import quiz.thaton3app.nazo.ui.theme.readableTextOn
 
 /**
  * The app's button vocabulary.
@@ -53,6 +58,13 @@ private val BorderWidth = 1.5.dp
 
 private val DefaultContentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)
 
+/**
+ * Accessibility touch target: Material buttons default to a 40.dp minimum
+ * height, under the 48.dp Android accessibility guidance. Every Nazo button
+ * honors 48.dp so small labels stay comfortably tappable.
+ */
+private fun Modifier.nazoTouchTarget(): Modifier = defaultMinSize(minHeight = 48.dp)
+
 /** The single most important action on a screen or dialog. */
 @Composable
 fun NazoPrimaryButton(
@@ -64,7 +76,7 @@ fun NazoPrimaryButton(
 ) {
     Button(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.nazoTouchTarget(),
         enabled = enabled,
         shape = NazoButtonShape,
         // A border on a filled button looks redundant in isolation but keeps
@@ -73,8 +85,10 @@ fun NazoPrimaryButton(
         colors = ButtonDefaults.buttonColors(
             containerColor = NazoPrimary,
             contentColor = NazoOnPrimary,
-            disabledContainerColor = NazoPrimary.copy(alpha = 0.35f),
-            disabledContentColor = NazoOnPrimary.copy(alpha = 0.6f),
+            // Disabled keeps the "off" wash but its label stays legible
+            // (>= 3:1 on the disabled fill) instead of dissolving into it.
+            disabledContainerColor = disabledContainer(NazoPrimary, NazoBackground),
+            disabledContentColor = disabledContent(disabledContainer(NazoPrimary, NazoBackground)),
         ),
         contentPadding = contentPadding,
         content = content,
@@ -95,10 +109,16 @@ fun NazoSecondaryButton(
     val tint = if (muted) NazoTextSecondary else NazoPrimary
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.nazoTouchTarget(),
         enabled = enabled,
         shape = NazoButtonShape,
-        border = BorderStroke(BorderWidth, tint.copy(alpha = if (muted) 0.4f else 0.6f)),
+        // The accent edge is composited at the shared alpha that keeps it a
+        // perceivable 3:1 control boundary; the muted variant is identified
+        // by its 4.5:1 label instead, so its whisper border is decorative.
+        border = BorderStroke(
+            BorderWidth,
+            if (muted) tint.copy(alpha = 0.4f) else outlineBorderComposite(NazoPrimary, NazoBackground),
+        ),
         colors = ButtonDefaults.outlinedButtonColors(
             contentColor = if (muted) NazoTextPrimary else NazoPrimary,
             disabledContentColor = NazoTextSecondary.copy(alpha = 0.5f),
@@ -141,15 +161,18 @@ fun NazoDangerButton(
 ) {
     Button(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.nazoTouchTarget(),
         enabled = enabled,
         shape = NazoButtonShape,
         border = BorderStroke(BorderWidth, NazoError),
         colors = ButtonDefaults.buttonColors(
             containerColor = NazoError,
-            contentColor = Color.White,
-            disabledContainerColor = NazoError.copy(alpha = 0.35f),
-            disabledContentColor = Color.White.copy(alpha = 0.6f),
+            // Red is fixed for destructive, but its LABEL must stay readable
+            // on every theme's red — the dark theme's light red cannot carry
+            // white text at 4.5:1, so the label adapts to the fill.
+            contentColor = readableTextOn(NazoError, minContrast = 4.5f),
+            disabledContainerColor = disabledContainer(NazoError, NazoBackground),
+            disabledContentColor = disabledContent(disabledContainer(NazoError, NazoBackground)),
         ),
         contentPadding = contentPadding,
         content = content,
@@ -173,9 +196,11 @@ fun NazoQuietButton(
 ) {
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.nazoTouchTarget(),
         enabled = enabled,
         shape = NazoButtonShape,
+        // Decorative whisper edge (below 3:1 on purpose): this role is
+        // identified by its 4.5:1 label, not its outline.
         border = BorderStroke(1.dp, NazoTextSecondary.copy(alpha = 0.28f)),
         colors = ButtonDefaults.outlinedButtonColors(
             contentColor = NazoTextSecondary,
