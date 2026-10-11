@@ -3,6 +3,7 @@ package quiz.thaton3app.nazo.data.settings
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -10,6 +11,9 @@ import org.json.JSONObject
 import quiz.thaton3app.nazo.data.profile.AvatarPayload
 import quiz.thaton3app.nazo.data.profile.ProfileImageStore
 import java.io.File
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.LinkedHashSet
 
 /**
@@ -40,6 +44,11 @@ import java.util.LinkedHashSet
  * preferences file that is not part of the backup set. The restore writes
  * commit synchronously (and reports failure) so the caller only reports
  * success after the data is durably applied.
+ *
+ * Every entry point that reads, writes or parses files runs that work on
+ * [Dispatchers.IO], so callers may invoke them from the main thread without
+ * freezing the UI. Automatic backups are replaced atomically
+ * ([writeFileAtomically]) so a failed write never destroys the last good one.
  */
 object BackupRepository {
 
@@ -106,10 +115,13 @@ object BackupRepository {
     /**
      * What a manual backup taken right now would contain. Empty stores are left
      * out so the preview never promises data the user does not have.
+     *
+     * Reads every store (and the avatar file) to count real entries, so it runs
+     * on [Dispatchers.IO] like the rest of the file work.
      */
-    fun summarizeLocal(context: Context): List<BackupCategory> {
-        val stores = buildJson(context).optJSONObject("stores") ?: return emptyList()
-        return STORES.mapNotNull { name ->
+    suspend fun summarizeLocal(context: Context): List<BackupCategory> = withContext(Dispatchers.IO) {
+        val stores = buildJson(context).optJSONObject("stores") ?: return@withContext emptyList()
+        STORES.mapNotNull { name ->
             val count = stores.optJSONObject(name)?.length() ?: 0
             if (count == 0) return@mapNotNull null
             val (label, description) = labelFor(name)
@@ -117,18 +129,29 @@ object BackupRepository {
         }
     }
 
-    /** Parse + validate, then describe the bundle. Null when the file is invalid. */
-    fun inspectUri(context: Context, uri: Uri): List<BackupCategory>? = try {
-        val content = context.contentResolver.openInputStream(uri)
-            ?.bufferedReader()?.use { it.readText() }
-        if (content == null) null else summarizeParsed(parseAndValidate(content))
+    /**
+     * Parse + validate, then describe the bundle. Null when the file is invalid.
+     * Reads and parses on [Dispatchers.IO]; cancellation propagates.
+     */
+    suspend fun inspectUri(context: Context, uri: Uri): List<BackupCategory>? = try {
+        withContext(Dispatchers.IO) {
+            val content = context.contentResolver.openInputStream(uri)
+                ?.bufferedReader()?.use { it.readText() }
+            if (content == null) null else summarizeParsed(parseAndValidate(content))
+        }
+    } catch (e: CancellationException) {
+        throw e
     } catch (_: Exception) {
         null
     }
 
     /** Same as [inspectUri] for the on-device automatic backup file. */
-    fun inspectPath(context: Context, path: String): List<BackupCategory>? = try {
-        summarizeParsed(parseAndValidate(File(path).readText(Charsets.UTF_8)))
+    suspend fun inspectPath(context: Context, path: String): List<BackupCategory>? = try {
+        withContext(Dispatchers.IO) {
+            summarizeParsed(parseAndValidate(File(path).readText(Charsets.UTF_8)))
+        }
+    } catch (e: CancellationException) {
+        throw e
     } catch (_: Exception) {
         null
     }
@@ -159,22 +182,67 @@ object BackupRepository {
         val automatic: Boolean,
     )
 
-    suspend fun exportToUri(context: Context, uri: Uri): BackupReceipt {
+    /**
+     * Writes a manual backup to a user-chosen SAF destination. Reading the
+     * stores, serializing and the stream write all run on [Dispatchers.IO].
+     * (SAF destinations cannot be replaced atomically — there is no rename
+     * primitive across a document provider — so a failed manual export leaves
+     * whatever the provider produced and reports the failure.)
+     */
+    suspend fun exportToUri(context: Context, uri: Uri): BackupReceipt = withContext(Dispatchers.IO) {
         val json = buildJson(context)
         val bytes = json.toString().toByteArray(Charsets.UTF_8)
         context.contentResolver.openOutputStream(uri)?.use { out ->
             out.write(bytes)
         } ?: throw IllegalStateException("Unable to open backup destination")
-        return receiptFor(json, bytes.size.toLong(), automatic = false)
+        receiptFor(json, bytes.size.toLong(), automatic = false)
     }
 
-    suspend fun exportToPath(context: Context, path: String): BackupReceipt {
+    /**
+     * Writes the automatic backup to the fixed on-device file. Runs on
+     * [Dispatchers.IO] and goes through [writeFileAtomically], so an
+     * interrupted write can never destroy the previous backup.
+     */
+    suspend fun exportToPath(context: Context, path: String): BackupReceipt = withContext(Dispatchers.IO) {
         val json = buildJson(context)
-        val text = json.toString()
+        val bytes = json.toString().toByteArray(Charsets.UTF_8)
         val file = File(path)
         file.parentFile?.mkdirs()
-        file.writeText(text, Charsets.UTF_8)
-        return receiptFor(json, text.toByteArray(Charsets.UTF_8).size.toLong(), automatic = true)
+        writeFileAtomically(file, bytes)
+        receiptFor(json, bytes.size.toLong(), automatic = true)
+    }
+
+    /**
+     * Replaces [target] with [bytes] only once the new content is fully
+     * written: the bytes go to a temp file in the same directory first (flushed
+     * to disk) and are moved over the target afterwards. A failed or
+     * interrupted write therefore leaves the previous backup untouched — the
+     * old direct overwrite could destroy it halfway through. [writeTemp] is
+     * injectable so tests can simulate a partway failure.
+     */
+    internal fun writeFileAtomically(
+        target: File,
+        bytes: ByteArray,
+        writeTemp: (File, ByteArray) -> Unit = { file, data ->
+            java.io.FileOutputStream(file).use { out ->
+                out.write(data)
+                out.fd.sync()
+            }
+        },
+    ) {
+        val tmp = File(target.parentFile, target.name + ".tmp")
+        try {
+            writeTemp(tmp, bytes)
+            try {
+                Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            }
+        } finally {
+            // A no-op once the move consumed the temp file; cleans up a partial
+            // temp after a failure so the directory cannot fill up with them.
+            tmp.delete()
+        }
     }
 
     /** Describes an export from the bundle already in hand — no re-read. */
@@ -313,10 +381,14 @@ object BackupRepository {
     /** True only if the file is a well-formed Nazo backup bundle. */
     suspend fun validateUri(context: Context, uri: Uri): Boolean {
         return try {
-            val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                ?: return false
-            parseAndValidate(content)
-            true
+            withContext(Dispatchers.IO) {
+                val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                    ?: return@withContext false
+                parseAndValidate(content)
+                true
+            }
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             false
         }
@@ -324,8 +396,12 @@ object BackupRepository {
 
     suspend fun validatePath(context: Context, path: String): Boolean {
         return try {
-            parseAndValidate(File(path).readText(Charsets.UTF_8))
-            true
+            withContext(Dispatchers.IO) {
+                parseAndValidate(File(path).readText(Charsets.UTF_8))
+                true
+            }
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             false
         }

@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.data.backup.BackupScheduler
 import quiz.thaton3app.nazo.data.settings.BackupPrefs
@@ -154,6 +155,10 @@ fun BackupRestoreScreen(
                 // Update the card in the same breath as the write — no restart.
                 lastBackup = record
                 Toast.makeText(context, "Backup saved successfully", Toast.LENGTH_SHORT).show()
+            } catch (e: CancellationException) {
+                // The screen went away mid-write; never dress cancellation up
+                // as a failure.
+                throw e
             } catch (e: Exception) {
                 Toast.makeText(context, "Backup failed: ${e.message}", Toast.LENGTH_SHORT).show()
             }
@@ -214,8 +219,18 @@ fun BackupRestoreScreen(
                         title = "Create Local Backup",
                         subtitle = "Export your data as a JSON file",
                         onClick = {
-                            backupPreview = BackupRepository.summarizeLocal(context)
-                            showBackupPreview = true
+                            // summarizeLocal reads every store off the main
+                            // thread now; the preview opens when it is ready.
+                            scope.launch {
+                                try {
+                                    backupPreview = BackupRepository.summarizeLocal(context)
+                                    showBackupPreview = true
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Backup failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            }
                         }
                     )
                     RowDivider()
@@ -340,6 +355,10 @@ fun BackupRestoreScreen(
                             } else {
                                 Toast.makeText(context, "Restore failed: no backup selected", Toast.LENGTH_SHORT).show()
                             }
+                        } catch (e: CancellationException) {
+                            // Leaving the screen mid-restore cancels the work;
+                            // that is not a restore failure.
+                            throw e
                         } catch (e: Exception) {
                             Toast.makeText(context, "Restore failed: ${e.message}", Toast.LENGTH_SHORT).show()
                         }

@@ -2193,3 +2193,72 @@ backup/restore.
 7. Backup size sanity: a backup with a custom picture is a few hundred KB to
    a few MB larger than before (base64 image); a backup with an emoji/remote
    picture is unchanged.
+
+## 2026-10-10 — Backup I/O off the main thread, atomic auto-backup writes
+
+### Audit verdict
+
+- **"Operations are launched from a coroutine scope, but that alone does not
+  move them off the main thread" — CONFIRMED.** `rememberCoroutineScope()`
+  runs on Dispatchers.Main; export, preview inspection and the local summary
+  all did their file reads, writes and JSON work right there.
+- **"Preview inspection, import and export" — PARTIALLY STALE.** Import was
+  already moved onto `Dispatchers.IO` in the earlier restore-hardening work
+  (`importFrom*` wrapped in `withContext`). Inspection (`inspectUri`/
+  `inspectPath`/`validateUri`/`validatePath`), export (`exportToUri`/
+  `exportToPath`) and especially `summarizeLocal` (called synchronously from
+  a click handler — it reads every prefs store plus the avatar file) were
+  still on the main thread. Fixed.
+- **"Writing an automatic backup directly over the existing file risks
+  leaving a damaged backup" — CONFIRMED.** `exportToPath` used
+  `file.writeText` straight onto the target.
+- Extra find: several `catch (e: Exception)` blocks (screen export/restore
+  handlers, `BackupWorker`, the inspect/validate helpers) swallowed
+  `CancellationException`, dressing cancellation up as a failure toast /
+  `Result.failure()`.
+
+### Changes
+
+- `data/settings/BackupRepository.kt`: every entry point that reads, writes
+  or parses files now does so in `withContext(Dispatchers.IO)` —
+  `summarizeLocal` and `inspectUri`/`inspectPath` became suspend (their
+  callers were already inside `scope.launch`; the one synchronous call site
+  in BackupRestoreScreen's "Create Local Backup" row now launches properly).
+  `exportToPath` writes through a new `writeFileAtomically`: bytes go to a
+  temp file in the same directory (flushed with `fd.sync()`), then
+  `Files.move(…, ATOMIC_MOVE)` replaces the target — a failed or interrupted
+  write leaves the previous backup untouched and cleans up the temp. SAF
+  manual exports (`exportToUri`) cannot be replaced atomically across a
+  document provider; that limitation is documented on the function.
+- Cancellation is preserved end to end: `CancellationException` is rethrown
+  (not toasted / not turned into `Result.failure()`) in both screen catch
+  blocks, in `BackupWorker.doWork`, and in the inspect/validate helpers.
+- Tests `app/src/test/.../data/settings/BackupFileIoTest.kt` (6): clean
+  atomic replacement with no temp left behind; a partway write failure (and
+  a cancellation mid-write) keeps the previous backup byte-for-byte and
+  cleans up; I/O failures surface without a half-written target; a
+  successful export→import round trip restores exactly what was written; a
+  corrupt file is rejected before any store is touched.
+
+### How to test it live
+
+1. Play enough to have real progress and a substantial practice deck (miss
+   10+ questions across several quizzes). Settings → Backup & Restore.
+2. Tap "Create Local Backup". Expected: the preview opens without any
+   jank/freeze, then the save picker; confirming shows "Backup saved
+   successfully" only after the write finishes. Scroll the screen
+   immediately during the operation — it must stay smooth.
+3. Tap "Restore Data" and pick the file from step 2. Expected: the preview
+   appears promptly; confirming restores and the success toast appears only
+   at the end. Keep scrolling/rotating during the restore — no freezes.
+4. Verify restored data (stats, deck size, profile, theme) matches the
+   backup — spot-check the Statistics screen and the practice-deck count.
+5. Tap "Restore from Auto-Backup" (with an auto backup present). Expected:
+   same responsiveness; the confirm preview shows the backed-up contents.
+6. Auto-backup safety: Settings → Backup & Restore → auto-backup frequency →
+   trigger a backup (or wait for one), then simulate a failure by filling
+   storage if you can. Expected: whatever happens, the LAST auto-backup file
+   still restores — it is never left half-written.
+7. Cancellation: start a large restore and press Back/Home mid-operation.
+   Expected: no "Restore failed" toast appears (cancellation is not an
+   error), and the app behaves normally afterwards.

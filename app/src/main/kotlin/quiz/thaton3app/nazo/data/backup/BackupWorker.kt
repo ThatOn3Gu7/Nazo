@@ -3,6 +3,7 @@ package quiz.thaton3app.nazo.data.backup
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import kotlinx.coroutines.CancellationException
 import quiz.thaton3app.nazo.data.settings.BackupPrefs
 import quiz.thaton3app.nazo.data.settings.BackupRepository
 import quiz.thaton3app.nazo.data.settings.toLastBackup
@@ -24,6 +25,9 @@ class BackupWorker(context: Context, params: WorkerParameters) :
             // Backup card can describe an automatic backup without reopening it.
             BackupPrefs(applicationContext).lastBackup = receipt.toLastBackup()
             Result.success()
+        } catch (e: CancellationException) {
+            // WorkManager cancelled the job — not a backup failure.
+            throw e
         } catch (e: Exception) {
             Result.failure()
         }
