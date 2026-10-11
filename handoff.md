@@ -2317,3 +2317,44 @@ streaming oversize with unknown and lying lengths, exact-limit OK).
 5. Oversized protection is not directly visible (8 MB cap); if you host a
    huge file as a custom image source test, it is refused rather than
    buffered, and the game falls back instead of stalling.
+
+## Repair sequence: test coverage close-out (2026-10-11)
+
+Audit-first verdicts on the final prompt's claims:
+
+| Claim | Verdict |
+|---|---|
+| No automated unit-test suite in the tree | **Stale.** Six suites existed (67 tests): QuizResponseParser 19, AvatarPayload 14, GuessImageCache 11, BackupRestore 10, DailyChallenge 7, BackupFileIo 6. |
+| Workflow only assembles the debug APK | **Stale.** `PR-assemble.yml` runs `./gradlew testDebugUnitTest` before `assembleDebug` (`exit ${PIPESTATUS[0]}`), and failing tests fail the run (proven on run 38119899510). |
+| Question-bank integrity/dedup untested | **Real gap.** Added `LocalQuestionBankTest` (7 tests). |
+
+New suite `app/src/test/.../data/LocalQuestionBankTest.kt` (7): every bank
+entry well-formed (4 distinct non-blank options, answer exactly once, known
+difficulty tier), `stablePool()` has no duplicate identities, `identity`
+collapses same-franchise duplicates but keeps every franchise's copy of
+generic questions (arc-name questions ×5 series, "Who is the priest?" ×2 —
+real bank data), and `getQuestions` permutation-safe invariants (distinct
+identities, answer among shuffled options, topic filter never leaks). No
+production changes; nothing depends on network, clock, or a particular
+random draw. Total suite: **74 tests**, all green in CI run 38132175153
+(`44d3661`). No release-notes entry (test-only, not user-facing).
+
+### How to test it live (full repair sequence, device checklist)
+
+1. Offline local quiz: airplane mode, pick a franchise quiz, answer through.
+   Expected: questions load fully offline, correct answer always one of the
+   four options, results and stats update.
+2. AI quiz: with connectivity, generate an AI quiz (5 questions). Expected:
+   every question shows 4 options including its correct answer; a malformed
+   AI response is rejected and retried, never shown broken.
+3. Daily Challenge (same day, twice): play it, force-quit, play again.
+   Expected: same 5 questions in the same order with identical option order
+   both times; tomorrow's run differs.
+4. Backup/restore with profile picture: set a custom profile picture, play
+   a bit, Settings → Backup & Restore → create backup → restore it.
+   Expected: picture (including custom) survives the round trip; corrupt or
+   oversized picture data never blocks the rest of the restore.
+5. Guessing Game, multi-round: play 3+ rounds (auto-crop on and off).
+   Expected: correct character each round, image ready quickly (single
+   download reused), failed loads recover, colours correct both ways,
+   badge never names the character.
