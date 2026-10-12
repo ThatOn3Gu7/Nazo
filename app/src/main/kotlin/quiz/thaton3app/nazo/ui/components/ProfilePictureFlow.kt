@@ -227,8 +227,12 @@ fun ProfileImagePreviewDialog(
                     },
                     enabled = !saving,
                     muted = true,
+                    // Weighted flank buttons + single-line labels: in a narrow
+                    // dialog the row used to crush "Accept" until its last
+                    // letter wrapped ("Accep\nt") and broke the row height.
+                    modifier = Modifier.weight(1f),
                 ) {
-                    Text(if (cropping) "Back" else "Cancel")
+                    Text(if (cropping) "Back" else "Cancel", maxLines = 1)
                 }
 
                 if (!cropping && current != null) {
@@ -241,7 +245,7 @@ fun ProfileImagePreviewDialog(
                             tint = NazoPrimary,
                         )
                         Spacer(Modifier.width(6.dp))
-                        Text("Crop", color = NazoPrimary)
+                        Text("Crop", color = NazoPrimary, maxLines = 1)
                     }
                 }
 
@@ -256,6 +260,7 @@ fun ProfileImagePreviewDialog(
                         }
                     },
                     enabled = current != null && !saving,
+                    modifier = Modifier.weight(1f),
                 ) {
                     if (saving) {
                         CircularProgressIndicator(
@@ -264,7 +269,7 @@ fun ProfileImagePreviewDialog(
                             color = NazoOnPrimary,
                         )
                     } else {
-                        Text(if (cropping) "Done" else "Accept")
+                        Text(if (cropping) "Done" else "Accept", maxLines = 1)
                     }
                 }
             }

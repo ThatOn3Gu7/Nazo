@@ -1012,12 +1012,12 @@ fun ProfileScreen(
                     showRemoveConfirm = false
                     showPictureDialog = false
                 }) {
-                    Text("Remove")
+                    Text("Remove", maxLines = 1)
                 }
             },
             dismissButton = {
                 NazoSecondaryButton(onClick = { showRemoveConfirm = false }, muted = true) {
-                    Text("Cancel")
+                    Text("Cancel", maxLines = 1)
                 }
             },
         )
@@ -1209,8 +1209,12 @@ fun ProfileScreen(
                         onClick = { closeUrlDialog() },
                         enabled = !fetching,
                         muted = true,
+                        // Weighted flank buttons + single-line labels: a narrow
+                        // dialog used to crush "Accept" until its last letter
+                        // wrapped and broke the row height.
+                        modifier = Modifier.weight(1f),
                     ) {
-                        Text("Cancel")
+                        Text("Cancel", maxLines = 1)
                     }
                     if (previewBitmap != null) {
                         Spacer(Modifier.width(4.dp))
@@ -1236,7 +1240,7 @@ fun ProfileScreen(
                                 tint = NazoPrimary,
                             )
                             Spacer(Modifier.width(6.dp))
-                            Text("Crop", color = NazoPrimary)
+                            Text("Crop", color = NazoPrimary, maxLines = 1)
                         }
                     }
                     Spacer(Modifier.width(8.dp))
@@ -1258,8 +1262,9 @@ fun ProfileScreen(
                         // Accept is only meaningful once an image is loaded, so
                         // it is disabled rather than doubling as a Load button.
                         enabled = previewBitmap != null && !fetching,
+                        modifier = Modifier.weight(1f),
                     ) {
-                        Text("Accept")
+                        Text("Accept", maxLines = 1)
                     }
                 }
             },
