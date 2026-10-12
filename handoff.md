@@ -2726,3 +2726,80 @@ left alone (already on the button vocabulary).
     dialog survives the orientation change.
 Not verified on a device by the agent: everything above (no device in
 the sandbox) — verified by CI + code inspection.
+
+## Bug fix: Accept label wrap in picture dialogs (2026-10-12)
+Owner-reported (`bfcf032`). In narrow dialog width the Preview dialog's
+Cancel | Crop | Accept row crushed "Accept" until its last letter
+wrapped ("Accep\nt"), breaking the row height. Fix: flank buttons share
+the row (weight 1f) and every picture-dialog action label is
+single-line — preview (Back/Cancel | Crop | Accept/Done), URL dialog,
+and the remove-picture confirmation.
+Test: Profile → avatar → Gallery → pick any image → the Preview dialog
+shows "Cancel" and "Accept" each on one line (repeat in landscape and
+with a large font size). Same for avatar → URL → Load → Accept.
+
+## Visual 7/11: Settings & configuration (2026-10-12)
+Audit of SettingsScreen / AppearanceScreen / AiProviderScreen. All
+settings, 15 accents, 7 launcher icons, effect options, provider
+support and saved preferences unchanged; no API behavior, secrets
+storage, icon-switching or configuration defaults touched.
+
+Measured dark-theme state failures fixed (Python WCAG mirror first):
+selected ThemeModeRow fill 1.12:1 vs dark surface (light was 9.71:1 —
+why it shipped) → selected rows now also carry a 2dp accent RING
+(4.33:1 dark), same selection language as the accent circles; the
+Appearance toggles' dark-card track was 1.41:1 vs its own unchecked
+state (on == off in dark) → default theme-accent Switch, matching
+Settings (3.43:1 dark / 4.68:1 light); row dividers were NazoBackground
+"etched" lines at 1.21:1 (invisible in dark) → one divider style across
+all three screens (the provider list's subtle grey).
+
+AiProviderScreen: the "Key Error" badge was DEAD (nothing ever set it)
+→ a Fetch models failure with HTTP 400/401/403 now marks it; network/5xx
+keep the plain badge + error chip; editing the key resets the badge.
+"Valid Key" relabeled "Configured" (a stored key is not verified).
+Model dropdown no longer echoes the first model's id as if selected
+when nothing is chosen. Save Changes + Fetch models move onto
+NazoPrimaryButton (56dp / 40dp heights kept). Appearance's section
+kickers adopt the Settings/Statistics accent kicker style. Icon-restart
+dialog labels single-line.
+
+### How to test it live
+1. Route: bottom nav → Profile → Settings. Sections read as accent
+   kickers: AI & ENGINE / MODE / FEEDBACK / GENERAL / INFO. Row dividers
+   are faint but visible lines in BOTH themes. Toggles (Offline mode,
+   Sound effects, Daily reminder) are accent switches.
+2. Settings → Appearance. THEME MODE: tap Light/Dark/System — the
+   selected row shows a radio check AND a clear accent ring around the
+   card; the app theme follows at once. In dark theme the selection must
+   be unmistakable (this was the bug).
+3. COLOR ACCENTS: tap any of the 15 circles — the whole app recolors,
+   the circle gets a ring, and "Currently using …" names it. APP ICON:
+   "Match icon to system theme" toggle (accent switch); turn it off →
+   "Choose app icon" row lights up → sheet with 7 real previews → tap
+   one → "Use the … icon?" dialog → Apply & close (app closes; reopen to
+   see the icon) or Cancel.
+4. Effect pickers: Background effects / Victory confetti / Generate
+   button spark rows → each sheet shows live previews; tapping one
+   applies it and the row's "Currently: …" updates. LAYOUT toggles and
+   the GUESSING GAME Blur/Pixelate rows (accent-ring selection) plus the
+   Auto-crop toggle behave the same.
+5. AI configuration: Settings → AI Provider & API Keys. Badges: grey
+   "Not Configured" (no key), green "Configured" (key stored), red
+   "Key Error" (rejected). Tap a card to expand: Model dropdown, masked
+   API Key field (eye icon reveals/hides), "Stored securely on device",
+   Fetch models (standard primary button), Save Changes at the bottom.
+6. Safe error test — NO real key needed: type a dummy like
+   not-a-real-key-123 into the OpenRouter key field → Fetch models →
+   expect the red error chip ("Models list returned HTTP 401"-ish) and
+   the badge flips to "Key Error". Edit the field → badge returns to
+   Not Configured / Configured. Do this only with fake text; never paste
+   a real key into a test.
+7. Model selection: with a real configured provider (optional), Fetch
+   models → open the dropdown → search "free" filters the list → pick a
+   model → Save Changes → the choice sticks after an app restart. With
+   no selection the trigger reads "Select a model" (not a model id).
+8. Rotate with any sheet or dialog open — it survives.
+Not verified on a device by the agent: all of the above (no device in
+the sandbox) — verified by CI + code inspection + numeric contrast
+checks.

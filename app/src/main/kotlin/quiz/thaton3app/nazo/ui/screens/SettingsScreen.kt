@@ -400,8 +400,11 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
 
 @Composable
 private fun RowDivider() {
+    // One divider style across the settings screens (also used by the AI
+    // provider list). A NazoBackground "etched" line was 1.21:1 against the
+    // dark card — invisible in the dark theme.
     HorizontalDivider(
-        color = NazoBackground, 
+        color = NazoTextSecondary.copy(alpha = 0.12f),
         thickness = 1.dp,
         modifier = Modifier.padding(horizontal = 16.dp)
     )

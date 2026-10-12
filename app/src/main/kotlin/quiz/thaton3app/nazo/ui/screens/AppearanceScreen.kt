@@ -57,6 +57,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import kotlin.math.PI
@@ -724,12 +725,12 @@ fun AppearanceScreen(
                     showIconSheet = false
                     onAppIconChange(chosen)
                 }) {
-                    Text("Apply & close", fontWeight = FontWeight.SemiBold)
+                    Text("Apply & close", fontWeight = FontWeight.SemiBold, maxLines = 1)
                 }
             },
             dismissButton = {
                 NazoSecondaryButton(onClick = { pendingIcon = null }, muted = true) {
-                    Text("Cancel")
+                    Text("Cancel", maxLines = 1)
                 }
             },
         )
@@ -880,11 +881,15 @@ fun AppearanceScreen(
 
 @Composable
 private fun SectionHeader(text: String) {
+    // Same kicker style as Settings' section labels — one hierarchy look
+    // across the configuration screens.
     Text(
         text = text,
         style = MaterialTheme.typography.labelSmall,
-        color = NazoTextSecondary,
-        modifier = Modifier.padding(start = 8.dp, bottom = 12.dp)
+        color = NazoPrimary,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.sp,
+        modifier = Modifier.padding(start = 12.dp, bottom = 12.dp)
     )
 }
 
@@ -939,7 +944,14 @@ private fun ThemeModeRow(
                 val p = transit.value
                 if (p > 0f && p < 1f) drawCelestialTransit(celestial, p, backgroundColor)
             }
-            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
+            // Selected rows wear an accent ring (same selection language as the
+            // accent circles). The dark-card fill alone is 1.12:1 against the
+            // dark surface — invisible as a state — while the ring is 4.33:1.
+            .border(
+                width = if (isSelected) 2.dp else 1.dp,
+                color = if (isSelected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.08f),
+                shape = RoundedCornerShape(24.dp),
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -1067,16 +1079,12 @@ private fun LayoutToggleRow(
 
         Spacer(modifier = Modifier.width(16.dp))
 
+        // Default theme-accent switch — the same toggle the Settings rows use.
+        // (The old dark-card track was 1.41:1 against its unchecked state in
+        // the dark theme: on and off looked identical.)
         Switch(
             checked = isChecked,
             onCheckedChange = trigger,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = NazoDarkCard,
-                uncheckedThumbColor = Color.White,
-                uncheckedTrackColor = NazoPillUnselected,
-                uncheckedBorderColor = Color.Transparent
-            )
         )
     }
 }
