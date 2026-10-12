@@ -51,8 +51,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import quiz.thaton3app.nazo.data.remote.ModelInfo
+import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
+import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.components.WavySpinner
 import quiz.thaton3app.nazo.ui.theme.NazoError
+import quiz.thaton3app.nazo.ui.theme.NazoErrorBg
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoSurface
@@ -288,7 +291,13 @@ private fun LoadingContent(providerModel: String, onCancel: () -> Unit) {
     // Wavy spinner
     WavySpinner(color = NazoPrimary, modifier = Modifier.size(44.dp))
     Spacer(Modifier.height(24.dp))
-    TextButton(label = "Cancel", onClick = onCancel)
+    NazoSecondaryButton(
+        onClick = onCancel,
+        modifier = Modifier.fillMaxWidth(),
+        muted = true,
+    ) {
+        Text("Cancel")
+    }
 }
 
 @Composable
@@ -340,12 +349,24 @@ private fun ErrorContent(
         fontWeight = FontWeight.Bold,
     )
     Spacer(Modifier.height(10.dp))
-    Text(
-        text = message,
-        color = NazoTextSecondary,
-        style = MaterialTheme.typography.bodyMedium,
-        textAlign = TextAlign.Center,
-    )
+    // The app's error-chip pattern (same as the AI setup and URL flows):
+    // readable, and sat directly above the actions it explains.
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(NazoErrorBg)
+            .border(1.dp, NazoError, RoundedCornerShape(12.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        Text(
+            text = message,
+            color = NazoError,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
     Spacer(Modifier.height(20.dp))
     if (isModelError && availableModels.isNotEmpty()) {
         Text(
@@ -360,17 +381,51 @@ private fun ErrorContent(
             onSelect = { selected.value = it },
         )
         Spacer(Modifier.height(16.dp))
-        PrimaryButton(label = "Change model & retry", onClick = { onChangeModel(selected.value) })
+        // Shared button vocabulary (NazoButtons): one obvious primary action,
+        // the alternative outlined, the dismiss muted.
+        NazoPrimaryButton(
+            onClick = { onChangeModel(selected.value) },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Change model & retry")
+        }
         Spacer(Modifier.height(12.dp))
-        OutlineButton(label = "Use local quiz", onClick = onUseLocal)
+        NazoSecondaryButton(
+            onClick = onUseLocal,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Use local quiz")
+        }
         Spacer(Modifier.height(12.dp))
-        TextButton(label = "Cancel", onClick = onCancel)
+        NazoSecondaryButton(
+            onClick = onCancel,
+            modifier = Modifier.fillMaxWidth(),
+            muted = true,
+        ) {
+            Text("Cancel")
+        }
     } else {
-        PrimaryButton(label = "Retry", onClick = onRetry)
+        NazoPrimaryButton(
+            onClick = onRetry,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Retry")
+        }
         Spacer(Modifier.height(12.dp))
-        OutlineButton(label = "Use local quiz", onClick = onUseLocal)
+        NazoSecondaryButton(
+            onClick = onUseLocal,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Use local quiz")
+        }
         Spacer(Modifier.height(12.dp))
-        TextButton(label = "Cancel", onClick = onCancel)
+        NazoSecondaryButton(
+            onClick = onCancel,
+            modifier = Modifier.fillMaxWidth(),
+            muted = true,
+        ) {
+            Text("Cancel")
+        }
     }
 }
 
@@ -389,7 +444,11 @@ private fun ModelPicker(models: List<ModelInfo>, selected: String, onSelect: (St
                 .padding(horizontal = 14.dp, vertical = 14.dp),
         ) {
             Text(
-                text = if (selected.isNotBlank()) selected else "Select a model",
+                // Show the model's display name, not its raw id (and never
+                // pretend a blank selection is a model).
+                text = if (selected.isNotBlank())
+                    models.firstOrNull { it.id == selected }?.name?.ifBlank { selected } ?: selected
+                else "Select a model",
                 color = if (selected.isNotBlank()) NazoTextPrimary else NazoTextSecondary,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.weight(1f),
@@ -449,70 +508,6 @@ private fun ModelPicker(models: List<ModelInfo>, selected: String, onSelect: (St
     }
 }
 
-@Composable
-private fun PrimaryButton(label: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(48.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(NazoPrimary)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = label,
-            color = NazoOnPrimary,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-    }
-}
-
-@Composable
-private fun OutlineButton(label: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(48.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .border(1.5.dp, NazoPrimary, RoundedCornerShape(14.dp))
-            .background(Color.Transparent)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = label,
-            color = NazoPrimary,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-    }
-}
-
-@Composable
-private fun TextButton(label: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(44.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color.Transparent)
-            // Subtle outline so it reads as a button at a glance — same as
-            // the guessing game's loading-screen Cancel button.
-            .border(1.dp, NazoTextSecondary.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = label,
-            color = NazoTextSecondary,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-        )
-    }
-}
+// (The bespoke Primary/Outline/Text button helpers that used to live here were
+// replaced by the shared NazoButtons vocabulary — see ErrorContent.)
 

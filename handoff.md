@@ -2803,3 +2803,78 @@ dialog labels single-line.
 Not verified on a device by the agent: all of the above (no device in
 the sandbox) — verified by CI + code inspection + numeric contrast
 checks.
+
+## Visual 8/11: Onboarding & generation states (2026-10-12)
+Audit of OnboardingScreen.kt, IntroOverlay.kt, LoadingScreen.kt.
+Onboarding rules, provider verification, generation retries, request
+handling and navigation logic untouched; no onboarding state reset, no
+user data touched.
+
+Findings: onboarding was already in good shape (dash progress + Skip,
+landscape panes, imePadding + scrolling bodies, optional-AI and offline
+copy, locked Guessing Game hint, topic scroll-edge hints) — left alone.
+IntroOverlay is a fixed non-interactive launch animation with no
+user-facing controls to polish; per standing rules its physics stay
+untouched. REAL drift: the generation card's Retry / Use local quiz /
+Cancel / Change model & retry were bespoke 14dp-corner boxes and
+onboarding's Next / Verify & Save were 20dp/14dp bespoke Buttons — the
+exact drift NazoButtons.kt documents ('some corners were 50% pills,
+some 14.dp, some 16.dp'). All now use NazoPrimaryButton /
+NazoSecondaryButton (primary = the one action, outlined = alternative,
+muted = dismiss). The generation failure message moves into the app's
+error-chip box (NazoError on NazoErrorBg) directly above its actions.
+Model-picker trigger shows the model NAME, not its raw id.
+
+### How to test it live
+ONBOARDING (use a SEPARATE test install — uninstall/reinstall the debug
+build, or a second Android user/profile. Never clear the main install's
+data just to see this):
+1. Fresh install → launch: the intro plays, then onboarding opens on
+   slide 1 of 5 with dash progress top-left and "Skip" top-right. Swipe
+   through the feature slides: the active dash stretches; the bottom
+   button reads "Next" (a round Back button appears from slide 2).
+   "Skip" jumps straight to Home at any point before the last slide.
+2. Setup slide ("Make It Yours" — caption says everything is optional
+   and also lives in Settings): expand AI Provider — three provider
+   pills scroll horizontally; the key field; "Verify & Save" (standard
+   primary button). The line "No key? No problem — Quiz Mode works
+   fully offline." names the offline path. Appearance and Preferences
+   expand in place (Preferences holds Sound, Daily reminder, Offline
+   mode).
+3. KEYBOARD-OPEN SETUP: tap the API-key field (or the topic field on
+   slide 5) — the keyboard must not cover the field or the buttons; the
+   slide body scrolls and the layout lifts (imePadding). Landscape:
+   heading left, controls right, each pane scrolling.
+4. VERIFY states (safe — use DUMMY text, never a real key): type
+   not-a-real-key-123 → Verify & Save → "Checking key…" with spinner →
+   then the red error chip with the failure message right under the
+   button; editing the field clears it. With a real key (optional, your
+   call): "Saved & ready" + the green "Using X · N models available"
+   line; the AI Provider subtitle flips to "Ready — AI quizzes
+   unlocked".
+5. Last slide ("Your First Game"): mode pills (Guessing Game shows 🔒
+   and a red hint until a provider is ready), topic field, scrolling
+   suggestion row with edge fades. Bottom button reads "Play Now ·
+   <Mode>" when a topic is typed (launches that game), else "Start
+   Playing" (→ Home).
+
+GENERATION STATES (any install):
+6. NORMAL ATTEMPT: Home → Generate with a configured provider → the
+   generation card: pulsing emblem, "Generating your quiz…", "Using
+   <model>", wavy spinner, muted Cancel (outlined, standard button).
+   Back arrow top-left also cancels. Landscape/short screen: the card
+   scrolls instead of clipping.
+7. RECOVERABLE FAILURE (safe — airplane mode with a configured
+   provider, or an invalid-key provider): the card flips to the error
+   face — "!" emblem, "Couldn't generate quiz", the REASON in a
+   highlighted red box directly above the buttons. Buttons, top to
+   bottom: primary "Retry", outlined "Use local quiz", muted "Cancel".
+   Expected: Retry re-enters the loading face; Use local quiz builds a
+   quiz from the on-device bank (never a silent fallback — you choose);
+   Cancel returns Home.
+8. MODEL ERROR (bad or quota-broken key/model): the error face adds
+   "Pick a different model" + a model dropdown (showing model NAMES)
+   + primary "Change model & retry", then Use local quiz / Cancel.
+   Picking another model and tapping the button retries with it.
+Not verified on a device by the agent: all of the above (no device in
+the sandbox) — verified by CI + code inspection.

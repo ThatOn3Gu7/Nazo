@@ -65,8 +65,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -499,7 +498,8 @@ fun OnboardingScreen(
                     }
                     else -> "Start Playing"
                 }
-                Button(
+                // Shared primary-button shape (NazoButtons vocabulary).
+                NazoPrimaryButton(
                     onClick = {
                         Haptics.light(context)
                         when {
@@ -509,11 +509,6 @@ fun OnboardingScreen(
                         }
                     },
                     modifier = Modifier.weight(1f).height(58.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = NazoPrimary,
-                        contentColor = NazoOnPrimary,
-                    ),
                 ) {
                     AnimatedContent(
                         targetState = buttonLabel,
@@ -782,17 +777,11 @@ private fun SetupSlide(
                             ),
                         )
 
-                        Button(
+                        // Shared primary-button shape (NazoButtons vocabulary).
+                        NazoPrimaryButton(
                             onClick = onVerify,
                             enabled = keyInput.isNotBlank() && verifyState !is VerifyState.Checking,
                             modifier = Modifier.fillMaxWidth().height(46.dp),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = NazoPrimary,
-                                contentColor = NazoOnPrimary,
-                                disabledContainerColor = NazoPrimary.copy(alpha = 0.4f),
-                                disabledContentColor = NazoOnPrimary.copy(alpha = 0.7f),
-                            ),
                         ) {
                             AnimatedContent(
                                 targetState = verifyState,
