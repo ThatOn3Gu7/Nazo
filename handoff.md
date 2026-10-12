@@ -2956,3 +2956,37 @@ How to test it live (manual — agent had no device):
    untouched); 05 = ZERO categories in preview then WIPES ALL DATA
    (test install only!); 06 = corrupt avatar falls back to initials.
 Full table + safety rules: debug/test_backups.json/README.md.
+
+## Visual 10/11: About & info screens (2026-10-12)
+
+AboutScreen.kt, ChangelogScreen.kt (via shared header), CreditsScreen.kt,
+LicensesScreen.kt — layouts and immediate visual components only. Versions,
+release metadata, update checks/downloads, URLs, contributor data and
+license text untouched; AboutContent.kt not modified. Changes: all four
+titles use the canonical header (44dp bordered back button, bold title);
+About kickers match Settings (accent, bold, letterspaced); row dividers
+12% grey (were invisible NazoBackground in dark theme); About rows grouped
+under SUPPORT & SOURCE / THE PROJECT / BUILD INFO; update-sheet buttons on
+the shared Nazo buttons (same handlers); status-card animation de-bounced;
+Licenses search shows match counts and a centred no-results state.
+
+How to test it live (manual — agent had no device; network states were
+NOT tested in the sandbox):
+1. Settings → About. Expected: bold "About" title with the standard back
+   button; three labelled groups; visible thin dividers in dark theme.
+2. About → Changelogs / Credits / Licenses (each row opens its page; all
+   three share the same header style). Expected: newest changelog entry
+   tinted; Credits lead card + contributors + built-with; Licenses with
+   the GPL-3.0 card on top.
+3. Licenses search: type "compose". Expected: count line switches to
+   "N of M libraries match"; only matching rows remain. Then type
+   "zzzz". Expected: centred empty state — search icon, "No libraries
+   match", and the query echoed in the hint line.
+4. Updates & Settings → Check Now. Expected states (network): "Checking
+   GitHub…" spinner → "Nazo is up to date." OR a release card with
+   version comparison and Download/Install buttons OR a failure note
+   with Retry. Do NOT install an update just to test this — observe only.
+5. Rotate on each page and with the update sheet open. Expected:
+   headings/rows reflow without clipping; the sheet scrolls in landscape.
+Not verified on a device by the agent: all of the above (no device or
+network in the sandbox) — verified by CI + code inspection.

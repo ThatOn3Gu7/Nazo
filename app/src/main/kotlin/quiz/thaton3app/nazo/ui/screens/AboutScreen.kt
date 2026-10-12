@@ -62,8 +62,6 @@ import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -78,12 +76,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -115,6 +111,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.data.GITHUB_REPO
 import quiz.thaton3app.nazo.ui.components.NazoQuietButton
+import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.components.NazoDangerButton
 import quiz.thaton3app.nazo.ui.components.isLandscape
@@ -355,7 +352,13 @@ fun AboutScreen(
                     subtitle = "View source code",
                     onClick = { onOpenBrowser("https://github.com/$GITHUB_REPO") }
                 )
-                RowDivider()
+            }
+
+            Spacer(Modifier.height(24.dp))
+            SectionLabel("THE PROJECT")
+            Spacer(Modifier.height(10.dp))
+
+            SettingsCard {
                 ActionRow(
                     icon = Icons.AutoMirrored.Filled.ListAlt,
                     title = "Changelogs",
@@ -376,7 +379,13 @@ fun AboutScreen(
                     subtitle = "GPL-3.0 and open-source libraries",
                     onClick = onOpenLicenses
                 )
-                RowDivider()
+            }
+
+            Spacer(Modifier.height(24.dp))
+            SectionLabel("BUILD INFO")
+            Spacer(Modifier.height(10.dp))
+
+            SettingsCard {
                 ActionRow(
                     icon = Icons.Filled.Event,
                     title = "Installed Date",
@@ -546,14 +555,15 @@ private fun UpdateMenuContent(
 
         Spacer(Modifier.height(16.dp))
 
-        // Status Card with smooth height expansion
+        // Status Card with smooth height expansion — a quiet, non-bouncy
+        // settle so the moving text stays easy to read.
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .animateContentSize(
                     animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioLowBouncy,
-                        stiffness = Spring.StiffnessLow,
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
                     )
                 ),
             colors = CardDefaults.cardColors(
@@ -765,22 +775,18 @@ private fun UpdateMenuContent(
                                         )
                                     }
                                     Spacer(Modifier.height(12.dp))
-                                    OutlinedButton(
+                                    NazoSecondaryButton(
                                         onClick = onCancelDownload,
                                         modifier = Modifier.fillMaxWidth(),
                                     ) {
-                                        Text("Cancel", color = NazoPrimary)
+                                        Text("Cancel")
                                     }
                                 }
 
                                 is ApkDownloadState.Done -> {
-                                    Button(
+                                    NazoPrimaryButton(
                                         onClick = onInstall,
                                         modifier = Modifier.fillMaxWidth(),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = NazoPrimary,
-                                            contentColor = NazoOnPrimary,
-                                        ),
                                     ) {
                                         Icon(
                                             Icons.Filled.InstallMobile,
@@ -808,7 +814,7 @@ private fun UpdateMenuContent(
                                         Spacer(Modifier.height(8.dp))
                                     }
                                     if (availableState.directApkUrl != null) {
-                                        Button(
+                                        NazoPrimaryButton(
                                             onClick = {
                                                 onStartDownload(
                                                     availableState.directApkUrl,
@@ -816,10 +822,6 @@ private fun UpdateMenuContent(
                                                 )
                                             },
                                             modifier = Modifier.fillMaxWidth(),
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = NazoPrimary,
-                                                contentColor = NazoOnPrimary,
-                                            ),
                                         ) {
                                             Icon(
                                                 Icons.Filled.Download,
@@ -830,13 +832,9 @@ private fun UpdateMenuContent(
                                             Text(if (downloadState is ApkDownloadState.Failed) "Retry Download" else "Download & Install")
                                         }
                                     } else {
-                                        Button(
+                                        NazoPrimaryButton(
                                             onClick = { onOpenBrowser(availableState.htmlUrl) },
                                             modifier = Modifier.fillMaxWidth(),
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = NazoPrimary,
-                                                contentColor = NazoOnPrimary,
-                                            ),
                                         ) {
                                             Text("Download Manually")
                                         }
@@ -868,21 +866,14 @@ private fun UpdateMenuContent(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            NazoSecondaryButton(onClick = { promptApkCleanup() }) {
+                            NazoSecondaryButton(onClick = { promptApkCleanup() }, muted = true) {
                                 Text(
                                     "Clean up APKs",
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    color = NazoTextSecondary,
                                 )
                             }
-                            Button(
-                                onClick = onCheckForUpdates,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = NazoPrimary,
-                                    contentColor = NazoOnPrimary,
-                                ),
-                            ) {
+                            NazoPrimaryButton(onClick = onCheckForUpdates) {
                                 Text(checkLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
@@ -892,7 +883,7 @@ private fun UpdateMenuContent(
         }
 
         Spacer(Modifier.height(24.dp))
-        HorizontalDivider(color = NazoBackground)
+        HorizontalDivider(color = NazoTextSecondary.copy(alpha = 0.12f))
         Spacer(Modifier.height(16.dp))
 
         // Preferences Section
@@ -1106,14 +1097,15 @@ private fun ScreenHeader(title: String, onBackClick: () -> Unit) {
         IconButton(
             onClick = rememberHapticBack(onBackClick),
             modifier = Modifier
-                .size(40.dp)
+                .size(44.dp)
                 .clip(CircleShape)
-                .background(NazoSurface),
+                .background(NazoSurface)
+                .border(1.dp, NazoTextSecondary.copy(alpha = 0.1f), CircleShape),
         ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NazoTextSecondary, modifier = Modifier.size(20.dp))
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NazoTextPrimary, modifier = Modifier.size(22.dp))
         }
-        Spacer(Modifier.width(12.dp))
-        Text(text = title, style = MaterialTheme.typography.titleLarge, color = NazoTextPrimary)
+        Spacer(Modifier.width(16.dp))
+        Text(text = title, style = MaterialTheme.typography.titleLarge, color = NazoTextPrimary, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -1184,8 +1176,10 @@ private fun SectionLabel(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.labelSmall,
-        color = NazoTextSecondary,
-        modifier = Modifier.padding(start = 8.dp),
+        color = NazoPrimary,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.sp,
+        modifier = Modifier.padding(start = 12.dp),
     )
 }
 
@@ -1203,9 +1197,11 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
 
 @Composable
 private fun RowDivider() {
+    // 12% grey — the one divider style across Settings, Backup & Restore and
+    // these screens. A NazoBackground "etched" line is invisible in dark theme.
     HorizontalDivider(
-        color = NazoBackground,
-        thickness = 2.dp,
+        color = NazoTextSecondary.copy(alpha = 0.12f),
+        thickness = 1.5.dp,
         modifier = Modifier.padding(horizontal = 16.dp),
     )
 }

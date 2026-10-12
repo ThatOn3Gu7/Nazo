@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import quiz.thaton3app.nazo.data.GITHUB_REPO
@@ -106,15 +107,14 @@ fun LicensesScreen(
                 Spacer(Modifier.height(20.dp))
                 AppLicenseCard(onOpenUrl = onOpenUrl)
                 Spacer(Modifier.height(28.dp))
-                Text(
-                    text = "Third-party libraries",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = NazoPrimary,
-                    fontWeight = FontWeight.Bold,
-                )
+                SubSectionLabel("Third-party libraries")
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "${NAZO_LIBRARIES.size} libraries bundled",
+                    text = if (query.isBlank()) {
+                        "${NAZO_LIBRARIES.size} libraries bundled"
+                    } else {
+                        "${filtered.size} of ${NAZO_LIBRARIES.size} libraries match"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = NazoTextSecondary,
                 )
@@ -143,13 +143,47 @@ fun LicensesScreen(
             }
 
             if (filtered.isEmpty()) {
+                // A quiet, centred empty state — icon and two short lines
+                // rather than one lonely sentence floating in the list.
                 item {
-                    Text(
-                        text = "No libraries match \"$query\".",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NazoTextSecondary,
-                        modifier = Modifier.padding(vertical = 24.dp),
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 36.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(CircleShape)
+                                .background(NazoSurfaceVariant.copy(alpha = 0.6f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.Search,
+                                contentDescription = null,
+                                tint = NazoTextSecondary,
+                                modifier = Modifier.size(24.dp),
+                            )
+                        }
+                        Spacer(Modifier.height(14.dp))
+                        Text(
+                            text = "No libraries match",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = NazoTextPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Nothing matches \"${query.trim()}\" — try a different name, license or version.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NazoTextSecondary,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 18.sp,
+                            modifier = Modifier.padding(horizontal = 24.dp),
+                        )
+                    }
                 }
             }
 

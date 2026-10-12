@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -435,7 +436,7 @@ private fun ContributorRow(contributor: Contributor, onOpenUrl: (String) -> Unit
 }
 
 @Composable
-private fun SubSectionLabel(text: String) {
+internal fun SubSectionLabel(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.titleSmall,
@@ -445,31 +446,32 @@ private fun SubSectionLabel(text: String) {
 }
 
 /**
- * Shared header for the About sub-screens, matching AboutScreen's own
- * `ScreenHeader` (which is private to that file).
+ * Shared header for the About sub-screens (Changelog, Credits, Licenses),
+ * matching the canonical settings-family header: 44dp circular back button and
+ * a bold titleLarge — the same treatment Settings and Backup & Restore use.
  */
 @Composable
 internal fun AboutSubScreenHeader(title: String, onBackClick: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
+        IconButton(
+            onClick = rememberHapticBack(onBackClick),
             modifier = Modifier
-                .size(40.dp)
+                .size(44.dp)
                 .clip(CircleShape)
                 .background(NazoSurface)
-                .clickable(onClick = rememberHapticBack(onBackClick)),
-            contentAlignment = Alignment.Center,
+                .border(1.dp, NazoTextSecondary.copy(alpha = 0.1f), CircleShape),
         ) {
             Icon(
                 Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "Back",
-                tint = NazoTextSecondary,
-                modifier = Modifier.size(20.dp),
+                tint = NazoTextPrimary,
+                modifier = Modifier.size(22.dp),
             )
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(16.dp))
         Text(
             text = title,
-            style = MaterialTheme.typography.headlineSmall,
+            style = MaterialTheme.typography.titleLarge,
             color = NazoTextPrimary,
             fontWeight = FontWeight.Bold,
         )
