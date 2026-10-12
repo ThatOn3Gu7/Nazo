@@ -2660,3 +2660,69 @@ instead of Next-tap time) — as requested.
    650ms beat, Versus handoff/results unchanged, quit dialog unchanged.
 Not tested on-device by the agent (no device in the sandbox) — verified
 by CI + code inspection.
+
+## Visual 6/11: Profile & picture flows (2026-10-12)
+Discoverability + consistency pass on ProfileScreen.kt ONLY. Image
+storage, backup payloads, URI handling, crop geometry, profile
+persistence and every other screen untouched.
+
+Changed: camera badge on the 132dp avatar (Profile-only overlay — the
+HomeScreen avatar is unchanged) + caption under the name disclosing both
+gestures ("Tap the picture to change it · press and hold to preview";
+"Tap the picture to choose one" when none set). The picker gains a
+"View current picture full size" row (the long-press remains a
+shortcut), an "Emoji" tab as the FIRST category (the emoji: picture
+format has been supported end to end since the import — renderer,
+full-size preview, backup — but no tab ever offered it; say the word to
+drop it), and its Remove button now opens a confirmation (Cancel returns
+to the picker). The full-size viewer has a close chip (X) at top-end.
+The URL dialog's Accept is now NazoPrimaryButton (was a raw pill-less
+Button). Crop preview / accept-cancel / username dialog were audited and
+left alone (already on the button vocabulary).
+
+### How to test it live
+1. Open: bottom nav → Profile. Expected top-to-bottom: "Profile" bar;
+   avatar with a small accent camera badge at its bottom-right; username
+   with a pencil; caption "Tap the picture to change it · press and hold
+   to preview"; stats card (Quizzes/Answered/Correct/Streak) once you
+   have played; then the Statistics and Settings rows.
+2. Edit username: tap the name row → "Edit username" dialog → type a
+   name → Save → dialog closes and the name (and avatar initial) updates
+   at once. Cancel variant: type something → Cancel → nothing changes.
+   Generate: tap the refresh icon in the field → a name fills in
+   (instant on offline; AI when configured).
+3. Gallery image: tap the avatar (or its badge) → "Change profile
+   picture" opens (Emoji tab first, then Anime Style etc., and the
+   URL / Gallery / Remove row). Tap Gallery → system photo picker →
+   choose an image you don't mind using (never your only copy of
+   anything) → "Preview" dialog shows the squared preview → tap Accept →
+   dialog closes and the avatar shows the new picture; the caption
+   changes to the hold-to-preview wording.
+4. Crop and accept: avatar → Gallery → pick an image → in Preview tap
+   Crop → drag the square box / pull its corners → Done → the avatar
+   shows exactly what you framed. Back button in the crop step returns
+   to the plain preview keeping the image.
+5. Cancel an edit: avatar → Gallery → pick an image → Preview → Cancel →
+   dialog closes, avatar is exactly as before (nothing is saved).
+6. Preview the current picture: press and hold the avatar, OR tap
+   avatar → "View current picture full size". Expected: centred viewer
+   (full square image, emoji rendered large if it's an emoji avatar) with
+   an X chip top-right; X, tapping outside or Back all close it.
+7. Emoji avatar: avatar → Emoji tab → tap e.g. 🔥 → picker closes and
+   the avatar shows the emoji on the accent-tinted circle; hold to
+   preview shows the big emoji.
+8. URL picture: avatar → URL → paste an image link → tap the arrow in
+   the field → inline square preview appears → Accept (or Crop first).
+   Bad link shows the error line under the field; Cancel discards the
+   downloaded draft silently.
+9. Remove (SAFE — only if you're willing to re-pick afterwards; never
+   touch backup/settings data in this test): avatar → Remove → NEW
+   confirm "Remove profile picture?" appears over the picker. First tap
+   Cancel: picture intact, still in the picker. Then Remove → confirm
+   Remove → avatar returns to your initial letter and the caption reads
+   "Tap the picture to choose one". Pick any preset tab avatar to set a
+   picture again.
+10. Rotate with the picker, crop preview, or remove-confirm open: the
+    dialog survives the orientation change.
+Not verified on a device by the agent: everything above (no device in
+the sandbox) — verified by CI + code inspection.

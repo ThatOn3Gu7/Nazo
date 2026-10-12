@@ -21,6 +21,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import quiz.thaton3app.nazo.ui.components.NazoConfirmButton
 import quiz.thaton3app.nazo.ui.components.NazoDangerButton
+import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.components.Haptics
 import androidx.compose.foundation.BorderStroke
@@ -114,6 +115,9 @@ fun ProfileScreen(
     // Press-and-hold the avatar to see the current picture full size.
     var showAvatarPreview by rememberRetained("Profile.showAvatarPreview") { false }
     var showUrlDialog by rememberRetained("Profile.showUrlDialog") { false }
+    // Removing a picture is destructive from here (a custom photo would have
+    // to be re-added by hand), so it gets one explicit confirmation step.
+    var showRemoveConfirm by rememberRetained("Profile.showRemoveConfirm") { false }
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -197,14 +201,34 @@ fun ProfileScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    ProfileAvatar(
-                        name = username,
-                        pictureUri = profilePictureUri,
-                        size = 132.dp,
-                        onClick = { showPictureDialog = true },
-                        onLongClick = avatarLongPress,
-                        modifier = Modifier.padding(bottom = 16.dp),
-                    )
+                    Box(modifier = Modifier.padding(bottom = 16.dp)) {
+                        ProfileAvatar(
+                            name = username,
+                            pictureUri = profilePictureUri,
+                            size = 132.dp,
+                            onClick = { showPictureDialog = true },
+                            onLongClick = avatarLongPress,
+                        )
+                        // Visible "change picture" affordance — the tap target
+                        // below was undiscoverable. Decorative overlay: taps
+                        // fall through to the avatar underneath.
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(NazoPrimary)
+                                .border(2.dp, NazoBackground, CircleShape),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.PhotoCamera,
+                                contentDescription = null,
+                                tint = NazoOnPrimary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
 
                     Surface(
                         onClick = { showUsernameDialog = true },
@@ -236,6 +260,19 @@ fun ProfileScreen(
                             )
                         }
                     }
+
+                    Spacer(Modifier.height(8.dp))
+                    // Discloses both picture gestures; the press-and-hold
+                    // preview was previously a hidden easter egg.
+                    Text(
+                        text = if (profilePictureUri.isNullOrBlank())
+                            "Tap the picture to choose one"
+                        else
+                            "Tap the picture to change it · press and hold to preview",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NazoTextSecondary,
+                        textAlign = TextAlign.Center,
+                    )
                 }
 
                 // Right Column: Stats & Menu
@@ -280,14 +317,34 @@ fun ProfileScreen(
                     .padding(horizontal = 24.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                ProfileAvatar(
-                    name = username,
-                    pictureUri = profilePictureUri,
-                    size = 132.dp,
-                    onClick = { showPictureDialog = true },
-                    onLongClick = avatarLongPress,
-                    modifier = Modifier.padding(bottom = 16.dp),
-                )
+                Box(modifier = Modifier.padding(bottom = 16.dp)) {
+                    ProfileAvatar(
+                        name = username,
+                        pictureUri = profilePictureUri,
+                        size = 132.dp,
+                        onClick = { showPictureDialog = true },
+                        onLongClick = avatarLongPress,
+                    )
+                    // Visible "change picture" affordance — the tap target
+                    // below was undiscoverable. Decorative overlay: taps fall
+                    // through to the avatar underneath.
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(NazoPrimary)
+                            .border(2.dp, NazoBackground, CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PhotoCamera,
+                            contentDescription = null,
+                            tint = NazoOnPrimary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
 
                 Surface(
                     onClick = { showUsernameDialog = true },
@@ -319,6 +376,19 @@ fun ProfileScreen(
                         )
                     }
                 }
+
+                Spacer(Modifier.height(8.dp))
+                // Discloses both picture gestures; the press-and-hold preview
+                // was previously a hidden easter egg.
+                Text(
+                    text = if (profilePictureUri.isNullOrBlank())
+                        "Tap the picture to choose one"
+                    else
+                        "Tap the picture to change it · press and hold to preview",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NazoTextSecondary,
+                    textAlign = TextAlign.Center,
+                )
 
                 Spacer(modifier = Modifier.height(32.dp))
 
@@ -603,6 +673,25 @@ fun ProfileScreen(
                     modifier = Modifier.size(previewSize),
                     contentAlignment = Alignment.Center,
                 ) {
+                    // Visible way out — the viewer previously closed only by
+                    // tapping outside or Back, which nothing advertised.
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp)
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(NazoSurfaceVariant)
+                            .clickable { showAvatarPreview = false },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Close preview",
+                            tint = NazoTextPrimary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
                     if (uri.startsWith("emoji:")) {
                         Text(
                             text = uri.removePrefix("emoji:"),
@@ -833,6 +922,20 @@ fun ProfileScreen(
                             color = NazoTextSecondary
                         )
                     }
+                    if (!profilePictureUri.isNullOrBlank()) {
+                        Spacer(Modifier.height(12.dp))
+                        // The full-size viewer used to be reachable only by an
+                        // undisclosed press-and-hold; this is its visible route.
+                        TextButton(
+                            onClick = {
+                                showPictureDialog = false
+                                showAvatarPreview = true
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("View current picture full size", color = NazoPrimary)
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -874,11 +977,9 @@ fun ProfileScreen(
                     if (!profilePictureUri.isNullOrBlank()) {
                         NazoDangerButton(
                             onClick = {
-                                // Destructive, and irreversible from here, so
-                                // it gets a distinct double tap of feedback.
-                                Haptics.doubleLight(context)
-                                onProfilePictureChange(null)
-                                showPictureDialog = false
+                                // Destructive from here (a custom photo must be
+                                // re-added by hand) — one confirmation first.
+                                showRemoveConfirm = true
                             },
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
@@ -888,6 +989,37 @@ fun ProfileScreen(
                     }
                 }
             }
+        )
+    }
+
+    // Remove-picture confirmation. Overlays the picker (which stays open
+    // behind), so Cancel returns straight to the choices.
+    if (showRemoveConfirm) {
+        AlertDialog(
+            onDismissRequest = { showRemoveConfirm = false },
+            icon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = NazoError) },
+            title = { Text("Remove profile picture?") },
+            text = {
+                Text(
+                    "Your avatar goes back to your initial letter. To use a photo again you would need to choose or add one again.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                NazoDangerButton(onClick = {
+                    Haptics.doubleLight(context)
+                    onProfilePictureChange(null)
+                    showRemoveConfirm = false
+                    showPictureDialog = false
+                }) {
+                    Text("Remove")
+                }
+            },
+            dismissButton = {
+                NazoSecondaryButton(onClick = { showRemoveConfirm = false }, muted = true) {
+                    Text("Cancel")
+                }
+            },
         )
     }
 
@@ -1108,9 +1240,9 @@ fun ProfileScreen(
                         }
                     }
                     Spacer(Modifier.width(8.dp))
-                    Button(
+                    NazoPrimaryButton(
                         onClick = {
-                            val bitmap = previewBitmap ?: return@Button
+                            val bitmap = previewBitmap ?: return@NazoPrimaryButton
                             urlScope.launch {
                                 // Square it so the saved avatar matches the
                                 // square preview shown above.
@@ -1126,10 +1258,6 @@ fun ProfileScreen(
                         // Accept is only meaningful once an image is loaded, so
                         // it is disabled rather than doubling as a Load button.
                         enabled = previewBitmap != null && !fetching,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = NazoPrimary,
-                            contentColor = NazoOnPrimary,
-                        ),
                     ) {
                         Text("Accept")
                     }
@@ -1323,8 +1451,19 @@ private fun pravatarUrl(seed: String, nonce: String): String {
     return "https://i.pravatar.cc/256?img=$n"
 }
 
+/**
+ * Emoji avatars. The `emoji:` picture format has always been supported end to
+ * end (avatar rendering, full-size preview, backup payloads) — this list is
+ * its first visible entry point in the picker.
+ */
+private val EMOJI_CHOICES = listOf(
+    "⚡", "🔥", "🌙", "⭐", "🌸", "🍀", "👻", "✨",
+    "🦊", "🐱", "🎮", "📚", "🎯", "🍜", "💤", "😎",
+)
+
 /** Static tabs — rebuilt instantly on every refresh (new nonce = new art). */
 private fun buildStaticAvatarCategories(nonce: String): List<Pair<String, List<AvatarPreset>>> = listOf(
+    "Emoji" to EMOJI_CHOICES.map { AvatarPreset.Emoji(it) },
     "Anime Style" to ANIME_SEEDS.map {
         AvatarPreset.Generated("adv-$it-$nonce", dicebearUrl("adventurer", it, nonce))
     },
