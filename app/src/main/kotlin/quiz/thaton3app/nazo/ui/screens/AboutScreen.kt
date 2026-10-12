@@ -548,7 +548,7 @@ private fun UpdateMenuContent(
     ) {
         Text(
             text = "App Updates",
-            style = MaterialTheme.typography.headlineSmall,
+            style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             color = NazoTextPrimary,
         )

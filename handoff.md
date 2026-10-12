@@ -2990,3 +2990,52 @@ NOT tested in the sandbox):
    headings/rows reflow without clipping; the sheet scrolls in landscape.
 Not verified on a device by the agent: all of the above (no device or
 network in the sandbox) — verified by CI + code inspection.
+
+## Visual 11/11: Shared navigation & final consistency (2026-10-12)
+
+Shared infrastructure only: NEW ui/components/ReducedMotion.kt (reads
+Settings.Global.ANIMATOR_DURATION_SCALE, no new dependencies),
+AmbientBackground.kt + CelebrationEffect.kt honour it (decorative
+motion stands down; functional UI untouched),
+AiMissingDialog.kt + OfflineWarningDialog.kt hand-rolled buttons ->
+NazoPrimaryButton (same handlers), widget title colour -> the accent
+the particles already use (NazoWidgetProvider.kt), update-sheet title
+-> the shared titleLarge. Bottom nav/rail, NazoSheet,
+NazoAdaptiveDialog, launcher icons, widget logic, IntroOverlay physics
+untouched. No logic repairs or earlier visual changes were reverted.
+
+How to test it live (manual — agent had no device):
+A. Navigation: Home <-> Settings via the bar (portrait) and the right
+   rail (landscape); tab switch visibly animates in both; floating and
+   docked styles both toggle live from Appearance.
+B. Sheets/dialogs: open Appearance sheets, What's new, Updates sheet,
+   Backup previews. Drag/tap-scrim/back all dismiss (backup previews
+   deliberately refuse). Landscape sheets scroll; portrait dialogs are
+   centred cards. Confirm/cancel: backup restore Confirm is red,
+   Cancel grey; offline + AI-setup prompts now wear the standard
+   button; delete-type confirms stay red.
+C. Launcher icons: Settings -> Appearance -> App icon; all 7 variants
+   switch and launch; the switcher dialog is unchanged.
+D. Widget: add the widget at 2x2, 4x2 and 5x2; resize it; title now
+   matches the chosen accent; particles are static and re-laid-out on
+   resize; tap opens the app. No animation ever.
+E. Reduced motion: enable Android "Remove animations"
+   (accessibility), return to the app. Background is a still image,
+   result confetti never plays, nav/dialogs/progress still work.
+   Disable again -> motion resumes on return.
+Final whole-app pass (ordered):
+1. Both themes x 3 accents (mint, sakura, indigo) on Home, Settings
+   and one gameplay screen: text readable, dividers visible, accents
+   not over-bright in dark.
+2. Every screen once in portrait, then landscape: Home, quiz/Survival/
+   Blitz, Versus, guessing, results/review, Statistics, Profile,
+   Settings + subscreens, About + Changelog/Credits/Licenses.
+3. Font scale at largest (Settings -> Display -> Font size): headers
+   wrap, buttons fit, no clipped labels on nav or dialogs.
+4. Keyboard: open the AI provider key field and the username editor —
+   fields stay visible, dismiss on outside tap, insets respected.
+5. Rotate mid-dialog and mid-sheet on Backup, Updates, profile
+   picture: nothing closes unexpectedly.
+6. Reduced-motion pass (item E) on Home + one results screen.
+Not verified on a device by the agent: all of the above (no device in
+the sandbox) — verified by CI + code inspection.

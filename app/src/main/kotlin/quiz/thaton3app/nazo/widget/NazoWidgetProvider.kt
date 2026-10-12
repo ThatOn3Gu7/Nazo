@@ -10,11 +10,13 @@ import android.content.res.Configuration
 import android.os.Bundle
 import android.graphics.Color
 import android.widget.RemoteViews
+import androidx.compose.ui.graphics.toArgb
 import quiz.thaton3app.nazo.R
 import quiz.thaton3app.nazo.daily.DailyChallenge
 import quiz.thaton3app.nazo.daily.DailyStore
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
+import quiz.thaton3app.nazo.ui.theme.resolveAccent
 
 /**
  * Home-screen widget: current streak + today's Daily Challenge status, tap to
@@ -119,6 +121,16 @@ class NazoWidgetProvider : AppWidgetProvider() {
 
             val views = RemoteViews(context.packageName, R.layout.widget_nazo)
             applyAmbientStyle(context, manager, widgetId, views)
+            // The title wears the SAME accent the ambient particles are drawn
+            // in (previously a fixed mint green, which clashed the moment the
+            // user picked another accent). The XML colour stays as the default
+            // for the instant before the first render lands; any failure here
+            // also just keeps that default.
+            runCatching {
+                val prefs = ThemePreferences(context)
+                val accent = resolveAccent(prefs.accent, isDarkMode(context, prefs)).primary
+                views.setTextColor(R.id.widget_title, accent.toArgb())
+            }
             val streak = stats.currentStreakDays
             views.setTextViewText(
                 R.id.widget_streak,
