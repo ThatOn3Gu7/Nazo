@@ -1,14 +1,15 @@
 package quiz.thaton3app.nazo.ui.screens
 
 import android.net.Uri
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.verticalScroll
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
+import quiz.thaton3app.nazo.ui.components.NazoDangerButton
 import quiz.thaton3app.nazo.ui.components.NazoAdaptiveDialog
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import androidx.compose.material.icons.Icons
@@ -64,6 +66,19 @@ import quiz.thaton3app.nazo.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+/**
+ * Presentation state for the long-running backup/restore operations. Replaces
+ * the transient Toasts: progress is visible while it runs, and success/failure
+ * stays on screen next to the actions it came from. Purely visual — the
+ * operations themselves are unchanged.
+ */
+private sealed interface OpStatus {
+    val label: String
+    data class Busy(override val label: String) : OpStatus
+    data class Done(override val label: String) : OpStatus
+    data class Failed(override val label: String) : OpStatus
+}
 
 @Composable
 fun BackupRestoreScreen(
@@ -143,24 +158,38 @@ fun BackupRestoreScreen(
     // Set when the pending restore is the on-device auto-backup rather than a picked file.
     var restoreFromAuto by rememberRetained("BackupRestore.restoreFromAuto") { false }
 
+    // Operation status banner (see OpStatus). Plain remember: a rotation
+    // mid-operation already cancels the work (its scope dies), so the banner
+    // must not survive claiming "Backing up…" forever.
+    var opStatus by remember { mutableStateOf<OpStatus?>(null) }
+    LaunchedEffect(opStatus) {
+        // Success notes fade on their own; failures stay until dismissed or
+        // until the next operation replaces them.
+        if (opStatus is OpStatus.Done) {
+            kotlinx.coroutines.delay(3500)
+            opStatus = null
+        }
+    }
+
     val createLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         scope.launch {
+            opStatus = OpStatus.Busy("Backing up…")
             try {
                 val receipt = BackupRepository.exportToUri(context, uri)
                 val record = receipt.toLastBackup()
                 backupPrefs.lastBackup = record
                 // Update the card in the same breath as the write — no restart.
                 lastBackup = record
-                Toast.makeText(context, "Backup saved successfully", Toast.LENGTH_SHORT).show()
+                opStatus = OpStatus.Done("Backup saved successfully")
             } catch (e: CancellationException) {
                 // The screen went away mid-write; never dress cancellation up
                 // as a failure.
                 throw e
             } catch (e: Exception) {
-                Toast.makeText(context, "Backup failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                opStatus = OpStatus.Failed("Backup failed: ${e.message}")
             }
         }
     }
@@ -170,6 +199,7 @@ fun BackupRestoreScreen(
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         scope.launch {
+            opStatus = OpStatus.Busy("Reading backup file…")
             // inspectUri runs the same parseAndValidate gate as validateUri, so an
             // invalid file is still rejected before anything is shown or written.
             val contents = BackupRepository.inspectUri(context, uri)
@@ -177,9 +207,10 @@ fun BackupRestoreScreen(
                 restoreUri = uri
                 restoreFromAuto = false
                 restorePreview = contents
+                opStatus = null
                 showRestoreConfirm = true
             } else {
-                Toast.makeText(context, "Invalid backup file", Toast.LENGTH_SHORT).show()
+                opStatus = OpStatus.Failed("Invalid backup file — that file isn't a Nazo backup.")
             }
         }
     }
@@ -202,7 +233,20 @@ fun BackupRestoreScreen(
             Spacer(Modifier.height(28.dp))
 
             ScreenHeader(title = "Backup & Restore", onBackClick = onBackClick)
-            
+
+            // Live operation status: progress while it runs, then a success or
+            // failure note in place of the old transient Toasts.
+            AnimatedVisibility(
+                visible = opStatus != null,
+                enter = expandVertically(animationSpec = tween(200)) + fadeIn(tween(200)),
+                exit = shrinkVertically(animationSpec = tween(160)) + fadeOut(tween(140)),
+            ) {
+                StatusBanner(
+                    status = opStatus,
+                    onDismiss = { opStatus = null },
+                )
+            }
+
             Spacer(Modifier.height(24.dp))
 
             AnimatedLastBackupCard(last = lastBackup, fallbackSummary = summaryText)
@@ -218,17 +262,20 @@ fun BackupRestoreScreen(
                         icon = Icons.Filled.Upload,
                         title = "Create Local Backup",
                         subtitle = "Export your data as a JSON file",
+                        enabled = opStatus !is OpStatus.Busy,
                         onClick = {
                             // summarizeLocal reads every store off the main
                             // thread now; the preview opens when it is ready.
                             scope.launch {
+                                opStatus = OpStatus.Busy("Preparing backup…")
                                 try {
                                     backupPreview = BackupRepository.summarizeLocal(context)
+                                    opStatus = null
                                     showBackupPreview = true
                                 } catch (e: CancellationException) {
                                     throw e
                                 } catch (e: Exception) {
-                                    Toast.makeText(context, "Backup failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    opStatus = OpStatus.Failed("Backup failed: ${e.message}")
                                 }
                             }
                         }
@@ -238,6 +285,7 @@ fun BackupRestoreScreen(
                         icon = Icons.Filled.Folder,
                         title = "Restore Data",
                         subtitle = "Import a backup file from this device",
+                        enabled = opStatus !is OpStatus.Busy,
                         onClick = { openLauncher.launch(arrayOf("application/json", "*/*")) }
                     )
                     RowDivider()
@@ -245,16 +293,19 @@ fun BackupRestoreScreen(
                         icon = Icons.Filled.SettingsBackupRestore,
                         title = "Restore from Auto-Backup",
                         subtitle = "Use the last automatic backup on this device",
+                        enabled = opStatus !is OpStatus.Busy,
                         onClick = {
                             scope.launch {
+                                opStatus = OpStatus.Busy("Reading auto-backup…")
                                 val contents = BackupRepository.inspectPath(context, autoBackupPath)
                                 if (contents != null) {
                                     restoreUri = null
                                     restoreFromAuto = true
                                     restorePreview = contents
+                                    opStatus = null
                                     showRestoreConfirm = true
                                 } else {
-                                    Toast.makeText(context, "No usable auto-backup yet", Toast.LENGTH_SHORT).show()
+                                    opStatus = OpStatus.Failed("No usable auto-backup yet")
                                 }
                             }
                         }
@@ -282,7 +333,7 @@ fun BackupRestoreScreen(
                         title = "Backup Location",
                         subtitle = autoBackupPath,
                         onClick = {
-                            Toast.makeText(context, "Auto-backups are saved here", Toast.LENGTH_LONG).show()
+                            opStatus = OpStatus.Done("Auto-backups are saved in the folder shown above")
                         }
                     )
                 }
@@ -334,12 +385,16 @@ fun BackupRestoreScreen(
                 icon = Icons.Filled.Warning,
                 categories = restorePreview,
                 confirmLabel = "Restore",
+                // Overwriting data is irreversible — the destructive action
+                // wears the fixed danger red, not the accent.
+                destructive = true,
                 onCancel = { showRestoreConfirm = false },
                 onConfirm = {
                     showRestoreConfirm = false
                     val uri = restoreUri
                     val fromAuto = restoreFromAuto
                     scope.launch {
+                        opStatus = OpStatus.Busy("Restoring…")
                         try {
                             if (fromAuto) {
                                 BackupRepository.importFromPath(context, autoBackupPath)
@@ -347,20 +402,20 @@ fun BackupRestoreScreen(
                                 // been committed; refresh the app state first, then
                                 // tell the user it is done.
                                 onRestored()
-                                Toast.makeText(context, "Restored from auto-backup", Toast.LENGTH_SHORT).show()
+                                opStatus = OpStatus.Done("Restored from auto-backup")
                             } else if (uri != null) {
                                 BackupRepository.importFromUri(context, uri)
                                 onRestored()
-                                Toast.makeText(context, "Data restored successfully", Toast.LENGTH_SHORT).show()
+                                opStatus = OpStatus.Done("Data restored successfully")
                             } else {
-                                Toast.makeText(context, "Restore failed: no backup selected", Toast.LENGTH_SHORT).show()
+                                opStatus = OpStatus.Failed("Restore failed: no backup selected")
                             }
                         } catch (e: CancellationException) {
                             // Leaving the screen mid-restore cancels the work;
                             // that is not a restore failure.
                             throw e
                         } catch (e: Exception) {
-                            Toast.makeText(context, "Restore failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                            opStatus = OpStatus.Failed("Restore failed: ${e.message}")
                         }
                     }
                 }
@@ -377,7 +432,7 @@ fun BackupRestoreScreen(
                     backupPrefs.autoBackupFrequency = value
                     BackupScheduler.apply(context, value)
                     showFreqDialog = false
-                    Toast.makeText(context, "Auto-backup set to: $label", Toast.LENGTH_SHORT).show()
+                    opStatus = OpStatus.Done("Auto-backup set to: $label")
                 },
                 onClose = { showFreqDialog = false }
             )
@@ -518,6 +573,7 @@ private fun AnimatedActionRow(
     title: String,
     subtitle: String,
     trailingText: String? = null,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -528,13 +584,18 @@ private fun AnimatedActionRow(
         animationSpec = spring(dampingRatio = 0.6f, stiffness = 400f),
         label = "press_scale"
     )
+    // While an operation is running the rows dim and stop accepting taps, so
+    // one backup/restore can never be launched on top of another.
+    val contentAlpha = if (enabled) 1f else 0.45f
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
             .scale(scale)
+            .alpha(contentAlpha)
             .clickable(
+                enabled = enabled,
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick
@@ -716,6 +777,11 @@ private fun BackupContentsContent(
     icon: ImageVector,
     categories: List<BackupRepository.BackupCategory>,
     confirmLabel: String,
+    /**
+     * Irreversible overwrite (restore) — the confirm action wears the fixed
+     * danger red instead of the theme accent, per the button vocabulary.
+     */
+    destructive: Boolean = false,
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
 ) {
@@ -827,11 +893,22 @@ private fun BackupContentsContent(
                 Text("Cancel", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
 
-            NazoPrimaryButton(
-                onClick = onConfirm,
-                modifier = Modifier.weight(1f).height(54.dp),
-            ) {
-                Text(confirmLabel, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            // Restore overwrites data irreversibly, so its confirm wears the
+            // fixed danger red; the backup preview keeps the theme accent.
+            if (destructive) {
+                NazoDangerButton(
+                    onClick = onConfirm,
+                    modifier = Modifier.weight(1f).height(54.dp),
+                ) {
+                    Text(confirmLabel, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
+            } else {
+                NazoPrimaryButton(
+                    onClick = onConfirm,
+                    modifier = Modifier.weight(1f).height(54.dp),
+                ) {
+                    Text(confirmLabel, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
@@ -987,12 +1064,10 @@ private fun AutoBackupFreqContent(
         
         Spacer(Modifier.height(24.dp))
         
-        Button(
+        NazoSecondaryButton(
             onClick = onClose,
-            modifier = Modifier.fillMaxWidth().height(54.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = NazoSurface, contentColor = NazoTextPrimary),
-            border = ButtonDefaults.outlinedButtonBorder.copy(brush = Brush.linearGradient(listOf(NazoTextSecondary.copy(0.3f), NazoTextSecondary.copy(0.3f)))),
-            shape = RoundedCornerShape(16.dp)
+            muted = true,
+            modifier = Modifier.fillMaxWidth().height(54.dp)
         ) {
             Text("Close", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
@@ -1044,10 +1119,79 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
 @Composable
 private fun RowDivider() {
     HorizontalDivider(
-        color = NazoBackground,
+        color = NazoTextSecondary.copy(alpha = 0.12f),
         thickness = 1.5.dp,
         modifier = Modifier.padding(horizontal = 20.dp)
     )
+}
+
+/**
+ * Status chip pinned under the header: spinner while the operation runs,
+ * success (which clears itself), and failure — tap the failure chip to
+ * dismiss it. This replaces the transient Toasts so the outcome is readable
+ * in every orientation.
+ */
+@Composable
+private fun StatusBanner(status: OpStatus?, onDismiss: () -> Unit) {
+    if (status == null) return
+    val container = when (status) {
+        is OpStatus.Busy -> NazoPrimary.copy(alpha = 0.16f)
+        is OpStatus.Done -> NazoSuccessBg
+        is OpStatus.Failed -> NazoErrorBg
+    }
+    val content = when (status) {
+        is OpStatus.Busy -> NazoTextPrimary
+        is OpStatus.Done -> NazoSuccess
+        is OpStatus.Failed -> NazoError
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(50))
+            .background(container)
+            .clickable(enabled = status is OpStatus.Failed, onClick = onDismiss)
+            .padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 10.dp),
+    ) {
+        when (status) {
+            is OpStatus.Busy -> CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                color = NazoPrimary,
+                strokeWidth = 2.dp,
+            )
+            is OpStatus.Done -> Icon(
+                imageVector = Icons.Filled.CheckCircle,
+                contentDescription = null,
+                tint = content,
+                modifier = Modifier.size(18.dp),
+            )
+            is OpStatus.Failed -> Icon(
+                imageVector = Icons.Filled.ErrorOutline,
+                contentDescription = null,
+                tint = content,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = status.label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = content,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f),
+        )
+        if (status is OpStatus.Failed) {
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = "Dismiss message",
+                tint = content,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+    }
 }
 
 /** Sizes are tiny JSON, so B / KB / MB with one decimal is plenty. */

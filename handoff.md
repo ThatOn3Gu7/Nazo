@@ -2878,3 +2878,54 @@ GENERATION STATES (any install):
    Picking another model and tapping the button retries with it.
 Not verified on a device by the agent: all of the above (no device in
 the sandbox) — verified by CI + code inspection.
+
+## Visual 9/11: Backup & Restore states (2026-10-12)
+
+ui/screens/BackupRestoreScreen.kt only; backup schemas, validation,
+avatar handling, I/O/atomic writes, restore behavior and data stores
+untouched. All Toasts replaced by an inline status banner under the
+screen title (Busy spinner → success note, self-clearing / failure
+note, tap to dismiss) so outcomes survive landscape + keyboard;
+Manual Backup rows dim and stop accepting taps while an operation
+runs; restore preview keeps the last-backup card with a glowing
+accent mark in the same flow; restore confirm button is NazoDanger
+(red — irreversible overwrite) while the backup preview confirm
+stays the accent primary; freq-dialog Close and nothing-to-back-up
+use the shared button vocabulary; row dividers now 12% grey (were
+invisible). Verification: unit tests + debug assembly on CI.
+
+How to test it live (manual — agent had no device; use a TEST
+install or accept that only new files are involved; NEVER restore an
+unknown backup or overwrite your only good data):
+1. Settings → Backup & Restore. Expected: "Last Backup" card, MANUAL
+   BACKUP and AUTOMATION sections, thin visible row dividers.
+2. MANUAL BACKUP → Create Local Backup. Expected: "Preparing backup…"
+   banner with spinner; then the backup preview dialog (last-backup
+   card + glowing accent mark, category list, counts, sizes).
+3. Inspect the preview, then press dialog "Cancel". Expected: nothing
+   written; last-backup card unchanged. Or pick a file location then
+   cancel the system picker — same, and no banner appears.
+4. Repeat step 2 and confirm. Expected: "Backing up…" banner, then a
+   green success banner ("Backup saved successfully") that clears
+   itself after ~3.5 s, and the last-backup card updates immediately.
+   While it runs, all three manual rows are dimmed and untappable.
+5. Restore preview: MANUAL BACKUP → Restore Data → pick the backup
+   YOU just created in step 4. Expected: "Reading backup file…" then
+   the restore preview; its confirm button is RED "Restore" (Cancel
+   stays grey). Tap Cancel — nothing is written. (Rotate with the
+   preview open: portrait = centred card, landscape = drag sheet.)
+6. Failure presentation: Restore Data → pick any non-backup text
+   file. Expected: red "Invalid backup file…" banner that STAYS until
+   tapped (dismiss X). Restore from Auto-Backup with none written yet
+   → "No usable auto-backup yet". Both are safe — nothing is written.
+7. Restore for real (only if you made a backup in step 4 and accept
+   replacing current data with it): confirm the red Restore. Expected
+   "Restoring…" banner → success banner → the app reflects the
+   restored state. Landscape/keyboard: the banner sits under the
+   title where it stays readable.
+8. AUTOMATION rows: tap Backup Location → green note naming the
+   folder; Frequency → pick a different interval → "Auto-backup set
+   to: …" banner (the note repeats the choice). Expected: same
+   scheduler behaviour as before.
+Not verified on a device by the agent: all of the above (no device in
+the sandbox) — verified by CI + code inspection.
