@@ -2559,3 +2559,55 @@ On-device reading of item 1 (what must remain visible): score ring, both
 numbers, "New Record!" badge if any, daily bonus chip, Time/Accuracy/
 Difficulty cards, and the full labels of all action buttons — for the
 entire life of the confetti.
+
+## Visual 5/11: Statistics, progression, achievements (2026-10-11)
+Calculations, XP/rank rules, achievement rules, records, shared image
+content and saved data all unchanged.
+
+Changed: difficulty bars filled with NazoDarkCard (the rank-card bg) —
+1.29:1 vs their track in the DARK theme, i.e. invisible — now fill with
+NazoPrimary (matches the achievement bars). Rank card adds "X XP earned"
+(the figure the share image already prints) and its "XP to Level N" label
+uses the real target instead of counting through wrong values. Tile
+labels get a two-line area with a 42dp minimum (long labels wrap, paired
+values stay aligned, large accessibility fonts never clip); subtitles
+ellipsize. "BY THE NUMBERS" kicker separates supporting tiles from the
+rank card's headline progress. Empty states: top-anime swaps its
+placeholder "—/0 Answers" rows (which looked like real rankings) for an
+explainer of what will appear; unplayed difficulties read "Not played
+yet" + "—" instead of "0 played / 0%"; the badge wall adds "Tap a badge
+to see your progress." Share button adopts the shared Nazo button
+vocabulary (rounded 16dp, not a pill); the share IMAGE is byte-for-byte
+the same generator.
+
+### How to test it live
+1. Profile (bottom nav) → tap "Statistics". Rank card at top: trophy,
+   "CURRENT RANK", "Level N Otaku", NEW "X XP earned" line, XP bar; left
+   "N / 200 XP" counts up once, right "M XP to Level N+1" is static and
+   correct from the first frame.
+2. Below it a small "BY THE NUMBERS" kicker, then 2×2 tiles (Total Games,
+   Overall Accuracy, Current Streak, Best Topic). Values count up on
+   entry; a long best-topic name scrolls inside its tile; labels wrap to
+   two lines without clipping or pushing the numbers apart.
+3. Games by Difficulty: every row's bar is the accent colour — switch
+   Settings → Appearance to dark and the bars must STILL be clearly
+   visible (this was the bug: they vanished in dark). Unplayed
+   difficulties read "Not played yet" with a dash instead of "0%".
+4. Top Mastered Anime: rows = medal circle, title, "N Answers", "NN% Avg"
+   chip. New profile: card shows "Nothing here yet" + one sentence
+   explaining the top-3 list (no more dash placeholder rows).
+5. Achievements: "X / 12" chip, badge wall (unlocked accent-tinted, locked
+   grey), NEW "Tap a badge to see your progress." line. Tap any badge —
+   detail panel with description + progress bar + "N / M" text; tap again
+   to collapse; tap another to morph.
+6. "Share My Stats" (now the standard rounded primary button): system
+   share sheet with the same stats image as before (level badge, XP,
+   games/accuracy/streak chips).
+7. Empty state (use a FRESH install — emulator, second user profile or
+   work profile — do NOT clear the real profile's data): Level 1 Otaku,
+   "0 XP earned", "0 / 200 XP"; tiles show 0s, Best Topic "—" with "No
+   games yet"; difficulty all "Not played yet"; Top Mastered "Nothing
+   here yet"; achievements all locked but tappable with progress text
+   like "0 / 1 game".
+Not tested on-device by the agent: everything above (no device in the
+sandbox) — verified by CI + code inspection only.
