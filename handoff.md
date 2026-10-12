@@ -2611,3 +2611,52 @@ the same generator.
    like "0 / 1 game".
 Not tested on-device by the agent: everything above (no device in the
 sandbox) — verified by CI + code inspection only.
+
+## Bug fix: answer-flow flash + survival hearts (2026-10-12)
+Owner-reported. Two bugs, one commit `3cd6040`. Rules/scoring/records
+untouched; only WHEN the survival wrong is counted changed (grade time
+instead of Next-tap time) — as requested.
+
+1. "Not quite" flash on advance: the sliding question body derived its
+   outcome from live screen state, which the Next button resets before
+   the exit slide finishes — the exiting card re-graded itself against
+   the NEW question (pick null vs new answer = wrong), flipped its
+   header to "Not quite", un-highlighted the pick and collapsed the
+   explanation for the length of the 350ms slide. Fix: every question's
+   grade (picked answer / timeout) is frozen into a per-index record the
+   moment it is revealed; the outgoing slide reads its own entry. The
+   AnimatedContent identity is now QuestionSlot(index, question) —
+   grading does not change it, so the answer tint and the explanation
+   card's expand animation play exactly as before.
+2. Survival hearts counted at Next-tap: `answer()` did `survivalWrongs++`
+   at the Next tap, so at the third wrong's grading the chip still showed
+   one heart and (since endless runs could never match the
+   "last question" label rule) the button read "Next Question" although
+   tapping it ended the run via finishSurvival(). Fix: new `onLifeLost`
+   callback fires at GRADE time (wrong pick or timeout) and the parent
+   counts it there; `answer()` only advances/ends. The button label now
+   reads "Finish Quiz" when `endless && livesLeft <= 0`.
+
+### How to test it live
+1. Flash: any quiz → answer CORRECTLY → tap Next Question immediately.
+   Expected: the card keeps its green "Correct!" header and the picked
+   option stays highlighted for the whole slide-out; no red "Not quite"
+   appears at any frame. Repeat for a wrong answer (stays "Not quite"
+   red) and a timeout (stays "Time's up!"). Best seen on a slow device or
+   with Animator duration scale at 5–10× in developer options.
+2. Hint mid-run still works: use a hint, answer, slide — the ghosted
+   options and letter pill behave as before.
+3. Survival hearts: Home → Survival. Answer wrong on purpose. Expected:
+   the heart chip loses a heart THE MOMENT the answer turns red (before
+   touching Next). Wrong twice more: on the third wrong the chip shows
+   0 hearts and the button reads "Finish Quiz" (previously: 1 heart +
+   "Next Question"). Tap it → Survival results. Also time out on a
+   question: the heart drops at 0:00, not at the Next tap.
+4. Survival positives: correct answers never cost hearts; after 2 wrongs
+   a correct answer still shows "Next Question"; the run can continue
+   with 1 heart as long as you keep answering correctly.
+5. Regression sweep: normal quiz end ("Finish Quiz" on the last
+   question, same as always), Blitz auto-advance still slides after the
+   650ms beat, Versus handoff/results unchanged, quit dialog unchanged.
+Not tested on-device by the agent (no device in the sandbox) — verified
+by CI + code inspection.

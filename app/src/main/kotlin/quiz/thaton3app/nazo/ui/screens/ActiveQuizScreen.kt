@@ -65,6 +65,16 @@ import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
 
+/** A question's graded state, frozen the moment it is revealed. */
+private data class GradedAnswer(val selected: String?, val timeUp: Boolean)
+
+/**
+ * AnimatedContent identity for one question. Grading does NOT change this
+ * (same slot → the answer tint and the explanation card's expand animate in
+ * place); only advancing to the next question does.
+ */
+private data class QuestionSlot(val index: Int, val question: Question)
+
 @Composable
 fun ActiveQuizScreen(
     question: Question,
@@ -83,11 +93,22 @@ fun ActiveQuizScreen(
     // answers auto-advance and the run ends via [onBlitzTimeUp].
     blitzDeadlineMs: Long? = null,
     onBlitzTimeUp: () -> Unit = {},
+    // Survival: fired the moment a wrong answer (or a timeout) is GRADED —
+    // before the player advances — so the lost heart is redacted immediately
+    // and the button can say "Finish Quiz" on the fatal question.
+    onLifeLost: () -> Unit = {},
     onNextQuestion: (Boolean, String?) -> Unit,
     onCloseClick: () -> Unit,
 ) {
     var selectedAnswer by remember { mutableStateOf<String?>(null) }
     var isTimeUp by remember { mutableStateOf(false) }
+    // Frozen grade record, keyed by question index. The question body reads its
+    // grade from HERE, not from the live vars above: when the Next button (or
+    // blitz auto-advance) resets the live state and the next question slides
+    // in, the OUTGOING body keeps reading its own entry — without this, the
+    // still-sliding card flipped a correct answer to "Not quite" (and
+    // un-highlighted the picked option) for the length of the transition.
+    val gradedByIndex = remember { mutableStateMapOf<Int, GradedAnswer>() }
     val isBlitz = blitzDeadlineMs != null
     val secondsPerQuestion = QuizEngine.specFor(difficulty).secondsPerQuestion
     var remainingSeconds by remember { mutableIntStateOf(secondsPerQuestion) }
@@ -118,6 +139,11 @@ fun ActiveQuizScreen(
         isTimeUp = false
         hiddenOptions = emptySet()
         letterHint = null
+        // Keep only the previous question's frozen grade (still sliding out)
+        // and this one's slot.
+        gradedByIndex.keys
+            .filter { it < currentQuestionIndex - 1 }
+            .forEach { gradedByIndex.remove(it) }
         if (isBlitz) return@LaunchedEffect
         remainingSeconds = secondsPerQuestion
         while (remainingSeconds > 0 && selectedAnswer == null) {
@@ -139,6 +165,11 @@ fun ActiveQuizScreen(
         }
         if (remainingSeconds == 0 && selectedAnswer == null) {
             isTimeUp = true
+            // A timeout is graded on the spot: it costs a survival heart at
+            // once (not at the Next tap) and freezes the "Time's up!" outcome
+            // for the exit transition.
+            gradedByIndex[currentQuestionIndex] = GradedAnswer(selected = null, timeUp = true)
+            onLifeLost()
         }
     }
 
@@ -184,9 +215,9 @@ fun ActiveQuizScreen(
         }
     }
 
-    val isAnswered = selectedAnswer != null
-    val reveal = isAnswered || isTimeUp
-    val isCorrect = selectedAnswer == question.correctAnswer
+    // Live chrome state (hint pill, timer). The question BODY reads its grade
+    // from gradedByIndex instead — see the note there.
+    val reveal = selectedAnswer != null || isTimeUp
 
     // Landscape splits the screen: question (and its explanation) on the left,
     // answers on the right. The chrome above the split is also tightened,
@@ -455,15 +486,28 @@ fun ActiveQuizScreen(
 
             Spacer(Modifier.height(if (landscape) 10.dp else 24.dp))
 
-            // Smooth sliding transition between questions
+            // Smooth sliding transition between questions. The slot is the
+            // question's identity only — grading does not change it, so the
+            // answer tint and the explanation card's expand still animate in
+            // place — while the body's GRADE comes from the frozen per-index
+            // record: the outgoing slide keeps showing its own result instead
+            // of re-deriving it from the already-reset live state (which is
+            // what flashed "Not quite" over a correct answer).
             AnimatedContent(
-                targetState = question,
+                targetState = QuestionSlot(currentQuestionIndex, question),
                 transitionSpec = { 
                     (slideInHorizontally(tween(350)) { width -> width } + fadeIn(tween(350))) togetherWith 
                     (slideOutHorizontally(tween(350)) { width -> -width } + fadeOut(tween(350)))
                 },
                 label = "questionTransition"
-            ) { q ->
+            ) { slot ->
+                val q = slot.question
+                // Frozen display state for THIS question (see gradedByIndex).
+                val graded = gradedByIndex[slot.index]
+                val shownAnswer = graded?.selected
+                val isTimeUp = graded?.timeUp == true
+                val reveal = graded != null
+                val isCorrect = shownAnswer == q.correctAnswer
                 TwoPaneQuizBody(
                     landscape = landscape,
                     question = {
@@ -490,7 +534,9 @@ fun ActiveQuizScreen(
                 // Options
                 val labels = listOf("A", "B", "C", "D")
                 q.options.forEachIndexed { index, optionText ->
-                    val isThisSelected = selectedAnswer == optionText
+                    // FROZEN selection (see gradedByIndex): the outgoing slide
+                    // keeps its pick highlighted instead of un-selecting.
+                    val isThisSelected = shownAnswer == optionText
                     val isThisCorrectAnswer = optionText == q.correctAnswer
                     // 50/50 lifeline: eliminated options fade to a ghost and stop
                     // accepting taps — the layout itself never shifts.
@@ -535,16 +581,27 @@ fun ActiveQuizScreen(
                                 // next recomposition, so two taps landing in the
                                 // same frame both pass `enabled`. Without this
                                 // the second tap re-fires feedback and (in Blitz)
-                                // can queue a second onNextQuestion.
-                                if (selectedAnswer != null) return@clickable
-                                if (optionText == q.correctAnswer) {
+                                // can queue a second onNextQuestion. `graded`
+                                // also closes the timeout race (a time-up freezes
+                                // the grade before the rows disable).
+                                if (selectedAnswer != null || graded != null) return@clickable
+                                val wasCorrect = optionText == q.correctAnswer
+                                if (wasCorrect) {
                                     Haptics.light(context)
                                     Sounds.correct(context)
                                 } else {
                                     Haptics.doubleLight(context)
                                     Sounds.wrong(context)
+                                    // Grading time — not Next-tap time: the
+                                    // survival heart is redacted the moment the
+                                    // wrong answer lands.
+                                    onLifeLost()
                                 }
                                 selectedAnswer = optionText
+                                // Freeze this question's outcome for the exit
+                                // transition (see gradedByIndex).
+                                gradedByIndex[slot.index] =
+                                    GradedAnswer(selected = optionText, timeUp = false)
                             }
                             .padding(horizontal = 20.dp, vertical = 16.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -641,7 +698,7 @@ fun ActiveQuizScreen(
                                     .background(NazoPrimary)
                                     .clickable {
                                         Haptics.light(context)
-                                        onNextQuestion(isCorrect, selectedAnswer)
+                                        onNextQuestion(isCorrect, shownAnswer)
                                         selectedAnswer = null // Reset for next question
                                     }
                                     .padding(vertical = 16.dp),
@@ -649,7 +706,14 @@ fun ActiveQuizScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    if (!endless && currentQuestionIndex == totalQuestions - 1) "Finish Quiz" else "Next Question",
+                                    // The label must name the click that ENDS
+                                    // the run: the last question of a fixed
+                                    // quiz, or the fatal question of a survival
+                                    // run (its heart is redacted at grading, so
+                                    // livesLeft already reads 0 here).
+                                    if ((!endless && currentQuestionIndex == totalQuestions - 1) ||
+                                        (endless && livesLeft <= 0)
+                                    ) "Finish Quiz" else "Next Question",
                                     color = NazoOnPrimary,
                                     fontWeight = FontWeight.Bold
                                 )

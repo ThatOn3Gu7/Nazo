@@ -979,7 +979,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
 
         // ---- SURVIVAL: 3 lives, endless horizon ----
         if (quizMode == "survival") {
-            if (!isCorrect) survivalWrongs++
+            // The wrong was already counted at grading time (onLifeLost) —
+            // this tap only advances or ends the run.
             if (survivalWrongs >= 3) {
                 finishSurvival()
                 return
@@ -1674,6 +1675,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         daily = isDailyQuiz,
                         blitzDeadlineMs = if (quizMode == "blitz") blitzDeadline else null,
                         onBlitzTimeUp = { finishBlitz() },
+                        // Hearts settle at GRADE time (wrong pick / timeout),
+                        // not at the Next tap — the chip drops at once and the
+                        // fatal question's button can say "Finish Quiz".
+                        onLifeLost = { if (quizMode == "survival") survivalWrongs++ },
                         onNextQuestion = { isCorrect, selected -> answer(isCorrect, selected) },
                         onCloseClick = { goHome() },
                     )
