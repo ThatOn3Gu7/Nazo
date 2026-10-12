@@ -2929,3 +2929,30 @@ unknown backup or overwrite your only good data):
    scheduler behaviour as before.
 Not verified on a device by the agent: all of the above (no device in
 the sandbox) — verified by CI + code inspection.
+
+## Debug fixtures: dummy backup files (2026-10-12)
+
+debug/test_backups.json/ — 6 hand-built backup bundles + 3 deliberately
+invalid files + README.md, so Backup & Restore can be tested without
+playing games to earn data first. Schema-built against BackupRepository
+(v1/v2, type-tagged stores, optional picture payload) and checked with
+an offline mirror of parseAndValidate + AvatarPayload.decode (all 9
+files behave as intended; the 02 avatar is a real 128x128 PNG).
+No code changed.
+
+How to test it live (manual — agent had no device):
+1. adb push debug/test_backups.json/. /sdcard/Download/nazo_test_backups/
+2. Settings → Backup & Restore → Restore Data → pick
+   02_full-anime-fan_v2.json. Expected: preview lists all 11
+   categories; confirm button is red "Restore"; Cancel writes nothing.
+3. Restore 02 (replaces current data — test install or accept it).
+   Expected: success banner, "Backup Tester" + purple N avatar, dummy
+   stats everywhere; AI providers stay unconfigured (keys are
+   device-locked and never travel in backups).
+4. Pick any zz_INVALID_* file. Expected: red "Invalid backup file…"
+   banner that stays until tapped; nothing is written. Safe anytime.
+5. 01 = smallest legacy v1 import; 03 = huge numbers/long labels
+   (Statistics/Profile wrapping); 04 = settings-only (progress
+   untouched); 05 = ZERO categories in preview then WIPES ALL DATA
+   (test install only!); 06 = corrupt avatar falls back to initials.
+Full table + safety rules: debug/test_backups.json/README.md.

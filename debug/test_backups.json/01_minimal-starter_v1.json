@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "createdAt": 1790618700000,
+  "stores": {
+    "nazo_stats": {
+      "quiz_stats_v1": {
+        "t": "string",
+        "v": "{\"totalQuizzes\":3,\"totalQuestionsAnswered\":15,\"totalCorrect\":11,\"currentStreakDays\":1,\"bestStreakDays\":2,\"lastQuizEpochDay\":20737,\"difficultyPlays\":{\"Easy\":2,\"Medium\":1},\"difficultyCorrect\":{\"Easy\":9,\"Medium\":2},\"difficultyAnswered\":{\"Easy\":10,\"Medium\":5},\"animeAnswered\":{\"Spy x Family\":9,\"Frieren: Beyond Journey's End\":6},\"animeCorrect\":{\"Spy x Family\":7,\"Frieren: Beyond Journey's End\":4}}"
+      }
+    },
+    "nazo_profile": {
+      "profile_username": {
+        "t": "string",
+        "v": "Backup Tester"
+      }
+    }
+  }
+}
