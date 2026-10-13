@@ -13,8 +13,8 @@ android {
         applicationId = "quiz.thaton3app.nazo"
         minSdk = 26
         targetSdk = 34
-        versionCode = 10
-        versionName = "10.0"
+        versionCode = 11
+        versionName = "11.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
