@@ -38,6 +38,20 @@ data class ChangelogEntry(
  */
 val NAZO_CHANGELOG: List<ChangelogEntry> = listOf(
     ChangelogEntry(
+        version = "11.0",
+        date = "13 Oct 2026",
+        changes = listOf(
+            "Sound styles: choose Chime, Arcade, Marimba or Bell for every sound in the app.",
+            "Press and hold your profile picture to see it full size; the picture picker also gains an Emoji tab.",
+            "Quiz questions show which anime they are about.",
+            "All 15 accent colours now meet accessibility contrast in both themes; buttons use the app font, and Settings state reads honestly.",
+            "Home, play and results screens tidied: clearer order, the question leads, and results celebrate behind the score instead of over it.",
+            "Backup & Restore reports its progress inline, includes your profile picture in backups, and restores now refresh the whole app immediately.",
+            "Nazo respects Android's \"Remove animations\": the drifting background stands still and celebration confetti stands down.",
+            "Fixed: no more \"Not quite\" flash after a correct answer, Survival hearts drop instantly, the daily streak resets when you miss a day, the Daily Challenge stays identical all day, broken AI replies are rejected instead of scored, and pop-ups survive rotating the screen.",
+        ),
+    ),
+    ChangelogEntry(
         version = "10.0",
         date = "15 Sep 2026",
         changes = listOf(
