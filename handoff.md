@@ -3039,3 +3039,42 @@ Final whole-app pass (ordered):
 6. Reduced-motion pass (item E) on Home + one results screen.
 Not verified on a device by the agent: all of the above (no device in
 the sandbox) — verified by CI + code inspection.
+
+## Release 11.0: shipped (2026-10-13)
+
+**What shipped.** GitHub release **Nazo v11.0** (tag `v11.0` on `a2a57da`,
+published from the unmerged `arena/01a06721-nazo` line by `build-release.yml`
+run 38342070183 — authorize + build-and-release both green) with the
+hand-written notes verbatim from `docs/release-notes/11.0.md`, plus both
+signed APKs (`Nazo-release-11.0.apk`, `Nazo-debug-11.0.apk`). The in-app
+changelog is set for the update: the What's New sheet now lists only 11.0's
+meaningful user-facing changes under a fresh gate id, and About → Changelog
+gains the 11.0 entry on top of the history.
+
+**Files.** `RELEASE_NOTES_11.0.md` (new, verbatim copy of the docs notes incl.
+the `<!--NAZO_NOTES_START-->` markers), `ui/components/WhatsNew.kt` (10
+pre-release entries replaced with 8 of this update's; `CHANGELOG_ID` →
+`"2026-10-13-v11.0"`), `data/AboutContent.kt` (`ChangelogEntry("11.0", …)`
+prepended), `app/build.gradle.kts` (versionCode 11 / versionName "11.0" — the
+last commit before the tag, per the release rule).
+
+**Commits.** `57dfff8` release(11.0): hand-written notes and in-app changelog
+→ `a2a57da` release(11.0): bump to version 11.0 (tagged `v11.0`).
+
+**How to test it live.**
+1. From 10.0 (or any build with a different gate id): update to the 11.0 APK
+   from the GitHub release. On Home the "What's new" sheet appears once —
+   expect the 8 entries (Sound styles; profile picture up close; anime names on
+   questions; clearer text/buttons; tidier home/play/results; Backup &
+   Restore; Remove animations; What's fixed). Dismiss; it must not reappear on
+   the next launch.
+2. About → Changelog: 11.0 is the top entry (13 Oct 2026) above 10.0.
+3. About → update panel shows version 11.0 / versionCode 11.
+4. The release page itself: github.com/ThatOn3Gu7/Nazo/releases/tag/v11.0 shows
+   the notes starting "## New — Press and hold your profile picture…" and both
+   APKs; the release APK installs and runs.
+
+Note: v11.0's sheet replaces the pre-release "next8" entries — those features
+already shipped inside 10.0 — so upgraders only read this update's changes. Release cut
+from the unmerged branch per the standing decision; PR #7 stays open and must
+not be merged.
