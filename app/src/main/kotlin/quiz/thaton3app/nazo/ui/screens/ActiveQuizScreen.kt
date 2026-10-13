@@ -1,13 +1,7 @@
 package quiz.thaton3app.nazo.ui.screens
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import android.os.SystemClock
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
@@ -17,38 +11,45 @@ import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
-import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -61,7 +62,18 @@ import quiz.thaton3app.nazo.hints.HintPill
 import quiz.thaton3app.nazo.hints.HintRevealPill
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
+
+/** A question's graded state, frozen the moment it is revealed. */
+private data class GradedAnswer(val selected: String?, val timeUp: Boolean)
+
+/**
+ * AnimatedContent identity for one question. Grading does NOT change this
+ * (same slot → the answer tint and the explanation card's expand animate in
+ * place); only advancing to the next question does.
+ */
+private data class QuestionSlot(val index: Int, val question: Question)
 
 @Composable
 fun ActiveQuizScreen(
@@ -75,15 +87,28 @@ fun ActiveQuizScreen(
     livesLeft: Int = 0,
     // Versus mode: whose turn it is ("P1" / "P2"), shown as a header badge.
     playerLabel: String? = null,
+    // Daily Challenge: a header badge marking the once-a-day run.
+    daily: Boolean = false,
     // Blitz mode: one GLOBAL deadline replaces the per-question countdown;
     // answers auto-advance and the run ends via [onBlitzTimeUp].
     blitzDeadlineMs: Long? = null,
     onBlitzTimeUp: () -> Unit = {},
+    // Survival: fired the moment a wrong answer (or a timeout) is GRADED —
+    // before the player advances — so the lost heart is redacted immediately
+    // and the button can say "Finish Quiz" on the fatal question.
+    onLifeLost: () -> Unit = {},
     onNextQuestion: (Boolean, String?) -> Unit,
     onCloseClick: () -> Unit,
 ) {
     var selectedAnswer by remember { mutableStateOf<String?>(null) }
     var isTimeUp by remember { mutableStateOf(false) }
+    // Frozen grade record, keyed by question index. The question body reads its
+    // grade from HERE, not from the live vars above: when the Next button (or
+    // blitz auto-advance) resets the live state and the next question slides
+    // in, the OUTGOING body keeps reading its own entry — without this, the
+    // still-sliding card flipped a correct answer to "Not quite" (and
+    // un-highlighted the picked option) for the length of the transition.
+    val gradedByIndex = remember { mutableStateMapOf<Int, GradedAnswer>() }
     val isBlitz = blitzDeadlineMs != null
     val secondsPerQuestion = QuizEngine.specFor(difficulty).secondsPerQuestion
     var remainingSeconds by remember { mutableIntStateOf(secondsPerQuestion) }
@@ -114,6 +139,11 @@ fun ActiveQuizScreen(
         isTimeUp = false
         hiddenOptions = emptySet()
         letterHint = null
+        // Keep only the previous question's frozen grade (still sliding out)
+        // and this one's slot.
+        gradedByIndex.keys
+            .filter { it < currentQuestionIndex - 1 }
+            .forEach { gradedByIndex.remove(it) }
         if (isBlitz) return@LaunchedEffect
         remainingSeconds = secondsPerQuestion
         while (remainingSeconds > 0 && selectedAnswer == null) {
@@ -135,6 +165,11 @@ fun ActiveQuizScreen(
         }
         if (remainingSeconds == 0 && selectedAnswer == null) {
             isTimeUp = true
+            // A timeout is graded on the spot: it costs a survival heart at
+            // once (not at the Next tap) and freezes the "Time's up!" outcome
+            // for the exit transition.
+            gradedByIndex[currentQuestionIndex] = GradedAnswer(selected = null, timeUp = true)
+            onLifeLost()
         }
     }
 
@@ -144,7 +179,9 @@ fun ActiveQuizScreen(
     if (blitzDeadlineMs != null) {
         LaunchedEffect(blitzDeadlineMs) {
             while (true) {
-                val left = ((blitzDeadlineMs - System.currentTimeMillis() + 999) / 1000L)
+                // Monotonic clock — matches how blitzDeadlineMs is produced
+                // in NazoApp, so an NTP sync mid-round cannot warp the timer.
+                val left = ((blitzDeadlineMs - SystemClock.elapsedRealtime() + 999) / 1000L)
                     .coerceAtLeast(0L).toInt()
                 if (left != remainingSeconds) {
                     remainingSeconds = left
@@ -178,25 +215,45 @@ fun ActiveQuizScreen(
         }
     }
 
-    val isAnswered = selectedAnswer != null
-    val reveal = isAnswered || isTimeUp
-    val isCorrect = selectedAnswer == question.correctAnswer
+    // Live chrome state (hint pill, timer). The question BODY reads its grade
+    // from gradedByIndex instead — see the note there.
+    val reveal = selectedAnswer != null || isTimeUp
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    // Landscape splits the screen: question (and its explanation) on the left,
+    // answers on the right. The chrome above the split is also tightened,
+    // because vertical space is the scarce dimension in landscape.
+    val landscape = isLandscape()
+    val chromeGap = if (landscape) 8.dp else 16.dp
+    val topGap = if (landscape) 8.dp else 20.dp
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            // Reading scrim: the app-wide ambient particles drift behind every
+            // screen; gameplay is a reading surface, so they are dimmed here to
+            // a whisper instead of passing under the question text.
+            .background(NazoBackground.copy(alpha = 0.9f))
+    ) {
         Column(
             modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding()
+                .fillMaxSize()
+                .statusBarsPadding()
         ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+                .then(
+                    // In landscape each pane scrolls on its own, so the page
+                    // itself must not also scroll (two nested scrollers would
+                    // fight over the same drag).
+                    if (landscape) Modifier.weight(1f)
+                    else Modifier.verticalScroll(rememberScrollState())
+                )
                 .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
                 .padding(bottom = 12.dp)
         ) {
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(topGap))
 
             // Header with Progress
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -212,18 +269,45 @@ fun ActiveQuizScreen(
                 Spacer(Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = question.theme, // e.g., "Jujutsu Kaisen: Shibuya Arc"
+                        // Orientation first: which question am I on.
+                        // Survival is endless — no meaningful "of y".
+                        text = if (endless) "Question ${currentQuestionIndex + 1}"
+                        else "Question ${currentQuestionIndex + 1} of $totalQuestions",
                         style = MaterialTheme.typography.titleMedium,
                         color = NazoTextPrimary,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        // Survival is endless — no meaningful "of y".
-                        text = if (endless) "Question ${currentQuestionIndex + 1}"
-                        else "Question ${currentQuestionIndex + 1} of $totalQuestions",
+                        // anime: theme, e.g. "Jujutsu Kaisen: Shibuya Arc" — the
+                        // anime name makes generic questions ("What is the name of
+                        // the first arc?") unambiguous about their franchise. It is
+                        // context, so it rides under the progress instead of
+                        // competing with it (and with the question card below).
+                        text = listOf(question.anime, question.theme)
+                            .filter { it.isNotBlank() }.joinToString(": "),
                         style = MaterialTheme.typography.bodyMedium,
                         color = NazoTextSecondary
                     )
+                }
+                if (daily) {
+                    // Daily Challenge: same rules as a quiz, one run a day —
+                    // labelled so the player knows why there is no AI label.
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50.dp))
+                            .background(NazoPrimary.copy(alpha = 0.16f))
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "☀ DAILY",
+                            color = NazoPrimary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
                 }
                 if (playerLabel != null) {
                     // Versus: whose turn is it (P1 / P2).
@@ -282,7 +366,16 @@ fun ActiveQuizScreen(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
-                        .background(NazoSurface),
+                        // Urgency shows on the whole chip, not just the digit:
+                        // in a row of badges the tinted disc is what the eye
+                        // finds at a glance.
+                        .background(
+                            animateColorAsState(
+                                targetValue = if (isTimeUp || remainingSeconds <= 5) NazoErrorBg else NazoSurface,
+                                animationSpec = tween(400),
+                                label = "timerBg",
+                            ).value
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     // Smoothly animate the timer color when hitting the final 5 seconds
@@ -316,8 +409,8 @@ fun ActiveQuizScreen(
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
-            // Endless/blitz runs have no meaningful fraction — skip the bar.
+            Spacer(Modifier.height(chromeGap))
+            // Endless runs have no meaningful fraction — skip the bar.
             if (!endless && !isBlitz) {
                 val progressAnim = animateFloatAsState(
                     targetValue = (currentQuestionIndex + 1) / totalQuestions.toFloat(),
@@ -333,12 +426,33 @@ fun ActiveQuizScreen(
                     color = NazoPrimary,
                     trackColor = NazoSurface
                 )
+            } else if (isBlitz) {
+                // Blitz has no question fraction but it does have one global
+                // clock — show THAT as the bar so the run's remaining time is
+                // readable at a glance, not only as a digit in the corner.
+                val blitzTotalMs = remember(blitzDeadlineMs) {
+                    ((blitzDeadlineMs ?: 0L) - SystemClock.elapsedRealtime()).coerceAtLeast(1_000L)
+                }
+                val timeAnim = animateFloatAsState(
+                    targetValue = (remainingSeconds * 1000f / blitzTotalMs).coerceIn(0f, 1f),
+                    animationSpec = tween(durationMillis = 200),
+                    label = "blitzProgress"
+                ).value
+                LinearProgressIndicator(
+                    progress = { timeAnim },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(50)),
+                    color = if (remainingSeconds <= 10) NazoError else NazoPrimary,
+                    trackColor = NazoSurface
+                )
             }
 
             // Lifeline row (Phase 4): lives OUTSIDE the question AnimatedContent so it
             // never slides with the question. Revealed letter hint grows in from the
             // left; the hint button sits on the right and greys out once unusable.
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(chromeGap))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -370,33 +484,43 @@ fun ActiveQuizScreen(
                 )
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(if (landscape) 10.dp else 24.dp))
 
-            // Smooth sliding transition between questions
+            // Smooth sliding transition between questions. The slot is the
+            // question's identity only — grading does not change it, so the
+            // answer tint and the explanation card's expand still animate in
+            // place — while the body's GRADE comes from the frozen per-index
+            // record: the outgoing slide keeps showing its own result instead
+            // of re-deriving it from the already-reset live state (which is
+            // what flashed "Not quite" over a correct answer).
             AnimatedContent(
-                targetState = question,
+                targetState = QuestionSlot(currentQuestionIndex, question),
                 transitionSpec = { 
                     (slideInHorizontally(tween(350)) { width -> width } + fadeIn(tween(350))) togetherWith 
                     (slideOutHorizontally(tween(350)) { width -> -width } + fadeOut(tween(350)))
                 },
                 label = "questionTransition"
-            ) { q ->
-                Column {
-                // Question Card
+            ) { slot ->
+                val q = slot.question
+                // Frozen display state for THIS question (see gradedByIndex).
+                val graded = gradedByIndex[slot.index]
+                val shownAnswer = graded?.selected
+                val isTimeUp = graded?.timeUp == true
+                val reveal = graded != null
+                val isCorrect = shownAnswer == q.correctAnswer
+                TwoPaneQuizBody(
+                    landscape = landscape,
+                    question = {
+                // Question Card. The franchise label used to repeat here as a
+                // kicker; it now lives once in the header, so the card's whole
+                // job is the question itself — the main thing to read.
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(24.dp))
                         .background(NazoSurface)
-                        .padding(24.dp)
+                        .padding(if (landscape) 18.dp else 24.dp)
                 ) {
-                    Text(
-                        text = q.theme.uppercase(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = NazoPrimary,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(8.dp))
                     Text(
                         text = q.text,
                         style = MaterialTheme.typography.headlineSmall,
@@ -405,12 +529,14 @@ fun ActiveQuizScreen(
                     )
                 }
 
-                Spacer(Modifier.height(24.dp))
-
+                    },
+                    options = {
                 // Options
                 val labels = listOf("A", "B", "C", "D")
                 q.options.forEachIndexed { index, optionText ->
-                    val isThisSelected = selectedAnswer == optionText
+                    // FROZEN selection (see gradedByIndex): the outgoing slide
+                    // keeps its pick highlighted instead of un-selecting.
+                    val isThisSelected = shownAnswer == optionText
                     val isThisCorrectAnswer = optionText == q.correctAnswer
                     // 50/50 lifeline: eliminated options fade to a ghost and stop
                     // accepting taps — the layout itself never shifts.
@@ -451,14 +577,31 @@ fun ActiveQuizScreen(
                             .background(bgColor)
                             .border(1.dp, borderColor, RoundedCornerShape(50))
                             .clickable(enabled = !reveal && !isHiddenByHint) {
-                                if (optionText == q.correctAnswer) {
+                                // Idempotence guard: `reveal` only flips on the
+                                // next recomposition, so two taps landing in the
+                                // same frame both pass `enabled`. Without this
+                                // the second tap re-fires feedback and (in Blitz)
+                                // can queue a second onNextQuestion. `graded`
+                                // also closes the timeout race (a time-up freezes
+                                // the grade before the rows disable).
+                                if (selectedAnswer != null || graded != null) return@clickable
+                                val wasCorrect = optionText == q.correctAnswer
+                                if (wasCorrect) {
                                     Haptics.light(context)
                                     Sounds.correct(context)
                                 } else {
                                     Haptics.doubleLight(context)
                                     Sounds.wrong(context)
+                                    // Grading time — not Next-tap time: the
+                                    // survival heart is redacted the moment the
+                                    // wrong answer lands.
+                                    onLifeLost()
                                 }
                                 selectedAnswer = optionText
+                                // Freeze this question's outcome for the exit
+                                // transition (see gradedByIndex).
+                                gradedByIndex[slot.index] =
+                                    GradedAnswer(selected = optionText, timeUp = false)
                             }
                             .padding(horizontal = 20.dp, vertical = 16.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -479,6 +622,8 @@ fun ActiveQuizScreen(
                     }
                 }
 
+                    },
+                    explanation = {
                 // Explanation Card (shows after answering OR when time runs out).
                 // Hidden in blitz: answers auto-advance on a 650ms beat instead.
                 AnimatedVisibility(
@@ -497,9 +642,44 @@ fun ActiveQuizScreen(
                                 .padding(20.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Outlined.Lightbulb, contentDescription = null, tint = NazoPrimary, modifier = Modifier.size(20.dp))
+                                // The outcome IS the news; the explanation is the
+                                // follow-up. "Time's up!" names the timed-out
+                                // state explicitly — previously only the red
+                                // timer digit implied it.
+                                val outcomeTitle = when {
+                                    isTimeUp -> "Time's up!"
+                                    isCorrect -> "Correct!"
+                                    else -> "Not quite"
+                                }
+                                val outcomeColor = when {
+                                    isCorrect && !isTimeUp -> NazoSuccess
+                                    else -> NazoError
+                                }
+                                Icon(
+                                    imageVector = when {
+                                        isTimeUp -> Icons.Filled.Schedule
+                                        isCorrect && !isTimeUp -> Icons.Filled.Check
+                                        else -> Icons.Filled.Close
+                                    },
+                                    contentDescription = null,
+                                    tint = outcomeColor,
+                                    modifier = Modifier.size(20.dp),
+                                )
                                 Spacer(Modifier.width(8.dp))
-                                Text("Explanation", style = MaterialTheme.typography.titleMedium, color = NazoTextPrimary, fontWeight = FontWeight.Bold)
+                                Text(
+                                    outcomeTitle,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = outcomeColor,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Spacer(Modifier.weight(1f))
+                                Text(
+                                    "EXPLANATION",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = NazoTextSecondary,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                )
                             }
                             Spacer(Modifier.height(8.dp))
                             Text(
@@ -518,7 +698,7 @@ fun ActiveQuizScreen(
                                     .background(NazoPrimary)
                                     .clickable {
                                         Haptics.light(context)
-                                        onNextQuestion(isCorrect, selectedAnswer)
+                                        onNextQuestion(isCorrect, shownAnswer)
                                         selectedAnswer = null // Reset for next question
                                     }
                                     .padding(vertical = 16.dp),
@@ -526,7 +706,14 @@ fun ActiveQuizScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    if (!endless && currentQuestionIndex == totalQuestions - 1) "Finish Quiz" else "Next Question",
+                                    // The label must name the click that ENDS
+                                    // the run: the last question of a fixed
+                                    // quiz, or the fatal question of a survival
+                                    // run (its heart is redacted at grading, so
+                                    // livesLeft already reads 0 here).
+                                    if ((!endless && currentQuestionIndex == totalQuestions - 1) ||
+                                        (endless && livesLeft <= 0)
+                                    ) "Finish Quiz" else "Next Question",
                                     color = NazoOnPrimary,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -536,9 +723,10 @@ fun ActiveQuizScreen(
                         }
                     }
                 }
-                }
+                    },
+                )
             }
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(if (landscape) 12.dp else 32.dp))
         }
         }
 
@@ -637,6 +825,60 @@ fun ActiveQuizScreen(
                         }
                     }
                 }
+        }
+    }
+}
+
+/**
+ * Question / options layout for one quiz question.
+ *
+ * Portrait keeps the original single column: question, options, then the
+ * explanation underneath.
+ *
+ * Landscape splits into two panes — question on the left with the explanation
+ * appearing beneath it (there is dead space there once the question is short),
+ * and the four options on the right where they are all reachable without
+ * scrolling. Each pane scrolls independently so a long question can never push
+ * the answers off-screen.
+ */
+@Composable
+private fun TwoPaneQuizBody(
+    landscape: Boolean,
+    question: @Composable () -> Unit,
+    options: @Composable () -> Unit,
+    explanation: @Composable () -> Unit,
+) {
+    if (!landscape) {
+        Column {
+            question()
+            Spacer(Modifier.height(24.dp))
+            options()
+            explanation()
+        }
+        return
+    }
+
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            question()
+            // The explanation lives under the question in landscape: that pane
+            // has room once answered, and it keeps the answers where the eye
+            // already is.
+            explanation()
+            Spacer(Modifier.height(12.dp))
+        }
+        Spacer(Modifier.width(16.dp))
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            options()
+            Spacer(Modifier.height(12.dp))
         }
     }
 }

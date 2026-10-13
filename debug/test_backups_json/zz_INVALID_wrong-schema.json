@@ -1,0 +1,9 @@
+{
+  "app": "SomeOtherApp",
+  "version": 2,
+  "createdAt": 1791792000000,
+  "preferences": {
+    "theme": "dark",
+    "sound": true
+  }
+}

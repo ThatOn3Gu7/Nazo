@@ -1,0 +1,90 @@
+{
+  "version": 2,
+  "createdAt": 1791755100000,
+  "stores": {
+    "nazo_stats": {
+      "quiz_stats_v1": {
+        "t": "string",
+        "v": "{\"totalQuizzes\":50000,\"totalQuestionsAnswered\":250000,\"totalCorrect\":217350,\"currentStreakDays\":365,\"bestStreakDays\":512,\"lastQuizEpochDay\":20738,\"difficultyPlays\":{\"Easy\":8000,\"Medium\":18000,\"Hard\":17000,\"Otaku Master\":7000},\"difficultyCorrect\":{\"Easy\":37600,\"Medium\":80100,\"Hard\":70550,\"Otaku Master\":29100},\"difficultyAnswered\":{\"Easy\":40000,\"Medium\":90000,\"Hard\":85000,\"Otaku Master\":35000},\"animeAnswered\":{\"One Piece\":42000,\"Kaguya-sama: Love Is War - Ultra Romantic\":31000,\"Frieren: Beyond Journey's End\":30000,\"The Demon Slayer: Kimetsu no Yaiba Entertainment District Arc\":28000,\"Attack on Titan\":26000,\"My Hero Academia\":24000,\"Jujutsu Kaisen\":22000,\"Naruto Shippuden\":21000,\"Haikyuu!!\":12000,\"JoJo's Bizarre Adventure\":7500,\"Dragon Ball Super\":3500,\"Bleach: Thousand-Year Blood War\":3000},\"animeCorrect\":{\"One Piece\":37120,\"Kaguya-sama: Love Is War - Ultra Romantic\":28280,\"Frieren: Beyond Journey's End\":27480,\"The Demon Slayer: Kimetsu no Yaiba Entertainment District Arc\":23520,\"Attack on Titan\":22100,\"My Hero Academia\":20160,\"Jujutsu Kaisen\":18260,\"Naruto Shippuden\":17430,\"Haikyuu!!\":10920,\"JoJo's Bizarre Adventure\":6300,\"Dragon Ball Super\":3300,\"Bleach: Thousand-Year Blood War\":2480}}"
+      }
+    },
+    "nazo_profile": {
+      "profile_username": {
+        "t": "string",
+        "v": "The Uncrowned Testing Champion Of The Whole Entire Backup System 2026"
+      },
+      "profile_picture_uri": {
+        "t": "string",
+        "v": "emoji:\ud83c\udf38"
+      }
+    },
+    "nazo_records": {
+      "quiz_best_Easy": {
+        "t": "int",
+        "v": 100
+      },
+      "quiz_best_Medium": {
+        "t": "int",
+        "v": 100
+      },
+      "quiz_best_Hard": {
+        "t": "int",
+        "v": 98
+      },
+      "guess_best_Medium_15": {
+        "t": "int",
+        "v": 1490
+      },
+      "guess_best_Hard_15": {
+        "t": "int",
+        "v": 1385
+      },
+      "survival_best": {
+        "t": "int",
+        "v": 150
+      },
+      "blitz_best": {
+        "t": "int",
+        "v": 96
+      }
+    },
+    "nazo_daily": {
+      "last_day": {
+        "t": "long",
+        "v": 20738
+      },
+      "last_score": {
+        "t": "int",
+        "v": 5
+      },
+      "last_total": {
+        "t": "int",
+        "v": 5
+      },
+      "last_bonus": {
+        "t": "int",
+        "v": 250
+      },
+      "completed_count": {
+        "t": "int",
+        "v": 365
+      },
+      "bonus_xp_total": {
+        "t": "int",
+        "v": 88250
+      }
+    },
+    "nazo_qhistory": {
+      "texts": {
+        "t": "string",
+        "v": "[\"Marathon sample question 1: which arc features the battle at the summit of the endless tower?\",\"Marathon sample question 2: which arc features the battle at the summit of the endless tower?\",\"Marathon sample question 3: which arc features the battle at the summit of the endless tower?\",\"Marathon sample question 4: which arc features the battle at the summit of the endless tower?\",\"Marathon sample question 5: which arc features the battle at the summit of the endless tower?\",\"Marathon sample question 6: which arc features the battle at the summit of the endless tower?\",\"Marathon sample question 7: which arc features the battle at the summit of the endless tower?\",\"Marathon sample question 8: which arc features the battle at the summit of the endless tower?\",\"Marathon sample question 9: which arc features the battle at the summit of the endless tower?\",\"Marathon sample question 10: which arc features the battle at the summit of the endless tower?\",\"Marathon sample question 11: which arc features the battle at the summit of the endless tower?\",\"Marathon sample question 12: which arc features the battle at the summit of the endless tower?\",\"Marathon sample question 13: which arc features the battle at the summit of the endless tower?\",\"Marathon sample question 14: which arc features the battle at the summit of the endless tower?\",\"Marathon sample question 15: which arc features the battle at the summit of the endless tower?\",\"Marathon sample question 16: which arc features the battle at the summit of the endless tower?\",\"Marathon sample question 17: which arc features the battle at the summit of the endless tower?\",\"Marathon sample question 18: which arc features the battle at the summit of the endless tower?\",\"Marathon sample question 19: which arc features the battle at the summit of the endless tower?\",\"Marathon sample question 20: which arc features the battle at the summit of the endless tower?\"]"
+      }
+    },
+    "nazo_missed": {
+      "questions": {
+        "t": "string",
+        "v": "[{\"anime\":\"Kaguya-sama: Love Is War - Ultra Romantic\",\"theme\":\"ARCS\",\"difficulty\":\"Hard\",\"text\":\"Which episode marks the climax of the long-running dual narration arc (sample 1)?\",\"options\":[\"Alpha\",\"Beta\",\"Gamma\",\"Delta\"],\"correctAnswer\":\"Alpha\",\"explanation\":\"Sample practice-deck entry used to test long lists and long labels.\"},{\"anime\":\"Kaguya-sama: Love Is War - Ultra Romantic\",\"theme\":\"ARCS\",\"difficulty\":\"Hard\",\"text\":\"Which episode marks the climax of the long-running dual narration arc (sample 2)?\",\"options\":[\"Alpha\",\"Beta\",\"Gamma\",\"Delta\"],\"correctAnswer\":\"Alpha\",\"explanation\":\"Sample practice-deck entry used to test long lists and long labels.\"},{\"anime\":\"Kaguya-sama: Love Is War - Ultra Romantic\",\"theme\":\"ARCS\",\"difficulty\":\"Hard\",\"text\":\"Which episode marks the climax of the long-running dual narration arc (sample 3)?\",\"options\":[\"Alpha\",\"Beta\",\"Gamma\",\"Delta\"],\"correctAnswer\":\"Alpha\",\"explanation\":\"Sample practice-deck entry used to test long lists and long labels.\"},{\"anime\":\"Kaguya-sama: Love Is War - Ultra Romantic\",\"theme\":\"ARCS\",\"difficulty\":\"Hard\",\"text\":\"Which episode marks the climax of the long-running dual narration arc (sample 4)?\",\"options\":[\"Alpha\",\"Beta\",\"Gamma\",\"Delta\"],\"correctAnswer\":\"Alpha\",\"explanation\":\"Sample practice-deck entry used to test long lists and long labels.\"},{\"anime\":\"Kaguya-sama: Love Is War - Ultra Romantic\",\"theme\":\"ARCS\",\"difficulty\":\"Hard\",\"text\":\"Which episode marks the climax of the long-running dual narration arc (sample 5)?\",\"options\":[\"Alpha\",\"Beta\",\"Gamma\",\"Delta\"],\"correctAnswer\":\"Alpha\",\"explanation\":\"Sample practice-deck entry used to test long lists and long labels.\"},{\"anime\":\"Kaguya-sama: Love Is War - Ultra Romantic\",\"theme\":\"ARCS\",\"difficulty\":\"Hard\",\"text\":\"Which episode marks the climax of the long-running dual narration arc (sample 6)?\",\"options\":[\"Alpha\",\"Beta\",\"Gamma\",\"Delta\"],\"correctAnswer\":\"Alpha\",\"explanation\":\"Sample practice-deck entry used to test long lists and long labels.\"},{\"anime\":\"Kaguya-sama: Love Is War - Ultra Romantic\",\"theme\":\"ARCS\",\"difficulty\":\"Hard\",\"text\":\"Which episode marks the climax of the long-running dual narration arc (sample 7)?\",\"options\":[\"Alpha\",\"Beta\",\"Gamma\",\"Delta\"],\"correctAnswer\":\"Alpha\",\"explanation\":\"Sample practice-deck entry used to test long lists and long labels.\"},{\"anime\":\"Kaguya-sama: Love Is War - Ultra Romantic\",\"theme\":\"ARCS\",\"difficulty\":\"Hard\",\"text\":\"Which episode marks the climax of the long-running dual narration arc (sample 8)?\",\"options\":[\"Alpha\",\"Beta\",\"Gamma\",\"Delta\"],\"correctAnswer\":\"Alpha\",\"explanation\":\"Sample practice-deck entry used to test long lists and long labels.\"},{\"anime\":\"Kaguya-sama: Love Is War - Ultra Romantic\",\"theme\":\"ARCS\",\"difficulty\":\"Hard\",\"text\":\"Which episode marks the climax of the long-running dual narration arc (sample 9)?\",\"options\":[\"Alpha\",\"Beta\",\"Gamma\",\"Delta\"],\"correctAnswer\":\"Alpha\",\"explanation\":\"Sample practice-deck entry used to test long lists and long labels.\"},{\"anime\":\"Kaguya-sama: Love Is War - Ultra Romantic\",\"theme\":\"ARCS\",\"difficulty\":\"Hard\",\"text\":\"Which episode marks the climax of the long-running dual narration arc (sample 10)?\",\"options\":[\"Alpha\",\"Beta\",\"Gamma\",\"Delta\"],\"correctAnswer\":\"Alpha\",\"explanation\":\"Sample practice-deck entry used to test long lists and long labels.\"}]"
+      }
+    }
+  }
+}

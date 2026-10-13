@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "createdAt": 1791544800000,
+  "stores": {
+    "nazo_stats": {
+      "quiz_stats_v1": {
+        "t": "string",
+        "v": "{\"totalQuizzes\":12,\"totalQuestionsAnswered\":60,\"totalCorrect\":41,\"currentStreakDays\":3,\"bestStreakDays\":5,\"lastQuizEpochDay\":20737,\"difficultyPlays\":{\"Easy\":6,\"Medium\":6},\"difficultyCorrect\":{\"Easy\":24,\"Medium\":17},\"difficultyAnswered\":{\"Easy\":30,\"Medium\":30},\"animeAnswered\":{\"Demon Slayer\":34,\"Naruto\":26},\"animeCorrect\":{\"Demon Slayer\":23,\"Naruto\":18}}"
+      }
+    },
+    "nazo_profile": {
+      "profile_username": {
+        "t": "string",
+        "v": "Avatar Falls Back"
+      },
+      "profile_picture_uri": {
+        "t": "string",
+        "v": "file:///data/user/0/quiz.thaton3app.nazo/files/profile/avatar_123.png"
+      }
+    }
+  },
+  "picture": {
+    "mime": "image/png",
+    "data": "dGhpcyBpcyBub3QgYW4gaW1hZ2UgYXQgYWxsISE="
+  }
+}

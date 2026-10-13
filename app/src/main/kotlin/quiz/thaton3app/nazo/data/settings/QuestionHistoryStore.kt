@@ -16,23 +16,42 @@ import org.json.JSONArray
  * Matching is on normalized text (case/punctuation-insensitive), same rule as
  * SessionMemory, so cosmetic rewording still counts as a repeat. Stored as a
  * JSON array of original texts in its own prefs file ("nazo_qhistory", part
- * of the backup set). The list is loaded once and kept in memory; writes go
- * straight back to prefs.
+ * of the backup set). The list is cached in memory for fast membership checks
+ * and reloaded via [reload] after a backup restore; writes go straight back to
+ * prefs.
  */
-class QuestionHistoryStore(context: Context) {
+class QuestionHistoryStore internal constructor(
+    private val prefs: SharedPreferences,
+) {
 
-    private val prefs: SharedPreferences =
-        context.getSharedPreferences("nazo_qhistory", Context.MODE_PRIVATE)
+    constructor(context: Context) : this(
+        context.getSharedPreferences("nazo_qhistory", Context.MODE_PRIVATE),
+    )
 
-    private val texts: MutableList<String> = run {
+    private val texts: MutableList<String> = loadTexts()
+    private val normalized: MutableSet<String> =
+        texts.mapTo(HashSet()) { normalize(it) }
+
+    private fun loadTexts(): MutableList<String> {
         val raw = prefs.getString(KEY_TEXTS, null)
-        if (raw == null) mutableListOf() else runCatching {
+        return if (raw == null) mutableListOf() else runCatching {
             val arr = JSONArray(raw)
             MutableList(arr.length()) { arr.getString(it) }
         }.getOrDefault(mutableListOf())
     }
-    private val normalized: MutableSet<String> =
-        texts.mapTo(HashSet()) { normalize(it) }
+
+    /**
+     * Re-reads prefs into the in-memory cache. Called after a backup restore:
+     * without it the cached pre-restore list would be written back over the
+     * restored history by the next [record].
+     */
+    @Synchronized
+    fun reload() {
+        texts.clear()
+        texts.addAll(loadTexts())
+        normalized.clear()
+        texts.mapTo(normalized) { normalize(it) }
+    }
 
     private fun normalize(text: String): String =
         text.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
