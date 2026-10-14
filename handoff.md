@@ -3828,3 +3828,42 @@ Test (debug APK):
 - Persists across restarts (SharedPreferences `nazo_theme`, key
   `guess_auto_crop`); mid-game switching takes effect from the next
   round (flag is read at round start).
+
+## [2026-10-14] feat(navigation): prototype progress-driven predictive back
+
+- Opted the app into Android's predictive-back callbacks with
+  `android:enableOnBackInvokedCallback="true"` in the application manifest.
+- Replaced the root `BackHandler` with Compose `PredictiveBackHandler` and
+  moved the top-level screen transition onto `SeekableTransitionState` plus
+  `Transition.AnimatedContent`. While the user edge-swipes from a stacked
+  destination, `BackEventCompat.progress` now seeks the outgoing/previous
+  destination transition directly. Committing pops the existing stack;
+  cancelling animates back to the source screen. Right-edge gestures move in
+  the opposite direction. Ordinary navigation continues to use the existing
+  fade transition.
+- Scope/compatibility notes: the existing child back handlers in
+  `OnboardingScreen` (wizard page navigation) and `GuessingPlayScreen` (quit
+  confirmation) intentionally retain their existing behavior in this first
+  prototype, so they do not show the new destination-preview transition. At
+  Home, Nazo's existing double-back-to-exit behavior is preserved; the native
+  Android back-to-home preview is therefore not substituted for that custom
+  root action. No app version bump (per owner policy).
+
+### How to test it live
+
+1. Install the debug APK on Android 15+ with gesture navigation enabled, open
+   Nazo, then go to **Home → Settings → Appearance**.
+2. Slowly edge-swipe Back from Appearance toward Settings and pause mid-swipe.
+   The Appearance screen should move with the finger while Settings becomes
+   visible behind it. Cancel by swiping back toward the starting edge: the
+   Appearance screen should settle back into place without changing the stack.
+3. Repeat the swipe and release to commit: Nazo should return to Settings.
+   Use an in-app back arrow and the hardware/button Back as controls; the
+   stack must remain correct and ordinary navigation should retain its fade.
+4. Return to Home and press Back once, then again within two seconds: the
+   existing toast and double-back exit should remain. During a Guessing Game,
+   Back should still open the quit-confirmation dialog; while onboarding is
+   open, Back should still move to the previous wizard page when applicable.
+5. On Android 13/14, enable the system's predictive-back animation developer
+   option if available. The app must still navigate correctly even on devices
+   that do not supply gesture-progress callbacks.
