@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.activity.BackEventCompat
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.SeekableTransitionState
 import androidx.compose.animation.core.rememberTransition
@@ -417,11 +418,38 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
 
     // Keep the seekable transition aligned with ordinary navigation (forward
     // fades still use the plain transition), and settle any interrupted
-    // predictive gesture: after commit currentScreen is already the popped
-    // screen, after cancel it is unchanged, so animateTo lands either way.
+    // predictive gesture. Commit: currentScreen is already the popped screen,
+    // so animateTo continues the same segment to completion (unchanged).
+    // Cancel: reverse the scrub on the SAME segment, frame-stepped exactly
+    // like the finger, instead of letting animateTo flip the segment — the
+    // flip runs the transition's target-change path, whose initial-value
+    // alignment animates toward the former target's values (the enter
+    // animation's declared off-edge start), which shows as a small rightward
+    // bounce before the settle. snapTo then normalizes the state machine at
+    // rest (a visual no-op at fraction 0), so the next navigation starts from
+    // a clean segment rather than a stale one.
     LaunchedEffect(currentScreen, predictiveBackInProgress) {
         if (!predictiveBackInProgress) {
-            screenTransitionState.animateTo(currentScreen)
+            val cancelledTo = predictiveBackTarget
+            if (cancelledTo != null && cancelledTo == screenTransitionState.targetState &&
+                currentScreen != screenTransitionState.targetState
+            ) {
+                val durationNanos = 220_000_000L
+                val startNanos = withFrameNanos { it }
+                val from = screenTransitionState.fraction
+                var value = from
+                while (value > 0f) {
+                    val elapsedNanos = (withFrameNanos { it } - startNanos).coerceAtLeast(0L)
+                    val t = FastOutSlowInEasing.transform(
+                        (elapsedNanos.toFloat() / durationNanos).coerceIn(0f, 1f)
+                    )
+                    value = from * (1f - t)
+                    screenTransitionState.seekTo(value, cancelledTo)
+                }
+                screenTransitionState.snapTo(currentScreen)
+            } else {
+                screenTransitionState.animateTo(currentScreen)
+            }
             // Cleared after the settle so the transitionSpec can still pick the
             // matching commit/cancel variant while the settle plays.
             if (predictiveBackTarget != null) predictiveBackTarget = null

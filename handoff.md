@@ -3126,3 +3126,45 @@ commits instantly with the pop transition, as before.
    layout swap).
 7. System settings → Accessibility → Remove animations ON: the swipe must not
    preview (screens change instantly) but back must still navigate correctly.
+
+## Predictive back: cancel settles without a bounce (2026-10-13)
+
+**Bug fixed.** After cancelling a back-gesture preview, the current screen made
+a small unnecessary shift/bounce to the right before settling home.
+
+**Cause (from the code and the SeekableTransitionState source docs).** The
+commit path continues the *same* transition segment ("if the current targetState
+is the same … the current transition animation is continued") — which is why
+committing looked perfect. The cancel path called `animateTo(currentScreen)`,
+which *flips* the segment (targetState → former currentState); per the
+in-source docs the flip runs the transition's target-change path where "the
+start values are animated toward the former targetState" — a separate
+initial-value animation toward the enter transition's declared off-edge start
+(`+width * direction`) — and only then plays the reversed segment. Two
+sequential animations with different starts = the rightward excursion before
+the settle.
+
+**Fix.** Cancel now reverses the scrub on the SAME segment — frame-stepped
+`seekTo(fraction, backTarget)` calls exactly like the finger (same-target
+seekTo "only … snaps the fraction", no segment flip, no initial-value
+animation) — easing out to rest over 220 ms (FastOutSlowIn), then `snapTo`
+normalizes the transition state at rest (a visual no-op at fraction 0) so the
+next navigation starts from a clean segment. The committed-back gesture
+animation, ordinary fades, and all navigation behavior are unchanged.
+
+**Files.** `ui/NazoApp.kt` only (settle `LaunchedEffect` + one import).
+
+**How to test it live.**
+1. Settings → edge-drag a back gesture far enough to reveal the screen behind,
+   then release below the commit threshold. **Expected:** the preview recedes
+   and Settings glides straight back to rest — no rightward bounce, shift or
+   overshoot at any point (watch the right edge of the screen especially).
+2. Repeat with different release points (short drag ~20%, mid drag ~50%, long
+   drag just under the commit threshold) and from both edges. **Expected:**
+   every cancel settles straight home from wherever the finger left it.
+3. Commit a gesture (release past halfway). **Expected:** unchanged — the
+   smooth glide into the revealed screen (this path was not touched).
+4. Cancel, then immediately tap something / navigate. **Expected:** normal fade
+   navigation — no jump, drift or replay (the state is normalized by snapTo).
+5. Cancel, then start another back gesture. **Expected:** the new preview
+   scrubs from rest normally.
