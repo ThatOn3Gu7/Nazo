@@ -234,6 +234,15 @@ fun AchievementsCard(
             if (rowIndex != achievements.chunked(4).lastIndex) Spacer(Modifier.height(14.dp))
         }
 
+        // Discoverability: locked badges look inert without a hint that the
+        // wall is interactive.
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = "Tap a badge to see your progress.",
+            style = MaterialTheme.typography.bodySmall,
+            color = NazoTextSecondary,
+        )
+
         // Detail panel: keeps the last selection rendered during the collapse
         // so the exit animation never shows an empty box.
         var lastSelected by remember { mutableStateOf<Achievement?>(null) }

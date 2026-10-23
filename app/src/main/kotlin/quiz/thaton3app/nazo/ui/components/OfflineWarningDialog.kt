@@ -147,21 +147,17 @@ fun OfflineWarningDialog(
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(22.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                .background(NazoPrimary)
-                .clickable {
+            NazoPrimaryButton(
+                onClick = {
                     Haptics.light(context)
                     if (isOffline) onGoOffline() else onContinue()
                 },
-                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
             ) {
                 Text(
                     text = buttonText,
-                    color = NazoOnPrimary,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Bold,
                 )

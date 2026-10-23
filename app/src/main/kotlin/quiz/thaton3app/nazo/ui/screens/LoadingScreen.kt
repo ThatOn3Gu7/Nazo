@@ -1,28 +1,31 @@
 package quiz.thaton3app.nazo.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
@@ -37,8 +40,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,15 +50,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import quiz.thaton3app.nazo.data.remote.ModelInfo
+import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
+import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.components.WavySpinner
-import quiz.thaton3app.nazo.ui.theme.NazoSurface
-import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
 import quiz.thaton3app.nazo.ui.theme.NazoError
+import quiz.thaton3app.nazo.ui.theme.NazoErrorBg
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
+import quiz.thaton3app.nazo.ui.theme.NazoSurface
+import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
 import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
-import quiz.thaton3app.nazo.data.remote.ModelInfo
 
 /**
  * Drives the quiz-generation screen. The host (NazoApp) keeps this state in memory and
@@ -67,6 +73,9 @@ sealed interface GenerationState {
     data class Loading(val providerModel: String) : GenerationState
     data class Error(val message: String, val isModelError: Boolean = false) : GenerationState
 }
+
+/** Which face of the generation card is showing. See the AnimatedContent below. */
+private enum class GenerationPhase { LOADING, ERROR }
 
 @Composable
 fun LoadingScreen(
@@ -132,8 +141,14 @@ fun LoadingScreen(
                 }
             }
 
+            // Same landscape clipping the guessing game's Preparing card had:
+            // the dialog is taller than the window once rotated, so its Cancel
+            // button was cut off with no way to reach it. Scrolling keeps the
+            // card centred when it fits and reachable when it does not.
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
                 contentAlignment = Alignment.Center,
             ) {
                 // Smooth scale-in entrance animation for the central dialog card
@@ -153,25 +168,71 @@ fun LoadingScreen(
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            when (state) {
-                                is GenerationState.Loading -> LoadingContent(
-                                    providerModel = state.providerModel,
-                                    onCancel = onCancel,
-                                )
-                                is GenerationState.Error -> ErrorContent(
-                                    message = state.message,
-                                    isModelError = state.isModelError,
-                                    availableModels = availableModels,
-                                    currentModel = currentModel,
-                                    onRetry = onRetry,
-                                    onUseLocal = onUseLocal,
-                                    onCancel = onCancel,
-                                    onChangeModel = onChangeModel,
-                                )
-                                GenerationState.Idle -> LoadingContent(
-                                    providerModel = "",
-                                    onCancel = onCancel,
-                                )
+                            // Loading -> Error used to swap instantly, so the
+                            // card's height jumped and the buttons appeared
+                            // under the finger that was still on Cancel.
+                            //
+                            // Keyed on the state CLASS, not the instance: an
+                            // Error whose message changes (fallback-model retry)
+                            // must not re-run the transition, and Loading whose
+                            // providerModel updates must not either.
+                            //
+                            // The outgoing content fades fully before the
+                            // incoming starts (delayMillis == the exit duration),
+                            // so the two are never both legible — and never both
+                            // tappable, since the exiting child stops taking
+                            // input once AnimatedContent begins the swap.
+                            AnimatedContent(
+                                targetState = when (state) {
+                                    is GenerationState.Error -> GenerationPhase.ERROR
+                                    else -> GenerationPhase.LOADING
+                                },
+                                transitionSpec = {
+                                    (fadeIn(tween(220, delayMillis = 160)) +
+                                        scaleIn(
+                                            tween(220, delayMillis = 160),
+                                            initialScale = 0.96f,
+                                        )) togetherWith
+                                        fadeOut(tween(160)) using
+                                        SizeTransform(clip = false) { _, _ ->
+                                            tween(280, easing = LinearOutSlowInEasing)
+                                        }
+                                },
+                                label = "generationState",
+                            ) { phase ->
+                                // MUST stay a Column. LoadingContent and
+                                // ErrorContent emit a flat run of siblings
+                                // (emblem, Spacers, texts, spinner, buttons)
+                                // that only lay out correctly inside a vertical
+                                // Column. AnimatedContent's content scope is a
+                                // BOX, so without this every element was drawn
+                                // stacked on top of the others and the Spacers
+                                // separated nothing — that was the "cramped and
+                                // overlapping" loading card.
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    when (phase) {
+                                        GenerationPhase.ERROR -> {
+                                            val error = state as? GenerationState.Error
+                                            ErrorContent(
+                                                message = error?.message.orEmpty(),
+                                                isModelError = error?.isModelError == true,
+                                                availableModels = availableModels,
+                                                currentModel = currentModel,
+                                                onRetry = onRetry,
+                                                onUseLocal = onUseLocal,
+                                                onCancel = onCancel,
+                                                onChangeModel = onChangeModel,
+                                            )
+                                        }
+                                        GenerationPhase.LOADING -> LoadingContent(
+                                            providerModel = (state as? GenerationState.Loading)
+                                                ?.providerModel.orEmpty(),
+                                            onCancel = onCancel,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -230,7 +291,13 @@ private fun LoadingContent(providerModel: String, onCancel: () -> Unit) {
     // Wavy spinner
     WavySpinner(color = NazoPrimary, modifier = Modifier.size(44.dp))
     Spacer(Modifier.height(24.dp))
-    TextButton(label = "Cancel", onClick = onCancel)
+    NazoSecondaryButton(
+        onClick = onCancel,
+        modifier = Modifier.fillMaxWidth(),
+        muted = true,
+    ) {
+        Text("Cancel")
+    }
 }
 
 @Composable
@@ -282,12 +349,24 @@ private fun ErrorContent(
         fontWeight = FontWeight.Bold,
     )
     Spacer(Modifier.height(10.dp))
-    Text(
-        text = message,
-        color = NazoTextSecondary,
-        style = MaterialTheme.typography.bodyMedium,
-        textAlign = TextAlign.Center,
-    )
+    // The app's error-chip pattern (same as the AI setup and URL flows):
+    // readable, and sat directly above the actions it explains.
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(NazoErrorBg)
+            .border(1.dp, NazoError, RoundedCornerShape(12.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        Text(
+            text = message,
+            color = NazoError,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
     Spacer(Modifier.height(20.dp))
     if (isModelError && availableModels.isNotEmpty()) {
         Text(
@@ -302,17 +381,51 @@ private fun ErrorContent(
             onSelect = { selected.value = it },
         )
         Spacer(Modifier.height(16.dp))
-        PrimaryButton(label = "Change model & retry", onClick = { onChangeModel(selected.value) })
+        // Shared button vocabulary (NazoButtons): one obvious primary action,
+        // the alternative outlined, the dismiss muted.
+        NazoPrimaryButton(
+            onClick = { onChangeModel(selected.value) },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Change model & retry")
+        }
         Spacer(Modifier.height(12.dp))
-        OutlineButton(label = "Use local quiz", onClick = onUseLocal)
+        NazoSecondaryButton(
+            onClick = onUseLocal,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Use local quiz")
+        }
         Spacer(Modifier.height(12.dp))
-        TextButton(label = "Cancel", onClick = onCancel)
+        NazoSecondaryButton(
+            onClick = onCancel,
+            modifier = Modifier.fillMaxWidth(),
+            muted = true,
+        ) {
+            Text("Cancel")
+        }
     } else {
-        PrimaryButton(label = "Retry", onClick = onRetry)
+        NazoPrimaryButton(
+            onClick = onRetry,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Retry")
+        }
         Spacer(Modifier.height(12.dp))
-        OutlineButton(label = "Use local quiz", onClick = onUseLocal)
+        NazoSecondaryButton(
+            onClick = onUseLocal,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Use local quiz")
+        }
         Spacer(Modifier.height(12.dp))
-        TextButton(label = "Cancel", onClick = onCancel)
+        NazoSecondaryButton(
+            onClick = onCancel,
+            modifier = Modifier.fillMaxWidth(),
+            muted = true,
+        ) {
+            Text("Cancel")
+        }
     }
 }
 
@@ -331,7 +444,11 @@ private fun ModelPicker(models: List<ModelInfo>, selected: String, onSelect: (St
                 .padding(horizontal = 14.dp, vertical = 14.dp),
         ) {
             Text(
-                text = if (selected.isNotBlank()) selected else "Select a model",
+                // Show the model's display name, not its raw id (and never
+                // pretend a blank selection is a model).
+                text = if (selected.isNotBlank())
+                    models.firstOrNull { it.id == selected }?.name?.ifBlank { selected } ?: selected
+                else "Select a model",
                 color = if (selected.isNotBlank()) NazoTextPrimary else NazoTextSecondary,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.weight(1f),
@@ -391,70 +508,6 @@ private fun ModelPicker(models: List<ModelInfo>, selected: String, onSelect: (St
     }
 }
 
-@Composable
-private fun PrimaryButton(label: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(48.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(NazoPrimary)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = label,
-            color = NazoOnPrimary,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-    }
-}
-
-@Composable
-private fun OutlineButton(label: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(48.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .border(1.5.dp, NazoPrimary, RoundedCornerShape(14.dp))
-            .background(Color.Transparent)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = label,
-            color = NazoPrimary,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-    }
-}
-
-@Composable
-private fun TextButton(label: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(44.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color.Transparent)
-            // Subtle outline so it reads as a button at a glance — same as
-            // the guessing game's loading-screen Cancel button.
-            .border(1.dp, NazoTextSecondary.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = label,
-            color = NazoTextSecondary,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-        )
-    }
-}
+// (The bespoke Primary/Outline/Text button helpers that used to live here were
+// replaced by the shared NazoButtons vocabulary — see ErrorContent.)
 

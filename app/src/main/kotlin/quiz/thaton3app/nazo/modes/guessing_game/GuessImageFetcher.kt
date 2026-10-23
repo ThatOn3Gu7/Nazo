@@ -6,6 +6,9 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.io.InputStream
 import java.io.UnsupportedEncodingException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -108,6 +111,13 @@ object GuessImageFetcher {
         "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
     private const val TOTAL_BUDGET_MS = 20_000L
 
+    /**
+     * Hard cap on an image response held in memory. Official art measures up
+     * to ~2400 px; 8 MB is generous for any of it while bounding what a
+     * hostile or broken endpoint can make the app allocate.
+     */
+    internal const val MAX_IMAGE_BYTES = 8 * 1024 * 1024
+
     /** Minimum title relevance for a hit to be considered (see [titleRelevance]). */
     private const val MIN_RELEVANCE = 2
 
@@ -132,8 +142,7 @@ object GuessImageFetcher {
      * round's own pre-warm, the play screen, and the next-round prefetch all
      * share the same bytes; a different URL simply replaces the slot).
      */
-    @Volatile
-    private var verifiedBytes: Pair<String, ByteArray>? = null
+    private val byteCache = OneSlotBytesCache()
 
     /**
      * [target] is the round's target_entity; [aliases] are the AI's
@@ -211,6 +220,9 @@ object GuessImageFetcher {
                             ?: animeVerified(fromFandomInfobox(v, variants, fandomWiki), fallback)
                             ?: animeVerified(fromCommonsPhrase(v, franchise, variants), fallback)
                             ?: animeVerified(fromWikipediaPhrase(v, franchise, variants), fallback)
+                        // Per-stage visibility: Kitsu winning every round means
+                        // the two stages ahead of it are missing, and this says
+                        // which and why without another build.
                         Log.i(TAG, "cast+dbs+wiki('$v') -> ${found ?: "miss"}")
                         if (found != null) break
                     }
@@ -279,7 +291,7 @@ object GuessImageFetcher {
 
         fun best(): String? {
             rejectedUrl?.let { u ->
-                rejectedBytes?.let { b -> verifiedBytes = u to b }
+                rejectedBytes?.let { b -> byteCache.put(u, b) }
                 return u
             }
             return unfetchedUrl
@@ -309,7 +321,7 @@ object GuessImageFetcher {
             fallback.rememberRejected(url, bytes)
             return null
         }
-        verifiedBytes = url to bytes
+        byteCache.put(url, bytes)
         return url
     }
 
@@ -345,22 +357,40 @@ object GuessImageFetcher {
 
     /**
      * Plain-HTTP download of the image bytes. Used by the play screen to
-     * pre-warm the mystery image BEFORE the countdown starts, so the timer
-     * only ever runs against pixels Coil can decode instantly (passed to
-     * AsyncImage as a ByteArray model — no ImageRequest needed), and by the
+     * display the mystery image (the bytes are handed to Coil as a ByteBuffer,
+     * which decodes through the exact same path as a URL request), and by the
      * next-round prefetch to pre-warm the NEXT image the same way.
      *
      * When the URL search already downloaded and pixel-verified these exact
      * bytes (or an earlier fetcher downloaded them), the one-slot cache
-     * serves them instead of re-downloading.
+     * serves them instead of re-downloading — [download] runs only on a cache
+     * miss and is injectable so tests can count requests. Responses are
+     * capped at [MAX_IMAGE_BYTES] (see [readBounded]); oversized or failed
+     * downloads return null and are never cached.
      */
-    fun fetchImageBytes(url: String): ByteArray? {
+    fun fetchImageBytes(
+        url: String,
+        download: (String) -> ByteArray? = { downloadImageBytes(it) },
+    ): ByteArray? {
         // A cached slot holding exactly this URL is a free instant answer
         // (the URL search already verified these bytes, or an earlier
         // fetcher — e.g. the next-round prefetch — downloaded them).
-        verifiedBytes?.let { (cachedUrl, cached) ->
-            if (cachedUrl == url) return cached
-        }
+        byteCache.peek(url)?.let { return it }
+        val bytes = try {
+            download(url)
+        } catch (e: Exception) {
+            Log.w(TAG, "image byte fetch failed: $url", e)
+            null
+        } ?: return null
+        // Stash the result so the NEXT fetcher of the same URL (the play
+        // screen, or a prefetch building ahead of the round) gets it without
+        // another network round-trip.
+        byteCache.put(url, bytes)
+        return bytes
+    }
+
+    /** The real network read behind [fetchImageBytes]'s default downloader. */
+    private fun downloadImageBytes(url: String): ByteArray? {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 6_000
@@ -369,18 +399,45 @@ object GuessImageFetcher {
         }
         return try {
             if (connection.responseCode !in 200..299) return null
-            val bytes = connection.inputStream.use { it.readBytes() }
-            // Stash the result so the NEXT fetcher of the same URL (the play
-            // screen pre-warm, or a prefetch building ahead of the round)
-            // gets it without another network round-trip.
-            verifiedBytes = url to bytes
-            bytes
-        } catch (e: Exception) {
-            Log.w(TAG, "image byte fetch failed: $url", e)
-            null
+            connection.inputStream.use { input ->
+                readBounded(input, connection.contentLengthLong)
+            }
         } finally {
             connection.disconnect()
         }
+    }
+
+    /**
+     * Reads [input] fully into memory under a hard size cap, with BOTH a
+     * declared-content-length check (a server that admits the response is
+     * huge is refused before anything is buffered) and a streaming byte
+     * limit (chunked or lying responses cannot bypass the cap by never
+     * declaring a length). Throws [IOException] over the limit so callers
+     * treat it like any download failure.
+     */
+    internal fun readBounded(
+        input: InputStream,
+        declaredLength: Long,
+        maxBytes: Int = MAX_IMAGE_BYTES,
+    ): ByteArray {
+        if (declaredLength > maxBytes) {
+            throw IOException("image too large (declared $declaredLength bytes, limit $maxBytes)")
+        }
+        val out = ByteArrayOutputStream(
+            if (declaredLength in 1..maxBytes.toLong()) declaredLength.toInt() else 16 * 1024,
+        )
+        val buf = ByteArray(16 * 1024)
+        var total = 0L
+        while (true) {
+            val n = input.read(buf)
+            if (n == -1) break
+            total += n
+            if (total > maxBytes) {
+                throw IOException("image too large (over $maxBytes bytes)")
+            }
+            out.write(buf, 0, n)
+        }
+        return out.toByteArray()
     }
 
     /**
@@ -504,6 +561,8 @@ object GuessImageFetcher {
             val rank = (if (franchiseMatch) 10 else 0) + nameScore
             if (rank <= bestRank) continue
             val img = node.optJSONObject("image") ?: continue
+            // AniList's "large" is the full-size upload (not a re-encoded
+            // thumbnail like Kitsu's), so it is the right pick here.
             val url = img.optString("large", "").ifBlank { img.optString("medium", "") }
             if (!isUsableImage(url)) continue
             bestRank = rank
@@ -748,8 +807,20 @@ object GuessImageFetcher {
             val rank = (if (franchiseMatch) 10 else 0) + nameScore
             if (rank <= bestRank) continue
             val img = attrs.optJSONObject("image") ?: continue
-            val url = img.optString("large", "")
-                .ifBlank { img.optString("original", "") }
+            // ORIGINAL first, not "large".
+            //
+            // Kitsu's named renditions ("large"/"medium"/"small") are
+            // server-generated thumbnails. They are re-encoded from the source
+            // at low JPEG quality and are frequently 4:2:0 chroma-subsampled,
+            // which is exactly the artefact the owner reported: the shapes
+            // survive so the character stays recognisable, but the COLOUR is
+            // blocky and smeared, because chroma is stored at a quarter of the
+            // luma resolution. Anime art — large flat colour fields bounded by
+            // hard ink lines — is the worst case for that.
+            //
+            // "original" is the unresampled upload, so the colour is intact.
+            val url = img.optString("original", "")
+                .ifBlank { img.optString("large", "") }
                 .ifBlank { img.optString("medium", "") }
             if (!isUsableImage(url)) continue
             bestRank = rank
@@ -1169,5 +1240,23 @@ object GuessImageFetcher {
         } finally {
             connection.disconnect()
         }
+    }
+}
+
+/**
+ * A one-entry byte cache keyed by exact URL: [peek] only returns bytes for
+ * the same URL [put] stored, so a newer round's prefetch can never hand the
+ * play screen the previous round's image — a different URL simply misses and
+ * refetches. Extracted from [GuessImageFetcher] so tests can exercise the
+ * keying rule without networking.
+ */
+internal class OneSlotBytesCache {
+    @Volatile
+    private var slot: Pair<String, ByteArray>? = null
+
+    fun peek(url: String): ByteArray? = slot?.takeIf { it.first == url }?.second
+
+    fun put(url: String, bytes: ByteArray) {
+        slot = url to bytes
     }
 }

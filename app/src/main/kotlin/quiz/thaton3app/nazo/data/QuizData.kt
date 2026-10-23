@@ -19,4 +19,16 @@ data class Question(
      * repeated questions from feeling repetitive across runs.
      */
     fun withShuffledOptions(): Question = copy(options = options.shuffled())
+
+    /**
+     * Stable identity for deduplication: the franchise plus the normalized
+     * question text. Question text ALONE is not unique — several series carry
+     * generic questions like "What is the name of the first arc?" — so keying on
+     * text lets one franchise silently drop another's perfectly valid question.
+     * Keying on anime + text only removes true duplicates (same franchise, same
+     * wording). Used by LocalQuestionBank.getQuestions, DailyChallenge and
+     * MissedQuestionsStore.
+     */
+    val identity: String
+        get() = anime.trim().lowercase() + "||" + text.trim().lowercase()
 }

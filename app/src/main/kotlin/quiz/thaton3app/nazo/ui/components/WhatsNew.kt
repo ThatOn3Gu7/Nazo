@@ -8,20 +8,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -46,75 +42,86 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 
 /**
  * Bump this whenever CHANGELOG below gains entries the user should see.
- * NOTE: the id is a unique gate, not the release version — the current id
- * is a pre-release one (the owner releases every ~20-30 commits, see
- * AGENTS.md); the next actual release commit will set its own id.
+ * NOTE: the id is a unique gate, not the release version. Currently a
+ * pre-release id carrying the post-11.0 entries; the next release commit
+ * sets its own id.
  */
-const val CHANGELOG_ID = "2026-09-03-next2"
+const val CHANGELOG_ID = "2026-10-13-next1"
 
 data class ChangeEntry(val title: String, val points: List<String>)
 
 val CHANGELOG: List<ChangeEntry> = listOf(
     ChangeEntry(
-        "Crop, your way",
+        "Back gestures show where they'll take you",
         listOf(
-            "The Guessing Game's auto-crop — which frames each mystery image on the character's face and upper body — is now optional",
-            "Turn it off in Appearance → Guessing Game to see the full original artwork",
+            "Swipe from the screen edge and the current screen slides away with your finger, revealing the screen behind it",
+            "Release to go back — or slide it back to change your mind",
+            "Works with gesture navigation on Android 13 and newer; buttons and older devices keep the usual instant back",
         ),
     ),
     ChangeEntry(
-        "Instant next round",
+        "Sound styles",
         listOf(
-            "While you play, the next round's answer set and mystery image load in the background",
-            "\"Next Round\" now skips the waiting screen — tap and play, no generation screen in between",
+            "Settings → Feedback → Sound style offers Chime, Arcade, Marimba and Bell",
+            "Tap one to hear it — the choice applies to every sound in the app",
+            "Chime is the original sound and stays the default",
         ),
     ),
     ChangeEntry(
-        "Official art, every round",
+        "Your profile picture, up close",
         listOf(
-            "Guessing Game now fetches the character's official artwork from the anime's own cast lists",
-            "A new Fandom-wiki stage digs out the official character-design files — the highest-resolution art of any source",
-            "Cosplay photos and fan art still can't sneak through — every image is checked before it's shown",
+            "Press and hold your profile picture to see it full size — a quick tap still changes it",
+            "The picture picker has a \"View current picture full size\" row and an Emoji tab",
+            "A camera badge and caption explain both gestures; removing a picture asks first",
         ),
     ),
     ChangeEntry(
-        "New game modes",
+        "Questions say which anime they are about",
         listOf(
-            "Survival — endless questions, 3 lives, chase your longest streak",
-            "Blitz — 60 seconds, answer as many as you can, works offline",
-            "Versus — pass & play: two players, same questions, one winner",
-            "Versus results now include a swipeable head-to-head answer review",
+            "Each quiz question now carries its series name, so generic wording can never be mistaken for another anime",
         ),
     ),
     ChangeEntry(
-        "Smarter quizzes",
+        "Clearer text and buttons in every theme",
         listOf(
-            "Questions you've seen recently are remembered across launches and avoided",
-            "Practice deck — replay the questions you got wrong, from the Home screen",
-            "If a model fails to generate, Nazo automatically retries with another model",
+            "All 15 accent colours now meet accessibility contrast, in light and dark mode",
+            "Buttons use the app’s own font, stay legible and are easier to tap",
+            "Settings options show their state honestly — selected, on and off are obvious in both themes",
         ),
     ),
     ChangeEntry(
-        "A fresher Home",
+        "A tidier home, play and results flow",
         listOf(
-            "Compact mode selector — all five game modes in one expandable card",
-            "Daily streak flame on the Home screen — keep it burning!",
-            "Tap anywhere outside a text field to dismiss the keyboard",
+            "Home reads top-to-bottom in one clear order, with the start button close to the fold",
+            "Play screens lead with the question; the timer turns red in its final seconds and Blitz shows time draining",
+            "Results celebrate behind the score instead of over it, and the review names both answers in words",
         ),
     ),
     ChangeEntry(
-        "Celebrations & sharing",
+        "Backup & Restore, clearer and safer",
         listOf(
-            "Victory confetti now comes in 5 switchable styles (Appearance → Celebrations)",
-            "Each confetti style has its own sound cue (when sounds are on)",
-            "Share your results as an image from the completion screens",
+            "Creating, previewing and restoring report their progress in a notice under the title",
+            "Your custom profile picture travels inside backups and comes back on restore",
+            "A restore verifies the file first and refreshes the whole app immediately",
+            "Large backups no longer freeze the screen, and interrupted writes keep the previous backup",
         ),
     ),
     ChangeEntry(
-        "Updates, upgraded",
+        "Nazo respects Android’s \"Remove animations\"",
         listOf(
-            "App updates now download inside the app with a live progress bar",
-            "See exactly which version you're upgrading from and to",
+            "The drifting background turns into a still image and celebration confetti stands down",
+            "Navigation, dialogs and progress keep working normally",
+        ),
+    ),
+    ChangeEntry(
+        "What’s fixed",
+        listOf(
+            "A correct answer no longer flashes \"Not quite\" when moving on",
+            "Survival hearts drop the moment you miss",
+            "The daily streak resets when you miss a day",
+            "The Daily Challenge is the same five questions all day, every time",
+            "Broken AI replies are rejected and retried instead of scored on a wrong answer",
+            "Pop-ups and panels survive rotating the screen",
         ),
     ),
 )
@@ -131,27 +138,11 @@ class WhatsNewStore(context: Context) {
 @Composable
 fun WhatsNewSheet(onDismiss: () -> Unit) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
+    NazoModalSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = NazoSurface,
-        dragHandle = {
-            Box(
-                modifier = Modifier
-                    .padding(top = 16.dp, bottom = 8.dp)
-                    .size(width = 36.dp, height = 4.dp)
-                    .clip(CircleShape)
-                    .background(NazoTextSecondary.copy(alpha = 0.3f))
-            )
-        },
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 10.dp)
-                .navigationBarsPadding(),
-        ) {
+        NazoSheetColumn() {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
