@@ -42,15 +42,23 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 
 /**
  * Bump this whenever CHANGELOG below gains entries the user should see.
- * NOTE: the id is a unique gate, not the release version. The 11.0 release
- * commit set the current release id; the next update that adds entries must
- * pick a fresh id so every device sees its sheet exactly once.
+ * NOTE: the id is a unique gate, not the release version. Currently a
+ * pre-release id carrying the post-11.0 entries; the next release commit
+ * sets its own id.
  */
-const val CHANGELOG_ID = "2026-10-13-v11.0"
+const val CHANGELOG_ID = "2026-10-13-next1"
 
 data class ChangeEntry(val title: String, val points: List<String>)
 
 val CHANGELOG: List<ChangeEntry> = listOf(
+    ChangeEntry(
+        "Back gestures show where they'll take you",
+        listOf(
+            "Swipe from the screen edge and the current screen slides away with your finger, revealing the screen behind it",
+            "Release to go back — or slide it back to change your mind",
+            "Works with gesture navigation on Android 13 and newer; buttons and older devices keep the usual instant back",
+        ),
+    ),
     ChangeEntry(
         "Sound styles",
         listOf(

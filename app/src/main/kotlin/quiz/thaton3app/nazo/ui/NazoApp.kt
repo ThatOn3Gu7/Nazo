@@ -5,13 +5,19 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.SystemClock
+import android.util.Log
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
+import androidx.activity.BackEventCompat
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.SeekableTransitionState
+import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -26,8 +32,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import quiz.thaton3app.nazo.BuildConfig
 import quiz.thaton3app.nazo.ui.components.LocalRetainedStateStore
 import quiz.thaton3app.nazo.ui.components.RetainedStateStore
+import quiz.thaton3app.nazo.ui.components.rememberSystemReduceMotion
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -383,6 +391,43 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     }
     var backPressedOnce by remember { mutableStateOf(false) }
 
+    // Predictive back: the system gesture drives the screen transition directly.
+    // SeekableTransitionState lets BackEventCompat.progress scrub the real
+    // AnimatedContent transition (the same mechanism Navigation Compose uses
+    // for its predictive-back pop previews), so the outgoing screen tracks the
+    // finger while the screen behind it is revealed. Committing settles to the
+    // popped screen; cancelling settles back to where we were. The state is
+    // remembered HERE, above the layout-mode AnimatedContent, so it is bound
+    // to its Transition exactly once and survives layout swaps.
+    val screenTransitionState = remember { SeekableTransitionState<Screen>(Screen.Home) }
+    val screenTransition = rememberTransition(
+        transitionState = screenTransitionState,
+        label = "nazoScreenTransition",
+    )
+    var predictiveBackInProgress by remember { mutableStateOf(false) }
+    var predictiveBackTarget by remember { mutableStateOf<Screen?>(null) }
+    var predictiveBackEdgeDirection by remember { mutableIntStateOf(1) }
+    // Layout-mode derivation, hoisted from the content area so the back handler
+    // and the content branches share one definition: the full-screen screen
+    // transition (the one the gesture seeks) is only composed while the
+    // landscape Settings list-detail layout is NOT active.
+    val settingsDetail = currentScreen.asSettingsDetail()
+    val showListDetail = isLandscape() && !showOnboarding &&
+        (currentScreen == Screen.Settings || settingsDetail != null)
+
+    // Keep the seekable transition aligned with ordinary navigation (forward
+    // fades still use the plain transition), and settle any interrupted
+    // predictive gesture: after commit currentScreen is already the popped
+    // screen, after cancel it is unchanged, so animateTo lands either way.
+    LaunchedEffect(currentScreen, predictiveBackInProgress) {
+        if (!predictiveBackInProgress) {
+            screenTransitionState.animateTo(currentScreen)
+            // Cleared after the settle so the transitionSpec can still pick the
+            // matching commit/cancel variant while the settle plays.
+            if (predictiveBackTarget != null) predictiveBackTarget = null
+        }
+    }
+
     fun navigate(screen: Screen) {
         // Already on it — nothing to do.
         if (navigationStack.lastOrNull() == screen) return
@@ -444,23 +489,54 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     }
 
     val activity = context as? Activity
-    BackHandler(enabled = true) {
-        if (offlineDialogMode != null) {
-            offlineDialogMode = null
-            return@BackHandler
-        }
-        if (showAiMissingDialog) {
-            return@BackHandler
-        }
-        if (navigationStack.size > 1) {
-            goBack()
-        } else {
-            if (backPressedOnce) {
-                activity?.finish()
-            } else {
-                backPressedOnce = true
-                Toast.makeText(context, "Press back again to exit", Toast.LENGTH_SHORT).show()
+    val reduceMotion = rememberSystemReduceMotion()
+    PredictiveBackHandler(enabled = true) { progress ->
+        val backTarget = navigationStack.getOrNull(navigationStack.lastIndex - 1)
+        // Preview only when the full-screen screen transition is on screen and
+        // a real screen sits behind this one: not at the Home root
+        // (double-back-to-exit), not behind the blocking dialogs, and not under
+        // reduced motion (the preview is decorative; navigation is unaffected).
+        val canPreview = backTarget != null &&
+            offlineDialogMode == null &&
+            !showAiMissingDialog &&
+            !showListDetail &&
+            !reduceMotion
+
+        predictiveBackTarget = if (canPreview) backTarget else null
+        predictiveBackInProgress = canPreview
+
+        try {
+            progress.collect { event ->
+                if (canPreview && backTarget != null) {
+                    if (BuildConfig.DEBUG) {
+                        Log.d("NazoPredictiveBack", "progress=${event.progress}")
+                    }
+                    predictiveBackEdgeDirection =
+                        if (event.swipeEdge == BackEventCompat.EDGE_RIGHT) -1 else 1
+                    screenTransitionState.seekTo(event.progress, backTarget)
+                }
             }
+
+            // Gesture completed (or a hardware/back-key press arrived with no
+            // gesture progress): run the same decision logic as always.
+            if (offlineDialogMode != null) {
+                offlineDialogMode = null
+            } else if (showAiMissingDialog) {
+                // Preserve the existing non-dismissible AI configuration dialog.
+            } else if (navigationStack.size > 1) {
+                goBack()
+            } else {
+                // Home keeps Nazo's existing double-back-to-exit behavior.
+                if (backPressedOnce) {
+                    activity?.finish()
+                } else {
+                    backPressedOnce = true
+                    Toast.makeText(context, "Press back again to exit", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } finally {
+            predictiveBackInProgress = false
+            if (!canPreview) predictiveBackTarget = null
         }
     }
     var questions by remember { mutableStateOf(emptyList<Question>()) }
@@ -1814,9 +1890,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // stays on the left while the chosen sub-screen renders on the
             // right, so switching between sub-screens is one tap instead of
             // back-then-forward. Portrait keeps the normal full-screen push.
-            val settingsDetail = currentScreen.asSettingsDetail()
-            val showListDetail = landscape && !showOnboarding &&
-                (currentScreen == Screen.Settings || settingsDetail != null)
+            // (settingsDetail / showListDetail are derived next to the
+            // navigation state, above — shared with the back handler.)
 
             // Screens below are re-created when showListDetail flips on
             // rotation; rememberRetained reaches past that swap to the store
@@ -1878,16 +1953,56 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         }
                     }
                 } else {
-                    AnimatedContent(
-                        targetState = currentScreen,
+                    screenTransition.AnimatedContent(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(end = railInset)
                             .then(if (offlineDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp) else Modifier),
                         transitionSpec = {
-                            fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
+                            when {
+                                predictiveBackTarget != null && targetState == predictiveBackTarget -> {
+                                    // A predictive gesture seeking toward the screen
+                                    // behind (or its commit settle): the screen being
+                                    // left tracks the finger toward the edge while the
+                                    // one behind is revealed from the opposite side —
+                                    // slide + fade in both directions.
+                                    (slideInHorizontally(
+                                        initialOffsetX = { width -> -width * predictiveBackEdgeDirection },
+                                        animationSpec = tween(220),
+                                    ) + fadeIn(animationSpec = tween(220)))
+                                        .togetherWith(
+                                            slideOutHorizontally(
+                                                targetOffsetX = { width -> width * predictiveBackEdgeDirection },
+                                                animationSpec = tween(220),
+                                            ) + fadeOut(animationSpec = tween(220)),
+                                        )
+                                        .apply { targetContentZIndex = -1f }
+                                }
+
+                                predictiveBackTarget != null && initialState == predictiveBackTarget -> {
+                                    // A cancelled gesture settles back — continuous
+                                    // with the above: the dragged screen slides home
+                                    // while the revealed one retreats behind it.
+                                    (slideInHorizontally(
+                                        initialOffsetX = { width -> width * predictiveBackEdgeDirection },
+                                        animationSpec = tween(220),
+                                    ) + fadeIn(animationSpec = tween(180)))
+                                        .togetherWith(
+                                            slideOutHorizontally(
+                                                targetOffsetX = { width -> -width * predictiveBackEdgeDirection },
+                                                animationSpec = tween(220),
+                                            ) + fadeOut(animationSpec = tween(180)),
+                                        )
+                                        .apply { targetContentZIndex = 1f }
+                                }
+
+                                else -> {
+                                    // Ordinary navigation keeps the existing fade.
+                                    fadeIn(animationSpec = tween(220)) togetherWith
+                                        fadeOut(animationSpec = tween(160))
+                                }
+                            }
                         },
-                        label = "nazoScreenTransition",
                     ) { screen ->
                         renderScreen(screen)
                     }

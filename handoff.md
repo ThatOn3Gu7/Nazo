@@ -3078,3 +3078,51 @@ Note: v11.0's sheet replaces the pre-release "next8" entries — those features
 already shipped inside 10.0 — so upgraders only read this update's changes. Release cut
 from the unmerged branch per the standing decision; PR #7 stays open and must
 not be merged.
+
+## Predictive back: gesture-driven screen preview (2026-10-13)
+
+**What changed.** The back gesture now previews the destination: while the
+finger drags from the edge, the current screen slides away with it and the
+screen behind is revealed, proportional to `BackEventCompat.progress`
+(0.00→1.00). Releasing past the threshold completes the existing pop; sliding
+back cancels and settles the current screen into place. Implemented with
+`PredictiveBackHandler` + `SeekableTransitionState` seeking the real screen
+`AnimatedContent` — the same mechanism Navigation Compose uses for its
+predictive-back pop previews — on Nazo's existing custom `navigationStack`.
+No navigation framework change, no dependency change.
+
+**Files.** `app/src/main/AndroidManifest.xml` (`android:enableOnBackInvokedCallback="true"` — required or the system never delivers gesture progress), `ui/NazoApp.kt` (root `BackHandler` → `PredictiveBackHandler`; `SeekableTransitionState<Screen>` + `rememberTransition` hoisted above the layout-mode `AnimatedContent`; screen transition = slide + fade both ways during a gesture, the existing fade otherwise; `settingsDetail`/`showListDetail` derivations hoisted so the handler and content share one definition; debug-only `Log.d("NazoPredictiveBack", "progress=…")` per gesture event for device verification), `ui/components/WhatsNew.kt` (entry + pre-release gate id), `docs/release-notes/12.0.md` (New entry).
+
+**Scope.** Preview plays in the full-screen screen transition (portrait, and
+landscape outside the Settings list-detail layout). The landscape Settings
+list-detail pane, the Guessing Play quit-dialog handler and the Home
+double-back-to-exit keep today's commit-only behavior. Reduced motion
+("Remove animations") stands the preview down; navigation itself is unchanged.
+On 3-button nav / Android 12 and older there is no gesture progress — back
+commits instantly with the pop transition, as before.
+
+**How to test it live.**
+1. Install the debug APK on the Infinix (Android 15, gesture navigation).
+   In logcat filter `NazoPredictiveBack`. Home → Settings → Appearance, then
+   slowly drag from the left edge and pause. **Expected:** the log shows
+   `progress=` values climbing continuously between 0.00 and 1.00 (never stuck
+   at 0.00), and Appearance slides with the finger while Settings is revealed
+   behind it.
+2. Drag from the right edge instead. **Expected:** mirrored direction
+   (the screen slides the other way), same live progress values.
+3. Release past halfway. **Expected:** Nazo settles on Settings exactly once;
+   stack is Home > Settings (a following back goes to Home, not back into
+   Appearance).
+4. Swipe again and slide the finger back to the starting edge, release.
+   **Expected:** Appearance settles back into place; no navigation happens and
+   the next tap/navigation behaves normally (nothing stuck mid-transition).
+5. Portrait back arrows and the Settings hierarchy keep the ordinary fade;
+   during a Guessing Game, back still opens the quit dialog; at Home, back
+   once → toast, again within 2 s → app exits. (These handlers intentionally
+   have no gesture preview.)
+6. Rotate to landscape, Settings list-detail: back from a detail still
+   swaps the pane instantly (no preview — known scope). Rotate back and repeat
+   step 1 — the preview must still work (the transition state outlives the
+   layout swap).
+7. System settings → Accessibility → Remove animations ON: the swipe must not
+   preview (screens change instantly) but back must still navigate correctly.
