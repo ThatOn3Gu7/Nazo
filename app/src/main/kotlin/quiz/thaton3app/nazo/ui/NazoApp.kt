@@ -533,6 +533,19 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         predictiveBackTarget = if (canPreview) backTarget else null
         predictiveBackInProgress = canPreview
 
+        if (canPreview) {
+            // Every gesture must seek a segment built for its own direction.
+            // seekTo reuses the previous segment when the target is unchanged
+            // (it only snaps the fraction), so a previous gesture's segment —
+            // with its slide direction baked into the enter/exit animations —
+            // would leak into this one: a left-edge cancel immediately followed
+            // by a right-edge swipe reused the left direction. snapTo lands the
+            // transition on the current screen first (a fast no-op when it is
+            // already at rest), so the first seekTo below always builds a fresh
+            // segment that picks up this gesture's direction.
+            screenTransitionState.snapTo(currentScreen)
+        }
+
         try {
             progress.collect { event ->
                 if (canPreview && backTarget != null) {

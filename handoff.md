@@ -3168,3 +3168,46 @@ animation, ordinary fades, and all navigation behavior are unchanged.
    navigation — no jump, drift or replay (the state is normalized by snapTo).
 5. Cancel, then start another back gesture. **Expected:** the new preview
    scrubs from rest normally.
+
+## Predictive back: correct direction on rapid gesture reversal (2026-10-13)
+
+**Bug fixed.** Cancelling a left-edge back gesture and immediately starting a
+right-edge one (or the reverse) reused the previous gesture's slide direction:
+the second preview entered/exited from the wrong side.
+
+**Cause.** The slide direction is baked into the transition *segment* when it
+is created, not read per frame: `seekTo(fraction, targetState)` reuses the
+previous segment when the target is unchanged (source: it "only stops any
+current animation towards that state and snaps the fraction"), and the
+segment's enter/exit slide offsets are initialized once from
+`predictiveBackEdgeDirection`. A cancelled left gesture leaves its
+left-directed segment `(currentScreen -> backTarget)` behind; the cancel
+settle's final `snapTo` would have normalized it, but the rapid second gesture
+interrupts the settle (the settle LaunchedEffect is cancelled mid-scrub), so
+the right gesture's seekTo — same target — reused the stale segment and the
+fresh per-event direction never reached the already-built animations.
+
+**Fix.** Every seeking gesture now starts with
+`screenTransitionState.snapTo(currentScreen)`: a fast no-op when the
+transition is already at rest (all working flows unchanged), and a land-at-rest
+when a stale/mid-settle segment exists (a tiny jump — the settle is nearly home
+within ~150 ms). The gesture's first `seekTo` then always builds a fresh
+segment that picks up that gesture's direction. No delays added; commit and
+cancel animations are unchanged.
+
+**Files.** `ui/NazoApp.kt` only (one snapTo + comment in the gesture start path).
+
+**How to test it live.**
+1. Left-edge gesture, cancel (release below the commit threshold), then
+   **immediately** swipe from the right edge. **Expected:** the second preview
+   looks exactly like a standalone right-edge swipe — mirrored to the first:
+   the current screen tracks the finger leftward and the screen behind is
+   revealed from the right. No wrong-side motion at any point.
+2. The reverse sequence (right cancel, then immediate left swipe). **Expected:**
+   mirrored correctness.
+3. Repeat the same-edge sequence (left cancel, immediate left swipe) several
+   times. **Expected:** identical, correct preview every time.
+4. Commit a gesture, then gesture again from either edge. **Expected:** correct
+   direction and the unchanged smooth commit.
+5. Cancel and wait for the settle to finish (~¼ s) before gesturing again.
+   **Expected:** correct direction, and no visible snap at gesture start.
