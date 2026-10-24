@@ -3211,3 +3211,57 @@ cancel animations are unchanged.
    direction and the unchanged smooth commit.
 5. Cancel and wait for the settle to finish (~¼ s) before gesturing again.
    **Expected:** correct direction, and no visible snap at gesture start.
+
+## Predictive back: cancel settle no longer races a new gesture (2026-10-25)
+
+**Bug fixed.** Left-edge gesture cancelled, then an immediate right-edge
+gesture: the destination briefly flashed into view, the preview stopped
+tracking the finger, and releasing navigated abruptly.
+
+**Cause.** The cancel settle and the new gesture mutate the same
+`SeekableTransitionState` from two coroutines with no handshake. The settle's
+frame loop holds no animation mutator while parked in `withFrameNanos`, so the
+gesture's `snapTo` cannot stop it, and the `LaunchedEffect` restart that would
+cancel it only applies at the next recomposition — leaving a window where the
+settle still calls `seekTo`/`snapTo`. Because its scrub value comes from a
+`from` timeline captured at settle start, its leftover seekTo jumps the
+fraction onto that stale value (the destination flash) after the gesture has
+reset the state, and the colliding mutator/composition-wait calls can stall or
+kill the gesture's event collector mid-drag (the frozen preview, the abrupt
+commit).
+
+**Fix.** Three coordinated changes in the gesture path:
+1. The settle's `Job` is tracked; a new gesture cancels it before touching the
+   transition (the following `snapTo` also serialises behind any settle seekTo
+   still in flight, so on return the transition is the gesture's).
+2. The settle loop now verifies before every write that the live fraction is
+   still the one it last wrote itself; if a new owner moved the state it
+   abandons without its final `snapTo` — the captured timeline can never
+   overwrite newer progress. The normal 220 ms FastOutSlowIn return is
+   byte-for-byte the same curve as before.
+3. The gesture-start `snapTo(currentScreen)` moved inside the `try/finally`,
+   so `predictiveBackInProgress` is always cleaned up even if the snapTo is
+   interrupted.
+
+**Files.** `ui/NazoApp.kt` only (settle `LaunchedEffect`, gesture start path,
+one side-channel `Job` holder).
+
+**How to test it live.**
+1. Swipe from the left edge, cancel below the commit threshold, then
+   **immediately** swipe from the right edge. **Expected:** the second preview
+   scrubs continuously with the finger from the first frame — no destination
+   flash, no freeze — and releasing past the threshold lands smoothly on the
+   screen behind (not an abrupt jump).
+2. The reverse sequence (right cancel, immediate left swipe). **Expected:**
+   mirrored correctness.
+3. Vary the gap: cancel then gesture at ~0 ms, ~100 ms, and after the settle
+   finishes (~¼ s). **Expected:** every case tracks the finger immediately; the
+   late case shows no snap at gesture start.
+4. Same-edge repeats (left cancel, immediate left swipe) several times.
+   **Expected:** identical, correct every time.
+5. Commit a gesture, then gesture again from either edge. **Expected:** the
+   unchanged smooth commit, correct direction.
+6. Cancel once with no follow-up gesture. **Expected:** the full 220 ms
+   ease-out return home, no snap, no flash (the settle path itself).
+7. Normal navigation (taps, forward fades) and a committed back gesture.
+   **Expected:** all unchanged.

@@ -408,6 +408,12 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var predictiveBackInProgress by remember { mutableStateOf(false) }
     var predictiveBackTarget by remember { mutableStateOf<Screen?>(null) }
     var predictiveBackEdgeDirection by remember { mutableIntStateOf(1) }
+    // The cancel-settle coroutine, if one is running. A new gesture must cancel
+    // it before touching screenTransitionState: the settle's frame loop holds
+    // no animation mutator between its seekTo calls, so nothing else can stop
+    // it, and its leftover seekTo/snapTo would otherwise land mid-gesture.
+    // Side channel only — never read during composition.
+    var settleJob by remember { mutableStateOf<Job?>(null) }
     // Layout-mode derivation, hoisted from the content area so the back handler
     // and the content branches share one definition: the full-screen screen
     // transition (the one the gesture seeks) is only composed while the
@@ -429,30 +435,43 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // rest (a visual no-op at fraction 0), so the next navigation starts from
     // a clean segment rather than a stale one.
     LaunchedEffect(currentScreen, predictiveBackInProgress) {
-        if (!predictiveBackInProgress) {
-            val cancelledTo = predictiveBackTarget
-            if (cancelledTo != null && cancelledTo == screenTransitionState.targetState &&
-                currentScreen != screenTransitionState.targetState
-            ) {
-                val durationNanos = 220_000_000L
-                val startNanos = withFrameNanos { it }
-                val from = screenTransitionState.fraction
-                var value = from
-                while (value > 0f) {
-                    val elapsedNanos = (withFrameNanos { it } - startNanos).coerceAtLeast(0L)
-                    val t = FastOutSlowInEasing.transform(
-                        (elapsedNanos.toFloat() / durationNanos).coerceIn(0f, 1f)
-                    )
-                    value = from * (1f - t)
-                    screenTransitionState.seekTo(value, cancelledTo)
+        val settle = coroutineContext[Job]
+        settleJob = settle
+        try {
+            if (!predictiveBackInProgress) {
+                val cancelledTo = predictiveBackTarget
+                if (cancelledTo != null && cancelledTo == screenTransitionState.targetState &&
+                    currentScreen != screenTransitionState.targetState
+                ) {
+                    val durationNanos = 220_000_000L
+                    val startNanos = withFrameNanos { it }
+                    val from = screenTransitionState.fraction
+                    var value = from
+                    while (value > 0f) {
+                        val elapsedNanos = (withFrameNanos { it } - startNanos).coerceAtLeast(0L)
+                        // Ownership check: this loop may only overwrite the
+                        // fraction it last wrote itself. If the live fraction
+                        // has moved — a new gesture's snapTo/seekTo took over —
+                        // abandon the settle without its final snapTo and leave
+                        // the state to its new owner. The captured `from`
+                        // timeline must never overwrite newer progress.
+                        if (screenTransitionState.fraction != value) return@LaunchedEffect
+                        val t = FastOutSlowInEasing.transform(
+                            (elapsedNanos.toFloat() / durationNanos).coerceIn(0f, 1f)
+                        )
+                        value = from * (1f - t)
+                        screenTransitionState.seekTo(value, cancelledTo)
+                    }
+                    screenTransitionState.snapTo(currentScreen)
+                } else {
+                    screenTransitionState.animateTo(currentScreen)
                 }
-                screenTransitionState.snapTo(currentScreen)
-            } else {
-                screenTransitionState.animateTo(currentScreen)
+                // Cleared after the settle so the transitionSpec can still pick the
+                // matching commit/cancel variant while the settle plays.
+                if (predictiveBackTarget != null) predictiveBackTarget = null
             }
-            // Cleared after the settle so the transitionSpec can still pick the
-            // matching commit/cancel variant while the settle plays.
-            if (predictiveBackTarget != null) predictiveBackTarget = null
+        } finally {
+            if (settleJob === settle) settleJob = null
         }
     }
 
@@ -533,20 +552,30 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         predictiveBackTarget = if (canPreview) backTarget else null
         predictiveBackInProgress = canPreview
 
-        if (canPreview) {
-            // Every gesture must seek a segment built for its own direction.
-            // seekTo reuses the previous segment when the target is unchanged
-            // (it only snaps the fraction), so a previous gesture's segment —
-            // with its slide direction baked into the enter/exit animations —
-            // would leak into this one: a left-edge cancel immediately followed
-            // by a right-edge swipe reused the left direction. snapTo lands the
-            // transition on the current screen first (a fast no-op when it is
-            // already at rest), so the first seekTo below always builds a fresh
-            // segment that picks up this gesture's direction.
-            screenTransitionState.snapTo(currentScreen)
-        }
-
         try {
+            if (canPreview) {
+                // A cancelled gesture's settle may still be scrubbing its way
+                // home. Cancel it before touching the transition (its frame
+                // loop holds no mutator between seekTo calls, so it is
+                // otherwise unstoppable), then land the state at rest. snapTo
+                // also serialises behind any settle seekTo that is mid-flight
+                // (the mutator mutex waits for it to die), so when it returns
+                // the transition belongs to this gesture.
+                //
+                // Every gesture must then seek a segment built for its own
+                // direction. seekTo reuses the previous segment when the target
+                // is unchanged (it only snaps the fraction), so a previous
+                // gesture's segment — with its slide direction baked into the
+                // enter/exit animations — would leak into this one: a left-edge
+                // cancel immediately followed by a right-edge swipe reused the
+                // left direction. snapTo lands the transition on the current
+                // screen first (a fast no-op when it is already at rest), so the
+                // first seekTo below always builds a fresh segment that picks up
+                // this gesture's direction.
+                settleJob?.cancel()
+                screenTransitionState.snapTo(currentScreen)
+            }
+
             progress.collect { event ->
                 if (canPreview && backTarget != null) {
                     if (BuildConfig.DEBUG) {
