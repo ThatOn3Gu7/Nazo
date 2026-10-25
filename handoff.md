@@ -3265,3 +3265,47 @@ one side-channel `Job` holder).
    ease-out return home, no snap, no flash (the settle path itself).
 7. Normal navigation (taps, forward fades) and a committed back gesture.
    **Expected:** all unchanged.
+
+## Predictive back: frozen flash on an immediate gesture after a cancel (2026-10-25, follow-up)
+
+**Supersedes the entry above.** The settle-race fix was correct hygiene but did
+not remove the reported symptom: a gesture started immediately after a cancel
+still flashed the destination preview and froze instead of scrubbing; waiting
+about a second made the next gesture work, from either edge.
+
+**Cause (composition desync, not the settle).** Gesture-start `snapTo` is a
+no-op when the transition is already at rest — the first gesture and any
+gesture after the settle finished work for exactly that reason. Immediately
+after a cancel the state is still mid-segment, so `snapTo` has real writes,
+and the first `seekTo` runs in the same main-loop dispatch (its first progress
+event is already buffered). Both write-passes land before any composition and
+coalesce: the composition then sees the same (currentState, targetState,
+segment) the previous gesture already composed, the per-animation updater is
+never re-invoked, the seek's `resetSnapValue` marker is never consumed, and
+`TransitionAnimationState.seekTo` early-returns on that marker for the rest of
+the gesture (androidx source: `if (resetSnapValue != NoReset) return`). The
+preview freezes wherever the value snap left it — the flash — until a later
+full state change (the release settle plus its frames, ~"a second") unsticks
+it.
+
+**Fix.** After the gesture-start `snapTo`, two `withFrameNanos { }` ticks let
+one full composition pass (and the target-state acknowledgement) land before
+the first `seekTo` — the same frame-sync pattern androidx's `animateTo` uses
+internally. Frame callbacks run before each frame's composition, so two ticks
+guarantee a composition in between. Not a delay: the preview simply begins on
+the next frames, with buffered progress events replayed in order. The
+settle-job cancel and ownership check from the entry above are kept.
+
+**Files.** `ui/NazoApp.kt` only (two frame ticks + comment in the gesture
+start path).
+
+**How to test it live.**
+1. Settings → right-edge gesture, cancel, then **immediately** left-edge
+   gesture. **Expected:** the left preview scrubs with the finger from the
+   very first frames — no destination flash, no frozen hold — and a cancel
+   release glides back to Settings.
+2. The reverse sequence and same-edge immediate repeats, several times.
+   **Expected:** identical, smooth every time; no ~1 s recovery needed.
+3. Vary the gap (0 ms / ~100 ms / after the settle completes). **Expected:**
+   all behave the same now.
+4. Commit, cancel, and plain navigation paths unchanged (regression).

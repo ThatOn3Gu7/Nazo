@@ -574,6 +574,20 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 // this gesture's direction.
                 settleJob?.cancel()
                 screenTransitionState.snapTo(currentScreen)
+                // Let one full composition pass land the snapTo above before
+                // seeking. The handler otherwise seeks in the same dispatch
+                // (the first progress event is already buffered), and the two
+                // write-passes coalesce into one composition that sees the same
+                // (currentState, targetState, segment) gesture 1 already
+                // composed: the animation updater is then never re-invoked, the
+                // seek's resetSnapValue marker is never consumed, and every
+                // seekTo becomes a silent no-op — a frozen preview until some
+                // later state change unsticks it. Frame callbacks run before
+                // each frame's composition, so two ticks guarantee the snapTo
+                // writes (and the composition acknowledgement of the target
+                // state) are applied before the first seekTo below.
+                withFrameNanos { }
+                withFrameNanos { }
             }
 
             progress.collect { event ->
