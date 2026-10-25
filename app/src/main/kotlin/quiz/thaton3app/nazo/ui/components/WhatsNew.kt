@@ -42,11 +42,10 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 
 /**
  * Bump this whenever CHANGELOG below gains entries the user should see.
- * NOTE: the id is a unique gate, not the release version. Currently a
- * pre-release id carrying the post-11.0 entries; the next release commit
- * sets its own id.
+ * NOTE: the id is a unique gate, not the release version; it only has to be
+ * unique per set of entries. This is the 12.0-beta01 gate.
  */
-const val CHANGELOG_ID = "2026-10-13-next1"
+const val CHANGELOG_ID = "2026-10-25-v12.0-beta01"
 
 data class ChangeEntry(val title: String, val points: List<String>)
 
@@ -57,71 +56,6 @@ val CHANGELOG: List<ChangeEntry> = listOf(
             "Swipe from the screen edge and the current screen slides away with your finger, revealing the screen behind it",
             "Release to go back — or slide it back to change your mind",
             "Works with gesture navigation on Android 13 and newer; buttons and older devices keep the usual instant back",
-        ),
-    ),
-    ChangeEntry(
-        "Sound styles",
-        listOf(
-            "Settings → Feedback → Sound style offers Chime, Arcade, Marimba and Bell",
-            "Tap one to hear it — the choice applies to every sound in the app",
-            "Chime is the original sound and stays the default",
-        ),
-    ),
-    ChangeEntry(
-        "Your profile picture, up close",
-        listOf(
-            "Press and hold your profile picture to see it full size — a quick tap still changes it",
-            "The picture picker has a \"View current picture full size\" row and an Emoji tab",
-            "A camera badge and caption explain both gestures; removing a picture asks first",
-        ),
-    ),
-    ChangeEntry(
-        "Questions say which anime they are about",
-        listOf(
-            "Each quiz question now carries its series name, so generic wording can never be mistaken for another anime",
-        ),
-    ),
-    ChangeEntry(
-        "Clearer text and buttons in every theme",
-        listOf(
-            "All 15 accent colours now meet accessibility contrast, in light and dark mode",
-            "Buttons use the app’s own font, stay legible and are easier to tap",
-            "Settings options show their state honestly — selected, on and off are obvious in both themes",
-        ),
-    ),
-    ChangeEntry(
-        "A tidier home, play and results flow",
-        listOf(
-            "Home reads top-to-bottom in one clear order, with the start button close to the fold",
-            "Play screens lead with the question; the timer turns red in its final seconds and Blitz shows time draining",
-            "Results celebrate behind the score instead of over it, and the review names both answers in words",
-        ),
-    ),
-    ChangeEntry(
-        "Backup & Restore, clearer and safer",
-        listOf(
-            "Creating, previewing and restoring report their progress in a notice under the title",
-            "Your custom profile picture travels inside backups and comes back on restore",
-            "A restore verifies the file first and refreshes the whole app immediately",
-            "Large backups no longer freeze the screen, and interrupted writes keep the previous backup",
-        ),
-    ),
-    ChangeEntry(
-        "Nazo respects Android’s \"Remove animations\"",
-        listOf(
-            "The drifting background turns into a still image and celebration confetti stands down",
-            "Navigation, dialogs and progress keep working normally",
-        ),
-    ),
-    ChangeEntry(
-        "What’s fixed",
-        listOf(
-            "A correct answer no longer flashes \"Not quite\" when moving on",
-            "Survival hearts drop the moment you miss",
-            "The daily streak resets when you miss a day",
-            "The Daily Challenge is the same five questions all day, every time",
-            "Broken AI replies are rejected and retried instead of scored on a wrong answer",
-            "Pop-ups and panels survive rotating the screen",
         ),
     ),
 )

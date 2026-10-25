@@ -138,4 +138,9 @@ jobs:
           files: |
             apks/*.apk
           draft: false
-          prerelease: false
+          # Tags with a pre-release suffix (v2.0-beta01, v2.0-rc01, ...) publish
+          # as a GitHub Pre-release; plain tags (v2.0) publish as full releases.
+          # Pre-releases are invisible to the in-app updater (it reads
+          # /releases/latest, which skips pre-releases), so beta builds reach
+          # testers through the attached APKs only.
+          prerelease: ${{ contains(github.ref_name, '-') }}

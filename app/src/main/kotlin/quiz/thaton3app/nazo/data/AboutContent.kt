@@ -38,6 +38,13 @@ data class ChangelogEntry(
  */
 val NAZO_CHANGELOG: List<ChangelogEntry> = listOf(
     ChangelogEntry(
+        version = "12.0-beta01",
+        date = "25 Oct 2026",
+        changes = listOf(
+            "Back gestures show where they'll take you: swipe from the screen edge and the current screen slides away with your finger, revealing the screen behind it. Release to go back — or slide back to change your mind. Gesture navigation on Android 13 and newer; buttons and older devices keep the usual instant back.",
+        ),
+    ),
+    ChangelogEntry(
         version = "11.0",
         date = "13 Oct 2026",
         changes = listOf(
