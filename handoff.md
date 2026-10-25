@@ -3309,3 +3309,32 @@ start path).
 3. Vary the gap (0 ms / ~100 ms / after the settle completes). **Expected:**
    all behave the same now.
 4. Commit, cancel, and plain navigation paths unchanged (regression).
+
+## Release 12.0-beta01 (pre-release) (2026-10-25)
+
+**Shipped.** First pre-release of 12.0 — the predictive-back preview for
+screen transitions, with the four animation fixes folded into the feature
+entry — published from the unmerged branch as always.
+
+**Details.** versionCode 12 / "12.0-beta01" (bump commit is the last before
+the tag); tag `v12.0-beta01`; Build & Release run 40170370478 published
+"Nazo v12.0-beta01" with RELEASE_NOTES_12.0-beta01.md verbatim as the body
+and Nazo-release-12.0-beta01.apk / Nazo-debug-12.0-beta01.apk attached.
+GitHub now derives the pre-release flag from the tag suffix in
+build-release.yml (any tag with "-" is a Pre-release), so this release shows
+as a Pre-release and the in-app updater (/releases/latest, which skips
+pre-releases) still offers 11.0 — betas reach testers via the APKs only.
+In-app changelog: WhatsNew gate 2026-10-25-v12.0-beta01 shows the
+predictive-back entry only (the 11.0 entries already shipped); About's
+changelog carries 12.0-beta01 first.
+
+**How to test it live.**
+1. Install Nazo-release-12.0-beta01.apk over 11.0. **Expected:** the What's
+   New sheet appears on Home with the "Back gestures show where they'll take
+   you" entry (and only it).
+2. Settings → About → Changelog. **Expected:** 12.0-beta01 dated 25 Oct 2026
+   at the top, 11.0 below it.
+3. A predictive-back gesture from either edge of Settings. **Expected:** the
+   live preview scrubbing with the finger; commit glides, cancel settles home.
+4. About → update check. **Expected:** no beta offered (the updater still
+   sees 11.0 as the latest full release) until 12.0 final ships.
