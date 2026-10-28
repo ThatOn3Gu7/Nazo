@@ -13,8 +13,8 @@ android {
         applicationId = "quiz.thaton3app.nazo"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "7.0"
+        versionCode = 12
+        versionName = "12.0-beta01"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -43,6 +43,12 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    // JVM unit tests hit android.util.Log in ordinary code paths (e.g. the
+    // image fetcher's failure logging); default values keep those calls
+    // from crashing the test with "not mocked".
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
     kotlin {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget("17"))
@@ -55,6 +61,9 @@ dependencies {
     // Branded cold start: system splash screen (backward-compatible to API 26)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    // Provides the current LocalLifecycleOwner for Compose (used to re-probe
+    // connectivity on ON_RESUME); the old compose.ui.platform alias is gone.
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
@@ -63,8 +72,13 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.coil)
+    implementation(libs.androidx.exifinterface)
     // WorkManager for background update checks + notifications
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    // JVM unit tests for the AI response parser (app/src/test). org.json is the
+    // real implementation for tests — the android.jar stubs would throw.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }

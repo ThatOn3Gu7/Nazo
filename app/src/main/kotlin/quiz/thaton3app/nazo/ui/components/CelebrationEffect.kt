@@ -93,6 +93,9 @@ private fun MutableList<Particle>.spawn(
 @Composable
 fun CelebrationOverlay(style: String, modifier: Modifier = Modifier) {
     if (style == "none" || CELEBRATION_STYLES.none { it.id == style }) return
+    // System "Remove animations": confetti is pure motion, so it stands down
+    // entirely — the result numbers and buttons are unaffected.
+    if (rememberSystemReduceMotion()) return
 
     val particles = remember { mutableStateListOf<Particle>() }
     val frame = remember { mutableIntStateOf(0) }

@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "createdAt": 1790841600000,
+  "stores": {
+    "nazo_stats": {},
+    "nazo_theme": {},
+    "nazo_profile": {},
+    "nazo_provider_models": {},
+    "nazo_secure": {},
+    "nazo_records": {},
+    "nazo_daily": {},
+    "nazo_sound": {},
+    "nazo_reminders": {},
+    "nazo_qhistory": {},
+    "nazo_missed": {}
+  }
+}

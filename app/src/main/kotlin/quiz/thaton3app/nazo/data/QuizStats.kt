@@ -125,6 +125,35 @@ data class QuizStats(
         )
     }
 
+    /**
+     * Returns these stats with an EXPIRED streak zeroed out.
+     *
+     * `currentStreakDays` is only ever recomputed inside [record] /
+     * [recordGuessing], so the stored number is "correct as of
+     * [lastQuizEpochDay]". Missing a day is a non-event — nothing runs — so the
+     * old number stayed on screen until the next quiz was finished, and a user
+     * who skipped a day still saw their streak until they played again.
+     *
+     * The rule, deliberately matching what [record] already decides:
+     *  - last quiz TODAY -> alive (today is counted)
+     *  - last quiz YESTERDAY -> alive; today is not over, so the streak can
+     *    still be continued by playing. [record] turns this into +1.
+     *  - anything older -> a full day passed with no quiz, so the streak is
+     *    broken and resets to 0. [record] would restart it at 1.
+     *
+     * [lastQuizEpochDay] and [bestStreakDays] are never touched: the history of
+     * when the last quiz happened, and the personal best, both survive a reset.
+     *
+     * A device clock moved BACKWARDS (`today < lastQuizEpochDay`, e.g. flying
+     * west or a manual clock change) leaves the streak alone rather than
+     * destroying it on what is almost certainly a clock artefact.
+     */
+    fun withStreakExpiry(today: Long = localEpochDay()): QuizStats {
+        if (currentStreakDays == 0) return this
+        val last = lastQuizEpochDay ?: return copy(currentStreakDays = 0)
+        return if (today - last <= 1L) this else copy(currentStreakDays = 0)
+    }
+
     companion object {
         private const val DAY_MS = 86_400_000L
 
