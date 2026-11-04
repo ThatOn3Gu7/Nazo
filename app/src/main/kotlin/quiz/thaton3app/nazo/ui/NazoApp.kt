@@ -90,6 +90,8 @@ import quiz.thaton3app.nazo.session.SessionMemory
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.AiMissingDialog
 import quiz.thaton3app.nazo.ui.components.AmbientBackground
+import quiz.thaton3app.nazo.ui.components.AvatarFrameCache
+import quiz.thaton3app.nazo.ui.components.AvatarVideoHost
 import quiz.thaton3app.nazo.ui.components.CHANGELOG_ID
 import quiz.thaton3app.nazo.ui.components.FloatingParticlesBackground
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
@@ -243,6 +245,19 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     val profilePrefs = remember { ProfilePreferences(context) }
     var profileName by remember { mutableStateOf(profilePrefs.username) }
     var profilePictureUri by remember { mutableStateOf(profilePrefs.profilePictureUri) }
+
+    // Video avatars prepare BEFORE any screen asks for them: as soon as the
+    // saved URI is known (app start, avatar change, backup restore), kick off
+    // codec setup and a background poster-frame decode. By the time Home,
+    // Profile or a predictive-back preview composes an avatar view, the
+    // player is already preparing and the poster is usually cached — so the
+    // surface handoff paints real content immediately instead of an empty
+    // circle. Both calls are idempotent/async (never block this effect), and
+    // an avatar that isn't a video releases any idle player instead.
+    LaunchedEffect(profilePictureUri) {
+        AvatarVideoHost.prepareForAvatar(context, profilePictureUri)
+        AvatarFrameCache.warmFromDisc(context, profilePictureUri)
+    }
     val backupPrefs = remember { BackupPrefs(context) }
     val settingsScrollState = rememberScrollState()
 
