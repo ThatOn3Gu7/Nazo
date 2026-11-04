@@ -90,8 +90,9 @@ internal class AvatarPlayback {
         private set
 
     /** False while the activity is paused (app backgrounded / covered). */
+    // Deliberately not `private set`: rememberAvatarPlayback() (top level,
+    // same file) drives it from the activity lifecycle observer.
     var foreground: Boolean by mutableStateOf(true)
-        private set
 
     val shouldPlay: Boolean get() = visible && foreground
 
@@ -99,13 +100,13 @@ internal class AvatarPlayback {
         val bounds = coords.boundsInWindow()
         val inside = when {
             // No measurable window yet — assume visible rather than freeze off.
-            container.x <= 0 || container.y <= 0 -> true
+            container.width <= 0 || container.height <= 0 -> true
             // Fully scrolled/clipped away (empty once clipped to the window).
             bounds.width <= 0f || bounds.height <= 0f -> false
             else -> {
                 val center: Offset = bounds.center
                 center.x >= 0f && center.y >= 0f &&
-                    center.x <= container.x && center.y <= container.y
+                    center.x <= container.width && center.y <= container.height
             }
         }
         if (inside != visible) visible = inside
@@ -144,6 +145,7 @@ internal fun rememberAvatarPlayback(): AvatarPlayback {
     DisposableEffect(owner) {
         if (owner == null) {
             playback.foreground = true
+            onDispose { }
         } else {
             playback.foreground =
                 owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
@@ -321,13 +323,17 @@ internal object AvatarVideoHost {
         if (fitMode == fit) return
         fitMode = fit
         runCatching {
-            p.videoScalingMode = if (fit) {
-                MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT
-            } else {
-                // ContentScale.Crop semantics: fill the (square) view and
-                // crop the overflow, so a 16:9 clip fills the circle.
-                MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
-            }
+            // Explicit Java call: the synthetic property does not resolve
+            // against android.jar the way a Kotlin-defined getter/setter would.
+            p.setVideoScalingMode(
+                if (fit) {
+                    MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT
+                } else {
+                    // ContentScale.Crop semantics: fill the (square) view and
+                    // crop the overflow, so a 16:9 clip fills the circle.
+                    MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+                }
+            )
         }
     }
 
@@ -406,7 +412,7 @@ internal fun AvatarVideoView(
     DisposableEffect(session, playback.shouldPlay) {
         session.onFailed = {
             failed = true
-            currentOnFailed()
+            currentOnFailed?.invoke()
         }
         if (playback.shouldPlay) {
             AvatarVideoHost.activate(session)
