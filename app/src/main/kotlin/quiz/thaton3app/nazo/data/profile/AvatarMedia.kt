@@ -190,6 +190,61 @@ internal object AvatarMedia {
                 "(2048 px maximum). Downscale it and try again."
         } else null
 
+    /**
+     * True when the URI's file extension names an animated image we store
+     * (`.gif` / `.webp`). Extension-based like [displayKind] — every persisted
+     * value was written by us with [Format.extension], so the name is
+     * trustworthy without touching disk.
+     *
+     * The UI uses this to tell "this avatar animates" from "this is a plain
+     * photo" on the composition path (e.g. to delay a loading placeholder so
+     * navigation doesn't flash the fallback avatar).
+     */
+    fun isAnimatedImageUri(uri: String?): Boolean {
+        if (uri.isNullOrBlank()) return false
+        val ext = uri.substringAfterLast('/').substringAfterLast('.').lowercase()
+        return ext == Format.Gif.extension || ext == Format.Webp.extension
+    }
+
+    /**
+     * True for a video file extension we deliberately do NOT accept (by name).
+     * The bytes decide what actually plays — MP4 only — but knowing the name
+     * lets the picker explain "pick an MP4" instead of a generic image error.
+     */
+    fun isUnsupportedVideoName(name: String): Boolean =
+        name.lowercase() in NON_MP4_VIDEO_EXTENSIONS
+
+    private val NON_MP4_VIDEO_EXTENSIONS = setOf(
+        "mov", "mkv", "webm", "avi", "3gp", "3g2", "flv", "ts", "m4v", "wmv", "mpeg", "mpg",
+    )
+
+    /**
+     * A short, human heading for the top of the preview dialog, derived from
+     * the full validation message shown in the preview area. The dialog shows
+     * BOTH — heading on top, full explanation inside the preview — so they
+     * must never repeat each other verbatim.
+     *
+     * Unknown messages (future wording, wrapped causes) get a safe generic
+     * heading; the full message inside the preview is always the detail.
+     */
+    fun failureHeading(message: String): String = when {
+        message.contains("too large") -> "File too large"
+        message.contains("too long") -> "Video too long"
+        message.contains("resolution") -> "Resolution too high"
+        message.contains("video format") -> "Unsupported video format"
+        message.contains("Animated WebP") -> "Animated WebP needs Android 9+"
+        message.contains("couldn't be played") -> "Video couldn't be played"
+        message.contains("couldn't be read", ignoreCase = true) ||
+            message.contains("couldn't read", ignoreCase = true) -> {
+            if (message.contains("video", ignoreCase = true)) "Video couldn't be read"
+            else "File couldn't be read"
+        }
+        message.contains("is empty") -> "Empty file"
+        message.contains("isn't a format") -> "Unsupported format"
+        message.contains("couldn't be used") -> "Couldn't use this file"
+        else -> "Couldn't use this file"
+    }
+
     /** Shown when the bytes are not any format we accept. */
     fun unsupportedFormatError(isVideoLike: Boolean): String =
         if (isVideoLike) {

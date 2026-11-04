@@ -135,6 +135,13 @@ fun ProfileScreen(
     var pendingSource by rememberRetained<ProfileImageSource?>("Profile.pendingSource") { null }
     var pendingDraft by rememberRetained<File?>("Profile.pendingDraft") { null }
 
+    // While any dialog covers this screen, the big avatar behind it holds its
+    // current frame instead of animating (GIF decode / MediaCodec output) —
+    // less work during the dialog's open animation, same visuals on return.
+    val avatarBehindDialogsPaused =
+        showPictureDialog || showAvatarPreview || showUrlDialog ||
+            showRemoveConfirm || pendingSource != null
+
     // PickVisualMedia is the system photo picker: a gallery grid with no
     // storage permission and no filesystem browsing. It replaces
     // OpenDocument, which dropped the user into a file manager.
@@ -218,6 +225,7 @@ fun ProfileScreen(
                             size = 132.dp,
                             onClick = { showPictureDialog = true },
                             onLongClick = avatarLongPress,
+                            paused = avatarBehindDialogsPaused,
                         )
                         // Visible "change picture" affordance — the tap target
                         // below was undiscoverable. Decorative overlay: taps
@@ -334,6 +342,7 @@ fun ProfileScreen(
                         size = 132.dp,
                         onClick = { showPictureDialog = true },
                         onLongClick = avatarLongPress,
+                        paused = avatarBehindDialogsPaused,
                     )
                     // Visible "change picture" affordance — the tap target
                     // below was undiscoverable. Decorative overlay: taps fall
@@ -1040,13 +1049,25 @@ fun ProfileScreen(
     // Remove-picture confirmation. Overlays the picker (which stays open
     // behind), so Cancel returns straight to the choices.
     if (showRemoveConfirm) {
+        // Name what is actually being removed — a video/GIF avatar isn't a
+        // "photo". Stored URIs are ours to name (extension + emoji: prefix),
+        // so this needs no disk access. Kept in one phrase with its article
+        // so the sentence below always reads correctly.
+        val removedNoun = when {
+            AvatarMedia.displayKind(profilePictureUri) == AvatarMedia.DisplayKind.Video ->
+                "a video avatar"
+            AvatarMedia.isAnimatedImageUri(profilePictureUri) -> "an animated avatar"
+            profilePictureUri?.startsWith("emoji:") == true -> "an emoji"
+            else -> "a photo"
+        }
         AlertDialog(
             onDismissRequest = { showRemoveConfirm = false },
             icon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = NazoError) },
             title = { Text("Remove profile picture?") },
             text = {
                 Text(
-                    "Your avatar goes back to your initial letter. To use a photo again you would need to choose or add one again.",
+                    "Your avatar goes back to your initial letter. To use $removedNoun again " +
+                        "you would need to choose or add one again.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             },
