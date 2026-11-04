@@ -39,6 +39,15 @@ class AvatarPayloadTest {
             0x0D.toByte(), 0x0A.toByte(), 0x1A.toByte(), 0x0A.toByte(),
         ) + ByteArray(size) { it.toByte() }
 
+    /** GIF magic bytes + filler: enough for sniffing/transport tests. */
+    private fun gifSample(size: Int = 256): ByteArray =
+        "GIF89a".toByteArray() + ByteArray(size) { it.toByte() }
+
+    /** ISO-BMFF `ftyp` header (major brand `isom`) + filler: an MP4 sample. */
+    private fun mp4Sample(size: Int = 256): ByteArray =
+        byteArrayOf(0, 0, 0, 0x18) + "ftyp".toByteArray() + "isom".toByteArray() +
+            ByteArray(size) { it.toByte() }
+
     private fun bundleWith(picture: JSONObject?, version: Int = 2): String {
         val root = JSONObject()
             .put("version", version)
@@ -54,16 +63,18 @@ class AvatarPayloadTest {
     // ---- format sniffing / encode / decode -------------------------------
 
     @Test
-    fun sniffRecognisesJpegAndPngMagicBytes() {
+    fun sniffRecognisesJpegPngAndAnimatedFormats() {
         assertEquals("image/jpeg" to "jpg", AvatarPayload.sniff(jpegSample()))
         assertEquals("image/png" to "png", AvatarPayload.sniff(pngSample()))
+        assertEquals("image/gif" to "gif", AvatarPayload.sniff(gifSample()))
+        assertEquals("video/mp4" to "mp4", AvatarPayload.sniff(mp4Sample()))
         assertNull(AvatarPayload.sniff(byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8)))
         assertNull(AvatarPayload.sniff(ByteArray(0)))
     }
 
     @Test
     fun encodeDecodeRoundTripsAvatarBytes() {
-        for (sample in listOf(jpegSample(), pngSample())) {
+        for (sample in listOf(jpegSample(), pngSample(), gifSample(), mp4Sample())) {
             val json = AvatarPayload.encode(sample)!!
             val payload = AvatarPayload.decode(json)!!
             assertTrue(sample.contentEquals(payload.bytes))
@@ -114,6 +125,19 @@ class AvatarPayloadTest {
         }
         assertNotNull(json)
         assertTrue(bytes.contentEquals(AvatarPayload.decode(json!!)!!.bytes))
+    }
+
+    @Test
+    fun exportCarriesAnAnimatedAvatarFile() {
+        // A GIF avatar is owned bytes like any other — the bundle must carry
+        // it verbatim, or a backup/restore silently loses the animation.
+        val bytes = gifSample()
+        val json = AvatarPayload.pictureJsonFor("file:///data/user/0/nazo/files/profile/avatar_9.gif") { bytes }
+        assertNotNull(json)
+        val payload = AvatarPayload.decode(json!!)!!
+        assertTrue(bytes.contentEquals(payload.bytes))
+        assertEquals("gif", payload.extension)
+        assertEquals("image/gif", payload.mime)
     }
 
     @Test
@@ -213,6 +237,26 @@ class AvatarPayloadTest {
         }
     }
 
+    @Test
+    fun writeAvatarFileAcceptsAnimatedExtensions() {
+        val root = File.createTempFile("nazo_av_anim", "").apply { delete(); mkdirs() }
+        try {
+            val avatars = File(root, "profile").apply { mkdirs() }
+            val old = File(avatars, "avatar_1.jpg").apply { writeText("old") }
+
+            val bytes = mp4Sample()
+            val written = ProfileImageStore.writeAvatarFile(avatars, bytes, "mp4")
+
+            assertTrue(written.exists())
+            assertTrue(written.name.endsWith(".mp4"))
+            assertTrue(bytes.contentEquals(written.readBytes()))
+            // The prune rule is format-agnostic: only the newest avatar remains.
+            assertFalse(old.exists())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     // ---- schema / parse integration -------------------------------------
 
     @Test
@@ -222,6 +266,14 @@ class AvatarPayloadTest {
         assertEquals("png", parsed.picture!!.extension)
         assertEquals("file:///data/user/0/nazo/files/profile/avatar_old.jpg",
             parsed.stores.getValue("nazo_profile").getValue("profile_picture_uri").second)
+    }
+
+    @Test
+    fun parseCarriesAnAnimatedPicturePayload() {
+        val parsed = BackupRepository.parseAndValidate(bundleWith(AvatarPayload.encode(mp4Sample())))
+        assertNotNull(parsed.picture)
+        assertEquals("mp4", parsed.picture!!.extension)
+        assertEquals("video/mp4", parsed.picture!!.mime)
     }
 
     @Test
