@@ -85,6 +85,7 @@ import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.data.profile.AvatarMedia
 import quiz.thaton3app.nazo.ui.components.AnimatedAvatarImage
 import quiz.thaton3app.nazo.ui.components.AvatarVideoView
+import quiz.thaton3app.nazo.ui.components.AvatarAnchorId
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
 import quiz.thaton3app.nazo.ui.components.SafeRemoteImage
 import quiz.thaton3app.nazo.ui.components.rememberAvatarPlayback
@@ -226,6 +227,7 @@ fun ProfileScreen(
                             onClick = { showPictureDialog = true },
                             onLongClick = avatarLongPress,
                             paused = avatarBehindDialogsPaused,
+                            anchorId = AvatarAnchorId.Profile,
                         )
                         // Visible "change picture" affordance — the tap target
                         // below was undiscoverable. Decorative overlay: taps
@@ -343,6 +345,7 @@ fun ProfileScreen(
                         onClick = { showPictureDialog = true },
                         onLongClick = avatarLongPress,
                         paused = avatarBehindDialogsPaused,
+                        anchorId = AvatarAnchorId.Profile,
                     )
                     // Visible "change picture" affordance — the tap target
                     // below was undiscoverable. Decorative overlay: taps fall

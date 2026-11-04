@@ -73,6 +73,7 @@ import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.data.QuizStats
 import quiz.thaton3app.nazo.ui.components.NazoModalSheet
 import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
+import quiz.thaton3app.nazo.ui.components.AvatarAnchorId
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
 import quiz.thaton3app.nazo.ui.components.SPARKLE_METEORS
 import quiz.thaton3app.nazo.ui.components.SPARKLE_TWINKLE
@@ -630,6 +631,7 @@ private fun HomeHeader(
             pictureUri = profilePictureUri,
             size = 42.dp,
             onClick = onProfileClick,
+            anchorId = AvatarAnchorId.Home,
             modifier = Modifier.size(42.dp),
         )
     }
