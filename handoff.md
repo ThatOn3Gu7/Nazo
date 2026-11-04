@@ -3411,3 +3411,57 @@ NOT gate avatars (decided earlier). Files: `AvatarMedia.kt`,
 6. URL flow: paste a direct GIF link → Load. **Expected:** it hands off to
    the shared looping preview (not the static inline one); Accept saves it.
 7. Emoji avatar and first-run initials. **Expected:** unchanged.
+
+## Animated avatars: preview headings, no navigation flash, dialog gating (2026-11-04, follow-up)
+
+**Shipped.** Polish pass over the animated-avatar feature after live testing:
+error messages no longer print twice in the preview dialog, the initials
+avatar no longer flashes when moving between Home and Profile, the removal
+confirmation names the actual avatar type, and avatars pause while a dialog
+covers them (less work while a picker opens). Container policy restated with
+tests: only bytes decide — a renamed MP4 plays (and is re-saved as .mp4),
+real WebM/MKV never does.
+
+**Details.** (1) `AvatarMedia.failureHeading` maps every validation message
+to a short heading shown under the "Preview" title, while the full
+explanation renders once inside the preview area — whose error text now
+centers horizontally and vertically (`textAlign = Center` in
+`PreviewMessage`). (2) The flash had two causes: the video circle always
+drew the initials UNDER a transparent TextureView, and the GIF path drew its
+placeholder the instant the new screen composed — both visible over the
+navigation crossfade while the outgoing avatar was still up.
+`AvatarVideoView` now owns a `fallback` slot gated by a warm window
+(`VIDEO_FALLBACK_DELAY_MS` = 500): no fallback until 500 ms pass without a
+frame (surface re-creation re-arms the window) or playback fails; animated
+images hold their placeholder back `GIF_PLACEHOLDER_DELAY_MS` = 300 via
+`placeholderDelayMs` (plain photos keep the original immediate placeholder).
+Failures still fall back immediately — `onFailed` removes the TextureView
+outright. (3) Removal copy picks its noun from the stored URI: photo /
+animated avatar / video avatar / emoji. (4) `ProfileAvatar.paused` (driven
+by every dialog-open state on Profile) freezes the picture behind the scrim
+— GIF frame decoding and MediaCodec output stop during the open animation
+and resume from the held frame. (5) `NON_MP4_VIDEO_EXTENSIONS` moved into
+AvatarMedia as `isUnsupportedVideoName` (tested), and the tests pin the
+EBML-magic rejection that keeps genuine WebM/MKV on the unsupported path.
+Performance note: no new work runs on the picker-open or Profile-entry hot
+paths; the residual first-open cost is debug-build + cold caches (dynamic
+tab fetch is pre-existing and already on Dispatchers.IO).
+
+**How to test it live.**
+1. Pick a >8 MB video. **Expected:** heading "File too large" under Preview,
+   full sentence once inside the preview box, whole icon+text block centered;
+   repeat with a MKV (>15 s clip, HEIC) — each gets its own short heading.
+2. GIF or MP4 avatar: Home → Profile → Home repeatedly. **Expected:** no
+   initials flash either direction; the avatar stays visually continuous
+   across the transition.
+3. Remove confirmation for each kind. **Expected:** "…To use a video avatar
+   again…", "…an animated avatar…", "…a photo…", "…an emoji…" — never
+   "photo" for a video.
+4. Open the avatar picker while a GIF/MP4 is set. **Expected:** the big
+   avatar holds its frame behind the scrim (no animation work), resumes when
+   the dialog closes; opening feels at least as snappy as before.
+5. Failures: a truncated MP4 still shows the initials fallback (no wait),
+   playback still pauses when scrolled off / app backgrounds and resumes.
+6. Rename an MP4 to .mkv and pick it — plays, re-saved as .mp4; pick a real
+   WebM/MKV — rejected with "Unsupported video format". Static, emoji,
+   backup/restore unchanged.
