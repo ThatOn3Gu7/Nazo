@@ -3338,3 +3338,76 @@ changelog carries 12.0-beta01 first.
    live preview scrubbing with the finger; commit glides, cancel settles home.
 4. About → update check. **Expected:** no beta offered (the updater still
    sees 11.0 as the latest full release) until 12.0 final ships.
+
+## Animated avatars: GIF, animated WebP and MP4 profile pictures (2026-11-04)
+
+**Shipped.** Profile pictures can now be animated, end to end: the gallery
+picker accepts photos **and** videos (GIF / animated WebP / MP4), the preview
+dialog shows the animation looping before anything is saved, the circle avatars
+on Home and Profile play it (muted, looping), the long-press viewer shows it
+full size, and backups carry the original bytes across devices. Static photos
+keep the exact crop flow they had before.
+
+**Details.** Three layers, in dependency order. (1) `data/profile/AvatarMedia.kt`
+is the pure-JVM policy/format layer — magic-byte sniffing (JPEG, PNG, GIF,
+WebP, MP4; HEIC/AVIF/QuickTime deliberately rejected back to the static
+pipeline), `displayKind` URI dispatch (emoji / mp4 / everything else, so the
+composition never touches disk), and the three limits with their user-facing
+messages: **8 MB** (import AND backup cap — `AvatarPayload.MAX_AVATAR_BYTES`
+is the same number, guarded by a test), **15 s** loop length, **2048 px** long
+edge. (2) `ProfileImageStore` gained `readHead` / `probeAnimatedAvatar` /
+`saveAnimatedAvatar`: the probe validates cheapest-first (sniff → size →
+duration → forced frame decode) with messages that say what went wrong and
+what to do; the save re-probes, streams the ORIGINAL bytes (a re-encode would
+flatten the animation), and only prunes the old avatar once the new file is
+complete — a rejected pick can never destroy the current picture. Unsupported
+video picks (MKV, MOV, …) get a specific "pick an MP4" message instead of the
+generic image wording. (3) `ui/components/AvatarPlayback.kt` is the rendering:
+ONE app-wide `MediaPlayer` behind an activation stack (the most recently
+activated view owns the surface; a1 s grace period covers screen-transition
+gaps so Home ↔ Profile reuses the prepared player instead of re-buffering),
+a TextureView host that fills the circle with
+`SCALE_TO_FIT_WITH_CROPPING` (letterbox in the full-size viewer with
+`SCALE_TO_FIT`), and a visibility/foreground gate — avatars stop animating
+when scrolled out of their column or the app is backgrounded. GIFs and
+animated WebP ride Coil instead: `coil-gif` is registered on the singleton
+`ImageLoader` in `MainActivity.onCreate` (`ImageDecoderDecoder` on API 28+,
+`GifDecoder` below — without it Coil shows only the first frame), and
+`AnimatedAvatarImage` applies the same play gate to the drawable. Animated
+picks never enter the bitmap/crop pipeline: `ProfileImagePreviewDialog`
+sniffs the bytes and routes them to a looping preview with Cancel/Accept only;
+the URL flow hands a downloaded GIF straight to that same dialog (draft
+ownership transfers without discarding; MP4 URLs stay unsupported —
+`downloadDraft` only accepts decodable images). Backups needed no schema
+change: schema v2's `picture` payload already stores bytes + mime, and the
+sniff now recognises the animated formats, so a GIF avatar round-trips
+base64 and restores to a new local `.gif`. Reduce-motion deliberately does
+NOT gate avatars (decided earlier). Files: `AvatarMedia.kt`,
+`AvatarPayload.kt`, `ProfileImageStore.kt`, `AvatarPlayback.kt` (new),
+`ProfileAvatar.kt`, `ProfilePictureFlow.kt`, `ProfileScreen.kt`,
+`MainActivity.kt`, `gradle/libs.versions.toml`, `app/build.gradle.kts`, tests
+`AvatarMediaTest.kt` + `AvatarPayloadTest.kt`. PR #9; CI green on `f158969`
+(compile + `testDebugUnitTest` + debug APK artifact).
+
+**How to test it live.**
+1. Profile → change picture → **Gallery**, pick a GIF. **Expected:** the
+   preview dialog shows it looping in the square (play icon until the first
+   frame), Cancel/Accept only — no Crop button; Accept → the Profile circle
+   animates, and so does the Home circle.
+2. Pick an MP4 (≤15 s, ≤8 MB, any orientation) instead. **Expected:** same
+   flow; the circle fills edge-to-edge and crops a landscape clip (no
+   letterbox), muted, looping from the start every time.
+3. Long-press the avatar. **Expected:** full-size viewer plays the loop
+   letterboxed exactly as stored; background the app → playback stops, return
+   → resumes; scroll Home's avatar out of view → stops, back → resumes.
+4. Rejections: pick an HEIC/photo (static → unchanged crop flow, regression),
+   a `.mkv`/`.mov` (specific "pick an MP4" message), an over-long video
+   ("15 seconds or less"), an over-large one ("8 MB maximum"). **Expected:**
+   every rejection returns to the dialog with an explanation and the previous
+   avatar untouched.
+5. Backup & Restore → export with a GIF avatar, then restore. **Expected:**
+   the picture comes back as a new local `.gif` and still animates (emoji and
+   plain-photo restores unchanged).
+6. URL flow: paste a direct GIF link → Load. **Expected:** it hands off to
+   the shared looping preview (not the static inline one); Accept saves it.
+7. Emoji avatar and first-run initials. **Expected:** unchanged.
