@@ -17,9 +17,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -205,9 +206,13 @@ fun ProfileAvatar(
                 state.centerVisible = playback.visible
                 // Skip capture while predictive-back motion is animating so
                 // the slot keeps its pre-gesture rest position (the overlay
-                // replicates the slide itself, frame-exactly).
+                // replicates the slide itself, frame-exactly). positionInWindow
+                // + layout size: window coordinates that are never clipped, so
+                // an off-window slot still reports its true rect.
                 if (registry?.captureEnabled != false) {
-                    state.restBounds = coords.boundsInWindow(clipBounds = false)
+                    val p = coords.positionInWindow()
+                    val s = coords.size
+                    state.restBounds = Rect(p.x, p.y, p.x + s.width, p.y + s.height)
                 }
             }
         }

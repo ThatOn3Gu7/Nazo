@@ -28,9 +28,9 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import quiz.thaton3app.nazo.data.profile.AvatarMedia
 import quiz.thaton3app.nazo.ui.Screen
@@ -59,8 +60,8 @@ import kotlin.math.roundToInt
  *  - **Position** comes from the anchor's window bounds captured while the
  *    screens are at rest, plus a slide replicated from the screen transition
  *    ([avatarOverlayTransform]) while predictive-back motion runs. Bounds
- *    are read with `clipBounds = false` so a circle sliding off the edge
- *    keeps its full size instead of being clipped smaller.
+ *    are the anchor's `positionInWindow` + layout size — never clipped to
+ *    the window — so a circle sliding off the edge keeps its full size.
  *  - **Alpha** is replicated from the very same transitionSpec branches that
  *    animate the screens (co-located rule: change one, change the other), so
  *    the circle fades exactly with the screen it belongs to — including the
@@ -189,8 +190,11 @@ internal fun resolveAvatarWinnerScreen(
 // Anchor registry
 // ---------------------------------------------------------------------------
 
-/** Which screen a video-avatar anchor belongs to. */
-internal enum class AvatarAnchorId { Home, Profile }
+/**
+ * Which screen a video-avatar anchor belongs to. Public because
+ * [ProfileAvatar] (a public composable) takes it as a parameter.
+ */
+enum class AvatarAnchorId { Home, Profile }
 
 /**
  * Live state of one screen's avatar slot: where it is in window coordinates
@@ -423,7 +427,9 @@ internal fun PersistentAvatarVideo(
             .padding(end = railInset)
             .then(if (blurBlocking) Modifier.blur(16.dp) else Modifier)
             .onGloballyPositioned { coords ->
-                val o = coords.boundsInWindow(clipBounds = false).topLeft
+                // positionInWindow (not boundsInWindow) on every Compose
+                // version: a pure transform, never clipped to the window.
+                val o = coords.positionInWindow()
                 if (containerOrigin != o) containerOrigin = o
             }
             .clearAndSetSemantics { },
