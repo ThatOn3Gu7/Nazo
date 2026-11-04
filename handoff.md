@@ -3465,3 +3465,60 @@ tab fetch is pre-existing and already on Dispatchers.IO).
 6. Rename an MP4 to .mkv and pick it — plays, re-saved as .mp4; pick a real
    WebM/MKV — rejected with "Unsupported video format". Static, emoji,
    backup/restore unchanged.
+
+## Video avatar loading: early prepare + cached poster frame (2026-11-04, follow-up)
+
+**Continuation, not a rebuild** — one shared `MediaPlayer`, the activation
+stack, warm/failure fallbacks, GIF/static/emoji paths and the dialog gate all
+stay as they are. What changed is *when* the player starts preparing and
+what you see in the gap afterwards (`ui/components/AvatarPlayback.kt`,
+one `LaunchedEffect` in `NazoApp.kt`).
+
+1. **Early prepare (app scope).** `AvatarVideoHost.prepareForAvatar(context,
+   uri)` is called from NazoApp as soon as `profilePictureUri` is known — at
+   cold start, avatar change and backup restore — so codec setup happens
+   *before* any screen composes its view. It is idempotent (re-calls with the
+   same URI never reset a player that view-activation is preparing through
+   `sync()`), and for non-video avatars it releases an unclaimed player
+   immediately. Nothing blocks the main thread beyond the usual async
+   `prepareAsync`.
+2. **Cached poster frame (`AvatarFrameCache`).** One representative frame per
+   video URI, memory-only: at most 3 bitmaps, each scaled to ≤512 px (~1 MB
+   worst case). Two sources — (a) a `MediaMetadataRetriever` frame warmed on
+   IO right after the early prepare (cold start), (b) the last rendered frame
+   captured in `onSurfaceTextureDestroyed` *before* the buffer dies (every
+   navigation). `AvatarVideoView` draws the poster under its transparent
+   TextureView whenever no live frame exists yet, so screen entry, Home ↔
+   Profile handoff and resume-after-background all show real content from the
+   first composition; the first video frame simply paints over the poster.
+3. **Fallbacks are now state-based, not time-based.** The 500 ms warm window
+   and its `surfaceEpoch` re-arm are gone: the initials slot shows only when
+   the cache is genuinely empty (true cold state) or playback has failed —
+   which also removes the TextureView and hides the poster, as before. GIFs
+   keep their 300 ms placeholder delay (`GIF_PLACEHOLDER_DELAY_MS`).
+4. **Lifecycle/resource discipline unchanged:** gate
+   (`visible && foreground && !paused`) still stops work when hidden or
+   backgrounded; one player; 1 s grace release with zero views; URI switches
+   and removal release or re-prepare correctly; the frame cache is bounded,
+   on-disk-free, and dies with the process.
+
+**How to test it live (the actual experience).**
+1. Cold launch with an MP4 avatar. **Expected:** avatar present from the
+   first Home frame (initials only for a few dozen ms at most, never an
+   empty circle), video moving within ~0.3 s.
+2. Home → Profile → Home, repeated quickly. **Expected:** no blank frame and
+   no initials flash in either direction; playback continues smoothly from
+   the same player (it is reused within the grace window).
+3. Predictive-back: quick back-swipe into Profile and a full back-gesture.
+   **Expected:** preview matches completion; the avatar is visible during the
+   gesture (prepare + frame decode already happened at app start, nothing
+   new runs on the gesture path), same slight lag as before otherwise.
+4. Background the app 10+ s, resume. **Expected:** poster immediately, video
+   resumes; memory not visibly climbed (≤3 posters, ≤1 MB each).
+5. Change avatar (video → video → GIF → remove). **Expected:** each shows
+   promptly; switching away releases the codec; removing shows initials;
+   changing back re-warms the poster.
+6. Failures: truncated/corrupt file. **Expected:** initials fallback, no
+   stale poster behind it; animated-image failure headings in the preview
+   dialog unchanged. Static, emoji, GIF, animated WebP, limits (8 MB/15 s/
+   2048 px), reduce-motion — all untouched.

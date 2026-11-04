@@ -133,9 +133,10 @@ fun ProfileAvatar(
             }
 
             displayKind == AvatarMedia.DisplayKind.Video ->
-                // No separate initials underlay here: AvatarVideoView decides
-                // when the fallback may truthfully appear (warm window +
-                // failure), which is what keeps navigation from flashing it.
+                // No separate underlay here: AvatarVideoView layers the
+                // cached poster frame (instant on every screen) and only
+                // falls back to the slot for cold/failed states — which is
+                // what keeps navigation blank-free without flashing initials.
                 AvatarVideoView(
                     uri = pictureUri!!,
                     fit = false,

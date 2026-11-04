@@ -3,26 +3,32 @@ package quiz.thaton3app.nazo.ui.components
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.graphics.Bitmap
 import android.graphics.SurfaceTexture
 import android.graphics.drawable.Animatable
+import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.view.Surface
 import android.view.TextureView
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
@@ -36,7 +42,12 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImagePainter
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlin.math.max
+import kotlin.math.roundToInt
+import quiz.thaton3app.nazo.data.profile.AvatarMedia
 
 /**
  * Playback plumbing for animated avatars — one shared video player and the
@@ -251,6 +262,41 @@ internal object AvatarVideoHost {
         sync()
     }
 
+    /**
+     * App-scope entry point, called from NazoApp whenever the saved avatar
+     * URI is known or changes — BEFORE any screen composes its avatar view.
+     * Preparing here moves codec setup off the navigation path: by the time
+     * Home, Profile or a predictive-back preview asks for a surface, the
+     * player is already decoding (or ready), which is what lets the poster
+     * frame hand straight over to live video with no visible spin-up.
+     *
+     * Non-video avatars release an unclaimed player instead, so a switch to
+     * a GIF/photo frees the codec without waiting for view disposal.
+     * Idempotent: re-calls with the same URI are no-ops, so racing view
+     * activation (which prepares through [sync]) can never reset a player
+     * that is already preparing the same file. Main thread only.
+     */
+    fun prepareForAvatar(context: Context, uri: String?) {
+        val isVideo = uri != null &&
+            AvatarMedia.displayKind(uri) == AvatarMedia.DisplayKind.Video
+        if (!isVideo) {
+            if (active.isEmpty()) releasePlayer()
+            return
+        }
+        if (preparedPath == uri) {
+            // Already preparing/playing this file. The player only needs a
+            // watcher to stay alive; with none, keep the usual grace release.
+            if (active.isEmpty()) scheduleRelease() else handler.removeCallbacks(releaseIfIdle)
+            return
+        }
+        if (player == null) createPlayer()
+        val p = player ?: return
+        prepare(p, context.applicationContext, uri!!, fit = false)
+        // No view claimed it yet (we're early by design): still subject to
+        // the grace period — a screen that never shows it releases the codec.
+        if (active.isEmpty()) scheduleRelease()
+    }
+
     /** Re-evaluates what the single player should be doing. Main thread only. */
     private fun sync() {
         val session = active.lastOrNull()
@@ -264,7 +310,7 @@ internal object AvatarVideoHost {
         if (player == null) createPlayer()
         val p = player ?: return
         if (preparedPath != session.uri) {
-            prepare(p, session)
+            prepare(p, session.context, session.uri, session.fit)
             return
         }
         if (prepared) {
@@ -292,23 +338,26 @@ internal object AvatarVideoHost {
         fitMode = null
     }
 
-    private fun prepare(p: MediaPlayer, session: AvatarVideoSession) {
+    private fun prepare(p: MediaPlayer, context: Context, uri: String, fit: Boolean) {
         runCatching { p.reset() }
         prepared = false
         started = false
         attachedSurface = null
         fitMode = null
-        preparedPath = session.uri
+        preparedPath = uri
         val configured = runCatching {
             // One path for file:// and content://; both are accepted by the
             // Context overload and the grant is UID-scoped either way.
-            p.setDataSource(session.context, Uri.parse(session.uri))
+            p.setDataSource(context, Uri.parse(uri))
             // Valid from Initialized on; re-asserted in onPrepared anyway.
-            applyFit(p, session.fit)
+            applyFit(p, fit)
         }
         configured.getOrElse {
             preparedPath = null
-            failSession(session)
+            // Config failures are about the FILE, not a particular view:
+            // fail whichever session is watching, or just drop the player
+            // when the prepare was app-scope and nobody has claimed it yet.
+            active.lastOrNull()?.let { failSession(it) } ?: releasePlayer()
             return
         }
         p.prepareAsync()
@@ -394,38 +443,134 @@ internal object AvatarVideoHost {
 }
 
 // ---------------------------------------------------------------------------
+// Cached poster frame
+// ---------------------------------------------------------------------------
+
+/**
+ * One representative frame per video avatar URI, shown while the TextureView
+ * has no video frame of its own yet — player still preparing, surface being
+ * handed between screens, or the first paint after resume. This is what makes
+ * the avatar look present from the very first moment of a screen instead of
+ * an empty circle.
+ *
+ * Two sources, both cheap:
+ *  - a `MediaMetadataRetriever` frame, warmed in the background as soon as
+ *    the saved URI is known ([warmFromDisc]) — covers cold process starts
+ *    and predictive-back previews that need no view to kick the work off;
+ *  - the last frame actually rendered, captured when a TextureView's surface
+ *    dies — covers navigation, so Home ↔ Profile continues from exactly
+ *    where the previous screen left off, even into a freshly created surface.
+ *
+ * The TextureView paints over the poster on its first frame, so the switch
+ * from cached to live video needs no crossfade and no bookkeeping.
+ *
+ * Deliberately memory-only: at most [MAX_FRAMES] bitmaps, each scaled to
+ * ≤ [MAX_POSTER_EDGE] px (~1 MB worst case, far less for the ≤132 dp
+ * circle). Nothing on disk to prune, nothing in backups, nothing that
+ * outlives the process — videos and their posters go away together.
+ */
+internal object AvatarFrameCache {
+
+    private const val MAX_FRAMES = 3
+    private const val MAX_POSTER_EDGE = 512
+
+    /** Insertion order for eviction (main thread only). */
+    private val order = ArrayDeque<String>()
+
+    /** uri → poster. Read during composition, therefore Compose state. */
+    private val frames = mutableStateMapOf<String, ImageBitmap>()
+
+    fun get(uri: String): ImageBitmap? = frames[uri]
+
+    /**
+     * Stores a downscaled copy of [frame]. Main thread; [frame] is owned by
+     * the caller afterwards only if it was kept as-is (it is recycled when a
+     * new scaled bitmap was made).
+     */
+    fun put(uri: String, frame: Bitmap) {
+        val poster = scaleDown(frame) ?: return
+        store(uri, poster)
+    }
+
+    /**
+     * Decodes one frame of [uri] off the main thread and stores it. No-op
+     * for non-video URIs or when the poster is already warm. Called from the
+     * app-scope effect in NazoApp, so it runs once per avatar, never on a
+     * navigation or gesture path.
+     */
+    suspend fun warmFromDisc(context: Context, uri: String?) {
+        if (uri == null || AvatarMedia.displayKind(uri) != AvatarMedia.DisplayKind.Video) return
+        if (frames.containsKey(uri)) return
+        val path = runCatching { Uri.parse(uri).path }.getOrNull() ?: return
+        val poster = withContext(Dispatchers.IO) {
+            runCatching {
+                val retriever = MediaMetadataRetriever()
+                try {
+                    retriever.setDataSource(path)
+                    retriever.getFrameAtTime(
+                        0,
+                        MediaMetadataRetriever.OPTION_CLOSEST,
+                    )?.let { scaleDown(it) }
+                } finally {
+                    runCatching { retriever.release() }
+                }
+            }.getOrNull()
+        } ?: return
+        withContext(Dispatchers.Main) { store(uri, poster) }
+    }
+
+    /** LRU insert; main thread. */
+    private fun store(uri: String, poster: Bitmap) {
+        val image = poster.asImageBitmap()
+        if (frames.containsKey(uri)) {
+            frames[uri] = image
+            order.remove(uri)
+            order.addLast(uri)
+            return
+        }
+        while (frames.size >= MAX_FRAMES && order.isNotEmpty()) {
+            frames.remove(order.removeFirst())
+        }
+        frames[uri] = image
+        order.addLast(uri)
+    }
+
+    /** Returns a ≤MAX_POSTER_EDGE bitmap (the input itself when small enough), or null. */
+    private fun scaleDown(frame: Bitmap): Bitmap? = runCatching {
+        if (frame.width <= 0 || frame.height <= 0) return@runCatching null
+        val longest = max(frame.width, frame.height)
+        if (longest <= MAX_POSTER_EDGE) return@runCatching frame
+        val scale = MAX_POSTER_EDGE.toFloat() / longest
+        val w = max(1, (frame.width * scale).roundToInt())
+        val h = max(1, (frame.height * scale).roundToInt())
+        Bitmap.createScaledBitmap(frame, w, h, true).also { scaled ->
+            if (scaled !== frame) frame.recycle()
+        }
+    }.getOrNull()
+}
+
+// ---------------------------------------------------------------------------
 // Video view
 // ---------------------------------------------------------------------------
 
 /**
- * How long a freshly composed video view may show its plain background before
- * the fallback (initials, an error state) appears. Long enough to cover the
- * warm-navigation path by a wide margin — a prepared player needs only a
- * surface plus a frame or two (~50–150 ms) — short enough that a genuinely
- * stuck or failing video still falls back promptly. [AvatarVideoView] shows
- * NO fallback during this window, which is what stops Home ↔ Profile from
- * flashing the initials avatar over the crossfade.
- */
-internal const val VIDEO_FALLBACK_DELAY_MS = 500L
-
-/**
- * How long an animated image may load before its placeholder (the initials
- * avatar) appears. Coil answers warm-cache navigation in a frame or two, so
- * a placeholder drawn immediately is what made GIF avatars flash back to the
- * initials during transitions; genuinely slow loads still show it.
- */
-internal const val GIF_PLACEHOLDER_DELAY_MS = 300L
-
-/**
  * Renders one looping, muted avatar video, driven by [playback].
  *
- * The TextureView is transparent until the first frame arrives. [fallback]
- * is drawn ONLY when it can be truthful: once the warm window above has
- * expired without a frame, or when playback has failed — never merely
- * because a fresh surface is still spinning up, which is the moment that
- * used to flash the initials avatar across a screen transition. On failure
- * [onFailed] fires once and the TextureView is removed entirely, leaving
- * the fallback as the final state.
+ * Layer order inside the view decides what you see while the video has no
+ * frame of its own:
+ *
+ *  1. the live TextureView (transparent until its first frame lands);
+ *  2. the poster from [AvatarFrameCache] — shown whenever the TextureView
+ *     hasn't rendered yet, so preparing/surface handoff/resume never show an
+ *     empty circle. Its last act on each screen is capturing this view's
+ *     final frame back into the cache when the surface dies;
+ *  3. [fallback] (the caller's initials / error state) — only for a genuine
+ *     cold state (nothing cached at all) or once playback has FAILED, which
+ *     also removes the TextureView entirely.
+ *
+ * Navigation between screens therefore hands the same player to a brand-new
+ * TextureView while the poster covers the one-frame gap, and the GIF/static
+ * paths are untouched.
  */
 @Composable
 internal fun AvatarVideoView(
@@ -441,24 +586,20 @@ internal fun AvatarVideoView(
         AvatarVideoSession(uri, fit, context.applicationContext)
     }
     var failed by remember(session) { mutableStateOf(false) }
-    // True once the TextureView has drawn at least one frame for this
-    // session; combined with the warm window below, it decides when the
-    // fallback is allowed to appear.
+    // True once THIS view's TextureView has rendered a video frame; gates
+    // both the poster and the cold/failure fallback below.
     var frameRendered by remember(session) { mutableStateOf(false) }
-    var warmExpired by remember(session) { mutableStateOf(false) }
-    // Bumped when the surface dies so the warm window re-arms for whatever
-    // SurfaceTexture the view creates next.
-    var surfaceEpoch by remember(session) { mutableStateOf(0) }
     val currentOnFailed by rememberUpdatedState(onFailed)
-
-    LaunchedEffect(session, surfaceEpoch) {
-        delay(VIDEO_FALLBACK_DELAY_MS)
-        warmExpired = true
-    }
+    // Recomposes when the cache warms or refreshes for this URI (the state
+    // map is read here on purpose — late posters appear without a new view).
+    val poster = AvatarFrameCache.get(uri)
 
     DisposableEffect(session, playback.shouldPlay) {
         session.onFailed = {
             failed = true
+            // The TextureView is about to be removed: its last buffer is no
+            // longer truthful either, so the fallback must be allowed to show.
+            frameRendered = false
             currentOnFailed?.invoke()
         }
         if (playback.shouldPlay) {
@@ -476,10 +617,25 @@ internal fun AvatarVideoView(
     }
 
     Box(modifier = modifier) {
-        if (failed || (warmExpired && !frameRendered)) {
-            fallback()
-        }
         if (!failed) {
+            // Poster under the (still transparent) TextureView. Hidden the
+            // instant real frames exist — no crossfade needed, the opaque
+            // video simply covers it.
+            if (poster != null && !frameRendered) {
+                Image(
+                    bitmap = poster,
+                    contentDescription = null,
+                    contentScale = if (fit) ContentScale.Fit else ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            // Cold start with a genuinely empty cache, or a surface rebuild
+            // while the poster was evicted: the caller's placeholder is the
+            // honest state. Warm navigation never lands here — its poster
+            // is already in the cache, which is what removed the flash.
+            if (poster == null && !frameRendered) {
+                fallback()
+            }
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { viewContext ->
@@ -497,17 +653,27 @@ internal fun AvatarVideoView(
                                 // The host drops its reference first; then the
                                 // wrapper is released and the TextureView is
                                 // allowed to release the SurfaceTexture itself.
+                                //
+                                // Before releasing: capture this view's last
+                                // frame into the poster cache — the buffer is
+                                // still valid here, and the NEXT surface (other
+                                // screen, resume, pressure re-create) paints it
+                                // immediately. One getBitmap per detach, on the
+                                // main thread, roughly a small screenshot.
+                                if (frameRendered) {
+                                    // Explicit Java method: synthetic property
+                                    // access is avoided deliberately (see the
+                                    // setVideoScalingMode note in applyFit).
+                                    runCatching { getBitmap() }.getOrNull()
+                                        ?.let { AvatarFrameCache.put(uri, it) }
+                                }
                                 val surface = session.surface
                                 AvatarVideoHost.surfaceDestroyed(session)
                                 surface?.release()
-                                // Buffer gone (system pressure / detach): the
-                                // view may spin up a NEW SurfaceTexture later,
-                                // so forget the frame and re-arm the warm
-                                // window in the same synchronised step — no
-                                // stale fallback frame in between.
+                                // The buffer is gone with the surface: drop the
+                                // rendered flag so the poster (not a claim of a
+                                // live frame) governs until frames flow again.
                                 frameRendered = false
-                                warmExpired = false
-                                surfaceEpoch++
                                 return true
                             }
 
@@ -526,6 +692,10 @@ internal fun AvatarVideoView(
                     }
                 },
             )
+        } else {
+            // Failure: no TextureView, poster hidden (the caller's fallback
+            // tells the truth instead), onFailed already notified the caller.
+            fallback()
         }
     }
 }
@@ -533,6 +703,15 @@ internal fun AvatarVideoView(
 // ---------------------------------------------------------------------------
 // Gated image (static passthrough + GIF/animated-WebP play control)
 // ---------------------------------------------------------------------------
+
+/**
+ * How long an animated image may load before its placeholder (the initials
+ * avatar) appears. Coil answers warm-cache navigation in a frame or two, so
+ * a placeholder drawn immediately is what made GIF avatars flash back to the
+ * initials during transitions; genuinely slow loads still show it. (Videos
+ * don't need this — they have a real frame in [AvatarFrameCache] instead.)
+ */
+internal const val GIF_PLACEHOLDER_DELAY_MS = 300L
 
 /**
  * [SafeRemoteImage] plus the play/pause gate for animated drawables.
