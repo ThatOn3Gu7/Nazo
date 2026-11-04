@@ -6,7 +6,9 @@ import android.content.SharedPreferences
 /**
  * Local profile: the user's display name and selected profile picture.
  * `profilePictureUri` is either null (initials), "emoji:<symbol>", a remote
- * image URL, or a content:// gallery URI.
+ * image URL, a content:// gallery URI, or a `file://` into this app's own
+ * avatar storage — the latter holds whatever the pick pipeline saved: a
+ * cropped photo (jpg/png) or an animated avatar kept as-is (gif/webp/mp4).
  */
 class ProfilePreferences(context: Context) {
 

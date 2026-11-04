@@ -28,16 +28,23 @@ import java.util.Base64
 internal object AvatarPayload {
 
     /**
-     * Decoded-image cap. Avatars are saved at 1024 px (JPEG q92 / PNG), which
-     * lands well under 4 MB; anything bigger is not one of our avatar files and
-     * must not bloat every backup or get allocated on restore.
+     * Decoded-avatar cap, shared with import ([AvatarMedia.MAX_ANIMATED_BYTES]).
+     *
+     * Static avatars are saved at 1024 px (JPEG q92 / PNG) and land well under
+     * this; animated avatars (GIF / animated WebP / MP4) are stored as-is, so
+     * the cap is what bounds BOTH the import pipeline and the base64 a backup
+     * has to carry (~10.7 MB worst case). Anything bigger is not one of our
+     * avatar files and must not bloat every backup or get allocated on restore.
+     *
+     * Literal twin of [AvatarMedia.MAX_ANIMATED_BYTES] (const initializers
+     * can't call `.toInt()` on it); `AvatarPayloadTest` asserts they agree.
      */
-    const val MAX_AVATAR_BYTES = 4 * 1024 * 1024
+    const val MAX_AVATAR_BYTES = 8 * 1024 * 1024
 
     /** Base64 char cap — checked BEFORE decoding so a hostile bundle cannot make us allocate. */
     private const val MAX_AVATAR_CHARS = (MAX_AVATAR_BYTES * 4) / 3 + 16
 
-    /** A validated avatar image. [extension] is derived from [mime] (jpg/png). */
+    /** A validated avatar file. [extension] is derived from [mime] (jpg/png/gif/webp/mp4). */
     class Payload(val bytes: ByteArray, val extension: String, val mime: String) {
         override fun equals(other: Any?): Boolean =
             other is Payload &&
@@ -50,26 +57,19 @@ internal object AvatarPayload {
     }
 
     /**
-     * Image format from magic bytes. Only JPEG and PNG — exactly what
-     * [ProfileImageStore.saveAvatar] writes — so a "picture" holding anything
-     * else is treated as corrupt instead of being stored blindly.
+     * Avatar format from magic bytes — JPEG/PNG (what [ProfileImageStore.saveAvatar]
+     * writes) plus the animated formats ([ProfileImageStore.saveAnimatedAvatar]
+     * keeps as-is): GIF, animated WebP and MP4. Anything else yields null and
+     * is treated as corrupt instead of being stored blindly, so a hostile or
+     * mislabelled "picture" never reaches restore.
      */
-    fun sniff(bytes: ByteArray): Pair<String, String>? = when {
-        bytes.size >= 3 &&
-            bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte() ->
-            "image/jpeg" to "jpg"
-        bytes.size >= 8 &&
-            bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() && bytes[2] == 0x4E.toByte() &&
-            bytes[3] == 0x47.toByte() && bytes[4] == 0x0D.toByte() && bytes[5] == 0x0A.toByte() &&
-            bytes[6] == 0x1A.toByte() && bytes[7] == 0x0A.toByte() ->
-            "image/png" to "png"
-        else -> null
-    }
+    fun sniff(bytes: ByteArray): Pair<String, String>? =
+        AvatarMedia.sniff(bytes)?.let { it.mime to it.extension }
 
     /**
      * Serializes avatar [bytes] into the bundle's `picture` object, or null
-     * when they are empty, oversized, or not a JPEG/PNG image (nothing worth
-     * carrying — the restore then falls back like a payload-less backup).
+     * when they are empty, oversized, or not one of the formats above (nothing
+     * worth carrying — the restore then falls back like a payload-less backup).
      */
     fun encode(bytes: ByteArray): JSONObject? {
         if (bytes.isEmpty() || bytes.size > MAX_AVATAR_BYTES) return null
@@ -80,7 +80,7 @@ internal object AvatarPayload {
     }
 
     /**
-     * Parses a bundle's `picture` object back into image bytes.
+     * Parses a bundle's `picture` object back into avatar bytes.
      *
      * Lenient by design: anything wrong with the asset itself (absent, huge,
      * bad base64, wrong magic bytes, mime that disagrees with the bytes) yields

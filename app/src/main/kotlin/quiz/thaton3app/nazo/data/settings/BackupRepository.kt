@@ -31,8 +31,9 @@ import java.util.LinkedHashSet
  * profile picture is skipped because that URI is not portable across devices —
  * the username and any emoji/remote-url picture are kept. An owned custom
  * avatar (`file://` into this app's private storage) additionally travels as
- * the bundle's optional `picture` payload (see [AvatarPayload]) so the image
- * itself survives a restore on this or any other device.
+ * the bundle's optional `picture` payload (see [AvatarPayload]) so the avatar
+ * itself — photo or animation — survives a restore on this or any other
+ * device.
  *
  * Bundle versions: 1 = stores only (every backup exported before picture
  * support); 2 = stores plus an optional `picture` object. Restore accepts both
