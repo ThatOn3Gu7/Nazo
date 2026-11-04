@@ -72,6 +72,9 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.coil)
+    // Animated avatars: GIF (all APIs) + animated WebP (API 28+) decoders for
+    // the singleton ImageLoader — see MainActivity.onCreate.
+    implementation(libs.coil.gif)
     implementation(libs.androidx.exifinterface)
     // WorkManager for background update checks + notifications
     implementation("androidx.work:work-runtime-ktx:2.9.1")

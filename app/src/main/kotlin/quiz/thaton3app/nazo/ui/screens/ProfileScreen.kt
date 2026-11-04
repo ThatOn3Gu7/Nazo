@@ -58,6 +58,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.Font
@@ -81,8 +82,12 @@ import quiz.thaton3app.nazo.data.QuizStats
 import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
+import quiz.thaton3app.nazo.data.profile.AvatarMedia
+import quiz.thaton3app.nazo.ui.components.AnimatedAvatarImage
+import quiz.thaton3app.nazo.ui.components.AvatarVideoView
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
 import quiz.thaton3app.nazo.ui.components.SafeRemoteImage
+import quiz.thaton3app.nazo.ui.components.rememberAvatarPlayback
 import quiz.thaton3app.nazo.ui.theme.*
 
 val ProfileHeaderFont = FontFamily(
@@ -130,9 +135,14 @@ fun ProfileScreen(
     var pendingSource by rememberRetained<ProfileImageSource?>("Profile.pendingSource") { null }
     var pendingDraft by rememberRetained<File?>("Profile.pendingDraft") { null }
 
-    // PickVisualMedia is the system photo picker: a gallery grid scoped to
-    // images, with no storage permission and no filesystem browsing. It
-    // replaces OpenDocument, which dropped the user into a file manager.
+    // PickVisualMedia is the system photo picker: a gallery grid with no
+    // storage permission and no filesystem browsing. It replaces
+    // OpenDocument, which dropped the user into a file manager.
+    //
+    // ImageAndVideo (was ImageOnly) so animated avatars can be picked: the
+    // preview dialog sniffs the bytes and routes GIF/MP4 down the animated
+    // path while photos keep the exact crop flow they have today. Unsupported
+    // videos are rejected there with a specific message.
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri ->
@@ -663,6 +673,12 @@ fun ProfileScreen(
         val previewSize = (
             minOf(configuration.screenWidthDp, configuration.screenHeightDp) * 0.62f
             ).dp.coerceIn(160.dp, 320.dp)
+        // Animated avatars play in the viewer too: muted looping video
+        // (letterboxed — same "show exactly what is saved" semantics as the
+        // Fit image) or the GIF animating through Coil, both behind the same
+        // visibility/foreground gate as the circles.
+        val previewPlayback = rememberAvatarPlayback()
+        var previewVideoFailed by remember(uri) { mutableStateOf(false) }
         Dialog(onDismissRequest = { showAvatarPreview = false }) {
             Surface(
                 shape = RoundedCornerShape(24.dp),
@@ -670,7 +686,9 @@ fun ProfileScreen(
                 modifier = Modifier.clip(RoundedCornerShape(24.dp)),
             ) {
                 Box(
-                    modifier = Modifier.size(previewSize),
+                    modifier = Modifier
+                        .size(previewSize)
+                        .onGloballyPositioned(previewPlayback::onPositioned),
                     contentAlignment = Alignment.Center,
                 ) {
                     // Visible way out — the viewer previously closed only by
@@ -692,16 +710,40 @@ fun ProfileScreen(
                             modifier = Modifier.size(18.dp),
                         )
                     }
-                    if (uri.startsWith("emoji:")) {
-                        Text(
+                    when {
+                        uri.startsWith("emoji:") -> Text(
                             text = uri.removePrefix("emoji:"),
                             fontSize = (previewSize.value * 0.5f).sp,
                             textAlign = TextAlign.Center,
                         )
-                    } else {
-                        SafeRemoteImage(
+
+                        AvatarMedia.displayKind(uri) == AvatarMedia.DisplayKind.Video ->
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (previewVideoFailed) {
+                                    Text(
+                                        "Couldn\u2019t load this picture",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = NazoTextSecondary,
+                                        textAlign = TextAlign.Center,
+                                    )
+                                } else {
+                                    AvatarVideoView(
+                                        uri = uri,
+                                        fit = true,
+                                        playback = previewPlayback,
+                                        modifier = Modifier.fillMaxSize(),
+                                        onFailed = { previewVideoFailed = true },
+                                    )
+                                }
+                            }
+
+                        else -> AnimatedAvatarImage(
                             url = uri,
                             contentDescription = "Profile picture preview",
+                            playback = previewPlayback,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Fit,
                             placeholder = {
@@ -814,7 +856,7 @@ fun ProfileScreen(
                         )
                 ) {
                     Text(
-                        "Pick a default avatar or upload your own. Tap refresh for a new batch.",
+                        "Pick a default avatar, or upload your own photo, GIF or video. Tap refresh for a new batch.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = NazoTextSecondary
                     )
@@ -964,7 +1006,10 @@ fun ProfileScreen(
                             showPictureDialog = false
                             galleryLauncher.launch(
                                 PickVisualMediaRequest(
-                                    ActivityResultContracts.PickVisualMedia.ImageOnly
+                                    // Videos included so MP4 avatars can be
+                                    // picked; the preview dialog validates the
+                                    // bytes and rejects anything unsupported.
+                                    ActivityResultContracts.PickVisualMedia.ImageAndVideo
                                 )
                             )
                         },
@@ -1056,6 +1101,23 @@ fun ProfileScreen(
                 clearPreview()
                 val result = ProfileImageStore.downloadDraft(context, target)
                 result.onSuccess { file ->
+                    val head = ProfileImageStore.readHead(
+                        context,
+                        ProfileImageSource.LocalFile(file),
+                    )
+                    if (head != null && AvatarMedia.isAnimatedPick(head)) {
+                        // An animated download (a GIF link, say): hand it
+                        // straight to the shared preview step, which validates
+                        // and shows it looping before anything is saved. Draft
+                        // ownership moves to pendingDraft WITHOUT discarding —
+                        // clearPreview() must not delete it on the way out.
+                        previewDraft = null
+                        previewBitmap = null
+                        showUrlDialog = false
+                        pendingDraft = file
+                        pendingSource = ProfileImageSource.LocalFile(file)
+                        return@onSuccess
+                    }
                     val decoded = ProfileImageStore.decodeForEditing(
                         context,
                         ProfileImageSource.LocalFile(file),

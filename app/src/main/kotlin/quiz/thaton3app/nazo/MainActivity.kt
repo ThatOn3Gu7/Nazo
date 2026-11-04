@@ -1,11 +1,17 @@
 package quiz.thaton3app.nazo
 
 import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import coil.Coil
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.decode.GifDecoder
+import coil.decode.ImageDecoderDecoder
 import quiz.thaton3app.nazo.LauncherIconSwitcher
 import quiz.thaton3app.nazo.data.UpdatePrefs
 import quiz.thaton3app.nazo.data.profile.ProfileImageStore
@@ -34,6 +40,28 @@ open class MainActivity : ComponentActivity() {
         // the user backs out of the picker, but a process death mid-edit would
         // strand one in the cache. Only touches cacheDir/profile_drafts.
         ProfileImageStore.clearAllDrafts(this)
+        // Animated avatars: register coil-gif's decoders on the singleton
+        // ImageLoader BEFORE any composable loads an image. ImageDecoderDecoder
+        // (API 28+) handles GIFs and animated WebPs; GifDecoder covers the
+        // remaining APIs with Movie. Without this, Coil renders only the first
+        // frame of an animated avatar. The process-scoped guard keeps a
+        // re-entered activity from discarding the already-built singleton (and
+        // its memory cache).
+        if (!coilConfigured) {
+            coilConfigured = true
+            Coil.setImageLoader(object : ImageLoaderFactory {
+                override fun newImageLoader(): ImageLoader =
+                    ImageLoader.Builder(applicationContext)
+                        .components {
+                            if (Build.VERSION.SDK_INT >= 28) {
+                                add(ImageDecoderDecoder.Factory())
+                            } else {
+                                add(GifDecoder.Factory())
+                            }
+                        }
+                        .build()
+            })
+        }
         // Re-render any placed widget from current storage on every launch.
         //
         // This is the supported recovery path after "Clear data". Android does
@@ -96,5 +124,12 @@ open class MainActivity : ComponentActivity() {
     companion object {
         /** Launcher long-press shortcut (res/xml/shortcuts.xml) → jump into the Daily Challenge. */
         const val ACTION_DAILY = "quiz.thaton3app.nazo.action.DAILY"
+
+        /**
+         * Process-scoped: coil's singleton can only be configured once per
+         * process without wiping its memory cache, and MainActivity may be
+         * re-entered (launcher aliases, the Daily shortcut).
+         */
+        private var coilConfigured = false
     }
 }
