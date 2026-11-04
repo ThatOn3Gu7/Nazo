@@ -4,7 +4,10 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
+import android.provider.OpenableColumns
 import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -45,6 +48,18 @@ object ProfileImageStore {
 
     /** How much of a web page we read while looking for its image. */
     private const val MAX_HTML_BYTES = 512 * 1024
+
+    /** Bytes read while sniffing a pick's format from its magic bytes. */
+    private const val HEAD_BYTES = 64
+
+    /** Video containers that are NOT MP4, by file extension. */
+    private val NON_MP4_VIDEO_EXTENSIONS = setOf(
+        "mov", "mkv", "webm", "avi", "3gp", "3g2", "flv", "ts", "m4v", "wmv", "mpeg", "mpg",
+    )
+
+    private const val CORRUPT_VIDEO = "That video couldn't be read. It may be corrupted or empty."
+    private const val UNPLAYABLE_VIDEO =
+        "That video couldn't be played on this device. Try re-exporting it as an MP4."
 
     private fun avatarDir(context: Context): File =
         File(context.filesDir, AVATAR_DIR).apply { mkdirs() }
@@ -482,6 +497,256 @@ object ProfileImageStore {
     }
 
     // -----------------------------------------------------------------------
+    // Animated avatars (GIF / animated WebP / MP4)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Reads the first [limit] bytes of a pick — enough to sniff its format —
+     * without loading the file. Null when the source cannot be opened.
+     */
+    suspend fun readHead(
+        context: Context,
+        source: ProfileImageSource,
+        limit: Int = HEAD_BYTES,
+    ): ByteArray? = withContext(Dispatchers.IO) {
+        runCatching {
+            val stream = openStream(context, source) ?: return@runCatching null
+            stream.use { input ->
+                val buffer = ByteArray(limit)
+                var read = 0
+                while (read < limit) {
+                    val n = input.read(buffer, read, limit - read)
+                    if (n == -1) break
+                    read += n
+                }
+                if (read <= 0) null else buffer.copyOf(read)
+            }
+        }.getOrNull()
+    }
+
+    /**
+     * Validates a pick that [AvatarMedia.isAnimatedPick] accepted, and returns
+     * everything the preview needs to render it. Runs on [Dispatchers.IO].
+     *
+     * The checks are ordered cheapest-first and each failure carries a message
+     * that says what went wrong AND what to do about it — every path throws an
+     * [IllegalStateException]/[IllegalArgumentException] whose message is safe
+     * to show the user. Nothing here writes: a rejected pick leaves the
+     * current avatar (and storage) untouched.
+     */
+    // Internal: its return type is AnimatedAvatarInfo (internal, see above).
+    internal suspend fun probeAnimatedAvatar(
+        context: Context,
+        source: ProfileImageSource,
+    ): Result<AnimatedAvatarInfo> = withContext(Dispatchers.IO) {
+        runCatching {
+            val head = readHead(context, source) ?: error("That file couldn't be read.")
+            val format = AvatarMedia.sniff(head)
+            if (format == null || !AvatarMedia.isAnimatedPick(head)) {
+                error(
+                    unsupportedVideoMessage(context, source)
+                        ?: AvatarMedia.unsupportedFormatError(isVideoLike = false)
+                )
+            }
+            val size = sizeOf(context, source) ?: error("That file couldn't be read.")
+            if (size <= 0L) error("That file is empty.")
+            AvatarMedia.sizeError(size)?.let { error(it) }
+
+            when (format) {
+                AvatarMedia.Format.Mp4 -> probeVideo(context, source)
+                AvatarMedia.Format.Gif, AvatarMedia.Format.Webp ->
+                    probeAnimatedImage(context, source, head, format)
+                else -> error(AvatarMedia.unsupportedFormatError(isVideoLike = false))
+            }
+        }.recoverCatching { throwable ->
+            throw IllegalStateException(probeFriendlyMessage(throwable), throwable)
+        }
+    }
+
+    /**
+     * Re-validates and writes an animated pick as the user's avatar, keeping
+     * the ORIGINAL bytes (a re-encode would flatten the animation — this is
+     * the whole reason the static crop pipeline is bypassed).
+     *
+     * Order matters for safety: the new file is written and verified complete
+     * FIRST, and only then does the old avatar get pruned. A failure at any
+     * point deletes the partial file and leaves the current avatar exactly as
+     * it was — a rejected selection can never destroy an accepted picture.
+     */
+    suspend fun saveAnimatedAvatar(
+        context: Context,
+        source: ProfileImageSource,
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val info = probeAnimatedAvatar(context, source).getOrThrow()
+            val dir = avatarDir(context)
+            val target = File(dir, "avatar_${System.currentTimeMillis()}.${info.format.extension}")
+            try {
+                val input = openStream(context, source) ?: error("That file couldn't be read.")
+                input.use { ins ->
+                    target.outputStream().use { out ->
+                        val buffer = ByteArray(64 * 1024)
+                        var total = 0L
+                        while (true) {
+                            val read = ins.read(buffer)
+                            if (read == -1) break
+                            total += read
+                            if (total > AvatarMedia.MAX_ANIMATED_BYTES) {
+                                error(AvatarMedia.sizeError(total) ?: "That file is too large.")
+                            }
+                            out.write(buffer, 0, read)
+                        }
+                        if (total == 0L) error("That file is empty.")
+                    }
+                }
+                // Same cleanup rule as saveAvatar: only the newest survives,
+                // and it only runs once the new file is fully on disk.
+                pruneOldAvatars(dir, keep = target)
+                Uri.fromFile(target).toString()
+            } catch (t: Throwable) {
+                runCatching { if (target.exists()) target.delete() }
+                throw t
+            }
+        }.recoverCatching { throwable ->
+            throw IllegalStateException(probeFriendlyMessage(throwable), throwable)
+        }
+    }
+
+    /**
+     * Message for a pick whose MIME type or extension says "video" but whose
+     * bytes are no video we support (MKV, MOV, …); null when the source gives
+     * no video indication at all. Lets the picker explain an unsupported
+     * format instead of falling through to the generic "couldn't read image".
+     */
+    fun unsupportedVideoMessage(context: Context, source: ProfileImageSource): String? {
+        val videoLike = when (source) {
+            is ProfileImageSource.LocalFile ->
+                source.file.extension.lowercase() in NON_MP4_VIDEO_EXTENSIONS
+            is ProfileImageSource.ContentUri -> runCatching {
+                context.contentResolver.getType(source.uri)?.startsWith("video/") == true
+            }.getOrDefault(false)
+        }
+        return if (videoLike) AvatarMedia.unsupportedFormatError(isVideoLike = true) else null
+    }
+
+    /** File length, or the content provider's SIZE (stream-counted as a fallback). */
+    private fun sizeOf(context: Context, source: ProfileImageSource): Long? = when (source) {
+        is ProfileImageSource.LocalFile -> source.file.length()
+        is ProfileImageSource.ContentUri ->
+            queryContentSize(context, source.uri) ?: streamContentSize(context, source.uri)
+    }
+
+    private fun queryContentSize(context: Context, uri: Uri): Long? = runCatching {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use {
+            cursor ->
+            val index = cursor.getColumnIndex(OpenableColumns.SIZE)
+            if (index >= 0 && cursor.moveToFirst() && !cursor.isNull(index)) {
+                cursor.getLong(index)
+            } else null
+        }
+    }.getOrNull()
+
+    /**
+     * Counts bytes until the cap is exceeded (then stops), so an oversized
+     * pick is reported as oversized without ever allocating its full size.
+     */
+    private fun streamContentSize(context: Context, uri: Uri): Long? = runCatching {
+        val stream = context.contentResolver.openInputStream(uri) ?: return@runCatching null
+        stream.use { input ->
+            val buffer = ByteArray(64 * 1024)
+            var total = 0L
+            while (true) {
+                val read = input.read(buffer)
+                if (read == -1) break
+                total += read
+                if (total > AvatarMedia.MAX_ANIMATED_BYTES) break
+            }
+            total
+        }
+    }.getOrNull()
+
+    private fun probeVideo(context: Context, source: ProfileImageSource): AnimatedAvatarInfo {
+        val retriever = MediaMetadataRetriever()
+        try {
+            runCatching {
+                when (source) {
+                    is ProfileImageSource.LocalFile ->
+                        retriever.setDataSource(source.file.absolutePath)
+                    is ProfileImageSource.ContentUri ->
+                        context.contentResolver.openFileDescriptor(source.uri, "r")?.use { fd ->
+                            retriever.setDataSource(fd.fileDescriptor)
+                        } ?: error("That file couldn't be read.")
+                }
+            }.getOrElse { t ->
+                throw if (t is IllegalStateException) t else IllegalStateException(UNPLAYABLE_VIDEO, t)
+            }
+
+            val duration = runCatching {
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+            }.getOrNull() ?: throw IllegalStateException(CORRUPT_VIDEO)
+            if (duration <= 0L) throw IllegalStateException(CORRUPT_VIDEO)
+            AvatarMedia.durationError(duration)?.let { throw IllegalStateException(it) }
+
+            // Forces an actual decode: a container that parses but holds an
+            // unsupported codec (or truncated frames) answers null here.
+            val frame = runCatching {
+                retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST)
+            }.getOrNull() ?: throw IllegalStateException(UNPLAYABLE_VIDEO)
+            try {
+                AvatarMedia.dimensionError(frame.width, frame.height)?.let {
+                    throw IllegalStateException(it)
+                }
+                return AnimatedAvatarInfo(AvatarMedia.Format.Mp4, frame.width, frame.height, duration)
+            } finally {
+                frame.recycle()
+            }
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
+
+    private fun probeAnimatedImage(
+        context: Context,
+        source: ProfileImageSource,
+        head: ByteArray,
+        format: AvatarMedia.Format,
+    ): AnimatedAvatarInfo {
+        // Bounds-only decode: no pixels are allocated, just the dimensions.
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        val stream = openStream(context, source) ?: error("That file couldn't be read.")
+        stream.use { BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            if (format == AvatarMedia.Format.Webp &&
+                AvatarMedia.isAnimatedWebp(head) &&
+                Build.VERSION.SDK_INT < 28
+            ) {
+                error("Animated WebP needs Android 9 or newer. Use a GIF or MP4 instead.")
+            }
+            error("That picture couldn't be read. It may be corrupted.")
+        }
+        AvatarMedia.dimensionError(bounds.outWidth, bounds.outHeight)?.let { error(it) }
+        return AnimatedAvatarInfo(format, bounds.outWidth, bounds.outHeight, durationMs = null)
+    }
+
+    /**
+     * Maps a probe/save failure to something showable: `require`/`error()`
+     * messages are already user-facing wording, everything else becomes an
+     * honest generic (the same contract [downloadDraft] uses).
+     */
+    private fun probeFriendlyMessage(throwable: Throwable): String {
+        val message = throwable.message
+        return when {
+            (throwable is IllegalArgumentException || throwable is IllegalStateException) &&
+                !message.isNullOrBlank() -> message
+            throwable is java.io.FileNotFoundException || throwable is SecurityException ->
+                "That file couldn't be read. Check that it still exists and try again."
+            throwable is java.io.IOException ->
+                "Couldn't read that file. Check it and try again."
+            else -> "That file couldn't be used as a profile picture."
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // Saving
     // -----------------------------------------------------------------------
 
@@ -623,3 +888,20 @@ sealed interface ProfileImageSource {
     /** A gallery pick. Read-only: we never write back to this. */
     data class ContentUri(val uri: Uri) : ProfileImageSource
 }
+
+/**
+ * Validated metadata for an animated avatar pick (GIF / animated WebP / MP4),
+ * produced by [ProfileImageStore.probeAnimatedAvatar]. The preview renders
+ * straight from the source; [ProfileImageStore.saveAnimatedAvatar] re-probes
+ * and writes the original bytes.
+ *
+ * Internal because it carries [AvatarMedia.Format], which is internal policy
+ * (the same module — including unit tests — can still see both).
+ */
+internal data class AnimatedAvatarInfo(
+    val format: AvatarMedia.Format,
+    val width: Int,
+    val height: Int,
+    /** Loop duration for video; null for image animations (not probed). */
+    val durationMs: Long?,
+)

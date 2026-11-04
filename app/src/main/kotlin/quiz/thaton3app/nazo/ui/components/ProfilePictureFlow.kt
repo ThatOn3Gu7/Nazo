@@ -1,6 +1,7 @@
 package quiz.thaton3app.nazo.ui.components
 
 import android.graphics.Bitmap
+import android.net.Uri
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -22,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -43,12 +45,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.Image
 import kotlinx.coroutines.launch
+import quiz.thaton3app.nazo.data.profile.AnimatedAvatarInfo
+import quiz.thaton3app.nazo.data.profile.AvatarMedia
 import quiz.thaton3app.nazo.data.profile.ProfileImageSource
 import quiz.thaton3app.nazo.data.profile.ProfileImageStore
 import quiz.thaton3app.nazo.ui.theme.NazoError
@@ -92,6 +97,19 @@ fun ProfileImagePreviewDialog(
     var loadFailed by remember(source) { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
 
+    // Animated picks (GIF / animated WebP / MP4) never enter the bitmap+crop
+    // pipeline: the sniffer below routes them here instead. [animatedInfo] is
+    // set only after the pick passes every validation; [animatedFailure] is
+    // the friendly explanation when it does not (the previous avatar is
+    // untouched either way — nothing is written until Accept).
+    var animatedInfo by remember(source) { mutableStateOf<AnimatedAvatarInfo?>(null) }
+    var animatedFailure by remember(source) { mutableStateOf<String?>(null) }
+    // A pick that is a video we can't use (MKV, MOV, …) gets the specific
+    // "unsupported format" copy instead of the generic image wording. Set
+    // lazily below, only when the static decode actually fails.
+    var videoMessage by remember(source) { mutableStateOf<String?>(null) }
+    val playback = rememberAvatarPlayback()
+
     // Which image the user is currently cropping, rather than a bare boolean.
     //
     // Rotation re-creates this dialog, so a `remember(source)` flag dropped the
@@ -107,8 +125,23 @@ fun ProfileImagePreviewDialog(
     val cropping = croppingSource == sourceKey
 
     LaunchedEffect(source) {
-        val decoded = ProfileImageStore.decodeForEditing(context, source)
-        if (decoded == null) loadFailed = true else bitmap = decoded
+        // Sniff first: an animated pick must keep its ORIGINAL bytes (a
+        // decode/re-encode would flatten it to a single static frame), so it
+        // goes down the probe path and the static pipeline stays untouched.
+        val head = ProfileImageStore.readHead(context, source)
+        if (head != null && AvatarMedia.isAnimatedPick(head)) {
+            ProfileImageStore.probeAnimatedAvatar(context, source)
+                .onSuccess { animatedInfo = it }
+                .onFailure { animatedFailure = it.message ?: "That file couldn't be used as a profile picture." }
+        } else {
+            val decoded = ProfileImageStore.decodeForEditing(context, source)
+            if (decoded == null) {
+                loadFailed = true
+                videoMessage = ProfileImageStore.unsupportedVideoMessage(context, source)
+            } else {
+                bitmap = decoded
+            }
+        }
     }
 
     // NOTE: the draft used to be deleted from an onDispose here. That is wrong
@@ -150,6 +183,41 @@ fun ProfileImagePreviewDialog(
         }
     }
 
+    /**
+     * Accept path for animated picks: [ProfileImageStore.saveAnimatedAvatar]
+     * re-validates and writes the ORIGINAL bytes (no re-encode — that would
+     * flatten the animation), then hands back the URI exactly like a static
+     * accept. A failure only sets [animatedFailure]: the current avatar and
+     * every other preference stay untouched.
+     */
+    fun acceptAnimated() {
+        if (saving) return
+        saving = true
+        scope.launch {
+            val saved = ProfileImageStore.saveAnimatedAvatar(context, source)
+            saving = false
+            saved.onSuccess { uri ->
+                croppingSource = null
+                ProfileImageStore.discardDraft(draftFile)
+                onAccepted(uri)
+            }.onFailure {
+                animatedFailure = it.message ?: "That file couldn't be used as a profile picture."
+            }
+        }
+    }
+
+    // What the preview area is showing. Drives AnimatedContent so each state
+    // cross-fades exactly like the original bitmap/crop/failed triple did.
+    val stage = when {
+        animatedFailure != null -> PreviewStage.Rejected(animatedFailure!!)
+        videoMessage != null -> PreviewStage.Rejected(videoMessage!!)
+        animatedInfo != null -> PreviewStage.Animated(animatedInfo!!)
+        loadFailed -> PreviewStage.Failed
+        current == null -> PreviewStage.Loading
+        cropping -> PreviewStage.Cropping
+        else -> PreviewStage.Static
+    }
+
     AlertDialog(
         onDismissRequest = { if (!saving) onDismiss() },
         title = {
@@ -166,6 +234,8 @@ fun ProfileImagePreviewDialog(
             ) {
                 Text(
                     text = when {
+                        animatedFailure != null -> animatedFailure!!
+                        videoMessage != null -> videoMessage!!
                         loadFailed -> "That image couldn't be opened."
                         cropping -> "Pinch to zoom and drag to reposition. The circle shows what will be visible."
                         else -> "This is how your picture will look."
@@ -177,28 +247,43 @@ fun ProfileImagePreviewDialog(
                 Spacer(Modifier.height(16.dp))
 
                 AnimatedContent(
-                    targetState = Triple(current != null, cropping, loadFailed),
+                    targetState = stage,
                     transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(120)) },
                     label = "profile_preview",
-                ) { (hasBitmap, isCropping, failed) ->
+                ) { shown ->
                     // AnimatedContent's scope is a Box, so the branches must
                     // supply their own layout.
                     Box(
                         modifier = Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.Center,
                     ) {
-                        when {
-                            failed -> PreviewMessage(
+                        when (shown) {
+                            is PreviewStage.Rejected -> PreviewMessage(
+                                icon = true,
+                                text = shown.message,
+                            )
+
+                            PreviewStage.Failed -> PreviewMessage(
                                 icon = true,
                                 text = "We couldn't read that image.",
                             )
 
-                            !hasBitmap -> PreviewMessage(icon = false, text = "Loading…")
+                            PreviewStage.Loading -> PreviewMessage(icon = false, text = "Loading…")
 
-                            isCropping && current != null && cropState != null ->
-                                ProfileImageCropper(bitmap = current, state = cropState)
+                            PreviewStage.Cropping ->
+                                if (current != null && cropState != null) {
+                                    ProfileImageCropper(bitmap = current, state = cropState)
+                                }
 
-                            current != null -> SquarePreview(current)
+                            PreviewStage.Static ->
+                                if (current != null) SquarePreview(current)
+
+                            is PreviewStage.Animated -> AnimatedAvatarPreview(
+                                info = shown.info,
+                                source = source,
+                                playback = playback,
+                                onFailed = { message -> animatedFailure = message },
+                            )
                         }
                     }
                 }
@@ -252,14 +337,20 @@ fun ProfileImagePreviewDialog(
                 Spacer(Modifier.width(8.dp))
                 NazoPrimaryButton(
                     onClick = {
-                        if (cropping) {
-                            val result = cropState?.cropToBitmap()
-                            if (result != null) accept(result, alreadySquare = true)
-                        } else {
-                            current?.let { accept(it, alreadySquare = false) }
+                        when {
+                            cropping -> {
+                                val result = cropState?.cropToBitmap()
+                                if (result != null) accept(result, alreadySquare = true)
+                            }
+                            // Animated picks skip crop entirely — there is no
+                            // bitmap, and re-encoding would kill the animation.
+                            animatedInfo != null -> acceptAnimated()
+                            else -> current?.let { accept(it, alreadySquare = false) }
                         }
                     },
-                    enabled = current != null && !saving,
+                    // Animated previews are ready to accept the moment the
+                    // probe succeeded (animatedInfo), independently of bitmap.
+                    enabled = (current != null || animatedInfo != null) && !saving,
                     modifier = Modifier.weight(1f),
                 ) {
                     if (saving) {
@@ -293,6 +384,89 @@ private fun SquarePreview(bitmap: Bitmap) {
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
+    }
+}
+
+/**
+ * Which preview the dialog is currently showing. Replaces the original
+ * `Triple(hasBitmap, cropping, loadFailed)` so AnimatedContent can cross-fade
+ * between static, crop, animated and the two distinct failure kinds.
+ */
+private sealed interface PreviewStage {
+    data object Loading : PreviewStage
+    data object Static : PreviewStage
+    data object Cropping : PreviewStage
+    /** Static decode failed (generic wording, or the unsupported-video copy). */
+    data object Failed : PreviewStage
+    /** An animated pick was rejected; [message] is the user-facing explanation. */
+    data class Rejected(val message: String) : PreviewStage
+    /** A validated animated pick, ready to preview and accept. */
+    data class Animated(val info: AnimatedAvatarInfo) : PreviewStage
+}
+
+/** The playable URI for a preview source: owned file for drafts, as-is for gallery picks. */
+private fun ProfileImageSource.asUriString(): String = when (this) {
+    is ProfileImageSource.LocalFile -> Uri.fromFile(file).toString()
+    is ProfileImageSource.ContentUri -> uri.toString()
+}
+
+/**
+ * Square looping preview for an animated pick — muted looping video (letter-
+ * boxed, matching the old full-size viewer's "show exactly what is saved"
+ * semantics) or the animated image itself. The play icon underneath shows
+ * until the first frame lands; a playback failure reports back so the dialog
+ * can swap to the rejection message.
+ */
+@Composable
+private fun AnimatedAvatarPreview(
+    info: AnimatedAvatarInfo,
+    source: ProfileImageSource,
+    playback: AvatarPlayback,
+    onFailed: (String) -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(20.dp))
+            .background(NazoSurfaceVariant)
+            .onGloballyPositioned(playback::onPositioned),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.PlayArrow,
+            contentDescription = null,
+            tint = NazoTextSecondary.copy(alpha = 0.45f),
+            modifier = Modifier.size(56.dp),
+        )
+        val uri = source.asUriString()
+        if (info.format == AvatarMedia.Format.Mp4) {
+            AvatarVideoView(
+                uri = uri,
+                fit = true,
+                playback = playback,
+                modifier = Modifier.fillMaxSize(),
+                onFailed = {
+                    onFailed("That video couldn't be played. Try a different MP4.")
+                },
+            )
+        } else {
+            AnimatedAvatarImage(
+                url = uri,
+                contentDescription = "Selected picture",
+                playback = playback,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                errorContent = {
+                    Text(
+                        text = "Couldn't load this picture",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = NazoTextSecondary,
+                        textAlign = TextAlign.Center,
+                    )
+                },
+            )
+        }
     }
 }
 
