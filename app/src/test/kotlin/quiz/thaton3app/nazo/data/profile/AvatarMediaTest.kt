@@ -39,8 +39,8 @@ class AvatarMediaTest {
                 byteArrayOf(10, 0, 0, 0) +
                 byteArrayOf(0x02) +
                 ByteArray(3) +
-                byteArrayOf(0xFF, 0x0F) +
-                byteArrayOf(0xFF, 0x0F) +
+                byteArrayOf(0xFF.toByte(), 0x0F) +
+                byteArrayOf(0xFF.toByte(), 0x0F) +
                 ByteArray(16)
         } else {
             head + "VP8 ".toByteArray() + ByteArray(32) { it.toByte() }
