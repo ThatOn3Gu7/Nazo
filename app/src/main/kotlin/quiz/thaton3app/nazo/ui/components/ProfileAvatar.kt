@@ -11,10 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -102,15 +99,19 @@ fun ProfileAvatar(
      * unchanged everywhere this avatar is used.
      */
     onLongClick: (() -> Unit)? = null,
+    /**
+     * True while something covers this avatar (picker, preview, confirmation
+     * dialogs): the live picture holds its current frame instead of decoding
+     * behind the scrim — which is also what keeps opening those dialogs as
+     * snappy as it was before avatars could animate.
+     */
+    paused: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val shape = CircleShape
     val playback = rememberAvatarPlayback()
+    playback.paused = paused
     val displayKind = remember(pictureUri) { AvatarMedia.displayKind(pictureUri) }
-    // Once a video has failed to play, fall back to the initials for good
-    // (until the URI changes) instead of retrying the broken file on every
-    // scroll or resume.
-    var videoFailed by remember(pictureUri) { mutableStateOf(false) }
 
     val content: @Composable () -> Unit = {
         when {
@@ -131,20 +132,17 @@ fun ProfileAvatar(
                 )
             }
 
-            displayKind == AvatarMedia.DisplayKind.Video -> Box(Modifier.fillMaxSize()) {
-                // Underlay: visible until the first frame lands, and the
-                // permanent fallback if the video fails to play.
-                ProfileInitials(name, size)
-                if (!videoFailed) {
-                    AvatarVideoView(
-                        uri = pictureUri!!,
-                        fit = false,
-                        playback = playback,
-                        modifier = Modifier.fillMaxSize(),
-                        onFailed = { videoFailed = true },
-                    )
-                }
-            }
+            displayKind == AvatarMedia.DisplayKind.Video ->
+                // No separate initials underlay here: AvatarVideoView decides
+                // when the fallback may truthfully appear (warm window +
+                // failure), which is what keeps navigation from flashing it.
+                AvatarVideoView(
+                    uri = pictureUri!!,
+                    fit = false,
+                    playback = playback,
+                    modifier = Modifier.fillMaxSize(),
+                    fallback = { ProfileInitials(name, size) },
+                )
 
             else -> AnimatedAvatarImage(
                 url = pictureUri!!,
@@ -152,6 +150,14 @@ fun ProfileAvatar(
                 playback = playback,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
+                // Animated pictures hold their placeholder back briefly so a
+                // screen change doesn't flash the initials over the crossfade;
+                // plain photos keep the original immediate placeholder.
+                placeholderDelayMs = if (AvatarMedia.isAnimatedImageUri(pictureUri)) {
+                    GIF_PLACEHOLDER_DELAY_MS
+                } else {
+                    0L
+                },
                 placeholder = { ProfileInitials(name, size) },
                 errorContent = { ProfileInitials(name, size) },
             )

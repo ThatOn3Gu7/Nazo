@@ -11,8 +11,11 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Surface
 import android.view.TextureView
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,6 +36,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImagePainter
+import kotlinx.coroutines.delay
 
 /**
  * Playback plumbing for animated avatars — one shared video player and the
@@ -94,7 +98,14 @@ internal class AvatarPlayback {
     // same file) drives it from the activity lifecycle observer.
     var foreground: Boolean by mutableStateOf(true)
 
-    val shouldPlay: Boolean get() = visible && foreground
+    /**
+     * Forced pause from the owner — set while a dialog covers this avatar so
+     * a live GIF/video isn't decoding behind the scrim (the frame it was
+     * showing is held instead). Lifecycle-independent.
+     */
+    var paused: Boolean by mutableStateOf(false)
+
+    val shouldPlay: Boolean get() = visible && foreground && !paused
 
     fun onPositioned(coords: LayoutCoordinates) {
         val bounds = coords.boundsInWindow()
@@ -387,12 +398,34 @@ internal object AvatarVideoHost {
 // ---------------------------------------------------------------------------
 
 /**
+ * How long a freshly composed video view may show its plain background before
+ * the fallback (initials, an error state) appears. Long enough to cover the
+ * warm-navigation path by a wide margin — a prepared player needs only a
+ * surface plus a frame or two (~50–150 ms) — short enough that a genuinely
+ * stuck or failing video still falls back promptly. [AvatarVideoView] shows
+ * NO fallback during this window, which is what stops Home ↔ Profile from
+ * flashing the initials avatar over the crossfade.
+ */
+internal const val VIDEO_FALLBACK_DELAY_MS = 500L
+
+/**
+ * How long an animated image may load before its placeholder (the initials
+ * avatar) appears. Coil answers warm-cache navigation in a frame or two, so
+ * a placeholder drawn immediately is what made GIF avatars flash back to the
+ * initials during transitions; genuinely slow loads still show it.
+ */
+internal const val GIF_PLACEHOLDER_DELAY_MS = 300L
+
+/**
  * Renders one looping, muted avatar video, driven by [playback].
  *
- * The TextureView is transparent until the first frame arrives, so callers
- * can layer a static fallback (initials, a placeholder icon) underneath and
- * never see a black flash. On failure [onFailed] fires once and the view
- * renders nothing — again leaving the caller's fallback visible.
+ * The TextureView is transparent until the first frame arrives. [fallback]
+ * is drawn ONLY when it can be truthful: once the warm window above has
+ * expired without a frame, or when playback has failed — never merely
+ * because a fresh surface is still spinning up, which is the moment that
+ * used to flash the initials avatar across a screen transition. On failure
+ * [onFailed] fires once and the TextureView is removed entirely, leaving
+ * the fallback as the final state.
  */
 @Composable
 internal fun AvatarVideoView(
@@ -400,6 +433,7 @@ internal fun AvatarVideoView(
     fit: Boolean,
     playback: AvatarPlayback,
     modifier: Modifier = Modifier,
+    fallback: @Composable () -> Unit = {},
     onFailed: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
@@ -407,7 +441,20 @@ internal fun AvatarVideoView(
         AvatarVideoSession(uri, fit, context.applicationContext)
     }
     var failed by remember(session) { mutableStateOf(false) }
+    // True once the TextureView has drawn at least one frame for this
+    // session; combined with the warm window below, it decides when the
+    // fallback is allowed to appear.
+    var frameRendered by remember(session) { mutableStateOf(false) }
+    var warmExpired by remember(session) { mutableStateOf(false) }
+    // Bumped when the surface dies so the warm window re-arms for whatever
+    // SurfaceTexture the view creates next.
+    var surfaceEpoch by remember(session) { mutableStateOf(0) }
     val currentOnFailed by rememberUpdatedState(onFailed)
+
+    LaunchedEffect(session, surfaceEpoch) {
+        delay(VIDEO_FALLBACK_DELAY_MS)
+        warmExpired = true
+    }
 
     DisposableEffect(session, playback.shouldPlay) {
         session.onFailed = {
@@ -428,43 +475,58 @@ internal fun AvatarVideoView(
         }
     }
 
-    if (failed) {
-        // Nothing: the caller's underlay (initials / error copy) shows through.
-    } else {
-        AndroidView(
-            modifier = modifier,
-            factory = { viewContext ->
-                TextureView(viewContext).apply {
-                    surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-                        override fun onSurfaceTextureAvailable(
-                            surfaceTexture: SurfaceTexture,
-                            width: Int,
-                            height: Int,
-                        ) {
-                            AvatarVideoHost.surfaceAvailable(session, Surface(surfaceTexture))
+    Box(modifier = modifier) {
+        if (failed || (warmExpired && !frameRendered)) {
+            fallback()
+        }
+        if (!failed) {
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { viewContext ->
+                    TextureView(viewContext).apply {
+                        surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                            override fun onSurfaceTextureAvailable(
+                                surfaceTexture: SurfaceTexture,
+                                width: Int,
+                                height: Int,
+                            ) {
+                                AvatarVideoHost.surfaceAvailable(session, Surface(surfaceTexture))
+                            }
+
+                            override fun onSurfaceTextureDestroyed(surfaceTexture: SurfaceTexture): Boolean {
+                                // The host drops its reference first; then the
+                                // wrapper is released and the TextureView is
+                                // allowed to release the SurfaceTexture itself.
+                                val surface = session.surface
+                                AvatarVideoHost.surfaceDestroyed(session)
+                                surface?.release()
+                                // Buffer gone (system pressure / detach): the
+                                // view may spin up a NEW SurfaceTexture later,
+                                // so forget the frame and re-arm the warm
+                                // window in the same synchronised step — no
+                                // stale fallback frame in between.
+                                frameRendered = false
+                                warmExpired = false
+                                surfaceEpoch++
+                                return true
+                            }
+
+                            override fun onSurfaceTextureSizeChanged(
+                                surfaceTexture: SurfaceTexture,
+                                width: Int,
+                                height: Int,
+                            ) = Unit
+
+                            override fun onSurfaceTextureUpdated(surfaceTexture: SurfaceTexture) {
+                                // Fires per frame; the flag makes it a no-op
+                                // after the first one.
+                                if (!frameRendered) frameRendered = true
+                            }
                         }
-
-                        override fun onSurfaceTextureDestroyed(surfaceTexture: SurfaceTexture): Boolean {
-                            // The host drops its reference first; then the
-                            // wrapper is released and the TextureView is
-                            // allowed to release the SurfaceTexture itself.
-                            val surface = session.surface
-                            AvatarVideoHost.surfaceDestroyed(session)
-                            surface?.release()
-                            return true
-                        }
-
-                        override fun onSurfaceTextureSizeChanged(
-                            surfaceTexture: SurfaceTexture,
-                            width: Int,
-                            height: Int,
-                        ) = Unit
-
-                        override fun onSurfaceTextureUpdated(surfaceTexture: SurfaceTexture) = Unit
                     }
-                }
-            },
-        )
+                },
+            )
+        }
     }
 }
 
@@ -481,6 +543,11 @@ internal fun AvatarVideoView(
  * from [AvatarPlayback.shouldPlay]; for static images the drawable is not
  * `Animatable` and every call is a no-op, so the static path is behaviourally
  * identical to plain [SafeRemoteImage].
+ *
+ * [placeholderDelayMs] holds the loading placeholder back for that long
+ * (0 = show it immediately, the original behaviour). Warm navigation answers
+ * inside the window, so the avatar never visibly reverts to the placeholder
+ * between screens; a genuinely slow load still gets it.
  */
 @Composable
 internal fun AnimatedAvatarImage(
@@ -489,16 +556,26 @@ internal fun AnimatedAvatarImage(
     playback: AvatarPlayback,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
+    placeholderDelayMs: Long = 0L,
     placeholder: @Composable () -> Unit = {},
     errorContent: @Composable () -> Unit = {},
 ) {
     var animatable by remember(url) { mutableStateOf<Animatable?>(null) }
+    var placeholderVisible by remember(url) {
+        mutableStateOf(placeholderDelayMs <= 0L)
+    }
+    LaunchedEffect(url, placeholderDelayMs) {
+        if (placeholderDelayMs > 0L) {
+            delay(placeholderDelayMs)
+            placeholderVisible = true
+        }
+    }
     SafeRemoteImage(
         url = url,
         contentDescription = contentDescription,
         modifier = modifier,
         contentScale = contentScale,
-        placeholder = placeholder,
+        placeholder = { if (placeholderVisible) placeholder() },
         errorContent = errorContent,
         onSuccess = { state: AsyncImagePainter.State.Success ->
             animatable = state.result.drawable as? Animatable

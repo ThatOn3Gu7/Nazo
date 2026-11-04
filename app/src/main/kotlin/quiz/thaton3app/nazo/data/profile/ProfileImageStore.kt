@@ -52,11 +52,6 @@ object ProfileImageStore {
     /** Bytes read while sniffing a pick's format from its magic bytes. */
     private const val HEAD_BYTES = 64
 
-    /** Video containers that are NOT MP4, by file extension. */
-    private val NON_MP4_VIDEO_EXTENSIONS = setOf(
-        "mov", "mkv", "webm", "avi", "3gp", "3g2", "flv", "ts", "m4v", "wmv", "mpeg", "mpg",
-    )
-
     private const val CORRUPT_VIDEO = "That video couldn't be read. It may be corrupted or empty."
     private const val UNPLAYABLE_VIDEO =
         "That video couldn't be played on this device. Try re-exporting it as an MP4."
@@ -621,7 +616,7 @@ object ProfileImageStore {
     fun unsupportedVideoMessage(context: Context, source: ProfileImageSource): String? {
         val videoLike = when (source) {
             is ProfileImageSource.LocalFile ->
-                source.file.extension.lowercase() in NON_MP4_VIDEO_EXTENSIONS
+                AvatarMedia.isUnsupportedVideoName(source.file.extension)
             is ProfileImageSource.ContentUri -> runCatching {
                 context.contentResolver.getType(source.uri)?.startsWith("video/") == true
             }.getOrDefault(false)

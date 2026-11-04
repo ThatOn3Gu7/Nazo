@@ -234,8 +234,10 @@ fun ProfileImagePreviewDialog(
             ) {
                 Text(
                     text = when {
-                        animatedFailure != null -> animatedFailure!!
-                        videoMessage != null -> videoMessage!!
+                        // Validation failures: a SHORT heading on top; the full
+                        // explanation lives once, inside the preview area.
+                        animatedFailure != null -> AvatarMedia.failureHeading(animatedFailure!!)
+                        videoMessage != null -> AvatarMedia.failureHeading(videoMessage!!)
                         loadFailed -> "That image couldn't be opened."
                         cropping -> "Pinch to zoom and drag to reposition. The circle shows what will be visible."
                         else -> "This is how your picture will look."
@@ -503,6 +505,9 @@ private fun PreviewMessage(icon: Boolean, text: String) {
                 text = text,
                 style = MaterialTheme.typography.bodyMedium,
                 color = NazoTextSecondary,
+                // Long explanations wrap across several lines; without this
+                // they hug the left edge of the preview box.
+                textAlign = TextAlign.Center,
             )
         }
     }
