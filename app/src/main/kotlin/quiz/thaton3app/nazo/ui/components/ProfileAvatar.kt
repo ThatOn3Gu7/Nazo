@@ -11,11 +11,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -80,9 +83,11 @@ fun ProfileInitials(username: String, size: Dp, modifier: Modifier = Modifier) {
  * image, or a looping muted video — everywhere it appears in the app.
  *
  * Animated media is dispatched by [AvatarMedia.displayKind] off the stored
- * URI (no disk I/O on the composition path): `file://…mp4` goes to the shared
- * [AvatarVideoView], GIF/animated-WebP ride Coil with the play gate from
- * [rememberAvatarPlayback], and every other case is the original static
+ * URI (no disk I/O on the composition path): `file://…mp4` becomes a video
+ * ANCHOR — the cached poster/fallback slot that [PersistentAvatarVideo]'s
+ * single app-level TextureView is positioned over (no per-screen surfaces,
+ * no handoff on navigation); GIF/animated-WebP ride Coil with the play gate
+ * from [rememberAvatarPlayback]; every other case is the original static
  * image path, unchanged. The gate also pauses both kinds when the avatar
  * scrolls out of its column or the app is backgrounded.
  */
@@ -106,12 +111,39 @@ fun ProfileAvatar(
      * snappy as it was before avatars could animate.
      */
     paused: Boolean = false,
+    /**
+     * Which screen's slot this avatar is, for the persistent video overlay:
+     * the app-level [PersistentAvatarVideo] tracks the active screen's anchor
+     * to position its single TextureView over this circle. Null (or a
+     * non-video [pictureUri]) never touches the registry — GIF/static/emoji
+     * rendering is unchanged.
+     */
+    anchorId: AvatarAnchorId? = null,
     modifier: Modifier = Modifier,
 ) {
     val shape = CircleShape
     val playback = rememberAvatarPlayback()
     playback.paused = paused
     val displayKind = remember(pictureUri) { AvatarMedia.displayKind(pictureUri) }
+
+    // Video avatars bind an anchor (video branch only): the overlay needs
+    // this slot's window bounds, dialog-cover and visibility signals.
+    val registry = LocalAvatarAnchorRegistry.current
+    val anchorState = remember(anchorId, displayKind, registry) {
+        if (anchorId != null && displayKind == AvatarMedia.DisplayKind.Video) {
+            registry?.bind(anchorId)
+        } else {
+            null
+        }
+    }
+    DisposableEffect(anchorState, registry) {
+        val state = anchorState
+        onDispose { if (state != null) registry?.unbind(state) }
+    }
+    SideEffect {
+        anchorState?.suppressed = paused
+        anchorState?.centerVisible = playback.visible
+    }
 
     val content: @Composable () -> Unit = {
         when {
@@ -133,16 +165,16 @@ fun ProfileAvatar(
             }
 
             displayKind == AvatarMedia.DisplayKind.Video ->
-                // No separate underlay here: AvatarVideoView layers the
-                // cached poster frame (instant on every screen) and only
-                // falls back to the slot for cold/failed states — which is
-                // what keeps navigation blank-free without flashing initials.
-                AvatarVideoView(
+                // Poster/fallback only — the live frames come from the one
+                // persistent app-level TextureView (PersistentAvatarVideo),
+                // which is positioned over this slot. No surface handoff on
+                // navigation anymore; this circle is the underlay that covers
+                // genuine initialization and every hidden-overlay state.
+                AvatarVideoAnchorContent(
                     uri = pictureUri!!,
-                    fit = false,
-                    playback = playback,
+                    name = name,
+                    size = size,
                     modifier = Modifier.fillMaxSize(),
-                    fallback = { ProfileInitials(name, size) },
                 )
 
             else -> AnimatedAvatarImage(
@@ -166,7 +198,19 @@ fun ProfileAvatar(
     }
     val base = modifier
         .size(size)
-        .onGloballyPositioned(playback::onPositioned)
+        .onGloballyPositioned { coords ->
+            playback.onPositioned(coords)
+            anchorState?.let { state ->
+                state.present = true
+                state.centerVisible = playback.visible
+                // Skip capture while predictive-back motion is animating so
+                // the slot keeps its pre-gesture rest position (the overlay
+                // replicates the slide itself, frame-exactly).
+                if (registry?.captureEnabled != false) {
+                    state.restBounds = coords.boundsInWindow(clipBounds = false)
+                }
+            }
+        }
         .clip(shape)
         .background(NazoSurface)
     when {

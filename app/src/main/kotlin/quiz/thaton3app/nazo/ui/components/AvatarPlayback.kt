@@ -55,20 +55,22 @@ import quiz.thaton3app.nazo.data.profile.AvatarMedia
  *
  * Design constraints this file exists to satisfy:
  *
- *  - **Exactly one MediaPlayer exists at a time.** The Home circle, the
- *    Profile circle, the full-size viewer and the picker preview are never
- *    all on screen together, but transitions and dialogs CAN overlap two of
- *    them — so instead of one player per instance, [AvatarVideoHost] keeps a
- *    single player and an activation stack: the most recently activated view
- *    owns the surface, older views simply stop drawing video (they keep their
- *    last frame) and resume when the stack pops back to them. Switching
- *    screens hands the same prepared player to the new view, which is what
- *    makes Home ↔ Profile feel instant rather than "re-buffer".
- *  - **Nothing outlives its screen.** When the last registered view goes
- *    away the player pauses immediately and is released after a short grace
- *    period (one second), so a normal navigation either reuses the player or
- *    recreates it once — never leaves a codec parked behind a screen the
- *    user has left.
+ *  - **Exactly one MediaPlayer exists at a time.** The Home and Profile
+ *    circles share ONE persistent app-level surface ([PersistentAvatarVideo]
+ *    in AvatarOverlay.kt — no handoff on navigation); the full-size viewer
+ *    and the picker preview still use [AvatarVideoView] with their own
+ *    transient surfaces, and dialogs CAN overlap the overlay — so instead of
+ *    one player per instance, [AvatarVideoHost] keeps a single player and an
+ *    activation stack: the most recently activated view owns the surface,
+ *    older views simply stop drawing video (they keep their last frame) and
+ *    resume when the stack pops back to them.
+ *  - **Nothing outlives its usefulness.** The overlay's surface lives as
+ *    long as the avatar is a video (that is the point — no re-creation on
+ *    navigation), but when the last registered view goes away the player
+ *    pauses immediately and is released after a short grace period (one
+ *    second), so a normal navigation either reuses the player or recreates
+ *    it once — never leaves a codec parked behind a screen the user has
+ *    left.
  *  - **Ordinary recomposition changes nothing.** Sessions are keyed on
  *    (uri, fit) and activation lives in `DisposableEffect` keys, so
  *    recomposing, scrolling, or a ripple cannot create or destroy a player.
@@ -554,7 +556,11 @@ internal object AvatarFrameCache {
 // ---------------------------------------------------------------------------
 
 /**
- * Renders one looping, muted avatar video, driven by [playback].
+ * Renders one looping, muted avatar video in a TRANSIENT TextureView, driven
+ * by [playback]. This is the preview-dialog / full-size-viewer variant: the
+ * Home and Profile circles no longer use it — they ride the single
+ * persistent surface in [PersistentAvatarVideo] (AvatarOverlay.kt), which is
+ * why navigation between them no longer performs any surface handoff.
  *
  * Layer order inside the view decides what you see while the video has no
  * frame of its own:
@@ -562,15 +568,11 @@ internal object AvatarFrameCache {
  *  1. the live TextureView (transparent until its first frame lands);
  *  2. the poster from [AvatarFrameCache] — shown whenever the TextureView
  *     hasn't rendered yet, so preparing/surface handoff/resume never show an
- *     empty circle. Its last act on each screen is capturing this view's
- *     final frame back into the cache when the surface dies;
+ *     empty circle. Its last act is capturing this view's final frame back
+ *     into the cache when the surface dies;
  *  3. [fallback] (the caller's initials / error state) — only for a genuine
  *     cold state (nothing cached at all) or once playback has FAILED, which
  *     also removes the TextureView entirely.
- *
- * Navigation between screens therefore hands the same player to a brand-new
- * TextureView while the poster covers the one-frame gap, and the GIF/static
- * paths are untouched.
  */
 @Composable
 internal fun AvatarVideoView(

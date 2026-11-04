@@ -3522,3 +3522,96 @@ one `LaunchedEffect` in `NazoApp.kt`).
    stale poster behind it; animated-image failure headings in the preview
    dialog unchanged. Static, emoji, GIF, animated WebP, limits (8 MB/15 s/
    2048 px), reduce-motion — all untouched.
+
+## Video avatar: one persistent app-level rendering surface (2026-11-04, follow-up 2)
+
+**Problem.** Even with early preparation and cached poster frames, Home and
+Profile each owned their own `TextureView`, so every navigation handed the
+shared player from one surface to another — the avatar could blink or show
+placeholder frames during (and right after) screen changes, and quick
+navigation made it worse.
+
+**Approach — investigate first.** Before changing anything I traced the
+custom navigation (`SeekableTransitionState` + `PredictiveBackHandler` +
+the three-branch `transitionSpec`), read the current host/session/anchor
+code, and verified against androidx sources (`Transition.kt`,
+`NodeCoordinator.kt`, `OnPositionedDispatcher.kt`, `LayoutNode.kt`) that:
+`boundsInWindow` includes `graphicsLayer` transforms; `onGloballyPositioned`
+does fire when an ancestor layer moves (observer counts propagate up the
+tree); and both `seekTo` and `animateTo` drive child animations from
+`fraction × totalDuration` with each animation's easing applied. Those
+findings are why the overlay mirrors the transition math instead of reading
+it back (a position callback trails a slide by a frame; an ancestor's draw
+alpha is not readable at all).
+
+**What changed.**
+1. **`ui/components/AvatarOverlay.kt` (new).** `PersistentAvatarVideo` is
+   composed once at the NazoApp root: ONE `TextureView` for as long as the
+   saved avatar is a video. It is positioned over the active screen's avatar
+   slot (`AvatarAnchorState.restBounds`, window coordinates, unclipped) plus
+   a replicated predictive-back slide, sized to that slot (42 dp Home /
+   132 dp Profile), alpha-matched to the screen's own fade, clipped to the
+   circle, and hidden (alpha 0, decoding paused) whenever there is no
+   visible slot — dialogs, backgrounding, avatar-less screens. It sits above
+   the screens and below every dialog/sheet/onboarding/intro block, and
+   mirrors the blocking-dialog blur.
+2. **`avatarOverlayTransform` + `resolveAvatarWinnerScreen` (pure).**
+   Mirror the `transitionSpec` branches one-for-one (co-located rule: change
+   one, change the other). Winner = the transition side that is NOT the
+   predictive-back target, else `currentScreen` — so a forward push hands
+   the circle to the incoming screen immediately, a gesture and its commit
+   settle ride the dismissed screen out, and a cancel never leaves the
+   screen you stayed on; the revealed screen takes over only once settled.
+   Unit tests in `AvatarOverlayTest` pin every branch.
+3. **`ProfileAvatar` video branch** is now an anchor: poster/initials
+   underlay (`AvatarVideoAnchorContent`) plus registry bookkeeping (bounds,
+   presence, scroll visibility, dialog suppression). No `TextureView` in
+   any screen anymore. GIF/static/emoji paths untouched; the preview dialog
+   and full-size viewer keep their own transient `AvatarVideoView`.
+4. **Per-frame reads isolated** in a small `AvatarOverlayLayer` composable
+   so `fraction` never invalidates the NazoApp root during gestures.
+5. **Capture policy:** a frame is captured into `AvatarFrameCache` only when
+   the overlay goes shown → hidden while it was genuinely visible (dialog
+   open, backgrounding, fully scrolled off) or when the view finally dies
+   (video → GIF/photo). Home ↔ Profile keeps the overlay shown throughout:
+   **zero bitmap captures during navigation**; a slide-out or push to an
+   avatar-less screen hides at alpha ≈ 0 and skips the capture too.
+6. **Kept from before:** app-scope early prepare + background frame warm-up,
+   failure → initials (poster hidden), one player with grace release,
+   background/scroll/dialog pause, GIF placeholder delay, all validation.
+
+**How to test it live.**
+1. Cold launch with a video avatar: circle present from the first Home
+   frame (initials only until the warm frame lands), video moving ~0.3 s.
+2. Home → Profile → Home repeatedly, then as fast as you can tap: no blank
+   frame, no initials flash, no restart — the video keeps playing through
+   the crossfade (it never leaves the screen; only its position/size/fade
+   change with the screen).
+3. Slow and fast predictive-back from Profile: the circle slides and fades
+   glued to the Profile screen with the finger; Home's slot shows the poster
+   behind; committing lands the live video exactly on Home's slot; cancel
+   returns it with no jump. Back to Home through predictive back from other
+   screens behaves as before (video only exists on Home/Profile).
+4. Background 10 s and resume: video resumes from the held frame instantly.
+5. Change video → video: new clip starts on the SAME surface (no blink).
+   Change video → GIF/photo/emoji, and Remove: codec released, correct
+   fallback; switching back re-warms the poster.
+6. Static/GIF/animated-WebP avatars, limits (8 MB / 15 s / 2048 px), dialog
+   freezing behind the scrim, reduce-motion: all unchanged.
+
+**Known limitations.**
+- Compose exposes no API to read an ancestor's draw alpha, and position
+  callbacks trail a `graphicsLayer` slide by a frame — so alpha/slide are
+  replicated from the transition state (unit-tested against the spec) rather
+  than read back. If the `transitionSpec` is edited, update
+  `avatarOverlayTransform` with it (tests fail otherwise).
+- The overlay's TextureView resizes between slots (42 ↔ 132 dp) at the
+  winner hand-off, which happens at alpha 0 (forward push) or over the
+  destination's poster (post-gesture settle) — a buffer resize is routine
+  but is the one moment where a low-end device could show a frame artifact.
+- The tap target still works because `TextureView` does not consume touch
+  (the circle's `Surface(onClick)` underneath receives it); worth a manual
+  check on device.
+- On a true cold start the very first frame can still show initials for the
+  few dozen milliseconds it takes the background poster decode to land —
+  that is genuine initialization, not a navigation artifact.

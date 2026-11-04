@@ -44,8 +44,10 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -90,9 +92,15 @@ import quiz.thaton3app.nazo.session.SessionMemory
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.AiMissingDialog
 import quiz.thaton3app.nazo.ui.components.AmbientBackground
+import quiz.thaton3app.nazo.ui.components.AvatarAnchorId
+import quiz.thaton3app.nazo.ui.components.AvatarAnchorRegistry
 import quiz.thaton3app.nazo.ui.components.AvatarFrameCache
 import quiz.thaton3app.nazo.ui.components.AvatarVideoHost
 import quiz.thaton3app.nazo.ui.components.CHANGELOG_ID
+import quiz.thaton3app.nazo.ui.components.LocalAvatarAnchorRegistry
+import quiz.thaton3app.nazo.ui.components.PersistentAvatarVideo
+import quiz.thaton3app.nazo.ui.components.avatarOverlayTransform
+import quiz.thaton3app.nazo.ui.components.resolveAvatarWinnerScreen
 import quiz.thaton3app.nazo.ui.components.FloatingParticlesBackground
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoRailWidth
@@ -391,6 +399,13 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // in-app back arrows pop this stack, so a user always returns to the screen they came from.
     val navigationStack = remember { mutableStateListOf<Screen>(Screen.Home) }
     val currentScreen = navigationStack.last()
+    // Video-avatar anchor slots (which circle the persistent app-level
+    // video surface is positioned over). Remembered next to the navigation
+    // state: it outlives every screen swap by design.
+    val avatarAnchorRegistry = remember { AvatarAnchorRegistry() }
+    // Screen content width (post rail-inset) for the overlay's replicated
+    // predictive-back slide; probed from the screens AnimatedContent.
+    var screensWidthPx by remember { mutableIntStateOf(0) }
 
     // Dialog state that has to outlive the portrait <-> landscape layout swap.
     // Remembered HERE, above the layout-mode AnimatedContent, so it is not part
@@ -1995,7 +2010,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // Screens below are re-created when showListDetail flips on
             // rotation; rememberRetained reaches past that swap to the store
             // held at the top of NazoApp, so an open dialog carries over.
-            CompositionLocalProvider(LocalRetainedStateStore provides retainedState) {
+            CompositionLocalProvider(
+                LocalRetainedStateStore provides retainedState,
+                LocalAvatarAnchorRegistry provides avatarAnchorRegistry,
+            ) {
 
             // The Home <-> landscape-Settings switch is a STRUCTURAL change:
             // one branch is a full-screen AnimatedContent, the other a
@@ -2056,7 +2074,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(end = railInset)
-                            .then(if (offlineDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp) else Modifier),
+                            .then(if (offlineDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp) else Modifier)
+                            // Content-area width for the avatar overlay's
+                            // replicated predictive-back slide: the same
+                            // post-padding width slideInHorizontally slides by.
+                            .onGloballyPositioned { coords ->
+                                val w = coords.size.width
+                                if (w > 0 && w != screensWidthPx) screensWidthPx = w
+                            },
                         transitionSpec = {
                             when {
                                 predictiveBackTarget != null && targetState == predictiveBackTarget -> {
@@ -2107,7 +2132,28 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     }
                 }
             }
-            } // CompositionLocalProvider(LocalRetainedStateStore)
+            } // CompositionLocalProvider(...)
+
+            // ------------------------------------------------------------
+            // Persistent video-avatar overlay: ONE app-level TextureView,
+            // positioned over whichever screen's avatar slot is active.
+            // Sits above the screens (it draws the circle) and below every
+            // dialog/sheet/onboarding block below, so scrims cover it the
+            // same way they cover the in-screen slot. Lives in its own small
+            // composable so the per-frame transition reads below don't
+            // recompose the whole NazoApp root on every animation frame.
+            // ------------------------------------------------------------
+            AvatarOverlayLayer(
+                uri = profilePictureUri,
+                registry = avatarAnchorRegistry,
+                currentScreen = currentScreen,
+                transitionState = screenTransitionState,
+                predictiveBackTarget = predictiveBackTarget,
+                edgeDirection = predictiveBackEdgeDirection,
+                screensWidthPx = screensWidthPx,
+                railInset = railInset,
+                blurBlocking = offlineDialogMode != null || showAiMissingDialog,
+            )
 
             // The bottom nav lives OUTSIDE AnimatedContent, for the same reason
             // AmbientBackground does: anything inside gets torn down and rebuilt
@@ -2301,6 +2347,66 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             )
         }
     }
+}
+
+/**
+ * Small-scope reader for the screen transition, feeding the persistent
+ * video-avatar overlay. Kept separate from [NazoApp] so the per-frame
+ * `fraction` read invalidates only this leaf instead of the whole root
+ * composition during navigation and predictive-back gestures.
+ *
+ * The transform it computes mirrors the screen `transitionSpec` above
+ * (co-located rule: change one, change the other — the unit tests in
+ * AvatarOverlayTest are the tripwire).
+ */
+@Composable
+private fun AvatarOverlayLayer(
+    uri: String?,
+    registry: AvatarAnchorRegistry,
+    currentScreen: Screen,
+    transitionState: SeekableTransitionState<Screen>,
+    predictiveBackTarget: Screen?,
+    edgeDirection: Int,
+    screensWidthPx: Int,
+    railInset: Dp,
+    blurBlocking: Boolean,
+) {
+    val transitioning = transitionState.currentState != transitionState.targetState
+    // While predictive-back motion animates, anchors keep their pre-gesture
+    // rest position; otherwise every layout pass refreshes it (pure fades
+    // don't move layout, so capturing through them is safe).
+    registry.captureEnabled = !(predictiveBackTarget != null && transitioning)
+    val winner = resolveAvatarWinnerScreen(
+        currentScreen = currentScreen,
+        currentState = transitionState.currentState,
+        targetState = transitionState.targetState,
+        predictiveTarget = predictiveBackTarget,
+    )
+    val transform = avatarOverlayTransform(
+        fraction = transitionState.fraction,
+        transitioning = transitioning,
+        predictiveTargetPresent = predictiveBackTarget != null,
+        targetIsPredictive = predictiveBackTarget != null &&
+            transitionState.targetState == predictiveBackTarget,
+        initialIsPredictive = predictiveBackTarget != null &&
+            transitionState.currentState == predictiveBackTarget,
+        winnerIsTarget = winner == transitionState.targetState,
+        edgeDirection = edgeDirection,
+        containerWidth = screensWidthPx.toFloat(),
+    )
+    PersistentAvatarVideo(
+        uri = uri,
+        registry = registry,
+        winnerId = when (winner) {
+            Screen.Home -> AvatarAnchorId.Home
+            Screen.Profile -> AvatarAnchorId.Profile
+            else -> null
+        },
+        alpha = transform.alpha,
+        slideX = transform.slideX,
+        railInset = railInset,
+        blurBlocking = blurBlocking,
+    )
 }
 
 private fun formatElapsed(startedAt: Long): String {
