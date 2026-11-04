@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sumi-e brush "N": the initial as inked strokes with slightly uneven, hand-painted
+     edges plus a dry-brush splatter, so it reads as painted rather than typeset.
+     Sits on a warm paper-colored ground (see ic_launcher_background_nbrush).
+     Stroke order matches a real N: left stem down, diagonal top-left -> bottom-right,
+     right stem up. Flat companion in ic_mark_n_brush_silhouette.xml. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FF241C16"
+        android:pathData="M26,24 L41,25 L67,63 C66,50 66,37 66,25 L81,24 C83,45 82,66 82,86 L67,85 L41,47 C42,58 42,72 42,86 L26,86 C24,64 24,44 26,24 Z" />
+    <path
+        android:fillColor="#FF241C16"
+        android:pathData="M88,30 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+    <path
+        android:fillColor="#FF241C16"
+        android:pathData="M19,77 m-2.2,0 a2.2,2.2 0 1,0 4.4,0 a2.2,2.2 0 1,0 -4.4,0" />
+</vector>

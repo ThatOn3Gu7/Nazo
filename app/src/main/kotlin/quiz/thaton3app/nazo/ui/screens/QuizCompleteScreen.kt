@@ -26,19 +26,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import quiz.thaton3app.nazo.daily.DailyBonusChip
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.records.NewRecordBadge
-import quiz.thaton3app.nazo.daily.DailyBonusChip
 import quiz.thaton3app.nazo.sound.Sounds
-import androidx.compose.ui.platform.LocalContext
 import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.NazoButtonShape
+import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
+import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.components.ShareResultCard
+import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
 
 @Composable
@@ -58,6 +62,7 @@ fun QuizCompleteScreen(
     onReviewAnswers: () -> Unit,
     onSettingsClick: () -> Unit
 ) {
+    val landscape = isLandscape()
     val accuracy = if (totalQuestions > 0) ((score.toFloat() / totalQuestions) * 100).toInt() else 0
     val isSuccess = accuracy >= 50
 
@@ -109,6 +114,16 @@ fun QuizCompleteScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        // Celebration overlay — variant is a user preference (Appearance →
+        // Celebrations). Drawn FIRST so it renders behind the content layer:
+        // confetti drifts through the margins and gaps but can never cross the
+        // score card, the stats, or the action buttons.
+        if (triggerConfetti) {
+            CelebrationOverlay(
+                style = celebrationStyle,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -117,12 +132,16 @@ fun QuizCompleteScreen(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .verticalScroll(rememberScrollState())
+                    .then(
+                        // Landscape gives each pane its own scroll, so the page
+                        // must not scroll as well.
+                        if (landscape) Modifier else Modifier.verticalScroll(rememberScrollState())
+                    )
                     .navigationBarsPadding()
                     .padding(horizontal = 20.dp)
                     .padding(bottom = 12.dp)
             ) {
-                Spacer(Modifier.height(40.dp))
+                Spacer(Modifier.height(if (landscape) 12.dp else 40.dp))
 
                 // Header
                 AnimatedVisibility(
@@ -141,8 +160,11 @@ fun QuizCompleteScreen(
                     )
                 }
 
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(if (landscape) 12.dp else 24.dp))
 
+                TwoPaneResults(
+                    landscape = landscape,
+                    ring = {
                 // Big Trophy Score Card
                 AnimatedVisibility(
                     visible = showCard,
@@ -154,7 +176,8 @@ fun QuizCompleteScreen(
                         animatedScore = animatedScore,
                         totalQuestions = totalQuestions,
                         progressAnim = progressAnim,
-                        isSuccess = isSuccess
+                        isSuccess = isSuccess,
+                        modeLabel = modeLabel,
                     )
                 }
 
@@ -189,8 +212,8 @@ fun QuizCompleteScreen(
                     }
                 }
 
-                Spacer(Modifier.height(24.dp))
-
+                    },
+                    stats = {
                 // Stats Row
                 AnimatedVisibility(
                     visible = showStats,
@@ -206,7 +229,7 @@ fun QuizCompleteScreen(
                     }
                 }
 
-                Spacer(Modifier.height(32.dp))
+                Spacer(Modifier.height(if (landscape) 16.dp else 32.dp))
 
                 // Action Buttons
                 AnimatedVisibility(
@@ -214,13 +237,11 @@ fun QuizCompleteScreen(
                     enter = slideInVertically(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow)) { 100 } + fadeIn()
                 ) {
                     Column {
-                        Button(
+                        NazoPrimaryButton(
                             onClick = onPlayAnother,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(56.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = NazoPrimary),
-                            shape = RoundedCornerShape(50)
                         ) {
                             Icon(Icons.Filled.Replay, contentDescription = null, tint = NazoOnPrimary, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
@@ -229,13 +250,15 @@ fun QuizCompleteScreen(
 
                         Spacer(Modifier.height(12.dp))
 
-                        Button(
+                        NazoSecondaryButton(
                             onClick = onReviewAnswers,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(56.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = NazoSurfaceVariant),
-                            shape = RoundedCornerShape(50)
+                                .height(56.dp)
+                                // Solid bed: a control is an island the
+                                // celebration can never show through.
+                                .background(NazoBackground, NazoButtonShape),
+                            muted = true,
                         ) {
                             Icon(Icons.AutoMirrored.Filled.FactCheck, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
@@ -245,7 +268,7 @@ fun QuizCompleteScreen(
                         Spacer(Modifier.height(12.dp))
 
                         // Share the run as a themed image card (system share sheet).
-                        Button(
+                        NazoSecondaryButton(
                             onClick = {
                                 Haptics.light(context)
                                 ShareResultCard.share(
@@ -272,9 +295,9 @@ fun QuizCompleteScreen(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(56.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = NazoSurfaceVariant),
-                            shape = RoundedCornerShape(50)
+                                .height(56.dp)
+                                .background(NazoBackground, NazoButtonShape),
+                            muted = true,
                         ) {
                             Icon(Icons.Outlined.Share, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
@@ -282,15 +305,57 @@ fun QuizCompleteScreen(
                         }
                     }
                 }
+                    },
+                )
             }
         }
 
-        // Celebration overlay — variant is a user preference (Appearance → Celebrations)
-        if (triggerConfetti) {
-            CelebrationOverlay(
-                style = celebrationStyle,
-                modifier = Modifier.fillMaxSize(),
-            )
+    }
+}
+
+/**
+ * Results layout.
+ *
+ * Portrait is the original stack: ring, record badge, stats row, buttons.
+ *
+ * Landscape puts the score ring (with the record badge and daily bonus beneath
+ * it, inside the same pane) on the left, and the three stat cards plus the
+ * action buttons on the right — so nothing is stretched and the whole result is
+ * visible without scrolling on most devices.
+ */
+@Composable
+private fun TwoPaneResults(
+    landscape: Boolean,
+    ring: @Composable () -> Unit,
+    stats: @Composable () -> Unit,
+) {
+    if (!landscape) {
+        Column {
+            ring()
+            Spacer(Modifier.height(24.dp))
+            stats()
+        }
+        return
+    }
+
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            ring()
+            Spacer(Modifier.height(12.dp))
+        }
+        Spacer(Modifier.width(20.dp))
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            stats()
+            Spacer(Modifier.height(12.dp))
         }
     }
 }
@@ -302,7 +367,8 @@ private fun ScoreCardContent(
     animatedScore: Int,
     totalQuestions: Int,
     progressAnim: Float,
-    isSuccess: Boolean
+    isSuccess: Boolean,
+    modeLabel: String?,
 ) {
     // Continuous floating animation for trophy (scoped here so it doesn't recompose the whole screen)
     val floatInfinite = rememberInfiniteTransition(label = "float")
@@ -329,6 +395,11 @@ private fun ScoreCardContent(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(32.dp))
+            // Opaque bed under the gradient: the celebration renders behind
+            // the content layer, and this card is score information — nothing
+            // may show through the surface the numbers sit on. The two
+            // background layers composite to exactly the old look.
+            .background(NazoBackground)
             .background(
                 brush = Brush.verticalGradient(
                     colors = listOf(NazoSurface, NazoSurfaceVariant.copy(alpha = 0.3f))
@@ -395,12 +466,22 @@ private fun ScoreCardContent(
 
         Spacer(Modifier.height(24.dp))
 
-        // Animated Numbers
+        // Animated Numbers. The hero follows the mode's headline metric —
+        // accuracy for a quiz (the score rides in the pill below), the correct
+        // COUNT for Survival/Blitz, matching their heading, record captions
+        // and share card.
         Text(
-            text = "$animatedAccuracy%",
+            text = if (modeLabel != null) "$animatedScore" else "$animatedAccuracy%",
             style = MaterialTheme.typography.displayMedium.copy(fontSize = 56.sp),
             color = NazoPrimary,
             fontWeight = FontWeight.ExtraBold
+        )
+        Text(
+            text = if (modeLabel != null) "CORRECT" else "ACCURACY",
+            style = MaterialTheme.typography.labelSmall,
+            color = NazoTextSecondary,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 2.sp,
         )
 
         Surface(
@@ -409,7 +490,8 @@ private fun ScoreCardContent(
             modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
         ) {
             Text(
-                text = "$animatedScore / $totalQuestions Correct",
+                text = if (modeLabel != null) "$animatedAccuracy% accuracy"
+                else "$animatedScore / $totalQuestions Correct",
                 style = MaterialTheme.typography.titleMedium,
                 color = NazoPrimary,
                 fontWeight = FontWeight.Bold,

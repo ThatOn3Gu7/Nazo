@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -82,6 +83,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
+import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.data.remote.ApiClient
@@ -102,7 +104,7 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 
 private enum class KeyStatus(val label: String) {
-    VALID("Valid Key"),
+    VALID("Configured"),
     NOT_CONFIGURED("Not Configured"),
     ERROR("Key Error"),
 }
@@ -194,6 +196,17 @@ fun AiProviderScreen(
                     fetchingId = null
                     fetchErrorId = provider.id
                     fetchError = e.message ?: "Couldn't fetch models."
+                    // A rejected key is a key problem, not a network hiccup —
+                    // mark the badge so configured / unconfigured / error are
+                    // three distinguishable states. Editing the key resets the
+                    // badge (onApiKeyChange). Network or 5xx failures keep the
+                    // plain badge and just show the error chip.
+                    val msg = e.message.orEmpty()
+                    if (listOf("HTTP 400", "HTTP 401", "HTTP 403").any { msg.contains(it) }) {
+                        providers = providers.toMutableList().also { list ->
+                            list[index] = list[index].copy(status = KeyStatus.ERROR)
+                        }
+                    }
                 }
         }
     }
@@ -375,7 +388,7 @@ private fun ProviderCard(
             exit = shrinkVertically(animationSpec = tween(220)) + fadeOut(animationSpec = tween(220)),
         ) {
             Column {
-                HorizontalDivider(color = NazoBackground, thickness = 1.dp)
+                HorizontalDivider(color = NazoTextSecondary.copy(alpha = 0.12f), thickness = 1.dp)
                 Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                     Text("Model", style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
                     Spacer(Modifier.height(8.dp))
@@ -395,14 +408,13 @@ private fun ProviderCard(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .height(40.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(NazoPrimary)
-                                .clickable(enabled = !isFetching, onClick = onFetchModels)
-                                .padding(horizontal = 16.dp),
-                            contentAlignment = Alignment.Center,
+                        // Shared button vocabulary (same shape/radius as every
+                        // other primary action) instead of a bespoke box.
+                        NazoPrimaryButton(
+                            onClick = onFetchModels,
+                            enabled = !isFetching,
+                            modifier = Modifier.height(40.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp),
                         ) {
                             AnimatedContent(
                                 targetState = isFetching,
@@ -593,7 +605,9 @@ private fun ModelDropdown(models: List<ModelInfo>, selected: String, onSelect: (
     val triggerText = if (selected.isNotBlank()) {
         selectedInfo?.name?.ifBlank { selected } ?: selected
     } else {
-        models.firstOrNull()?.id ?: "Select a model"
+        // Nothing chosen yet — never echo the first model's id as if it were
+        // selected.
+        "Select a model"
     }
 
     Column {
@@ -796,19 +810,17 @@ private fun ApiKeyField(value: String, onValueChange: (String) -> Unit) {
 
 @Composable
 private fun SaveButton(onClick: () -> Unit) {
-    Box(
-        contentAlignment = Alignment.Center,
+    // Shared primary-button shape/radius; the 56dp height keeps the screen's
+    // strong final action.
+    NazoPrimaryButton(
+        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(NazoPrimary)
-            .clickable(onClick = onClick),
+            .height(56.dp),
     ) {
         Text(
             text = "Save Changes",
             style = MaterialTheme.typography.bodyLarge,
-            color = NazoOnPrimary,
             fontWeight = FontWeight.Bold,
         )
     }

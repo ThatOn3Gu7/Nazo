@@ -3,6 +3,7 @@ package quiz.thaton3app.nazo.vision
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.ColorSpace
 import android.graphics.Paint
 import android.graphics.Rect
 import android.media.FaceDetector
@@ -166,7 +167,14 @@ object AnimeImageGate {
         var sample = 1
         val dim = max(bounds.outWidth, bounds.outHeight)
         while (dim / sample > ANALYSIS_DIM * 2) sample *= 2
-        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        val opts = BitmapFactory.Options().apply {
+            inSampleSize = sample
+        // Pin to 8-bit sRGB — see PixelReveal.buildPixelLevels for why an
+        // unpinned decode can hand back half-float / wide-gamut pixels that
+        // later stages misread.
+        inPreferredConfig = Bitmap.Config.ARGB_8888
+        inPreferredColorSpace = ColorSpace.get(ColorSpace.Named.SRGB)
+        }
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
     }
 }

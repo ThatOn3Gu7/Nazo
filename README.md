@@ -25,20 +25,6 @@ themable, no account, no ads.
 
 ## 📱 Screenshots
 
-<!--
-  The grid below is ready to go — add the images and delete the comment
-  markers (the arrow lines) plus the "coming soon" line.
-
-  Rename map (owner's 2026-09-02 screenshot batch → assets/screenshots/):
-    Screenshot_20260902-221004.png → home.png        (Home: mode dropdown, streak, daily)
-    Screenshot_20260902-220808.png → quiz.png        (Active quiz question)
-    Screenshot_20260902-220825.png → results.png     (Quiz Complete + share button)
-    Screenshot_20260902-220839.png → review.png      (Review Answers + explanations)
-    Screenshot_20260902-221055.png → guessing.png    (Guessing Game, pixelated mystery)
-    Screenshot_20260902-220911.png → stats.png       (Statistics & Insights)
-    Screenshot_20260902-220721.png → appearance.png  (Appearance settings)
-    Screenshot_20260902-220948.png → providers.png   (AI & Model Configuration)
-
 | Home | Quiz | Results | Review |
 |:---:|:---:|:---:|:---:|
 | <img src="assets/screenshots/home.png" width="180"/> | <img src="assets/screenshots/quiz.png" width="180"/> | <img src="assets/screenshots/results.png" width="180"/> | <img src="assets/screenshots/review.png" width="180"/> |
@@ -46,9 +32,6 @@ themable, no account, no ads.
 | Guessing Game | Statistics | Appearance | AI Providers |
 |:---:|:---:|:---:|:---:|
 | <img src="assets/screenshots/guessing.png" width="180"/> | <img src="assets/screenshots/stats.png" width="180"/> | <img src="assets/screenshots/appearance.png" width="180"/> | <img src="assets/screenshots/providers.png" width="180"/> |
--->
-
-*Screenshots coming soon.*
 
 ## Features
 
@@ -210,6 +193,34 @@ Nazo/
 
 Signed `release` and `debug` APKs are attached to **GitHub Releases**, generated
 automatically whenever a `v*` tag is pushed (see the CI section above).
+
+## License
+
+Nazo is free software, licensed under the
+**[GNU General Public License v3.0](LICENSE)**.
+
+You may use, study, share and modify it. If you distribute a modified version,
+it must also be released under the GPL-3.0 with its source available.
+
+```
+Nazo — an anime quiz game
+Copyright (C) 2026 ThatOn3Gu7
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with
+this program. If not, see <https://www.gnu.org/licenses/>.
+```
+
+Third-party dependencies are all Apache-2.0 and are listed in the app under
+**About → Licenses**.
 
 ---
 

@@ -29,10 +29,42 @@ val NazoFontFamily = FontFamily(
 )
 
 val NazoTypography = Typography(
+    // Large display: unused today, defined so any future use stays on-brand
+    // instead of silently falling back to the platform default (Roboto).
+    displayLarge = TextStyle(
+        fontFamily = NazoFontFamily,
+        fontWeight = FontWeight.Bold,
+        fontSize = 57.sp,
+        lineHeight = 64.sp,
+    ),
+    displayMedium = TextStyle(
+        fontFamily = NazoFontFamily,
+        fontWeight = FontWeight.Bold,
+        fontSize = 45.sp,
+        lineHeight = 52.sp,
+    ),
+    displaySmall = TextStyle(
+        fontFamily = NazoFontFamily,
+        fontWeight = FontWeight.Bold,
+        fontSize = 36.sp,
+        lineHeight = 44.sp,
+    ),
+    headlineLarge = TextStyle(
+        fontFamily = NazoFontFamily,
+        fontWeight = FontWeight.Bold,
+        fontSize = 32.sp,
+        lineHeight = 40.sp,
+    ),
     headlineMedium = TextStyle( // "Ready to test your anime knowledge?"
         fontFamily = NazoFontFamily,
         fontWeight = FontWeight.Bold,
         fontSize = 26.sp,
+        lineHeight = 32.sp,
+    ),
+    headlineSmall = TextStyle(
+        fontFamily = NazoFontFamily,
+        fontWeight = FontWeight.Bold,
+        fontSize = 24.sp,
         lineHeight = 32.sp,
     ),
     titleLarge = TextStyle( // header title ("Nazo")
@@ -45,6 +77,12 @@ val NazoTypography = Typography(
         fontWeight = FontWeight.SemiBold,
         fontSize = 16.sp,
     ),
+    titleSmall = TextStyle(
+        fontFamily = NazoFontFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 14.sp,
+        lineHeight = 20.sp,
+    ),
     bodyLarge = TextStyle( // input text, button labels
         fontFamily = NazoFontFamily,
         fontWeight = FontWeight.Normal,
@@ -54,6 +92,27 @@ val NazoTypography = Typography(
         fontFamily = NazoFontFamily,
         fontWeight = FontWeight.Medium,
         fontSize = 14.sp,
+    ),
+    bodySmall = TextStyle( // helper / caption text under fields
+        fontFamily = NazoFontFamily,
+        fontWeight = FontWeight.Normal,
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
+    ),
+    // Material buttons, chips and tabs render labelLarge — defining it here
+    // is what keeps every button label on Plus Jakarta Sans instead of the
+    // platform default font.
+    labelLarge = TextStyle(
+        fontFamily = NazoFontFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 14.sp,
+        lineHeight = 20.sp,
+    ),
+    labelMedium = TextStyle(
+        fontFamily = NazoFontFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
     ),
     labelSmall = TextStyle( // "TOPIC" / "DIFFICULTY" / "QUESTIONS" captions
         fontFamily = NazoFontFamily,

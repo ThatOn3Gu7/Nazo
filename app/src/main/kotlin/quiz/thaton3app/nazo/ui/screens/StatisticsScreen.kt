@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -34,8 +35,6 @@ import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.TrackChanges
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -51,11 +50,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import quiz.thaton3app.nazo.data.QuizStats
 import quiz.thaton3app.nazo.achievements.Achievement
 import quiz.thaton3app.nazo.achievements.AchievementsCard
+import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoDarkCard
 import quiz.thaton3app.nazo.ui.theme.NazoDarkCardAccent
@@ -206,6 +207,16 @@ fun StatisticsScreen(
                 Spacer(Modifier.height(16.dp))
             }
             item {
+                // Supporting statistics sit under the rank card's headline
+                // progress; the kicker names the tier so the two read apart.
+                Text(
+                    text = "BY THE NUMBERS",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoTextSecondary,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 10.dp),
+                )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(14.dp)
@@ -351,6 +362,14 @@ private fun RankCard(stats: StatsData, animate: Boolean) {
                     color = NazoOnDarkCard,
                     fontWeight = FontWeight.Bold,
                 )
+                Spacer(Modifier.height(2.dp))
+                // Headline progress in one place: level + lifetime XP (the
+                // same figure the share card prints).
+                Text(
+                    text = "${stats.totalXp} XP earned",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NazoOnDarkCardMuted,
+                )
             }
             Icon(Icons.Filled.StarBorder, contentDescription = null, tint = NazoOnDarkCardMuted, modifier = Modifier.size(22.dp))
         }
@@ -380,7 +399,10 @@ private fun RankCard(stats: StatsData, animate: Boolean) {
                 color = NazoOnDarkCardMuted,
             )
             Text(
-                text = "${stats.xpForNextLevel - animatedXp} XP to Level ${stats.level + 1}",
+                // Real target, not the rolling counter: this label states a
+                // fact ("37 XP to Level 4"), so counting through 200→37 would
+                // read as wrong data mid-animation.
+                text = "${stats.xpForNextLevel - stats.currentXp} XP to Level ${stats.level + 1}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = NazoOnDarkCardMuted,
             )
@@ -439,7 +461,17 @@ private fun StatTile(
             Icon(icon, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(18.dp))
         }
         Spacer(Modifier.height(10.dp))
-        Text(text = label, style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
+        // Labels get a two-line area with a minimum height: long labels wrap
+        // instead of crowding the value, and paired tiles keep their values on
+        // the same line at default font size. heightIn never clips large
+        // accessibility fonts — the text just grows past the minimum.
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = NazoTextSecondary,
+            maxLines = 2,
+            modifier = Modifier.heightIn(min = 42.dp),
+        )
         Spacer(Modifier.height(2.dp))
         Text(
             text = value,
@@ -451,7 +483,13 @@ private fun StatTile(
             modifier = Modifier.basicMarquee(repeatDelayMillis = 0),
         )
         if (subtitle.isNotEmpty()) {
-            Text(text = subtitle, style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary, maxLines = 1)
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = NazoTextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -497,7 +535,11 @@ private fun DifficultyRow(row: DifficultyStat, animate: Boolean) {
     Column {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(text = row.label, style = MaterialTheme.typography.bodyLarge, color = NazoTextPrimary, fontWeight = FontWeight.SemiBold)
-            Text(text = "${row.played} played", style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
+            Text(
+                text = if (row.played == 0) "Not played yet" else "${row.played} played",
+                style = MaterialTheme.typography.bodyMedium,
+                color = NazoTextSecondary,
+            )
         }
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -513,12 +555,16 @@ private fun DifficultyRow(row: DifficultyStat, animate: Boolean) {
                         .fillMaxWidth(animatedWidth.coerceAtLeast(0.001f))
                         .height(6.dp)
                         .clip(RoundedCornerShape(50))
-                        .background(NazoDarkCard)
+                        // Accent fill: NazoDarkCard (the old fill) sat at 1.29:1
+                        // against its own track in the dark theme — an invisible
+                        // bar. NazoPrimary matches the achievement progress bars
+                        // and stays visible in both themes.
+                        .background(NazoPrimary)
                 )
             }
             Spacer(Modifier.width(10.dp))
             Text(
-                text = "${animatedPercent}%",
+                text = if (row.played == 0) "—" else "${animatedPercent}%",
                 style = MaterialTheme.typography.bodyMedium,
                 color = NazoTextPrimary,
                 fontWeight = FontWeight.SemiBold,
@@ -556,9 +602,26 @@ private fun TopAnimeCard(rows: List<MasteredAnimeStat>, animate: Boolean) {
             )
         }
         Spacer(Modifier.height(16.dp))
-        rows.forEachIndexed { index, row ->
-            TopAnimeRow(row, animate)
-            if (index != rows.lastIndex) Spacer(Modifier.height(16.dp))
+        if (rows.all { it.answers == 0 }) {
+            // Empty state: placeholder "—/0 Answers/0% Avg" rows looked like
+            // real rankings. Say what will land here instead.
+            Text(
+                text = "Nothing here yet",
+                style = MaterialTheme.typography.bodyLarge,
+                color = NazoTextPrimary,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Your three most-mastered anime will appear here, ranked by accuracy. Play a few games and watch this fill in.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = NazoTextSecondary,
+            )
+        } else {
+            rows.forEachIndexed { index, row ->
+                TopAnimeRow(row, animate)
+                if (index != rows.lastIndex) Spacer(Modifier.height(16.dp))
+            }
         }
     }
 }
@@ -629,7 +692,7 @@ private fun TopAnimeRow(row: MasteredAnimeStat, animate: Boolean) {
 private fun ShareButton(data: StatsData) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    Button(
+    NazoPrimaryButton(
         onClick = {
             scope.launch(Dispatchers.IO) {
                 try {
@@ -657,11 +720,6 @@ private fun ShareButton(data: StatsData) {
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = NazoPrimary,
-            contentColor = NazoOnPrimary
-        ),
-        shape = RoundedCornerShape(50)
     ) {
         Text(
             text = "Share My Stats",

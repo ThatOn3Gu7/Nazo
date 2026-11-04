@@ -12,8 +12,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -51,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -66,7 +65,11 @@ import quiz.thaton3app.nazo.records.NewRecordBadge
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.NazoButtonShape
+import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
+import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.components.ShareResultCard
+import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
 
 /**
@@ -138,7 +141,19 @@ fun GuessingResultsScreen(
         else -> NazoTextPrimary
     }
 
+    val landscape = isLandscape()
     Box(modifier = Modifier.fillMaxSize()) {
+        // Celebration overlay — same variants + preference as the quiz's
+        // complete screen (Appearance → Celebrations); fires when at least
+        // half the rounds were solved, mirroring the quiz's success rule.
+        // Drawn FIRST so it renders behind the content layer: confetti can
+        // never cross the score card, the round list, or the action buttons.
+        if (triggerConfetti) {
+            CelebrationOverlay(
+                style = celebrationStyle,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -147,12 +162,16 @@ fun GuessingResultsScreen(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .verticalScroll(rememberScrollState())
+                    .then(
+                        // Landscape gives each pane its own scroll, so the page
+                        // must not scroll as well.
+                        if (landscape) Modifier else Modifier.verticalScroll(rememberScrollState())
+                    )
                     .navigationBarsPadding()
                     .padding(horizontal = 20.dp)
                     .padding(bottom = 12.dp)
             ) {
-                Spacer(Modifier.height(40.dp))
+                Spacer(Modifier.height(if (landscape) 12.dp else 40.dp))
 
                 AnimatedVisibility(
                     visible = showHeader,
@@ -174,8 +193,11 @@ fun GuessingResultsScreen(
                     }
                 }
 
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(if (landscape) 12.dp else 24.dp))
 
+                TwoPaneGuessResults(
+                    landscape = landscape,
+                    ring = {
                 AnimatedVisibility(
                     visible = showCard,
                     enter = slideInVertically(spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessLow)) { 100 } + fadeIn()
@@ -207,8 +229,8 @@ fun GuessingResultsScreen(
                     }
                 }
 
-                Spacer(Modifier.height(24.dp))
-
+                    },
+                    details = {
                 AnimatedVisibility(
                     visible = showRounds,
                     enter = slideInVertically(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow)) { 100 } + fadeIn()
@@ -282,78 +304,76 @@ fun GuessingResultsScreen(
                     }
                 }
 
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(if (landscape) 16.dp else 24.dp))
 
                 AnimatedVisibility(
                     visible = showButtons,
                     enter = slideInVertically(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow)) { 100 } + fadeIn()
                 ) {
                     Column {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
+                        NazoPrimaryButton(
+                            onClick = {
+                                Haptics.light(context)
+                                onPlayAgain()
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(56.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(NazoPrimary)
-                                .clickable {
-                                    Haptics.light(context)
-                                    onPlayAgain()
-                                }
+                                .height(56.dp),
                         ) {
                             Icon(Icons.Filled.Replay, contentDescription = null, tint = NazoOnPrimary, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Play Again", color = NazoOnPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("Play Again", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         }
+
                         Spacer(Modifier.height(12.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
+
+                        NazoSecondaryButton(
+                            onClick = {
+                                Haptics.light(context)
+                                onHomeClick()
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(56.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(NazoSurfaceVariant)
-                                .clickable {
-                                    Haptics.light(context)
-                                    onHomeClick()
-                                }
+                                // Solid bed: a control is an island the
+                                // celebration can never show through.
+                                .background(NazoBackground, NazoButtonShape),
+                            muted = true,
                         ) {
                             Icon(Icons.Filled.Home, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
                             Text("Home", color = NazoTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         }
+
                         Spacer(Modifier.height(12.dp))
+
                         // Share the run as a themed image card (system share sheet).
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
+                        NazoSecondaryButton(
+                            onClick = {
+                                Haptics.light(context)
+                                ShareResultCard.share(
+                                    context = context,
+                                    heading = "Guessing Game",
+                                    headline = "$score",
+                                    headlineCaption = "points",
+                                    stats = listOf(
+                                        "Rounds solved" to "$solved / $total",
+                                        "Difficulty" to difficulty,
+                                        "Topic" to topic.ifBlank { "Any popular anime" },
+                                    ),
+                                    background = NazoBackground,
+                                    surface = NazoSurface,
+                                    primary = NazoPrimary,
+                                    onPrimary = NazoOnPrimary,
+                                    textPrimary = NazoTextPrimary,
+                                    textSecondary = NazoTextSecondary,
+                                )
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(56.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(NazoSurfaceVariant)
-                                .clickable {
-                                    Haptics.light(context)
-                                    ShareResultCard.share(
-                                        context = context,
-                                        heading = "Guessing Game",
-                                        headline = "$score",
-                                        headlineCaption = "points",
-                                        stats = listOf(
-                                            "Rounds solved" to "$solved / $total",
-                                            "Difficulty" to difficulty,
-                                            "Topic" to topic.ifBlank { "Any popular anime" },
-                                        ),
-                                        background = NazoBackground,
-                                        surface = NazoSurface,
-                                        primary = NazoPrimary,
-                                        onPrimary = NazoOnPrimary,
-                                        textPrimary = NazoTextPrimary,
-                                        textSecondary = NazoTextSecondary,
-                                    )
-                                }
+                                .background(NazoBackground, NazoButtonShape),
+                            muted = true,
                         ) {
                             Icon(Icons.Filled.Share, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
@@ -362,17 +382,55 @@ fun GuessingResultsScreen(
                     }
                 }
                 Spacer(Modifier.height(16.dp))
+                    },
+                )
             }
         }
 
-        // Celebration overlay — same variants + preference as the quiz's
-        // complete screen (Appearance → Celebrations); fires when at least
-        // half the rounds were solved, mirroring the quiz's success rule.
-        if (triggerConfetti) {
-            CelebrationOverlay(
-                style = celebrationStyle,
-                modifier = Modifier.fillMaxSize(),
-            )
+    }
+}
+
+/**
+ * Guessing-game results layout — the same split as the quiz's complete screen.
+ *
+ * Portrait: score ring, record badge, per-round list, buttons, all stacked.
+ *
+ * Landscape: the ring and its record badge on the left; the round breakdown and
+ * the action buttons on the right. Each pane scrolls on its own, so a long list
+ * of rounds can never push the buttons out of reach.
+ */
+@Composable
+private fun TwoPaneGuessResults(
+    landscape: Boolean,
+    ring: @Composable () -> Unit,
+    details: @Composable () -> Unit,
+) {
+    if (!landscape) {
+        Column {
+            ring()
+            Spacer(Modifier.height(24.dp))
+            details()
+        }
+        return
+    }
+
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            ring()
+            Spacer(Modifier.height(12.dp))
+        }
+        Spacer(Modifier.width(20.dp))
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            details()
         }
     }
 }
@@ -396,6 +454,10 @@ private fun ScoreCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(32.dp))
+            // Opaque bed under the gradient (same as the quiz's score card):
+            // this is score information — the celebration layer behind the
+            // content must never show through the numbers.
+            .background(NazoBackground)
             .background(
                 brush = Brush.verticalGradient(
                     colors = listOf(NazoSurface, NazoSurfaceVariant.copy(alpha = 0.3f))
@@ -422,16 +484,20 @@ private fun ScoreCard(
                     style = Stroke(width = 12.dp.toPx(), cap = StrokeCap.Round)
                 )
             }
-            Canvas(modifier = Modifier.fillMaxSize()) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .rotate(-90f)
+            ) {
                 drawArc(
                     brush = Brush.sweepGradient(
                         colors = listOf(
                             NazoPrimary.copy(alpha = 0.4f),
                             NazoPrimary,
-                            NazoPrimary.copy(alpha = 0.8f)
+                            NazoPrimary.copy(alpha = 0.4f)
                         )
                     ),
-                    startAngle = -90f,
+                    startAngle = 0f,
                     sweepAngle = 360f * progressAnim,
                     useCenter = false,
                     style = Stroke(width = 12.dp.toPx(), cap = StrokeCap.Round)

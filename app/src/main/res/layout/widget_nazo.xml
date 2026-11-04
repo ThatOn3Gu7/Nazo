@@ -1,39 +1,71 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+  Widget layout.
+
+  The ambient background is a single ImageView behind the text.
+  NazoWidgetProvider renders a STATIC bitmap into it at the widget's real
+  measured size (see WidgetAmbient), so particle size, spacing and positions
+  are recomputed on every resize instead of the artwork being stretched.
+
+  There is deliberately no ViewFlipper / animation here: a widget that flips
+  frames reads as a low-frame-rate slideshow and burns updates for nothing.
+  The card's own rounded background stays as the fallback for the brief moment
+  before the first bitmap arrives, and for hosts that report no size.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/widget_bg"
-    android:orientation="vertical"
-    android:gravity="center_vertical"
-    android:padding="16dp">
+    android:background="@drawable/widget_bg">
 
-    <TextView
-        android:id="@+id/widget_title"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/widget_title"
-        android:textColor="#7FD8A4"
-        android:textSize="11sp"
-        android:textStyle="bold"
-        android:letterSpacing="0.12" />
+    <ImageView
+        android:id="@+id/widget_ambient"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitXY"
+        android:contentDescription="@null" />
 
-    <TextView
-        android:id="@+id/widget_streak"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:textColor="#F2F7F4"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:maxLines="1" />
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center_vertical"
+        android:padding="16dp">
 
-    <TextView
-        android:id="@+id/widget_daily"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:textColor="#A8B8AE"
-        android:textSize="13sp"
-        android:maxLines="1" />
-</LinearLayout>
+        <TextView
+            android:id="@+id/widget_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/widget_title"
+            android:textColor="#7FD8A4"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.12" />
+
+        <TextView
+            android:id="@+id/widget_streak"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="#F2F7F4"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:shadowColor="#CC101A15"
+            android:shadowDx="0"
+            android:shadowDy="0"
+            android:shadowRadius="6" />
+
+        <TextView
+            android:id="@+id/widget_daily"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textSize="13sp"
+            android:maxLines="1"
+            android:shadowColor="#CC101A15"
+            android:shadowDx="0"
+            android:shadowDy="0"
+            android:shadowRadius="6" />
+    </LinearLayout>
+</FrameLayout>

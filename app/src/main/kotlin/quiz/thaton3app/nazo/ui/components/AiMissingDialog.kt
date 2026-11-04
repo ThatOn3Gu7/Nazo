@@ -85,21 +85,17 @@ fun AiMissingDialog(
                     textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(22.dp))
-                Box(
+                NazoPrimaryButton(
+                    onClick = {
+                        Haptics.light(context)
+                        onGoOffline()
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(54.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(NazoPrimary)
-                        .clickable {
-                            Haptics.light(context)
-                            onGoOffline()
-                        },
-                    contentAlignment = Alignment.Center,
+                        .height(54.dp),
                 ) {
                     Text(
                         text = "Go Offline & Play",
-                        color = NazoOnPrimary,
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Bold,
                     )

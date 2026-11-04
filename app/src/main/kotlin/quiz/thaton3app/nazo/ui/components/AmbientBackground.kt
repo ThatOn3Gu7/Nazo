@@ -241,8 +241,12 @@ fun AmbientBackground(
     // trans.clock carries the time domain across relaunches so bloom/fade
     // timestamps stay valid.
     var timeCycles by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(engineActive) {
-        if (!engineActive) return@LaunchedEffect
+    // System "Remove animations": the ambient decoration is pure motion, so it
+    // renders as a still image and the frame clock never starts (zero per-frame
+    // work). Functional UI is unaffected — see ReducedMotion.kt.
+    val reduceMotion = rememberSystemReduceMotion()
+    LaunchedEffect(engineActive, reduceMotion) {
+        if (!engineActive || reduceMotion) return@LaunchedEffect
         val baseCycles = trans.clock
         val startNanos = withFrameNanos { it }
         while (true) {
@@ -262,6 +266,19 @@ fun AmbientBackground(
     }
 
     Canvas(modifier = modifier) {
+        // Reduced motion: one static frame at the particles' base positions —
+        // the decoration stays visible as a still image, nothing drifts, and no
+        // bloom/fade choreography plays.
+        if (reduceMotion) {
+            trans.retiring = null
+            if (trans.shown != "none") {
+                drawAmbientStyle(
+                    trans.shown, 0f, appear = 1f, master = 1f,
+                    shapeParticles, constellationStars, rainDrops, glowingOrbs, cache,
+                )
+            }
+            return@Canvas
+        }
         val t = timeCycles
 
         // Outgoing style: brief graceful fade instead of a hard cut.

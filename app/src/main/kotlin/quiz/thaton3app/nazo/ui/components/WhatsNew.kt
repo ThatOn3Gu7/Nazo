@@ -8,20 +8,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -46,75 +42,20 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 
 /**
  * Bump this whenever CHANGELOG below gains entries the user should see.
- * NOTE: the id is a unique gate, not the release version — the current id
- * is a pre-release one (the owner releases every ~20-30 commits, see
- * AGENTS.md); the next actual release commit will set its own id.
+ * NOTE: the id is a unique gate, not the release version; it only has to be
+ * unique per set of entries. This is the 12.0-beta01 gate.
  */
-const val CHANGELOG_ID = "2026-09-03-next2"
+const val CHANGELOG_ID = "2026-10-25-v12.0-beta01"
 
 data class ChangeEntry(val title: String, val points: List<String>)
 
 val CHANGELOG: List<ChangeEntry> = listOf(
     ChangeEntry(
-        "Crop, your way",
+        "Back gestures show where they'll take you",
         listOf(
-            "The Guessing Game's auto-crop — which frames each mystery image on the character's face and upper body — is now optional",
-            "Turn it off in Appearance → Guessing Game to see the full original artwork",
-        ),
-    ),
-    ChangeEntry(
-        "Instant next round",
-        listOf(
-            "While you play, the next round's answer set and mystery image load in the background",
-            "\"Next Round\" now skips the waiting screen — tap and play, no generation screen in between",
-        ),
-    ),
-    ChangeEntry(
-        "Official art, every round",
-        listOf(
-            "Guessing Game now fetches the character's official artwork from the anime's own cast lists",
-            "A new Fandom-wiki stage digs out the official character-design files — the highest-resolution art of any source",
-            "Cosplay photos and fan art still can't sneak through — every image is checked before it's shown",
-        ),
-    ),
-    ChangeEntry(
-        "New game modes",
-        listOf(
-            "Survival — endless questions, 3 lives, chase your longest streak",
-            "Blitz — 60 seconds, answer as many as you can, works offline",
-            "Versus — pass & play: two players, same questions, one winner",
-            "Versus results now include a swipeable head-to-head answer review",
-        ),
-    ),
-    ChangeEntry(
-        "Smarter quizzes",
-        listOf(
-            "Questions you've seen recently are remembered across launches and avoided",
-            "Practice deck — replay the questions you got wrong, from the Home screen",
-            "If a model fails to generate, Nazo automatically retries with another model",
-        ),
-    ),
-    ChangeEntry(
-        "A fresher Home",
-        listOf(
-            "Compact mode selector — all five game modes in one expandable card",
-            "Daily streak flame on the Home screen — keep it burning!",
-            "Tap anywhere outside a text field to dismiss the keyboard",
-        ),
-    ),
-    ChangeEntry(
-        "Celebrations & sharing",
-        listOf(
-            "Victory confetti now comes in 5 switchable styles (Appearance → Celebrations)",
-            "Each confetti style has its own sound cue (when sounds are on)",
-            "Share your results as an image from the completion screens",
-        ),
-    ),
-    ChangeEntry(
-        "Updates, upgraded",
-        listOf(
-            "App updates now download inside the app with a live progress bar",
-            "See exactly which version you're upgrading from and to",
+            "Swipe from the screen edge and the current screen slides away with your finger, revealing the screen behind it",
+            "Release to go back — or slide it back to change your mind",
+            "Works with gesture navigation on Android 13 and newer; buttons and older devices keep the usual instant back",
         ),
     ),
 )
@@ -131,27 +72,11 @@ class WhatsNewStore(context: Context) {
 @Composable
 fun WhatsNewSheet(onDismiss: () -> Unit) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
+    NazoModalSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = NazoSurface,
-        dragHandle = {
-            Box(
-                modifier = Modifier
-                    .padding(top = 16.dp, bottom = 8.dp)
-                    .size(width = 36.dp, height = 4.dp)
-                    .clip(CircleShape)
-                    .background(NazoTextSecondary.copy(alpha = 0.3f))
-            )
-        },
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 10.dp)
-                .navigationBarsPadding(),
-        ) {
+        NazoSheetColumn() {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier

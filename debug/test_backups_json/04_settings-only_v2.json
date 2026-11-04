@@ -1,0 +1,90 @@
+{
+  "version": 2,
+  "createdAt": 1791640800000,
+  "stores": {
+    "nazo_theme": {
+      "theme_mode": {
+        "t": "string",
+        "v": "light"
+      },
+      "theme_accent": {
+        "t": "string",
+        "v": "bronze"
+      },
+      "launcher_night": {
+        "t": "string",
+        "v": ""
+      },
+      "icon_follows_os": {
+        "t": "bool",
+        "v": false
+      },
+      "app_icon": {
+        "t": "string",
+        "v": "light"
+      },
+      "floating_nav": {
+        "t": "bool",
+        "v": false
+      },
+      "last_game_mode": {
+        "t": "string",
+        "v": "QUIZ"
+      },
+      "guess_reveal_style": {
+        "t": "string",
+        "v": "blur"
+      },
+      "guess_auto_crop": {
+        "t": "bool",
+        "v": false
+      },
+      "background_style": {
+        "t": "string",
+        "v": "shapes"
+      },
+      "celebration_style": {
+        "t": "string",
+        "v": "burst"
+      },
+      "touch_ripples_enabled": {
+        "t": "bool",
+        "v": false
+      },
+      "generate_sparkle_style": {
+        "t": "string",
+        "v": "twinkle"
+      }
+    },
+    "nazo_sound": {
+      "enabled": {
+        "t": "bool",
+        "v": false
+      },
+      "theme": {
+        "t": "string",
+        "v": "chime"
+      }
+    },
+    "nazo_reminders": {
+      "enabled": {
+        "t": "bool",
+        "v": false
+      }
+    },
+    "nazo_provider_models": {
+      "selected_provider": {
+        "t": "string",
+        "v": "openrouter"
+      },
+      "model_openrouter": {
+        "t": "string",
+        "v": "deepseek/deepseek-chat"
+      },
+      "models_openrouter": {
+        "t": "string",
+        "v": "[{\"id\":\"deepseek/deepseek-chat\",\"name\":\"DeepSeek Chat\",\"desc\":\"Cheap and capable\",\"free\":true}]"
+      }
+    }
+  }
+}

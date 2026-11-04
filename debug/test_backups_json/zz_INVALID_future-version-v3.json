@@ -1,0 +1,12 @@
+{
+  "version": 3,
+  "createdAt": 1791792600000,
+  "stores": {
+    "nazo_profile": {
+      "profile_username": {
+        "t": "string",
+        "v": "From The Future"
+      }
+    }
+  }
+}

@@ -1,0 +1,200 @@
+{
+  "version": 2,
+  "createdAt": 1791797400000,
+  "stores": {
+    "nazo_stats": {
+      "quiz_stats_v1": {
+        "t": "string",
+        "v": "{\"totalQuizzes\":214,\"totalQuestionsAnswered\":1070,\"totalCorrect\":861,\"currentStreakDays\":12,\"bestStreakDays\":31,\"lastQuizEpochDay\":20738,\"difficultyPlays\":{\"Easy\":40,\"Medium\":96,\"Hard\":60,\"Otaku Master\":18},\"difficultyCorrect\":{\"Easy\":170,\"Medium\":400,\"Hard\":230,\"Otaku Master\":61},\"difficultyAnswered\":{\"Easy\":200,\"Medium\":480,\"Hard\":300,\"Otaku Master\":90},\"animeAnswered\":{\"One Piece\":180,\"Frieren: Beyond Journey's End\":150,\"Spy x Family\":140,\"Demon Slayer\":130,\"Attack on Titan\":120,\"Jujutsu Kaisen\":110,\"My Hero Academia\":120,\"Naruto\":120},\"animeCorrect\":{\"One Piece\":160,\"Frieren: Beyond Journey's End\":145,\"Spy x Family\":128,\"Demon Slayer\":110,\"Attack on Titan\":100,\"Jujutsu Kaisen\":88,\"My Hero Academia\":72,\"Naruto\":58}}"
+      }
+    },
+    "nazo_theme": {
+      "theme_mode": {
+        "t": "string",
+        "v": "dark"
+      },
+      "theme_accent": {
+        "t": "string",
+        "v": "sakura"
+      },
+      "launcher_night": {
+        "t": "string",
+        "v": ""
+      },
+      "icon_follows_os": {
+        "t": "bool",
+        "v": true
+      },
+      "app_icon": {
+        "t": "string",
+        "v": "light"
+      },
+      "floating_nav": {
+        "t": "bool",
+        "v": true
+      },
+      "last_game_mode": {
+        "t": "string",
+        "v": "GUESS"
+      },
+      "guess_reveal_style": {
+        "t": "string",
+        "v": "pixel"
+      },
+      "guess_auto_crop": {
+        "t": "bool",
+        "v": true
+      },
+      "background_style": {
+        "t": "string",
+        "v": "lantern"
+      },
+      "celebration_style": {
+        "t": "string",
+        "v": "fireworks"
+      },
+      "touch_ripples_enabled": {
+        "t": "bool",
+        "v": true
+      },
+      "generate_sparkle_style": {
+        "t": "string",
+        "v": "constellation"
+      }
+    },
+    "nazo_profile": {
+      "profile_username": {
+        "t": "string",
+        "v": "Backup Tester"
+      },
+      "profile_picture_uri": {
+        "t": "string",
+        "v": "file:///data/user/0/quiz.thaton3app.nazo/files/profile/avatar_1760263800000.png"
+      }
+    },
+    "nazo_provider_models": {
+      "selected_provider": {
+        "t": "string",
+        "v": "gemini"
+      },
+      "model_gemini": {
+        "t": "string",
+        "v": "gemini-2.5-flash"
+      },
+      "models_gemini": {
+        "t": "string",
+        "v": "[{\"id\":\"gemini-2.5-flash\",\"name\":\"Gemini 2.5 Flash\",\"desc\":\"Fast and free-tier friendly\",\"free\":true},{\"id\":\"gemini-2.5-pro\",\"name\":\"Gemini 2.5 Pro\",\"desc\":\"Strongest reasoning\",\"free\":false},{\"id\":\"gemini-2.0-flash\",\"name\":\"Gemini 2.0 Flash\",\"desc\":\"Older but reliable\",\"free\":true}]"
+      },
+      "model_openrouter": {
+        "t": "string",
+        "v": "deepseek/deepseek-chat"
+      },
+      "models_openrouter": {
+        "t": "string",
+        "v": "[{\"id\":\"anthropic/claude-sonnet-4.5\",\"name\":\"Claude Sonnet 4.5\",\"desc\":\"Balanced premium model\",\"free\":false},{\"id\":\"deepseek/deepseek-chat\",\"name\":\"DeepSeek Chat\",\"desc\":\"Cheap and capable\",\"free\":true}]"
+      }
+    },
+    "nazo_secure": {
+      "enc_key_gemini": {
+        "t": "string",
+        "v": "ZmFrZS1lbmNyeXB0ZWQta2V5LWJsb2ItZm9yLXRlc3Rpbmctb25seQ=="
+      },
+      "iv_key_gemini": {
+        "t": "string",
+        "v": "ZmFrZWl2MTI="
+      }
+    },
+    "nazo_records": {
+      "quiz_best_Easy": {
+        "t": "int",
+        "v": 100
+      },
+      "quiz_best_Medium": {
+        "t": "int",
+        "v": 92
+      },
+      "quiz_best_Hard": {
+        "t": "int",
+        "v": 80
+      },
+      "guess_best_Medium_10": {
+        "t": "int",
+        "v": 860
+      },
+      "guess_best_Hard_5": {
+        "t": "int",
+        "v": 540
+      },
+      "survival_best": {
+        "t": "int",
+        "v": 23
+      },
+      "blitz_best": {
+        "t": "int",
+        "v": 31
+      }
+    },
+    "nazo_daily": {
+      "last_day": {
+        "t": "long",
+        "v": 20737
+      },
+      "last_score": {
+        "t": "int",
+        "v": 4
+      },
+      "last_total": {
+        "t": "int",
+        "v": 5
+      },
+      "last_bonus": {
+        "t": "int",
+        "v": 120
+      },
+      "completed_count": {
+        "t": "int",
+        "v": 37
+      },
+      "bonus_xp_total": {
+        "t": "int",
+        "v": 4210
+      }
+    },
+    "nazo_sound": {
+      "enabled": {
+        "t": "bool",
+        "v": true
+      },
+      "theme": {
+        "t": "string",
+        "v": "arcade"
+      }
+    },
+    "nazo_reminders": {
+      "enabled": {
+        "t": "bool",
+        "v": true
+      },
+      "last_notified_day": {
+        "t": "long",
+        "v": 20738
+      }
+    },
+    "nazo_qhistory": {
+      "texts": {
+        "t": "string",
+        "v": "[\"What is the name of the pirate king's treasure in One Piece?\",\"Which organization does Yor Forger secretly work for in Spy x Family?\",\"In Frieren: Beyond Journey's End, what is Frieren's area of magic expertise?\",\"Who is the ninth holder of the One For All quirk in My Hero Academia?\",\"What substance is used to strengthen weapons in Demon Slayer?\",\"What is the name of the survey corps' home district in Attack on Titan?\",\"Which jutsu did Naruto master to defeat Pain?\",\"What is the domain expansion of Satoru Gojo in Jujutsu Kaisen?\"]"
+      }
+    },
+    "nazo_missed": {
+      "questions": {
+        "t": "string",
+        "v": "[{\"anime\":\"One Piece\",\"theme\":\"CHARACTERS\",\"difficulty\":\"Hard\",\"text\":\"What is the name of the ship the Straw Hats sail after the Going Merry?\",\"options\":[\"Thousand Sunny\",\"Red Force\",\"Moby Dick\",\"Oro Jackson\"],\"correctAnswer\":\"Thousand Sunny\",\"explanation\":\"The Thousand Sunny is the Straw Hats' second ship, built by Franky at Water Seven.\"},{\"anime\":\"Frieren: Beyond Journey's End\",\"theme\":\"MAGIC\",\"difficulty\":\"Medium\",\"text\":\"What type of magic is Frieren personally most famous for collecting?\",\"options\":[\"Useless everyday magic\",\"Barrier magic\",\"Healing magic\",\"Summoning magic\"],\"correctAnswer\":\"Useless everyday magic\",\"explanation\":\"Frieren spends decades collecting obscure, everyday spells that others consider useless.\"},{\"anime\":\"Demon Slayer\",\"theme\":\"ARCS\",\"difficulty\":\"Medium\",\"text\":\"Which training arc prepares the Demon Slayers for the final battle?\",\"options\":[\"Hashira Training Arc\",\"Rehabilitation Arc\",\"Swordsmith Village Arc\",\"Entertainment District Arc\"],\"correctAnswer\":\"Hashira Training Arc\",\"explanation\":\"The Hashira Training Arc has every Hashira train the corps for the fight against Muzan.\"},{\"anime\":\"Attack on Titan\",\"theme\":\"LORE\",\"difficulty\":\"Hard\",\"text\":\"What is the name of the island where the last city of humanity stands?\",\"options\":[\"Paradis Island\",\"Marley\",\"Hizuru\",\"Ragako\"],\"correctAnswer\":\"Paradis Island\",\"explanation\":\"Paradis Island is where the three walls \\u2014 Maria, Rose and Sina \\u2014 enclose humanity.\"},{\"anime\":\"Spy x Family\",\"theme\":\"CHARACTERS\",\"difficulty\":\"Easy\",\"text\":\"What is the name of Anya's beloved toy?\",\"options\":[\"Mr. Chimera\",\"Mr. Penguin\",\"Mr. Lion\",\"Mr. Octopus\"],\"correctAnswer\":\"Mr. Chimera\",\"explanation\":\"Anya's favourite stuffed toy is Mr. Chimera.\"}]"
+      }
+    }
+  },
+  "picture": {
+    "mime": "image/png",
+    "data": "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAAEKUlEQVR42u3R53KWVRSGYY7AX9KCiooQ0hsJBAiQkIL03ntHRbBQLNgApYiKBWwg2Ojq6XA0egKumfubb6/1smaemevnnmdmr3tcw1M9UqFxOoECKIAogALIExOg8eml4oQFGL9MnKAAM8cvFycoQNOEFeJEATIEaJ6wUpywABNXiRMUoGXianHCAkxaI05QgNZJa8UJCtA2eZ04gQHWixMUoL1hgzhRgAwBOho2ihMWYMomcYICdE7ZLE5QgK5ntogTGGCrOEEBup/dJk5ggO3iBAXoeW6HOFGADAFmTd0pTlCA3qm7xAkMsFucoAB9z+8RJzDAXnGCAsx+YZ84gQH2ixMUYM6LB4L9+/jW/8qyzylAhgD90w4Gsw6UZZ9DAeZOOxTMOlCWfQ4GOBzMPlCOfQ4FmPfSkWDWgbLsczDAK8HsA+XY51CA+dNfDWYdKMs+BwO8Fsw6kH24MvvxP0UBBmYcDVZrgFL78T9FARbMOBqs1gCl9uN/ygI0vh6s5gCF9uN/igIsbDwWrNYApfbjfwoDHA9We4Ay+/E/RQEWzXwjWK0BSu3H/xQGeDNY7QHK7Mf/FAUYbHormHWgqt77QQGGmt4OZh2oqvd+WIDmE8HMA1X03g8KsLj5RDDrQFW998MCtJwMZh6oovd+UIDhllPBrANV9d4PC9B6Oph5oIre+0EBRlrfCWYdqKr3flCA0dZ3g1kHKrVTar9+LEDbe8HMAxXaKbVfPxRgrO39YNaBSu2U2q8fC9B+Jph5oEI7pfbrhwIsaT8TzDpQqZ1S+/VjATo+CGYeqNBOqf36oQAvd3wYzDpQqZ1S+/VjATo/CmYeqNBOqf36oQBLOz8OZh0oyz6HAizr/CSYdaAs+xwL0HU2mHmgJPscCrC861ww60BZ9jkWoPt8MPNASfY5FGBF9/lg1oGy7HMsQM+nwcwDJdnnUICVPZ8Fsw6UZZ9DAVbNuhDMOlCWfQ4GuBjMPlCOfQ4FWN17KZh1oCz7HAxwOZh9oBz7HAqwpvfzYNaBsuxzLEDflWDmgZLscyjA2r4rwawDZdnnUIB1s78IZh0oyz4HA3wZzD5Qjn0OBVg/56tg1oGy7HMwwNVg9oFy7HMowIb+r4NZB8qyz8EA3wSzD5Rjn0MBNvZ/G8w6UJZ9DgXYNPe7YNaBsuxzCpAhwOZ518QJDHBdnKAAW+Z/L05ggB/ECQqwdeBHcQID/CROUIBtAz+LExRg+4Ib4kQBMgTYsfCmOIEBfhEnKMDORbfECQxwW5ygALsGfxUnKMDuwd/ECQsw9Ls4QQH2DP0hThQgQ4C9i/8UJzDAHXGCAuwbvitOUID9w/fECQswcl+coAAHRh6IExZg9KE4QQEOjj4SJwqQIcChsb/ECQpweOxvccICLPlHnKAAEkkBFEABRAEUQCryH2AhYY1Y8NtqAAAAAElFTkSuQmCC"
+  }
+}
