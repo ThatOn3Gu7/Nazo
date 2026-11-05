@@ -1,6 +1,7 @@
 package quiz.thaton3app.nazo.ui.screens
 
 import java.io.File
+import quiz.thaton3app.nazo.ui.components.ProfileCoverPreviewDialog
 import quiz.thaton3app.nazo.ui.components.ProfileImagePreviewDialog
 import quiz.thaton3app.nazo.data.profile.ProfileImageStore
 import quiz.thaton3app.nazo.data.profile.ProfileImageSource
@@ -97,17 +98,20 @@ val ProfileHeaderFont = FontFamily(
     Font(R.font.plus_jakarta_sans_bold, FontWeight.Bold)
 )
 
-// --- Profile cover banner (Phase 1: layout & layering only) ---------------
+// --- Profile cover banner (Phase 1 layout, Phase 2 gallery images) ---------
 //
 // Facebook-style cover: a wide rounded band across the top of the Profile
 // screen with the avatar straddling its bottom edge — 90% of the circle
 // inside the band, 10% hanging below. The band is drawn inside the screen
 // subtree, which sits above the root-level particle background, so it hides
 // the particles beneath it while they keep drifting behind everything else.
-// Later phases add real banner backgrounds (gradients, gallery, video,
-// avatar-derived), the bottom-edge blur/fade blend, and the selection sheet;
-// this phase only fixes the geometry and the layering those features plug
-// into. The gradient below is a static placeholder, not a selectable preset.
+// Phase 2 added gallery cover images — static only, center-crop, no URLs:
+// pencil sheet → ProfileCoverPreviewDialog (sniff + 1024×480 floor +
+// WYSIWYG frame) → ProfileImageStore.saveCover → coverPictureUri in prefs.
+// Still to come in later phases: gradient presets, video / avatar-derived
+// backgrounds, the bottom-edge blur/fade blend, a selection sheet with
+// previews, and the backup payload. The gradient below is the placeholder
+// whenever no image is set — and the stand-in while one loads or fails.
 
 /** Avatar diameter used by the cover straddle (same 132.dp as before). */
 private val CoverAvatarSize = 132.dp
@@ -133,21 +137,48 @@ internal fun coverContentGap(avatarSize: Dp): Dp = coverOverhang(avatarSize) + 1
 internal fun coverHeight(isLandscape: Boolean): Dp = if (isLandscape) 120.dp else 160.dp
 
 /**
- * The cover band itself: a full-width rounded rectangle with a static
- * placeholder gradient. Opaque on purpose — it must hide the particle
- * background beneath it (the root draws the ambient particle layer behind
- * the transparent screens).
+ * The banner's width/height ratio for the current configuration, shared
+ * with the cover preview dialog so its frame is exactly WYSIWYG. Mirrors
+ * the layout math: portrait = content width (screen − 48.dp gutters) over
+ * 160.dp; landscape = left column (40 % of screen − 48.dp gutters −
+ * 32.dp column spacing) over 120.dp. See the landscape Row in
+ * [ProfileScreen].
+ */
+internal fun coverPreviewAspectRatio(screenWidthDp: Int, isLandscape: Boolean): Float {
+    val width = if (isLandscape) {
+        (screenWidthDp - 80) * 0.4f
+    } else {
+        (screenWidthDp - 48).toFloat()
+    }
+    val height = if (isLandscape) 120f else 160f
+    // Degenerate-width guard (absurd split-screen slivers): never hand the
+    // preview an aspect ratio at or below 1:1.
+    return (width / height).coerceAtLeast(1f)
+}
+
+/**
+ * The cover band itself: a full-width rounded rectangle whose background is
+ * a static placeholder gradient — or, once the user picks one, their photo
+ * drawn as a separate `ContentScale.Crop` layer (fills the band, excess
+ * clipped at the rounded corners; never letterboxed, never stretched).
+ * Opaque either way, so it hides the particle background beneath it (the
+ * root draws the ambient particle layer behind the transparent screens).
  *
- * The background is applied with `background(brush, shape)` rather than
- * `clip(shape)` on purpose: children — the straddling avatar — must be
- * allowed to overflow the bottom edge, and a clip would slice the
- * overhanging 10% off. The later blur/fade blend for the bottom edge gets
- * its own layer inside this Box.
+ * Two deliberate no-clip rules in this Box:
+ *  1. The Box's own background uses `background(brush, shape)` rather than
+ *     `clip(shape)` so children — the straddling avatar — can overflow the
+ *     bottom edge; a clip would slice the overhanging 10% off. The photo is
+ *     therefore clipped on its OWN node instead.
+ *  2. The edit slot paints last, above the photo, so the pencil stays
+ *     reachable on top of any image.
+ * The later blur/fade blend for the bottom edge gets its own layer here.
  */
 @Composable
 private fun ProfileCoverBanner(
     height: Dp,
+    coverUri: String?,
     modifier: Modifier = Modifier,
+    editButton: @Composable BoxScope.() -> Unit = {},
     content: @Composable BoxScope.() -> Unit,
 ) {
     Box(
@@ -158,8 +189,84 @@ private fun ProfileCoverBanner(
                 brush = Brush.verticalGradient(listOf(NazoPrimary, NazoSurface)),
                 shape = RoundedCornerShape(CoverCornerRadius),
             ),
-        content = content,
-    )
+    ) {
+        // SafeRemoteImage draws nothing while loading or after a decode
+        // failure, so the placeholder gradient shows through both cases —
+        // and it only ever receives our own file:// (gallery-only covers).
+        if (!coverUri.isNullOrBlank()) {
+            SafeRemoteImage(
+                url = coverUri,
+                contentDescription = "Cover photo",
+                modifier = Modifier
+                    .matchParentSize()
+                    .clip(RoundedCornerShape(CoverCornerRadius)),
+            )
+        }
+        content()
+        Box(modifier = Modifier.align(Alignment.BottomEnd)) {
+            editButton()
+        }
+    }
+}
+
+/**
+ * Pencil in the banner's bottom-right corner: opens the cover action sheet
+ * (gallery pick / remove). 44.dp target with 8.dp margins — the geometry in
+ * handoff.md shows the target clears the straddling avatar's circle even on
+ * the narrowest landscape left column (40/60 split on a 640.dp screen).
+ * The icon carries the accessibility label; the clickable Box merges it so
+ * TalkBack announces one "Change cover photo" control.
+ */
+@Composable
+private fun CoverEditButton(
+    expanded: Boolean,
+    hasCover: Boolean,
+    onExpandChange: (Boolean) -> Unit,
+    onPickFromGallery: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    Box(modifier = Modifier.padding(8.dp)) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.35f))
+                .clickable { onExpandChange(true) },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Edit,
+                contentDescription = "Change cover photo",
+                tint = Color.White,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { onExpandChange(false) },
+        ) {
+            DropdownMenuItem(
+                text = { Text("Choose from gallery") },
+                leadingIcon = { Icon(Icons.Filled.Image, contentDescription = null) },
+                onClick = {
+                    onExpandChange(false)
+                    onPickFromGallery()
+                },
+            )
+            if (hasCover) {
+                DropdownMenuItem(
+                    text = { Text("Remove cover", color = NazoError) },
+                    leadingIcon = {
+                        Icon(Icons.Filled.Delete, contentDescription = null, tint = NazoError)
+                    },
+                    onClick = {
+                        onExpandChange(false)
+                        onRemove()
+                    },
+                )
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -167,12 +274,15 @@ private fun ProfileCoverBanner(
 fun ProfileScreen(
     username: String,
     profilePictureUri: String?,
+    /** Cover banner image: null = placeholder gradient, else our own `file://`. */
+    coverPictureUri: String? = null,
     quizStats: QuizStats = QuizStats(),
     /** When true, never hit the network: use the local generator directly. */
     offline: Boolean = false,
     onBack: () -> Unit = {},
     onUsernameChange: (String) -> Unit,
     onProfilePictureChange: (String?) -> Unit,
+    onCoverPictureChange: (String?) -> Unit = {},
     onNavigateToStatistics: () -> Unit,
     onNavigateToSettings: () -> Unit = {},
 ) {
@@ -191,6 +301,13 @@ fun ProfileScreen(
     // Removing a picture is destructive from here (a custom photo would have
     // to be re-added by hand), so it gets one explicit confirmation step.
     var showRemoveConfirm by rememberRetained("Profile.showRemoveConfirm") { false }
+    // Cover (banner) flow: the pencil's action sheet, the remove
+    // confirmation (same destructive-action rule as the avatar's Remove),
+    // and the picked source — retained so a rotation reopens the preview
+    // dialog instead of dropping the pick (same rule as pendingSource).
+    var showCoverSheet by rememberRetained("Profile.showCoverSheet") { false }
+    var showCoverRemoveConfirm by rememberRetained("Profile.showCoverRemoveConfirm") { false }
+    var pendingCoverSource by rememberRetained<ProfileImageSource?>("Profile.pendingCoverSource") { null }
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -208,7 +325,8 @@ fun ProfileScreen(
     // less work during the dialog's open animation, same visuals on return.
     val avatarBehindDialogsPaused =
         showPictureDialog || showAvatarPreview || showUrlDialog ||
-            showRemoveConfirm || pendingSource != null
+            showRemoveConfirm || pendingSource != null ||
+            pendingCoverSource != null || showCoverRemoveConfirm
 
     // PickVisualMedia is the system photo picker: a gallery grid with no
     // storage permission and no filesystem browsing. It replaces
@@ -229,6 +347,17 @@ fun ProfileScreen(
                 pendingSource = ProfileImageSource.ContentUri(it)
             }
         }
+    )
+
+    // Cover picks are STATIC images only: ImageOnly so the system picker
+    // never offers a video, and GIF / animated WebP (which still appear in
+    // an image picker) are rejected by byte-sniff inside the cover preview
+    // dialog. Gallery only — no URL path exists for covers at all.
+    val coverGalleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+        onResult = { uri ->
+            uri?.let { pendingCoverSource = ProfileImageSource.ContentUri(it) }
+        },
     )
 
     Scaffold(
@@ -267,130 +396,147 @@ fun ProfileScreen(
             }
         } else null
 
+        // One cover edit affordance for both orientations, handed to the
+        // banner as a slot so the pencil and its menu anchor to the banner's
+        // bottom-right corner regardless of layout.
+        val coverEditButton: @Composable BoxScope.() -> Unit = {
+            CoverEditButton(
+                expanded = showCoverSheet,
+                hasCover = !coverPictureUri.isNullOrBlank(),
+                onExpandChange = { showCoverSheet = it },
+                onPickFromGallery = {
+                    coverGalleryLauncher.launch(
+                        PickVisualMediaRequest(
+                            ActivityResultContracts.PickVisualMedia.ImageOnly
+                        )
+                    )
+                },
+                onRemove = { showCoverRemoveConfirm = true },
+            )
+        }
+
         if (isLandscape) {
             // --- LANDSCAPE LAYOUT ---
-            Column(
+            Row(
                 modifier = Modifier
                     .padding(padding)
-                    .fillMaxSize(),
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(32.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Cover band: same straddling avatar as portrait; 24.dp
-                // gutters keep it aligned with the row content below.
-                ProfileCoverBanner(
-                    height = coverHeight(isLandscape = true),
-                    modifier = Modifier.padding(horizontal = 24.dp),
-                ) {
-                    ProfileAvatar(
-                        // Bottom-centered, pushed down by exactly the
-                        // overhang so the 10% slice clears the band's edge.
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .offset(y = coverOverhang(CoverAvatarSize)),
-                        name = username,
-                        pictureUri = profilePictureUri,
-                        size = CoverAvatarSize,
-                        onClick = { showPictureDialog = true },
-                        onLongClick = avatarLongPress,
-                        paused = avatarBehindDialogsPaused,
-                        anchorId = AvatarAnchorId.Profile,
-                    )
-                }
-
-                // Keep the avatar's overhang clear of the row content.
-                Spacer(Modifier.height(coverContentGap(CoverAvatarSize)))
-
-                Row(
+                // Left Column: Cover & Username. The banner lives ENTIRELY
+                // in this column (40/60 split) — it must not stretch across
+                // the screen or push the stats side out of view.
+                Column(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(32.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Top
                 ) {
-                    // Left Column: Username & hint
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .verticalScroll(rememberScrollState()),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                    // Cover band: same straddling avatar as portrait, living
+                    // entirely inside this column (40/60 split).
+                    ProfileCoverBanner(
+                        height = coverHeight(isLandscape = true),
+                        coverUri = coverPictureUri,
+                        editButton = coverEditButton,
                     ) {
-                        Surface(
-                            onClick = { showUsernameDialog = true },
-                            shape = MaterialTheme.shapes.extraLarge,
-                            color = Color.Transparent,
-                            modifier = Modifier.clip(MaterialTheme.shapes.extraLarge)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                            ) {
-                                Text(
-                                    text = username.ifBlank {
-                                        if (quizStats.totalQuizzes > 0) "Edit Profile" else "Create Profile"
-                                    },
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = NazoTextPrimary
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Icon(
-                                    imageVector = Icons.Rounded.Edit,
-                                    contentDescription = "Edit username",
-                                    tint = NazoPrimary,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(Modifier.height(8.dp))
-                        // Discloses both picture gestures; the press-and-hold
-                        // preview was previously a hidden easter egg.
-                        Text(
-                            text = if (profilePictureUri.isNullOrBlank())
-                                "Tap the picture to choose one"
-                            else
-                                "Tap the picture to change it · press and hold to preview",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = NazoTextSecondary,
-                            textAlign = TextAlign.Center,
+                        ProfileAvatar(
+                            // Bottom-centered, pushed down by exactly the
+                            // overhang so the 10% slice clears the band's edge.
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .offset(y = coverOverhang(CoverAvatarSize)),
+                            name = username,
+                            pictureUri = profilePictureUri,
+                            size = CoverAvatarSize,
+                            onClick = { showPictureDialog = true },
+                            onLongClick = avatarLongPress,
+                            paused = avatarBehindDialogsPaused,
+                            anchorId = AvatarAnchorId.Profile,
                         )
                     }
 
-                    // Right Column: Stats & Menu
-                    Column(
-                        modifier = Modifier
-                            .weight(1.5f)
-                            .fillMaxHeight()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        if (quizStats.totalQuizzes > 0) {
-                            ProfileStatsCard(stats = quizStats)
-                            Spacer(modifier = Modifier.height(16.dp))
-                        }
+                    // Keep the avatar's overhang clear of the row content.
+                    Spacer(Modifier.height(coverContentGap(CoverAvatarSize)))
 
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                    Surface(
+                        onClick = { showUsernameDialog = true },
+                        shape = MaterialTheme.shapes.extraLarge,
+                        color = Color.Transparent,
+                        modifier = Modifier.clip(MaterialTheme.shapes.extraLarge)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
-                            ProfileMenuItem(
-                                icon = Icons.Filled.BarChart,
-                                title = "Statistics",
-                                subtitle = "View your quiz insights",
-                                onClick = onNavigateToStatistics
+                            Text(
+                                text = username.ifBlank {
+                                    if (quizStats.totalQuizzes > 0) "Edit Profile" else "Create Profile"
+                                },
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = NazoTextPrimary
                             )
-                            ProfileMenuItem(
-                                icon = Icons.Filled.Settings,
-                                title = "Settings",
-                                subtitle = "Appearance, categories, backup",
-                                onClick = onNavigateToSettings
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(
+                                imageVector = Icons.Rounded.Edit,
+                                contentDescription = "Edit username",
+                                tint = NazoPrimary,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    // Discloses both picture gestures; the press-and-hold
+                    // preview was previously a hidden easter egg.
+                    Text(
+                        text = if (profilePictureUri.isNullOrBlank())
+                            "Tap the picture to choose one"
+                        else
+                            "Tap the picture to change it · press and hold to preview",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NazoTextSecondary,
+                        textAlign = TextAlign.Center,
+                    )
+
+                }
+
+                // Right Column: Stats & Menu
+                Column(
+                    modifier = Modifier
+                        .weight(1.5f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    if (quizStats.totalQuizzes > 0) {
+                        ProfileStatsCard(stats = quizStats)
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        ProfileMenuItem(
+                            icon = Icons.Filled.BarChart,
+                            title = "Statistics",
+                            subtitle = "View your quiz insights",
+                            onClick = onNavigateToStatistics
+                        )
+                        ProfileMenuItem(
+                            icon = Icons.Filled.Settings,
+                            title = "Settings",
+                            subtitle = "Appearance, categories, backup",
+                            onClick = onNavigateToSettings
+                        )
                     }
                 }
             }
@@ -406,7 +552,11 @@ fun ProfileScreen(
             ) {
                 // Cover band spans the content width; the avatar straddles
                 // its bottom edge — 90% inside the band, 10% below it.
-                ProfileCoverBanner(height = coverHeight(isLandscape = false)) {
+                ProfileCoverBanner(
+                    height = coverHeight(isLandscape = false),
+                    coverUri = coverPictureUri,
+                    editButton = coverEditButton,
+                ) {
                     ProfileAvatar(
                         // Bottom-centered, pushed down by exactly the
                         // overhang so the 10% slice clears the band's edge.
@@ -1434,6 +1584,53 @@ fun ProfileScreen(
                 pendingDraft = null
             },
             stateKeyPrefix = "Profile",
+        )
+    }
+
+    // Cover pick preview: gallery pick → sniff/size validation → WYSIWYG
+    // banner frame → save. The source is retained, so a rotation reopens
+    // this dialog instead of dropping the pick (same rule as pendingSource).
+    val activeCoverSource = pendingCoverSource
+    if (activeCoverSource != null) {
+        ProfileCoverPreviewDialog(
+            source = activeCoverSource,
+            onDismiss = { pendingCoverSource = null },
+            onAccepted = { savedUri ->
+                pendingCoverSource = null
+                onCoverPictureChange(savedUri)
+            },
+        )
+    }
+
+    // Remove-cover confirmation — the same destructive-action step the
+    // avatar's Remove uses; Cancel leaves the photo untouched.
+    if (showCoverRemoveConfirm) {
+        AlertDialog(
+            onDismissRequest = { showCoverRemoveConfirm = false },
+            icon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = NazoError) },
+            title = { Text("Remove cover photo?") },
+            text = {
+                Text(
+                    "Your profile goes back to the plain cover background. To use " +
+                        "the photo again you would need to choose it from your gallery.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                NazoDangerButton(onClick = {
+                    Haptics.doubleLight(context)
+                    ProfileImageStore.deleteCover(context, coverPictureUri)
+                    onCoverPictureChange(null)
+                    showCoverRemoveConfirm = false
+                }) {
+                    Text("Remove", maxLines = 1)
+                }
+            },
+            dismissButton = {
+                NazoSecondaryButton(onClick = { showCoverRemoveConfirm = false }, muted = true) {
+                    Text("Cancel", maxLines = 1)
+                }
+            },
         )
     }
 }

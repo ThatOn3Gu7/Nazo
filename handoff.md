@@ -3711,3 +3711,83 @@ straddle, the 16.dp rhythm, and the orientation heights are unit-tested.
 avatar-derived backgrounds, the bottom-edge blur/fade blend, and any
 selection sheet, banner settings, or persistence. The placeholder gradient is
 static and not user-selectable.
+
+
+## Profile cover banner: Phase 2 gallery images (2026-11-05)
+
+**What changed.** The cover banner can now show a photo from the device
+gallery. A 44 dp pencil in the banner's bottom-right corner opens a small
+action sheet (*Choose from gallery* / *Remove cover* — the Remove row only
+appears when a photo is set). Picking goes through the system photo picker
+(`PickVisualMedia.ImageOnly`, no storage permission, **gallery only — no
+URL path exists for covers**), then a lean preview dialog validates the pick
+(animated sniff → 1024 × 480 oriented-size floor → decode) and shows it in
+a frame at the **exact banner aspect ratio** the Profile screen will use,
+center-cropped — Accept is WYSIWYG. Saved covers live in
+`filesDir/profile_covers/` (JPEG q92, PNG when the pixels carry alpha,
+≤2048 px long edge) under their own keep-newest prune, so an avatar save can
+never wipe a cover or vice versa. The URI persists in one prefs key
+(`profile_cover_uri`); removal asks for confirmation (same destructive-step
+rule as the avatar's Remove), deletes the file, and falls back to the
+placeholder gradient. Landscape was also corrected per the review: the
+banner + straddling avatar + username now live **entirely in the left
+column** of a 40/60 Row, with stats/menu in the right column — the banner
+no longer stretches across the full screen. Portrait layout is unchanged.
+
+**Why / decisions locked with the owner.**
+- **40/60 split** — the landscape banner AR lands in 1.87–2.78, closest to
+  portrait's 1.70–2.39, so the same photo frames similarly in both
+  orientations; the right column keeps the roomiest menu subtitles. Pencil
+  geometry: at the narrowest full-screen landscape (640 dp → 224 dp left
+  column) the 44 dp target with 8 dp margins sits 87.6 dp from the avatar
+  circle's center vs 86 dp combined radii — clears without overlap.
+- **1024 × 480 floor** — 480 px = the tallest banner any phone renders
+  (160 dp @3x), so nothing ever scales vertically; 1024 px keeps width
+  upscale ≤ ~1.12× even on the largest phone. Checked against the ORIGINAL
+  oriented bounds (EXIF-aware), NOT the downsampled decode: the decode
+  halves ≥4096 px panoramas, and checking post-sample dims would falsely
+  reject a wide panorama whose height lands at 450 px.
+- **No crop tool** — center-crop at render time (ContentScale.Crop fills,
+  excess clips at the rounded corners; never letterboxed, never stretched).
+  The avatar cropper is square-locked (`CropState.edge`), so a wide crop
+  tool would have been a 150–200 line refactor; it stays a future option.
+- **Pencil sheet** — one entry point for add/replace/remove; removal keeps
+  the explicit confirmation step the avatar flow established (the old hidden
+  easter-egg gesture was deliberately surfaced into visible controls).
+
+**How to test it live.**
+1. Preconditions: particle background on, any avatar, Profile screen.
+2. Tap the pencil at the banner's bottom-right → sheet appears. With no
+   cover set there is no Remove row. **Expected:** tapping outside closes it.
+3. *Choose from gallery* → pick a wide photo (≥1024 × 480, e.g. any camera
+   shot or 1920 × 1080 wallpaper). **Expected:** preview shows the image in
+   a rounded banner-shaped frame cropped exactly as the banner will draw it;
+   Accept installs it — the photo fills the band edge-to-edge, corners
+   rounded, no black bars, no stretching, avatar still straddling the bottom
+   edge 90/10. Before: placeholder gradient only.
+4. Pick a small image (<1024 × 480, e.g. an old 800 × 600 photo) and an
+   animated GIF. **Expected:** specific rejection copy naming the fix; the
+   current cover is untouched.
+5. Rotate during the preview dialog. **Expected:** the dialog (and the
+   pick) survives rotation.
+6. Pencil → *Remove cover* → confirm. **Expected:** confirmation reads
+   "Remove cover photo?"; after Remove the gradient placeholder returns.
+7. Landscape: rotate. **Expected:** banner + avatar + username entirely in
+   the LEFT column (40 %), stats/menu right (60 %); nothing stretches full
+   width; pencil still reachable; both columns scroll independently on a
+   short screen.
+8. Kill and relaunch the app (and run a backup → restore on the same
+   device). **Expected:** the cover persists.
+9. Regression: avatar tap/hold/video overlay, predictive back, particle
+   layering behind the banner — all unchanged from Phase 1.
+
+**Deliberately left undone / known limitations.**
+- Gradient presets, video and avatar-derived backgrounds, the bottom-edge
+  blur/fade blend, and a selection sheet with live previews — later phases.
+- **Backup:** the cover URI rides along as a raw prefs value but its bytes
+  are NOT carried in the bundle (the avatar has `AvatarPayload`; the cover
+  needs an analogous payload as a follow-up). Restoring on ANOTHER device
+  therefore yields a dead `file://` → the banner safely falls back to the
+  gradient; re-picking fixes it. Same-device restore keeps working.
+- The 1024 × 480 floor can soften to ~1.47× upscale on a tablet fed the
+  smallest accepted source — accepted trade-off of the agreed floor.

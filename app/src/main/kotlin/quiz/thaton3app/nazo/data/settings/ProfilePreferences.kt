@@ -23,8 +23,19 @@ class ProfilePreferences(context: Context) {
         get() = prefs.getString(KEY_PICTURE, null)
         set(value) = prefs.edit().putString(KEY_PICTURE, value).apply()
 
+    /**
+     * Profile cover banner image: null (placeholder gradient) or a `file://`
+     * into this app's own cover storage. Gallery picks only — the value is
+     * always a file we own, never a content:// (permissions lapse) and never
+     * a network URL.
+     */
+    var coverPictureUri: String?
+        get() = prefs.getString(KEY_COVER, null)
+        set(value) = prefs.edit().putString(KEY_COVER, value).apply()
+
     private companion object {
         const val KEY_USERNAME = "profile_username"
         const val KEY_PICTURE = "profile_picture_uri"
+        const val KEY_COVER = "profile_cover_uri"
     }
 }

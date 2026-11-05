@@ -40,8 +40,23 @@ object ProfileImageStore {
     private const val AVATAR_DIR = "profile"
     private const val DRAFT_DIR = "profile_drafts"
 
+    /**
+     * Cover (banner) images live in their OWN directory — never share
+     * [AVATAR_DIR]: the keep-newest prune deletes every other file in its
+     * directory, so a shared dir would let the next avatar save wipe the
+     * cover (and vice versa).
+     */
+    private const val COVER_DIR = "profile_covers"
+
     /** Long edge of a saved avatar. Plenty for a 96 dp circle on any density. */
     private const val OUTPUT_SIZE = 1024
+
+    /**
+     * Long edge of a saved cover. The banner's widest rendering is ~1504 px
+     * (tablet @2x); 2048 covers every device at 1:1 or better after the
+     * downsample the decode step already applies.
+     */
+    private const val COVER_OUTPUT_SIZE = 2048
 
     /** Refuse absurd downloads rather than OOM-ing on a hostile URL. */
     private const val MAX_DOWNLOAD_BYTES = 16L * 1024 * 1024
@@ -58,6 +73,9 @@ object ProfileImageStore {
 
     private fun avatarDir(context: Context): File =
         File(context.filesDir, AVATAR_DIR).apply { mkdirs() }
+
+    private fun coverDir(context: Context): File =
+        File(context.filesDir, COVER_DIR).apply { mkdirs() }
 
     private fun draftDir(context: Context): File =
         File(context.cacheDir, DRAFT_DIR).apply { mkdirs() }
@@ -456,6 +474,46 @@ object ProfileImageStore {
         }.getOrNull()
     }
 
+    /**
+     * Reads the pick's pixel dimensions WITHOUT decoding it (bounds only),
+     * corrected for EXIF rotation so the caller can size-check what the
+     * decode will actually produce — a photo stored as 3000×4000 with a 90°
+     * tag reports 4000×3000, not the raw buffer shape. Null when the stream
+     * can't be opened or the header can't be read.
+     */
+    suspend fun readOrientedDimensions(
+        context: Context,
+        source: ProfileImageSource,
+    ): Pair<Int, Int>? = withContext(Dispatchers.IO) {
+        runCatching {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            val boundsStream = openStream(context, source) ?: return@runCatching null
+            boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+
+            val orientation = runCatching {
+                openStream(context, source)?.use { stream ->
+                    ExifInterface(stream).getAttributeInt(
+                        ExifInterface.TAG_ORIENTATION,
+                        ExifInterface.ORIENTATION_NORMAL,
+                    )
+                } ?: ExifInterface.ORIENTATION_NORMAL
+            }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+
+            // Quarter-turn rotations swap the buffer's w/h — and only those
+            // are the orientations applyExifRotation puts on the pixels, so
+            // this mirrors exactly what decodeForEditing will hand back.
+            val quarterTurn =
+                orientation == ExifInterface.ORIENTATION_ROTATE_90 ||
+                    orientation == ExifInterface.ORIENTATION_ROTATE_270
+            if (quarterTurn) {
+                Pair(bounds.outHeight, bounds.outWidth)
+            } else {
+                Pair(bounds.outWidth, bounds.outHeight)
+            }
+        }.getOrNull()
+    }
+
     private fun openStream(context: Context, source: ProfileImageSource) = when (source) {
         is ProfileImageSource.LocalFile -> source.file.inputStream()
         is ProfileImageSource.ContentUri ->
@@ -849,6 +907,55 @@ object ProfileImageStore {
                 if (file != keep) file.delete()
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Cover (banner) images
+    // -----------------------------------------------------------------------
+
+    /**
+     * Saves the accepted cover image into [coverDir] and returns its
+     * `file://` URI. Same contract as [saveAvatar] — never modify the
+     * source, downscale to a sane edge, JPEG unless the pixels actually
+     * carry alpha (transparent PNGs saved as JPEG would go black) — but in
+     * the separate cover directory with its own keep-newest prune, so cover
+     * and avatar lifecycles can never delete each other's files.
+     */
+    suspend fun saveCover(context: Context, bitmap: Bitmap): Result<String> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val scaled = scaleToFit(bitmap, COVER_OUTPUT_SIZE)
+                val transparent = scaled.hasAlpha()
+                val extension = if (transparent) "png" else "jpg"
+                val target = File(
+                    coverDir(context),
+                    "cover_${System.currentTimeMillis()}.$extension",
+                )
+                target.outputStream().use { out ->
+                    if (transparent) {
+                        scaled.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    } else {
+                        scaled.compress(Bitmap.CompressFormat.JPEG, 92, out)
+                    }
+                }
+                if (scaled != bitmap) scaled.recycle()
+                pruneOldAvatars(coverDir(context), keep = target)
+                Uri.fromFile(target).toString()
+            }
+        }
+
+    /**
+     * Best-effort delete of the stored cover behind [uri] when the user
+     * removes it. A missing file (already gone, or a restored path from
+     * another device whose bytes were never carried) is not an error — the
+     * banner simply falls back to the placeholder gradient either way.
+     */
+    fun deleteCover(uri: String?) {
+        val path = uri
+            ?.takeIf { it.startsWith("file://") }
+            ?.let { Uri.parse(it).path }
+            ?: return
+        runCatching { File(path).delete() }
     }
 
     // -----------------------------------------------------------------------

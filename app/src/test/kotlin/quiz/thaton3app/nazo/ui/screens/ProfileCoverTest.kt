@@ -40,4 +40,29 @@ class ProfileCoverTest {
         assertEquals(160f, coverHeight(isLandscape = false).value, 0f)
         assertEquals(120f, coverHeight(isLandscape = true).value, 0f)
     }
+
+    @Test
+    fun previewAspectRatioMirrorsTheLayoutMath() {
+        // The cover preview dialog's frame must match the real banner pixel
+        // for pixel, or "what you see is what you get" would be a lie.
+        // Portrait: content width (screen − 48.dp gutters) over 160.dp.
+        assertEquals(
+            312f / 160f,
+            coverPreviewAspectRatio(screenWidthDp = 360, isLandscape = false),
+            0.001f,
+        )
+        // Landscape 40/60 split: (screen − 48 − 32 spacing) × 0.4 over 120.dp.
+        assertEquals(
+            288f / 120f,
+            coverPreviewAspectRatio(screenWidthDp = 800, isLandscape = true),
+            0.001f,
+        )
+        // Degenerate split-screen slivers clamp to 1:1 instead of going
+        // taller than wide (or negative).
+        assertEquals(
+            1f,
+            coverPreviewAspectRatio(screenWidthDp = 100, isLandscape = true),
+            0f,
+        )
+    }
 }
