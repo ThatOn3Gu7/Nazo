@@ -52,8 +52,8 @@ class CoverPresetsTest {
             preset.gradientColors.forEach { argb ->
                 assertTrue("color out of RGB range in ${preset.id}", argb in 0x0L..0xFFFFFFL)
             }
-            // Dark first: the ring starts in the deep base tone and ends
-            // on the luminous highlight the ribbons glow toward.
+            // Dark first: every renderer starts from a deep base and builds
+            // toward its luminous highlight.
             val luminance = { argb: Long ->
                 0.299 * ((argb shr 16) and 0xFF) +
                     0.587 * ((argb shr 8) and 0xFF) +
@@ -71,7 +71,7 @@ class CoverPresetsTest {
     }
 
     @Test
-    fun gradientPalettesMatchTheFourDesignedPersonalities() {
+    fun gradientPalettesMatchTheirDesignedPersonalities() {
         val expected = mapOf(
             "gradient_aurora" to listOf(0x0A1A2FL, 0x1FA97AL, 0x2ED8C0L, 0x8FF3E4L),
             "gradient_sunset" to listOf(0x2A0F3FL, 0xC1386BL, 0xF07B54L, 0xF7C56AL),
