@@ -420,10 +420,12 @@ fun ProfileScreen(
         containerColor = Color.Transparent,
         topBar = {
             CenterAlignedTopAppBar(
-                // Keep the cover fully visible behind the toolbar. Only the
-                // back action and title share a compact, theme-aware capsule.
-                title = {
+                // Align the compact toolbar capsule with the cover's left edge,
+                // inset slightly so it sits comfortably inside the artwork.
+                title = {},
+                navigationIcon = {
                     Surface(
+                        modifier = Modifier.padding(start = 26.dp),
                         shape = CircleShape,
                         color = NazoSurface.copy(alpha = 0.94f),
                         contentColor = NazoTextPrimary,
