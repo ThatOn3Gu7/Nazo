@@ -58,8 +58,10 @@ object CoverPresets {
 
     val ALL: List<CoverPreset> = listOf(
         // --- Static photos (bundled in res/drawable-nodpi, offline) ---
-        // Each is 1280×640 JPEG — above the gallery floor (1024×480), so a
-        // preset never upscales more than the user's own photos would.
+        // Originals are 1280x640 JPEG (first six) and 1440x720 WebP (the
+        // eight added later) - all at or above the gallery floor
+        // (1024x480), so a preset never upscales more than the user's own
+        // photos would. See PRESET_IMAGES.md for provenance.
         CoverPreset(
             id = "photo_aurora",
             kind = CoverPresetKind.IMAGE,
@@ -96,13 +98,63 @@ object CoverPresets {
             label = "Warm dunes",
             imageRes = R.drawable.cover_preset_dunes,
         ),
+        CoverPreset(
+            id = "photo_forest",
+            kind = CoverPresetKind.IMAGE,
+            label = "Misty forest",
+            imageRes = R.drawable.cover_preset_forest,
+        ),
+        CoverPreset(
+            id = "photo_glacier",
+            kind = CoverPresetKind.IMAGE,
+            label = "Glacier lake",
+            imageRes = R.drawable.cover_preset_glacier,
+        ),
+        CoverPreset(
+            id = "photo_reef",
+            kind = CoverPresetKind.IMAGE,
+            label = "Coral reef",
+            imageRes = R.drawable.cover_preset_reef,
+        ),
+        CoverPreset(
+            id = "photo_cosmic",
+            kind = CoverPresetKind.IMAGE,
+            label = "Cosmic night",
+            imageRes = R.drawable.cover_preset_cosmic,
+        ),
+        CoverPreset(
+            id = "photo_lavender",
+            kind = CoverPresetKind.IMAGE,
+            label = "Lavender skies",
+            imageRes = R.drawable.cover_preset_lavender,
+        ),
+        CoverPreset(
+            id = "photo_foliage",
+            kind = CoverPresetKind.IMAGE,
+            label = "Emerald foliage",
+            imageRes = R.drawable.cover_preset_foliage,
+        ),
+        CoverPreset(
+            id = "photo_ice",
+            kind = CoverPresetKind.IMAGE,
+            label = "Frozen world",
+            imageRes = R.drawable.cover_preset_ice,
+        ),
+        CoverPreset(
+            id = "photo_coast",
+            kind = CoverPresetKind.IMAGE,
+            label = "Coastal escape",
+            imageRes = R.drawable.cover_preset_coast,
+        ),
 
         // --- Animated gradients (procedural, lifecycle-aware rendering) ---
+        // Four stops each, dark → light: the renderer interpolates
+        // continuously around this ring (never indexes it discretely).
         CoverPreset(
             id = "gradient_aurora",
             kind = CoverPresetKind.GRADIENT,
             label = "Aurora",
-            gradientColors = listOf(0x0B1E3A, 0x1B6B6B, 0x7BD8C8),
+            gradientColors = listOf(0x0A1A2F, 0x1FA97A, 0x2ED8C0, 0x8FF3E4),
             gradientSpeed = 0.9f,
             gradientSeed = 0,
         ),
@@ -110,7 +162,7 @@ object CoverPresets {
             id = "gradient_sunset",
             kind = CoverPresetKind.GRADIENT,
             label = "Sunset",
-            gradientColors = listOf(0x3A0C3F, 0xC13B5C, 0xF2A65A),
+            gradientColors = listOf(0x2A0F3F, 0xC1386B, 0xF07B54, 0xF7C56A),
             gradientSpeed = 1.0f,
             gradientSeed = 1,
         ),
@@ -118,7 +170,7 @@ object CoverPresets {
             id = "gradient_tides",
             kind = CoverPresetKind.GRADIENT,
             label = "Tides",
-            gradientColors = listOf(0x08203E, 0x1C5D99, 0x57C4E8),
+            gradientColors = listOf(0x07203B, 0x1573A8, 0x3FC3D8, 0x9BEAF4),
             gradientSpeed = 0.8f,
             gradientSeed = 2,
         ),
@@ -126,7 +178,7 @@ object CoverPresets {
             id = "gradient_grove",
             kind = CoverPresetKind.GRADIENT,
             label = "Grove",
-            gradientColors = listOf(0x0E1F18, 0x246D4C, 0x7BD8A0),
+            gradientColors = listOf(0x0A1F14, 0x147A4E, 0x2FBF87, 0xA8F0CF),
             gradientSpeed = 1.1f,
             gradientSeed = 3,
         ),
