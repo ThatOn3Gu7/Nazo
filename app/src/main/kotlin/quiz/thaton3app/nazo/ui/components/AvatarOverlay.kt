@@ -3,6 +3,7 @@ package quiz.thaton3app.nazo.ui.components
 import android.graphics.SurfaceTexture
 import android.view.Surface
 import android.view.TextureView
+import android.view.View
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
@@ -219,6 +220,10 @@ internal class AvatarAnchorState(val id: AvatarAnchorId) {
 
     /** Mirror of `AvatarPlayback.paused` — a dialog covers this avatar. */
     var suppressed: Boolean by mutableStateOf(false)
+
+    /** Current screen-owned actions forwarded by the persistent native surface. */
+    var onClick: (() -> Unit)? by mutableStateOf(null)
+    var onLongClick: (() -> Unit)? by mutableStateOf(null)
 }
 
 /**
@@ -247,6 +252,18 @@ internal class AvatarAnchorRegistry {
 
     operator fun get(id: AvatarAnchorId?): AvatarAnchorState? =
         id?.let { anchors[it] }
+}
+
+/** Forward a tap received by the native overlay to the current screen anchor. */
+internal fun dispatchAvatarAnchorClick(anchor: AvatarAnchorState?) {
+    anchor?.onClick?.invoke()
+}
+
+/** Forward a long press; false means the active anchor has no long-press action. */
+internal fun dispatchAvatarAnchorLongClick(anchor: AvatarAnchorState?): Boolean {
+    val action = anchor?.onLongClick ?: return false
+    action()
+    return true
 }
 
 /** Provided by NazoApp around the screens subtree. */
@@ -339,15 +356,16 @@ internal fun PersistentAvatarVideo(
         }
     }
 
-    // The AndroidView factory runs once but must see the CURRENT session and
-    // video URI for its whole life (the view outlives avatar changes).
-    val live = remember { arrayOfNulls<Any?>(2) } // [0] = session, [1] = video uri
+    // The AndroidView factory runs once but must see the CURRENT session,
+    // video URI and screen anchor for its whole life (the view outlives both
+    // avatar changes and Home/Profile navigation).
+    val anchor = registry[winnerId]
+    val live = remember { arrayOfNulls<Any?>(3) } // [0] = session, [1] = video uri, [2] = active anchor
     SideEffect {
         live[0] = session
-        if (isVideo) live[1] = uri
+        live[1] = if (isVideo) uri else null
+        live[2] = anchor
     }
-
-    val anchor = registry[winnerId]
     val failed = registry.failed
     val window: IntSize = LocalWindowInfo.current.containerSize
 
@@ -362,6 +380,10 @@ internal fun PersistentAvatarVideo(
 
     val shown = isVideo && !failed && playback.foreground &&
         anchor != null && anchor.present && !anchor.suppressed && onWindow
+    // Read action-presence flags in composition so attaching or removing an
+    // anchor callback also updates the native view's hit-testing state.
+    val anchorHasClickAction = anchor?.onClick != null
+    val anchorHasLongClickAction = anchor?.onLongClick != null
 
     // Decode only while the circle is actually shown AND its centre is
     // on-screen — the same gate the circles have always used.
@@ -463,8 +485,19 @@ internal fun PersistentAvatarVideo(
                     factory = { viewContext ->
                         TextureView(viewContext).apply {
                             textureHolder[0] = this
-                            isClickable = false
                             isFocusable = false
+                            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                            // Native Android views are layered above Compose drawing.
+                            // Do not rely on a non-clickable TextureView to pass input
+                            // through to the composable avatar behind it: explicitly
+                            // forward both gestures to whichever anchor currently owns
+                            // this persistent rendering surface.
+                            setOnClickListener {
+                                dispatchAvatarAnchorClick(live[2] as? AvatarAnchorState)
+                            }
+                            setOnLongClickListener {
+                                dispatchAvatarAnchorLongClick(live[2] as? AvatarAnchorState)
+                            }
                             surfaceTextureListener =
                                 object : TextureView.SurfaceTextureListener {
                                     override fun onSurfaceTextureAvailable(
@@ -508,6 +541,14 @@ internal fun PersistentAvatarVideo(
                                     }
                                 }
                         }
+                    },
+                    update = { view ->
+                        // Alpha=0 does not remove a native view from hit testing.
+                        // Only claim input while this surface represents a live,
+                        // actionable screen anchor; otherwise taps belong to the
+                        // screen content underneath the last avatar position.
+                        view.isClickable = shown && anchorHasClickAction
+                        view.isLongClickable = shown && anchorHasLongClickAction
                     },
                 )
             }

@@ -3609,9 +3609,51 @@ alpha is not readable at all).
   winner hand-off, which happens at alpha 0 (forward push) or over the
   destination's poster (post-gesture settle) — a buffer resize is routine
   but is the one moment where a low-end device could show a frame artifact.
-- The tap target still works because `TextureView` does not consume touch
-  (the circle's `Surface(onClick)` underneath receives it); worth a manual
-  check on device.
+- A native `AndroidView`/`TextureView` is layered above Compose drawing. Do not
+  assume `isClickable = false` makes the underlying composable a reliable
+  touch-through target. The overlay must forward tap/long-press to the active
+  anchor and disable input whenever no visible avatar anchor owns the surface.
 - On a true cold start the very first frame can still show initials for the
   few dozen milliseconds it takes the background poster decode to land —
   that is genuine initialization, not a navigation artifact.
+
+
+## Persistent avatar overlay: native touch routing regression (2026-11-05)
+
+**Regression found after the persistent-surface change.** The video kept
+playing, but tapping the Home avatar no longer opened Profile. The same overlay
+could also cover Profile's picture-picker and long-press viewer actions.
+
+**Cause.** The single `TextureView` is composed above the screen content so it
+can render over the avatar slot. Setting `isClickable = false` is not a safe
+way to make a native Android view transparent to Compose hit testing. The
+underlying `ProfileAvatar` click target therefore cannot be relied on to
+receive the gesture. The video surface itself must forward screen-owned
+actions to the currently active anchor.
+
+**Fix.** Each `AvatarAnchorState` now carries its current tap and long-press
+callbacks. The persistent `TextureView` forwards native clicks to whichever
+anchor currently owns it (Home navigates to Profile; Profile opens the picture
+flow; Profile long-press opens the avatar viewer). It only claims click/long-
+press input while a visible anchor has the corresponding action, and is marked
+not important for accessibility so the underlying Compose control remains the
+single accessible target. This keeps one player and one rendering surface; it
+does not reintroduce per-screen TextureViews or surface handoffs.
+
+**How to test on device.**
+1. With an MP4 avatar set, tap the Home avatar repeatedly. **Expected:** every
+   tap opens Profile; the video keeps playing continuously through the transition.
+2. On Profile, tap the large avatar and the camera affordance. **Expected:**
+   the picture picker opens from either location.
+3. Long-press the Profile avatar. **Expected:** the full-size animated viewer
+   opens; a normal tap must not also trigger after a long press.
+4. Navigate away from Home/Profile to Settings and other screens, then tap
+   controls near the old avatar position. **Expected:** the hidden overlay does
+   not block those controls.
+5. Repeat Home ↔ Profile with fast taps and slow/fast predictive-back commit
+   and cancel. **Expected:** the same video surface remains in use, with no
+   blank/restart regression and no lost navigation action.
+6. Repeat the tap, picker, and long-press checks with static, GIF, animated
+   WebP, and emoji avatars. **Expected:** their pre-existing behavior is
+   unchanged.
+
