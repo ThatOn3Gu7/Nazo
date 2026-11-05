@@ -3791,3 +3791,69 @@ no longer stretches across the full screen. Portrait layout is unchanged.
   gradient; re-picking fixes it. Same-device restore keeps working.
 - The 1024 × 480 floor can soften to ~1.47× upscale on a tablet fed the
   smallest accepted source — accepted trade-off of the agreed floor.
+
+
+## Profile cover banner: expanded header + bottom fade (2026-11-05)
+
+**What changed.** The cover went from a small band to the dominant element
+of the upper Profile screen. **Responsive height** replaces the fixed
+160/120.dp: portrait = 44 % of the window height clamped to **300–360.dp**,
+landscape (left column) = 46 % clamped to **160–220.dp** — small screens get
+the floor, tall screens the cap, split-screen windows scale down instead of
+overflowing. The portrait cover also widened to **12.dp gutters** (content
+below keeps its original 24.dp, now via a nested content column so nothing
+else moved). The bottom **40 % of the header fades into `NazoBackground`**
+with a 3-stop transparent → 55 % → opaque gradient (the exact color the
+page paints, so it is correct in every theme and matches the particle
+layer's base). Paint order inside the header: photo → fade → avatar →
+pencil, so the straddling avatar and the edit button stay crisp above the
+blend. Everything else — straddle math, picker/storage/persistence flow,
+40/60 landscape two-column split, particle layering, predictive-back —
+is untouched.
+
+**Why / notes.**
+- The fade is a static gradient, not a blur: it adds no layer, no
+  `RenderEffect`, and no per-frame work (the modest-phone budget), and a
+  300+ dp transparent→background ramp already reads as a natural dissolve.
+  A complementary bottom-strip blur was considered and skipped — it would
+  need a second, blurred copy of the photo under the gradient for marginal
+  gain; revisit only if the owner sees banding on device.
+- Preview dialog WYSIWYG now mirrors the NEW geometry
+  (`coverPreviewAspectRatio(w, h, orientation)` reads the same
+  `coverHeight`), so the frame matches the real header — the crop preview
+  still shows the raw crop, not the fade (same contract as the avatar's
+  square preview not showing the circle mask).
+- Validation unchanged: the agreed 1024×480 floor and format rules from
+  Phase 2 stand; no new resolution/aspect restrictions were added.
+
+**How to test it live.**
+1. Preconditions: a cover photo set (or none — the placeholder scales the
+   same way), particle background on, portrait phone.
+2. Open Profile. **Expected:** the cover now fills roughly the upper third-
+   half of the screen (300–360.dp depending on the phone), wider than
+   before (12.dp margins), with its bottom dissolving smoothly into the
+   page — no hard rectangle edge, no visible seam; username/hint/stats/
+   menus all reachable by scrolling as before.
+3. Switch themes (light/dark/accent) and background styles. **Expected:**
+   the fade lands exactly on the page color in every theme; particles keep
+   drifting behind the content below the cover and never draw on top of it.
+4. Check the avatar: still horizontally centered, same size, 10 % slice
+   below the cover edge, tap/hold/video overlay all unchanged; the pencil
+   is still in the bottom-right corner and opens the sheet.
+5. Rotate to landscape. **Expected:** smaller responsive cover (160–220.dp)
+   entirely in the left column; stats/menu right; both columns usable;
+   avatar straddle unchanged.
+6. Pick a new cover (pencil → gallery). **Expected:** the preview frame's
+   shape matches the new header exactly; Accept fills it edge-to-edge with
+   center-crop (wide-short images crop top/bottom, tall images crop sides,
+   never stretched, never letterboxed).
+7. Small window / split-screen if available. **Expected:** the header
+   shrinks with the window (floor160/300.dp) instead of pushing content
+   off-screen.
+
+**Deliberately left undone / limitations.**
+- No blur on the fade (rationale above); no changes to image validation,
+  formats, storage, backup payload — still the Phase 2 follow-ups.
+- On very short portrait windows the floor (300.dp) still wins over
+  "space permits": the content below simply scrolls, which is the
+  portrait column's existing behavior.

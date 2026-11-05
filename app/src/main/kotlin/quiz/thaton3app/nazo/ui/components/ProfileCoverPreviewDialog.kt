@@ -108,6 +108,7 @@ fun ProfileCoverPreviewDialog(
     val configuration = LocalConfiguration.current
     val bannerRatio = coverPreviewAspectRatio(
         screenWidthDp = configuration.screenWidthDp,
+        screenHeightDp = configuration.screenHeightDp,
         isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE,
     )
 
