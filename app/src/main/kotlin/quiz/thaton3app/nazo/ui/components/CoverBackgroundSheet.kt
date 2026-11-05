@@ -407,9 +407,27 @@ private fun CoverPresetTile(
                         t = time(),
                         speed = preset.gradientSpeed,
                         seed = preset.gradientSeed,
+                        style = preset.gradientStyle,
                     )
                 }
             }
+        }
+        // Visible name chip so each preview can be identified at a glance.
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(7.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color.Black.copy(alpha = 0.52f))
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+        ) {
+            Text(
+                text = preset.label,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
         }
         if (selected) {
             SelectedBadge(modifier = Modifier.align(Alignment.TopEnd))

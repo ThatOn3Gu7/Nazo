@@ -32,6 +32,15 @@ enum class CoverPresetKind {
 }
 
 /**
+ * Rendering personality for procedural gradient covers. RIBBONS is the
+ * original renderer and remains the default for the four shipped presets.
+ */
+enum class CoverGradientStyle {
+    RIBBONS,
+    OCEAN_SWELL,
+}
+
+/**
  * One selectable built-in cover.
  *
  * @param id stable persisted key (e.g. `"photo_aurora"`).
@@ -51,6 +60,7 @@ data class CoverPreset(
     val gradientColors: List<Long> = emptyList(),
     val gradientSpeed: Float = 1f,
     val gradientSeed: Int = 0,
+    val gradientStyle: CoverGradientStyle = CoverGradientStyle.RIBBONS,
 )
 
 /** The bundled collections, in sheet display order. */
@@ -181,6 +191,17 @@ object CoverPresets {
             gradientColors = listOf(0x0A1F14, 0x147A4E, 0x2FBF87, 0xA8F0CF),
             gradientSpeed = 1.1f,
             gradientSeed = 3,
+        ),
+
+        // The sole additional animation: deep-blue, flowing snake-like waves.
+        CoverPreset(
+            id = "gradient_ocean_current",
+            kind = CoverPresetKind.GRADIENT,
+            label = "Ocean current",
+            gradientColors = listOf(0x04182D, 0x0B527F, 0x20AFC2, 0xB1F6EF),
+            gradientSpeed = 0.68f,
+            gradientSeed = 5,
+            gradientStyle = CoverGradientStyle.OCEAN_SWELL,
         ),
     )
 

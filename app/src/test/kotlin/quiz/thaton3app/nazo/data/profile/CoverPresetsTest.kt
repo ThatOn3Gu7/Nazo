@@ -27,14 +27,14 @@ class CoverPresetsTest {
             "photo_forest", "photo_glacier", "photo_reef", "photo_cosmic",
             "photo_lavender", "photo_foliage", "photo_ice", "photo_coast",
             "gradient_aurora", "gradient_sunset", "gradient_tides",
-            "gradient_grove",
+            "gradient_grove", "gradient_ocean_current",
         )))
     }
 
     @Test
     fun collectionsAreSplitByKind() {
         assertEquals(14, CoverPresets.IMAGES.size)
-        assertEquals(4, CoverPresets.GRADIENTS.size)
+        assertEquals(5, CoverPresets.GRADIENTS.size)
         assertEquals(CoverPresets.ALL.size, CoverPresets.IMAGES.size + CoverPresets.GRADIENTS.size)
         CoverPresets.IMAGES.forEach { preset ->
             assertEquals(CoverPresetKind.IMAGE, preset.kind)
@@ -51,8 +51,8 @@ class CoverPresetsTest {
             preset.gradientColors.forEach { argb ->
                 assertTrue("color out of RGB range in ${preset.id}", argb in 0x0L..0xFFFFFFL)
             }
-            // Dark first: the ring starts in the deep base tone and ends
-            // on the luminous highlight the ribbons glow toward.
+            // Dark first: every renderer starts from a deep base and builds
+            // toward its luminous highlight.
             val luminance = { argb: Long ->
                 0.299 * ((argb shr 16) and 0xFF) +
                     0.587 * ((argb shr 8) and 0xFF) +
@@ -70,17 +70,29 @@ class CoverPresetsTest {
     }
 
     @Test
-    fun gradientPalettesMatchTheFourDesignedPersonalities() {
+    fun gradientPalettesMatchTheirDesignedPersonalities() {
         val expected = mapOf(
             "gradient_aurora" to listOf(0x0A1A2FL, 0x1FA97AL, 0x2ED8C0L, 0x8FF3E4L),
             "gradient_sunset" to listOf(0x2A0F3FL, 0xC1386BL, 0xF07B54L, 0xF7C56AL),
             "gradient_tides" to listOf(0x07203BL, 0x1573A8L, 0x3FC3D8L, 0x9BEAF4L),
             "gradient_grove" to listOf(0x0A1F14L, 0x147A4EL, 0x2FBF87L, 0xA8F0CFL),
+            "gradient_ocean_current" to listOf(0x04182DL, 0x0B527FL, 0x20AFC2L, 0xB1F6EFL),
         )
         assertEquals(expected.keys, CoverPresets.GRADIENTS.map { it.id }.toSet())
         CoverPresets.GRADIENTS.forEach { preset ->
             assertEquals("palette for ${preset.id}", expected[preset.id], preset.gradientColors)
         }
+    }
+
+    @Test
+    fun onlyTheSnakeLikeDeepBlueGradientUsesTheOceanRenderer() {
+        val styles = CoverPresets.GRADIENTS.associate { it.id to it.gradientStyle }
+        assertEquals(CoverGradientStyle.RIBBONS, styles["gradient_aurora"])
+        assertEquals(CoverGradientStyle.RIBBONS, styles["gradient_sunset"])
+        assertEquals(CoverGradientStyle.RIBBONS, styles["gradient_tides"])
+        assertEquals(CoverGradientStyle.RIBBONS, styles["gradient_grove"])
+        assertEquals(CoverGradientStyle.OCEAN_SWELL, styles["gradient_ocean_current"])
+        assertEquals(2, styles.values.toSet().size)
     }
 
     @Test
