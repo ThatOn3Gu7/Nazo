@@ -253,6 +253,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     val profilePrefs = remember { ProfilePreferences(context) }
     var profileName by remember { mutableStateOf(profilePrefs.username) }
     var profilePictureUri by remember { mutableStateOf(profilePrefs.profilePictureUri) }
+    // Cover banner image (Profile only): null = placeholder gradient.
+    var coverPictureUri by remember { mutableStateOf(profilePrefs.coverPictureUri) }
 
     // Video avatars prepare BEFORE any screen asks for them: as soon as the
     // saved URI is known (app start, avatar change, backup restore), kick off
@@ -1688,6 +1690,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     Screen.Profile -> ProfileScreen(
                         username = profileName,
                         profilePictureUri = profilePictureUri,
+                        coverPictureUri = coverPictureUri,
                         quizStats = quizStats,
                         offline = offlineMode,
                         onBack = { goBack() },
@@ -1698,6 +1701,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onProfilePictureChange = { uri ->
                             profilePictureUri = uri
                             profilePrefs.profilePictureUri = uri
+                        },
+                        onCoverPictureChange = { uri ->
+                            coverPictureUri = uri
+                            profilePrefs.coverPictureUri = uri
                         },
                         onNavigateToStatistics = { navigate(Screen.Statistics) },
                         onNavigateToSettings = { navigate(Screen.Settings) },
@@ -1810,6 +1817,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             quizStats = statsStore.get()
                             profileName = profilePrefs.username
                             profilePictureUri = profilePrefs.profilePictureUri
+                            coverPictureUri = profilePrefs.coverPictureUri
                             themeMode = themePrefs.mode
                             accentName = themePrefs.accent
                             navBarFloating = themePrefs.floatingNavBar
