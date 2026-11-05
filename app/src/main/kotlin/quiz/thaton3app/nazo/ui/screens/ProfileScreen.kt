@@ -1,10 +1,16 @@
 package quiz.thaton3app.nazo.ui.screens
 
 import java.io.File
+import androidx.compose.ui.res.painterResource
+import quiz.thaton3app.nazo.ui.components.AnimatedCoverGradient
+import quiz.thaton3app.nazo.ui.components.CoverBackgroundSheet
 import quiz.thaton3app.nazo.ui.components.ProfileCoverPreviewDialog
 import quiz.thaton3app.nazo.ui.components.ProfileImagePreviewDialog
+import quiz.thaton3app.nazo.data.profile.CoverPresetKind
+import quiz.thaton3app.nazo.data.profile.CoverVisual
 import quiz.thaton3app.nazo.data.profile.ProfileImageStore
 import quiz.thaton3app.nazo.data.profile.ProfileImageSource
+import quiz.thaton3app.nazo.data.profile.resolveCoverVisual
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.layout.aspectRatio
@@ -112,10 +118,13 @@ val ProfileHeaderFont = FontFamily(
 // Gallery cover images (Phase 2): static only, center-crop, no URLs:
 // pencil sheet → ProfileCoverPreviewDialog (sniff + 1024×480 floor +
 // WYSIWYG frame) → ProfileImageStore.saveCover → coverPictureUri in prefs.
-// Still to come: gradient presets, video / avatar-derived backgrounds, a
-// selection sheet with previews, and the backup payload. The gradient is
-// the placeholder whenever no image is set — and the stand-in while one
-// loads or fails.
+// Built-in collections: the pencil opens CoverBackgroundSheet — bundled
+// static photos + animated gradients + the custom photo — and the chosen
+// preset id persists separately, so switching never discards the photo.
+// resolveCoverVisual decides what the banner draws (preset > gallery >
+// placeholder). Still to come: video / avatar-derived backgrounds and the
+// backup payload. The gradient is the placeholder whenever no cover is
+// selected — and the stand-in while a photo loads or fails.
 
 /** Avatar diameter used by the cover straddle (same 132.dp as before). */
 private val CoverAvatarSize = 132.dp
@@ -189,13 +198,24 @@ internal fun coverPreviewAspectRatio(
 }
 
 /**
- * The cover header itself: a large rounded rectangle whose background is a
- * static placeholder gradient — or, once the user picks one, their photo
- * drawn as a separate `ContentScale.Crop` layer (fills the header, excess
- * clipped at the rounded corners; never letterboxed, never stretched — a
- * short wide photo crops top/bottom, a tall photo crops sides, centered).
- * Opaque either way, so it hides the particle background beneath it (the
- * root draws the ambient particle layer behind the transparent screens).
+ * The app-bar chrome the cover extends upward into (64.dp bar plus the
+ * orientation-specific gutter), as plain dp for the preview dialog and the
+ * selection sheet's WYSIWYG frames. Keep in sync with `coverTopExtension`
+ * inside [ProfileScreen].
+ */
+internal fun coverPreviewTopExtensionDp(isLandscape: Boolean): Float =
+    64f + (if (isLandscape) 8f else 16f)
+
+/**
+ * The cover header itself: a large rounded rectangle drawn from the
+ * resolved [CoverVisual] — the placeholder gradient (Default), the user's
+ * gallery photo (Gallery), a bundled preset photo (IMAGE, same
+ * `ContentScale.Crop` rules as gallery picks: fills the header, excess
+ * clipped at the rounded corners, never letterboxed or stretched), or a
+ * preset animated gradient (GRADIENT, procedural, lifecycle-aware — see
+ * [AnimatedCoverGradient]). Opaque either way, so it hides the particle
+ * background beneath it (the root draws the ambient particle layer behind
+ * the transparent screens).
  *
  * The bottom [CoverBottomFadeFraction] of the header fades into
  * [NazoBackground] so the expanded cover doesn't end on a hard rectangular
@@ -215,7 +235,7 @@ internal fun coverPreviewAspectRatio(
 @Composable
 private fun ProfileCoverBanner(
     height: Dp,
-    coverUri: String?,
+    visual: CoverVisual,
     modifier: Modifier = Modifier,
     editButton: @Composable BoxScope.() -> Unit = {},
     content: @Composable BoxScope.() -> Unit,
@@ -229,17 +249,39 @@ private fun ProfileCoverBanner(
                 shape = RoundedCornerShape(CoverCornerRadius),
             ),
     ) {
-        // SafeRemoteImage draws nothing while loading or after a decode
-        // failure, so the placeholder gradient shows through both cases —
-        // and it only ever receives our own file:// (gallery-only covers).
-        if (!coverUri.isNullOrBlank()) {
-            SafeRemoteImage(
-                url = coverUri,
+        // The artwork layer for whichever visual is active. Paint order
+        // stays artwork → fade → content: the fade below blends over this
+        // layer, and the avatar/pencil draw above it. SafeRemoteImage draws
+        // nothing while loading or after a decode failure, so the
+        // placeholder gradient shows through both cases — and it only ever
+        // receives our own file:// (gallery-only covers).
+        when (visual) {
+            is CoverVisual.Gallery -> SafeRemoteImage(
+                url = visual.uri,
                 contentDescription = "Cover photo",
                 modifier = Modifier
                     .matchParentSize()
                     .clip(RoundedCornerShape(CoverCornerRadius)),
             )
+            is CoverVisual.Preset -> when (visual.preset.kind) {
+                CoverPresetKind.IMAGE -> Image(
+                    painter = painterResource(visual.preset.imageRes),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clip(RoundedCornerShape(CoverCornerRadius)),
+                )
+                CoverPresetKind.GRADIENT -> AnimatedCoverGradient(
+                    preset = visual.preset,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clip(RoundedCornerShape(CoverCornerRadius)),
+                )
+            }
+            CoverVisual.Default -> {
+                // Placeholder gradient already painted as the Box background.
+            }
         }
         // Bottom fade into the page: a soft transparent → NazoBackground
         // gradient over the lower part of the header. Static drawing only —
@@ -267,62 +309,31 @@ private fun ProfileCoverBanner(
 }
 
 /**
- * Pencil in the banner's bottom-right corner: opens the cover action sheet
- * (gallery pick / remove). 44.dp target with 8.dp margins — the geometry in
- * handoff.md shows the target clears the straddling avatar's circle even on
- * the narrowest landscape left column (40/60 split on a 640.dp screen).
- * The icon carries the accessibility label; the clickable Box merges it so
- * TalkBack announces one "Change cover photo" control.
+ * Pencil in the banner's bottom-right corner: opens the unified cover
+ * selection sheet (photos, animated gradients, custom gallery option).
+ * 44.dp target with 8.dp margins — the geometry in handoff.md shows the
+ * target clears the straddling avatar's circle even on the narrowest
+ * landscape left column (40/60 split on a 640.dp screen). The icon carries
+ * the accessibility label; the clickable Box merges it so TalkBack
+ * announces one "Change cover photo" control.
  */
 @Composable
-private fun CoverEditButton(
-    expanded: Boolean,
-    hasCover: Boolean,
-    onExpandChange: (Boolean) -> Unit,
-    onPickFromGallery: () -> Unit,
-    onRemove: () -> Unit,
-) {
-    Box(modifier = Modifier.padding(8.dp)) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.35f))
-                .clickable { onExpandChange(true) },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Edit,
-                contentDescription = "Change cover photo",
-                tint = Color.White,
-                modifier = Modifier.size(20.dp),
-            )
-        }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { onExpandChange(false) },
-        ) {
-            DropdownMenuItem(
-                text = { Text("Choose from gallery") },
-                leadingIcon = { Icon(Icons.Filled.Image, contentDescription = null) },
-                onClick = {
-                    onExpandChange(false)
-                    onPickFromGallery()
-                },
-            )
-            if (hasCover) {
-                DropdownMenuItem(
-                    text = { Text("Remove cover", color = NazoError) },
-                    leadingIcon = {
-                        Icon(Icons.Filled.Delete, contentDescription = null, tint = NazoError)
-                    },
-                    onClick = {
-                        onExpandChange(false)
-                        onRemove()
-                    },
-                )
-            }
-        }
+private fun CoverEditButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .padding(8.dp)
+            .size(44.dp)
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.35f))
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Edit,
+            contentDescription = "Change cover photo",
+            tint = Color.White,
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 
@@ -331,8 +342,10 @@ private fun CoverEditButton(
 fun ProfileScreen(
     username: String,
     profilePictureUri: String?,
-    /** Cover banner image: null = placeholder gradient, else our own `file://`. */
+    /** Cover banner image: null = no stored photo, else our own `file://`. */
     coverPictureUri: String? = null,
+    /** Built-in cover preset id (`photo_*` / `gradient_*`); null = gallery/default flow. */
+    coverPresetId: String? = null,
     quizStats: QuizStats = QuizStats(),
     /** When true, never hit the network: use the local generator directly. */
     offline: Boolean = false,
@@ -340,6 +353,7 @@ fun ProfileScreen(
     onUsernameChange: (String) -> Unit,
     onProfilePictureChange: (String?) -> Unit,
     onCoverPictureChange: (String?) -> Unit = {},
+    onCoverPresetChange: (String?) -> Unit = {},
     onNavigateToStatistics: () -> Unit,
     onNavigateToSettings: () -> Unit = {},
 ) {
@@ -369,6 +383,11 @@ fun ProfileScreen(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
+    // What the banner draws right now — pure function of the two
+    // persisted values (preset > gallery > placeholder). Choosing a
+    // preset never writes the gallery uri, so switching back is free.
+    val coverVisual = resolveCoverVisual(coverPictureUri, coverPresetId)
+
     // The image being previewed/cropped, and the temp file behind it (URL only).
     // Retained so a rotation does not throw away an edit in progress. The draft
     // FILE is now deleted here rather than from the dialog's onDispose, because
@@ -383,7 +402,7 @@ fun ProfileScreen(
     val avatarBehindDialogsPaused =
         showPictureDialog || showAvatarPreview || showUrlDialog ||
             showRemoveConfirm || pendingSource != null ||
-            pendingCoverSource != null || showCoverRemoveConfirm
+            pendingCoverSource != null || showCoverSheet || showCoverRemoveConfirm
 
     // PickVisualMedia is the system photo picker: a gallery grid with no
     // storage permission and no filesystem browsing. It replaces
@@ -479,19 +498,7 @@ fun ProfileScreen(
         // banner as a slot so the pencil and its menu anchor to the banner's
         // bottom-right corner regardless of layout.
         val coverEditButton: @Composable BoxScope.() -> Unit = {
-            CoverEditButton(
-                expanded = showCoverSheet,
-                hasCover = !coverPictureUri.isNullOrBlank(),
-                onExpandChange = { showCoverSheet = it },
-                onPickFromGallery = {
-                    coverGalleryLauncher.launch(
-                        PickVisualMediaRequest(
-                            ActivityResultContracts.PickVisualMedia.ImageOnly
-                        )
-                    )
-                },
-                onRemove = { showCoverRemoveConfirm = true },
-            )
+            CoverEditButton(onClick = { showCoverSheet = true })
         }
 
         // Scaffold draws the transparent top app bar above its body content.
@@ -538,7 +545,7 @@ fun ProfileScreen(
                             isLandscape = true,
                             screenHeightDp = configuration.screenHeightDp,
                         ) + coverTopExtension,
-                        coverUri = coverPictureUri,
+                        visual = coverVisual,
                         editButton = coverEditButton,
                     ) {
                         ProfileAvatar(
@@ -663,7 +670,7 @@ fun ProfileScreen(
                         isLandscape = false,
                         screenHeightDp = configuration.screenHeightDp,
                     ) + coverTopExtension,
-                    coverUri = coverPictureUri,
+                    visual = coverVisual,
                     editButton = coverEditButton,
                     modifier = Modifier.padding(horizontal = 12.dp),
                 ) {
@@ -1716,6 +1723,45 @@ fun ProfileScreen(
             onAccepted = { savedUri ->
                 pendingCoverSource = null
                 onCoverPictureChange(savedUri)
+                // A freshly picked photo becomes the active cover: clear any
+                // preset so it shows immediately (saveCover's prune replaces
+                // the old file exactly as before).
+                onCoverPresetChange(null)
+            },
+        )
+    }
+
+    // Unified cover selection: bundled photos, animated gradients, and the
+    // custom gallery option, each previewed at the real banner ratio.
+    // Applying a preset writes only the preset id — the stored photo file
+    // and its uri stay untouched, so "Your photo" switches back for free.
+    if (showCoverSheet) {
+        CoverBackgroundSheet(
+            galleryUri = coverPictureUri,
+            presetId = coverPresetId,
+            bannerRatio = coverPreviewAspectRatio(
+                screenWidthDp = configuration.screenWidthDp,
+                screenHeightDp = configuration.screenHeightDp,
+                isLandscape = isLandscape,
+                coverTopExtensionDp = coverPreviewTopExtensionDp(isLandscape),
+            ),
+            onDismiss = { showCoverSheet = false },
+            onSelectPreset = { id -> onCoverPresetChange(id) },
+            onUseCustomPhoto = { onCoverPresetChange(null) },
+            onPickFromGallery = {
+                // Same dismiss-then-launch the old menu did: the system
+                // picker (and then the preview dialog) should not stack on
+                // top of an open sheet.
+                showCoverSheet = false
+                coverGalleryLauncher.launch(
+                    PickVisualMediaRequest(
+                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                    )
+                )
+            },
+            onRemove = {
+                showCoverSheet = false
+                showCoverRemoveConfirm = true
             },
         )
     }
@@ -1729,8 +1775,12 @@ fun ProfileScreen(
             title = { Text("Remove cover photo?") },
             text = {
                 Text(
-                    "Your profile goes back to the plain cover background. To use " +
-                        "the photo again you would need to choose it from your gallery.",
+                    if (!coverPictureUri.isNullOrBlank()) {
+                        "Your profile goes back to the plain cover background. To use " +
+                            "the photo again you would need to choose it from your gallery."
+                    } else {
+                        "Your profile goes back to the plain cover background."
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                 )
             },
@@ -1739,6 +1789,10 @@ fun ProfileScreen(
                     Haptics.doubleLight(context)
                     ProfileImageStore.deleteCover(coverPictureUri)
                     onCoverPictureChange(null)
+                    // Removing clears BOTH layers (custom file + preset id)
+                    // back to the placeholder — same destructive step as
+                    // before, with the same confirmation.
+                    onCoverPresetChange(null)
                     showCoverRemoveConfirm = false
                 }) {
                     Text("Remove", maxLines = 1)

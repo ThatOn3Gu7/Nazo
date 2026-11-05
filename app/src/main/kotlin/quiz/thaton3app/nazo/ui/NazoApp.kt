@@ -253,8 +253,11 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     val profilePrefs = remember { ProfilePreferences(context) }
     var profileName by remember { mutableStateOf(profilePrefs.username) }
     var profilePictureUri by remember { mutableStateOf(profilePrefs.profilePictureUri) }
-    // Cover banner image (Profile only): null = placeholder gradient.
+    // Cover banner image (Profile only): null = no stored photo.
     var coverPictureUri by remember { mutableStateOf(profilePrefs.coverPictureUri) }
+    // Built-in cover preset id (photo_*/gradient_*); null = gallery/default.
+    // Stored SEPARATELY from the photo uri so presets never discard it.
+    var coverPresetId by remember { mutableStateOf(profilePrefs.coverPresetId) }
 
     // Video avatars prepare BEFORE any screen asks for them: as soon as the
     // saved URI is known (app start, avatar change, backup restore), kick off
@@ -1691,6 +1694,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         username = profileName,
                         profilePictureUri = profilePictureUri,
                         coverPictureUri = coverPictureUri,
+                        coverPresetId = coverPresetId,
                         quizStats = quizStats,
                         offline = offlineMode,
                         onBack = { goBack() },
@@ -1705,6 +1709,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onCoverPictureChange = { uri ->
                             coverPictureUri = uri
                             profilePrefs.coverPictureUri = uri
+                        },
+                        onCoverPresetChange = { id ->
+                            coverPresetId = id
+                            profilePrefs.coverPresetId = id
                         },
                         onNavigateToStatistics = { navigate(Screen.Statistics) },
                         onNavigateToSettings = { navigate(Screen.Settings) },
@@ -1818,6 +1826,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             profileName = profilePrefs.username
                             profilePictureUri = profilePrefs.profilePictureUri
                             coverPictureUri = profilePrefs.coverPictureUri
+                            coverPresetId = profilePrefs.coverPresetId
                             themeMode = themePrefs.mode
                             accentName = themePrefs.accent
                             navBarFloating = themePrefs.floatingNavBar
