@@ -3859,3 +3859,111 @@ is untouched.
 - On very short portrait windows the floor (220.dp portrait / 110.dp landscape) still wins over
   "space permits": the content below simply scrolls, which is the
   portrait column's existing behavior.
+
+
+## Profile cover: built-in collections — static photos + animated gradients (2026-11-05)
+
+**What changed.** The cover can now be one of three kinds of background,
+chosen from one unified sheet: **6 bundled static photos**, **4 premade
+animated gradients**, or **the user's existing gallery photo** (Phase 2,
+untouched). The pencil on the banner opens `CoverBackgroundSheet` (Nazo
+modal sheet, Background-effects-sheet anatomy) instead of the old dropdown;
+every option is previewed at the real banner aspect ratio before being
+applied, and a tap applies instantly with the sheet left open for
+comparison.
+
+**Available presets** (ids are persisted keys — do not rename):
+
+| Kind | id | label |
+|---|---|---|
+| photo | `photo_aurora` | Aurora ridge |
+| photo | `photo_dusk` | Dusk peaks |
+| photo | `photo_ocean` | Ocean haze |
+| photo | `photo_petal` | Petal bokeh |
+| photo | `photo_geometry` | Geometry |
+| photo | `photo_dunes` | Warm dunes |
+| gradient | `gradient_aurora` | Aurora |
+| gradient | `gradient_sunset` | Sunset |
+| gradient | `gradient_tides` | Tides |
+| gradient | `gradient_grove` | Grove |
+
+Photos are 1280×640 JPEGs in `res/drawable-nodpi` (~450 KB total, offline,
+no network path). Gradients are drawn procedurally (two brush draws per
+frame — an orbiting linear field + a drifting breathing radial glow), never
+decoded from images and never video.
+
+**Architecture (the future-phase seam).**
+- `data/profile/CoverPresets.kt` — pure registry (`CoverPreset`,
+  `CoverPresetKind.IMAGE|GRADIENT`) + `resolveCoverVisual(galleryUri,
+  presetId)` with precedence **preset > gallery > placeholder**. The
+  resolver is a pure function of the two persisted values, so video and
+  avatar-derived covers later only need: a new kind + resolver branch +
+  banner `when` case + a sheet section. Nothing else redesigns.
+- `ProfilePreferences.coverPresetId` (`profile_cover_preset`) is stored
+  **independently** of `coverPictureUri`: choosing a preset never writes
+  the photo uri, so "Your photo" switches back without re-picking and
+  without touching the file. Unknown preset ids fall back down the chain
+  (downgrade-safe).
+- Banner paint order unchanged: artwork layer → bottom fade → avatar →
+  pencil. The artwork layer is now a `when (visual)`: Gallery → SafeRemoteImage,
+  IMAGE preset → `Image(painterResource, Crop)` (identical crop rules to
+  gallery picks), GRADIENT preset → `AnimatedCoverGradient`, Default →
+  placeholder gradient shows through.
+- Gradient lifecycle: the frame clock lives in `LaunchedEffect` inside the
+  banner — Profile not visible ⇒ disposed ⇒ loop cancelled; app
+  backgrounded ⇒ Choreographer stops ⇒ `withFrameNanos` suspends (zero
+  CPU); system "Remove animations" ⇒ static first frame, clock never
+  starts. One state write/frame invalidates only that layer's draw.
+- The gallery picker → sniff/1024×480 floor → WYSIWYG preview dialog →
+  `saveCover` pipeline is byte-for-byte unchanged; accepting a new photo
+  just clears the preset id so the new photo shows immediately.
+- Remove cover (same confirm dialog) clears both layers back to the
+  placeholder; the copy adapts when only a preset was active.
+- WYSIWYG frames share `coverPreviewTopExtensionDp()` (64.dp bar + gutter),
+  used by the preview dialog and the sheet's thumbnails alike.
+- The sheet joins the "any covering dialog pauses the avatar" list, so the
+  big avatar holds its frame while it is open (same rule as the other
+  dialogs).
+
+**How to test it live.**
+1. Preconditions: particle background on, no cover set yet (or a photo set
+   from Phase 2), portrait phone.
+2. Profile → tap the pencil. **Expected:** the Cover background sheet
+   slides up (drag handle, scrollable): "Your photo" card, BUILT-IN PHOTOS
+   (2-column grid), ANIMATED GRADIENTS (2-column grid, live-moving), each
+   tile shaped exactly like the real banner; tap a photo → sheet stays
+   open, tile gets a green check + border, the banner behind updates.
+3. Tap each gradient. **Expected:** banner behind animates smoothly (slow
+   orbiting field + drifting glow), no stutter, no battery-sapping heat;
+   avatar/pencil/fade stay exactly as before on top of it.
+4. With a preset active, tap "Your photo" (needs a stored Phase-2 photo).
+   **Expected:** the photo returns instantly — no re-pick, no preview
+   dialog. Then pencil → Change → pick a new photo → preview → Accept:
+   photo becomes active (preset cleared) exactly like Phase 2.
+5. Pencil → Remove cover. **Expected:** same destructive confirm; Remove
+   returns to the plain placeholder gradient (copy mentions the photo only
+   when one exists). Cancel leaves everything.
+6. Kill the app (or restart). **Expected:** the selected preset/photo
+   returns exactly as left — both keys persist independently.
+7. Settings → Appearance → Background effects → set "Remove animations"
+   (system accessibility) and come back. **Expected:** gradient covers and
+   sheet previews render as a still first frame; no motion.
+8. Rotate / split-screen with a gradient selected. **Expected:** layout,
+   toolbar pill, status-bar spacing, avatar straddle, bottom fade all
+   unchanged from the compact-cover state; sheet reopens scrolled to top.
+9. Landscape: pencil → sheet → pick a photo. **Expected:** left-column
+   banner only; right column (stats/menu) untouched.
+
+**Deliberately left undone / limitations.**
+- Video covers and avatar-derived backgrounds remain future phases (the
+  seam above is where they plug in); no new image formats or validation
+  changes (the 1024×480 floor applies to gallery picks only — bundled
+  presets are already 1280×640).
+- Backup payload: the preset id rides raw prefs (string), so it survives
+  cross-device restore; the photo file still has the documented Phase-2
+  follow-up (dead `file://` on another device → falls back to preset or
+  placeholder).
+- Gradient previews in the sheet are in phase with each other by design
+  (one shared clock, per-preset seed offsets the banner's own phase).
+- Sheet tiles rely on merged TalkBack labels (preset names); the custom
+  card announces "Your photo"/"Choose from gallery" from its visible text.

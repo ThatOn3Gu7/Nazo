@@ -43,6 +43,7 @@ import quiz.thaton3app.nazo.data.profile.CoverImage
 import quiz.thaton3app.nazo.data.profile.ProfileImageSource
 import quiz.thaton3app.nazo.data.profile.ProfileImageStore
 import quiz.thaton3app.nazo.ui.screens.coverPreviewAspectRatio
+import quiz.thaton3app.nazo.ui.screens.coverPreviewTopExtensionDp
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
@@ -110,7 +111,8 @@ fun ProfileCoverPreviewDialog(
     // The screen now keeps the status-bar inset outside the cover. Only the
     // 64.dp app-bar row and the original orientation-specific gutter extend
     // the cover upward, so the preview must exclude the status-bar height.
-    val coverTopExtensionDp = (64.dp + (if (isLandscape) 8.dp else 16.dp)).value
+    // Shared with the selection sheet so every frame matches the banner.
+    val coverTopExtensionDp = coverPreviewTopExtensionDp(isLandscape)
     val bannerRatio = coverPreviewAspectRatio(
         screenWidthDp = configuration.screenWidthDp,
         screenHeightDp = configuration.screenHeightDp,
