@@ -436,7 +436,11 @@ fun ProfileScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
+                    // A soft theme-colored scrim keeps the title and back
+                    // action readable over busy cover artwork while allowing
+                    // the image to remain subtly visible underneath.
+                    containerColor = NazoBackground.copy(alpha = 0.92f),
+                    navigationIconContentColor = NazoTextPrimary,
                 )
             )
         }
@@ -476,8 +480,11 @@ fun ProfileScreen(
         // inset/gutter that used to sit above it. This puts the image behind the
         // toolbar without shifting the avatar or the content below the cover.
         val layoutDirection = LocalLayoutDirection.current
-        val coverTopExtension = padding.calculateTopPadding() +
-            (if (isLandscape) 8.dp else 16.dp)
+        // Keep the system status-bar region clear. Only overlap the app-bar
+        // row itself; the status icons/clock/battery stay on the page surface.
+        val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        val coverTopExtension = (padding.calculateTopPadding() - statusBarTop)
+            .coerceAtLeast(0.dp) + (if (isLandscape) 8.dp else 16.dp)
 
         if (isLandscape) {
             // --- LANDSCAPE LAYOUT ---
@@ -485,6 +492,7 @@ fun ProfileScreen(
                 modifier = Modifier
                     .padding(
                         start = padding.calculateStartPadding(layoutDirection),
+                        top = statusBarTop,
                         end = padding.calculateEndPadding(layoutDirection),
                         bottom = padding.calculateBottomPadding(),
                     )
@@ -618,6 +626,7 @@ fun ProfileScreen(
                 modifier = Modifier
                     .padding(
                         start = padding.calculateStartPadding(layoutDirection),
+                        top = statusBarTop,
                         end = padding.calculateEndPadding(layoutDirection),
                         bottom = padding.calculateBottomPadding(),
                     )
