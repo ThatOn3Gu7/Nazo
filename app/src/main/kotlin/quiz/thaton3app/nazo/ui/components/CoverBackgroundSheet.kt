@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -75,6 +76,7 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
  * @param presetId currently applied preset id, or null for custom/default.
  * @param bannerRatio exact width/height ratio the real banner will render.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CoverBackgroundSheet(
     galleryUri: String?,
