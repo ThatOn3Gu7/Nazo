@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -106,10 +109,18 @@ fun ProfileCoverPreviewDialog(
 
     val current = bitmap
     val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    // Match CenterAlignedTopAppBar's 64.dp content height plus its status-bar
+    // inset, then include the same orientation-specific gutter as the screen.
+    val coverTopExtensionDp = (
+        WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
+            64.dp + (if (isLandscape) 8.dp else 16.dp)
+    ).value
     val bannerRatio = coverPreviewAspectRatio(
         screenWidthDp = configuration.screenWidthDp,
         screenHeightDp = configuration.screenHeightDp,
-        isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE,
+        isLandscape = isLandscape,
+        coverTopExtensionDp = coverTopExtensionDp,
     )
 
     AlertDialog(
