@@ -9,6 +9,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -21,52 +23,50 @@ import androidx.compose.ui.graphics.lerp
 import kotlin.math.PI
 import kotlin.math.sin
 import quiz.thaton3app.nazo.data.profile.CoverPreset
+import quiz.thaton3app.nazo.data.profile.CoverGradientStyle
 
 /**
  * Draws one built-in animated-gradient cover into the current draw scope.
  *
- * The design is a set of layered, luminous ribbons — broad undulating bands
- * that flow across the banner like curtains of light (aurora), ocean swell,
- * forest canopy, or sunset haze, depending on the preset's palette:
+ * [CoverGradientStyle] selects a visual family, not just a palette:
  *
- *  1. Five ribbons, each with its own base height, tilt, two harmonic
- *     wave components (primary + a gentler detail wave), thickness,
- *     opacity, color position and drift rate. All parameters derive from
- *     a deterministic hash ([layerRand]) of (layer, seed, salt), so every
- *     preset and layer is distinct yet reproducible — no randomness at
- *     draw time.
- *  2. Each ribbon is stroked five times: a wide, faint halo, two mid
- *     passes, a shoulder, and a bright core whose color sweeps smoothly
- *     across the palette along the ribbon's length. The passes are drawn
- *     with [BlendMode.Plus], so overlaps accumulate light instead of
- *     muddying — that is where the "luminous" depth comes from.
- *  3. Color selection is a continuous ring interpolation over the whole
- *     palette ([paletteColor]) driven by unbounded time, so hues morph
- *     gradually forever — there is no palette-index snapping and no loop
- *     seam to flicker at.
+ * - [CoverGradientStyle.RIBBONS] is the original five-layer flowing-line
+ *   renderer retained for the first four presets.
+ * - [CoverGradientStyle.OCEAN_SWELL] draws broad, snake-like deep-blue
+ *   wave bands that glide smoothly across one another.
  *
- * All time terms are multiplied by `speed` and phase-shifted by `seed`, so
- * presets never move in lockstep. The math is pure and unit-tested
- * (see CoverGradientTest); this function only rasterizes it.
+ * Geometry is deterministic for a given seed and continuous in time. Where
+ * palettes move, [paletteColor] interpolates smoothly rather than snapping
+ * between discrete stops. The math is pure and the original ribbon functions
+ * remain covered by the JVM tests in CoverGradientTest.
  *
- * Cost: one background rect + 25 path strokes per frame, no bitmaps, no
- * retained shaders. Transient Path/point allocations are small and
- * short-lived; the frame clock only runs while the banner is composed.
+ * Both renderers use only Compose brushes and paths — no bitmaps, videos,
+ * external animation libraries, or retained shader objects. The frame clock
+ * runs only while the banner or selection sheet is composed.
  *
  * @param t unbounded time in seconds (0 = static first frame).
- * @param speed relative pace from the preset; multiplies [t].
- * @param seed per-preset phase offset so side-by-side previews differ.
+ * @param speed relative animation pace from the preset; multiplies [t].
+ * @param seed deterministic per-preset shape and phase offset.
+ * @param style visual family selected by the preset.
  */
 internal fun DrawScope.drawCoverGradient(
     colors: List<Color>,
     t: Float,
     speed: Float,
     seed: Int,
+    style: CoverGradientStyle = CoverGradientStyle.RIBBONS,
 ) {
     if (colors.size < 2 || size.width <= 0f || size.height <= 0f) return
     val w = size.width
     val h = size.height
     val tt = t * speed
+
+    // The original four presets keep their ribbon renderer. The one new
+    // deep-blue preset opts into the filled, snake-like ocean-current waves.
+    if (style == CoverGradientStyle.OCEAN_SWELL) {
+        drawOceanSwell(colors, tt, seed)
+        return
+    }
 
     // Background: a slow breath between the first two stops at the top,
     // falling off to a darkened base at the bottom (same depth cue the
@@ -299,6 +299,96 @@ private fun ribbonPath(pts: FloatArray, steps: Int): Path {
 }
 
 /**
+ * Ocean current: three broad, semi-transparent water sheets roll across one
+ * another. Unlike a stroked ribbon, each layer is a filled moving wave band.
+ */
+private fun DrawScope.drawOceanSwell(
+    colors: List<Color>,
+    t: Float,
+    seed: Int,
+) {
+    val w = size.width
+    val h = size.height
+    val base = colors.first()
+    drawRect(
+        Brush.verticalGradient(
+            listOf(lerp(base, colors[1], 0.19f), base, Color(base.red * 0.42f, base.green * 0.54f, base.blue * 0.62f)),
+        ),
+    )
+    drawRect(
+        Brush.radialGradient(
+            colors = listOf(colors.last().copy(alpha = 0.10f), Color.Transparent),
+            center = Offset(w * 0.72f, h * 0.32f),
+            radius = w * 0.82f,
+        ),
+    )
+
+    val twoPi = (2.0 * PI).toFloat()
+    val steps = 54
+    for (layer in 0 until 4) {
+        fun r(salt: Int) = layerRand(layer, seed + 29, salt)
+        val baseY = h * (0.22f + layer * 0.185f)
+        val amplitude = h * (0.040f + 0.035f * r(0))
+        val frequency = 0.78f + 0.48f * r(1)
+        val phase = r(2) * twoPi
+        val drift = 0.10f + 0.055f * r(3)
+        val thickness = h * (0.105f + 0.035f * r(4))
+
+        fun waveY(x: Float): Float {
+            val u = x / w
+            return baseY +
+                amplitude * sin(twoPi * frequency * u + phase + t * drift) +
+                amplitude * 0.34f * sin(twoPi * frequency * 1.78f * u - phase * 0.63f - t * drift * 1.21f)
+        }
+
+        val wave = Path()
+        val pad = w * 0.08f
+        for (sample in 0..steps) {
+            val x = -pad + (w + 2f * pad) * sample / steps
+            val y = waveY(x)
+            if (sample == 0) wave.moveTo(x, y) else wave.lineTo(x, y)
+        }
+        for (sample in steps downTo 0) {
+            val x = -pad + (w + 2f * pad) * sample / steps
+            val y = waveY(x) + thickness * (
+                0.92f + 0.08f * sin(twoPi * 0.62f * (x / w) + phase + t * drift * 0.7f)
+            )
+            wave.lineTo(x, y)
+        }
+        wave.close()
+
+        val near = paletteColor(colors, 1.05f + layer * 0.47f)
+        val far = paletteColor(colors, 1.65f + layer * 0.43f)
+        drawPath(
+            path = wave,
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    near.copy(alpha = 0.15f),
+                    far.copy(alpha = 0.20f),
+                    base.copy(alpha = 0.015f),
+                ),
+                startY = baseY - amplitude,
+                endY = baseY + thickness + amplitude,
+            ),
+            blendMode = BlendMode.Plus,
+        )
+
+        val crest = Path()
+        for (sample in 0..steps) {
+            val x = -pad + (w + 2f * pad) * sample / steps
+            val y = waveY(x)
+            if (sample == 0) crest.moveTo(x, y) else crest.lineTo(x, y)
+        }
+        drawPath(
+            path = crest,
+            color = colors.last().copy(alpha = 0.13f + layer * 0.012f),
+            style = Stroke(width = (h * 0.006f).coerceAtLeast(1.2f), cap = StrokeCap.Round),
+            blendMode = BlendMode.Plus,
+        )
+    }
+}
+
+/**
  * The banner's animated-gradient layer.
  *
  * Lifecycle story (the "no work while Profile isn't visible" requirement):
@@ -336,6 +426,7 @@ internal fun AnimatedCoverGradient(
             t = if (reduceMotion) 0f else t,
             speed = preset.gradientSpeed,
             seed = preset.gradientSeed,
+            style = preset.gradientStyle,
         )
     }
 }
