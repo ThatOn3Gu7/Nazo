@@ -544,9 +544,10 @@ internal fun PersistentAvatarVideo(
                     },
                     update = { view ->
                         // Alpha=0 does not remove a native view from hit testing.
-                        // Only claim input while this surface represents a live,
-                        // actionable screen anchor; otherwise taps belong to the
-                        // screen content underneath the last avatar position.
+                        // INVISIBLE does: keep the TextureView attached (and its
+                        // SurfaceTexture alive), but remove its hit region whenever
+                        // there is no visible avatar anchor to represent.
+                        view.visibility = if (shown) View.VISIBLE else View.INVISIBLE
                         view.isClickable = shown && anchorHasClickAction
                         view.isLongClickable = shown && anchorHasLongClickAction
                     },
