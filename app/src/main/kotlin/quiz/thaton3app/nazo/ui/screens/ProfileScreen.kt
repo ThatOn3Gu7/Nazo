@@ -1619,7 +1619,7 @@ fun ProfileScreen(
             confirmButton = {
                 NazoDangerButton(onClick = {
                     Haptics.doubleLight(context)
-                    ProfileImageStore.deleteCover(context, coverPictureUri)
+                    ProfileImageStore.deleteCover(coverPictureUri)
                     onCoverPictureChange(null)
                     showCoverRemoveConfirm = false
                 }) {
