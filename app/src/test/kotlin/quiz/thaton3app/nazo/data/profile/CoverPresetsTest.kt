@@ -24,6 +24,8 @@ class CoverPresetsTest {
         assertTrue(ids.containsAll(listOf(
             "photo_aurora", "photo_dusk", "photo_ocean",
             "photo_petal", "photo_geometry", "photo_dunes",
+            "photo_forest", "photo_glacier", "photo_reef", "photo_cosmic",
+            "photo_lavender", "photo_foliage", "photo_ice", "photo_coast",
             "gradient_aurora", "gradient_sunset", "gradient_tides",
             "gradient_grove",
         )))
@@ -31,7 +33,7 @@ class CoverPresetsTest {
 
     @Test
     fun collectionsAreSplitByKind() {
-        assertEquals(6, CoverPresets.IMAGES.size)
+        assertEquals(14, CoverPresets.IMAGES.size)
         assertEquals(4, CoverPresets.GRADIENTS.size)
         assertEquals(CoverPresets.ALL.size, CoverPresets.IMAGES.size + CoverPresets.GRADIENTS.size)
         CoverPresets.IMAGES.forEach { preset ->
@@ -43,13 +45,41 @@ class CoverPresetsTest {
         CoverPresets.GRADIENTS.forEach { preset ->
             assertEquals(CoverPresetKind.GRADIENT, preset.kind)
             assertEquals(0, preset.imageRes)
-            // A gradient needs at least two stops to interpolate between…
-            assertTrue("gradient ${preset.id} needs ≥2 colors", preset.gradientColors.size >= 2)
+            // A gradient needs at least three stops to sweep through…
+            assertTrue("gradient ${preset.id} needs ≥3 colors", preset.gradientColors.size >= 3)
             // …and every stop is an opaque 0xRRGGBB value.
             preset.gradientColors.forEach { argb ->
                 assertTrue("color out of RGB range in ${preset.id}", argb in 0x0L..0xFFFFFFL)
             }
+            // Dark first: the ring starts in the deep base tone and ends
+            // on the luminous highlight the ribbons glow toward.
+            val luminance = { argb: Long ->
+                0.299 * ((argb shr 16) and 0xFF) +
+                    0.587 * ((argb shr 8) and 0xFF) +
+                    0.114 * (argb and 0xFF)
+            }
+            val first = luminance(preset.gradientColors.first())
+            val last = luminance(preset.gradientColors.last())
+            assertTrue(
+                "gradient ${preset.id} should start darker than it ends " +
+                    "($first ≥ $last)",
+                first < last,
+            )
             assertTrue("speed must be positive for ${preset.id}", preset.gradientSpeed > 0f)
+        }
+    }
+
+    @Test
+    fun gradientPalettesMatchTheFourDesignedPersonalities() {
+        val expected = mapOf(
+            "gradient_aurora" to listOf(0x0A1A2FL, 0x1FA97AL, 0x2ED8C0L, 0x8FF3E4L),
+            "gradient_sunset" to listOf(0x2A0F3FL, 0xC1386BL, 0xF07B54L, 0xF7C56AL),
+            "gradient_tides" to listOf(0x07203BL, 0x1573A8L, 0x3FC3D8L, 0x9BEAF4L),
+            "gradient_grove" to listOf(0x0A1F14L, 0x147A4EL, 0x2FBF87L, 0xA8F0CFL),
+        )
+        assertEquals(expected.keys, CoverPresets.GRADIENTS.map { it.id }.toSet())
+        CoverPresets.GRADIENTS.forEach { preset ->
+            assertEquals("palette for ${preset.id}", expected[preset.id], preset.gradientColors)
         }
     }
 

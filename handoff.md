@@ -3967,3 +3967,91 @@ decoded from images and never video.
   (one shared clock, per-preset seed offsets the banner's own phase).
 - Sheet tiles rely on merged TalkBack labels (preset names); the custom
   card announces "Your photo"/"Choose from gallery" from its visible text.
+
+## Profile cover: ribbon gradient redesign + expanded image collection (2026-11-05)
+
+**What changed (second pass over the built-in cover collections; ids and
+selection flow untouched).**
+- The four `gradient_*` presets keep their ids, labels, speeds and seeds
+  but their palettes were retuned to four stops each (dark → light):
+  aurora `0x0A1A2F→0x8FF3E4`, sunset `0x2A0F3F→0xF7C56A`,
+  tides `0x07203B→0x9BEAF4`, grove `0x0A1F14→0xA8F0CF`.
+- `CoverGradient.kt` was rewritten from the old orbiting-linear +
+  breathing-radial design into layered flowing ribbons: five sinusoidal
+  bands per gradient, each stroked five times (wide halo → shoulder →
+  bright core) with `BlendMode.Plus`, so overlaps add light instead of
+  muddying. Ribbons are sampled at 48 points and smoothed with a
+  quadratic-through-midpoints path.
+- **Continuous color (the flagged bug):** the old glow indexed the palette
+  with `colors[((abs(sin(...))*(size-1)).toInt())]` — discrete jumps.
+  Now `paletteColor()` interpolates smoothlystep-blended segments around
+  the palette *ring* with the position drifting continuously in time, so
+  hue morphs forever with no index snapping and no loop seam.
+- **Determinism:** all ribbon geometry/opacity/color parameters come from
+  `layerRand(layer, seed, salt)` — an integer xor/shift/multiply hash with
+  int32 wrapping (identical on device and JVM tests). No `Random` at draw
+  time; every preset/layer distinct; identical across runs.
+- **Motion quality:** every time term is an unbounded sine/linear drift
+  (`t * speed`), so motion never resets or flickers. Reduce Motion still
+  renders one static frame at t=0; the clock still lives in
+  `LaunchedEffect` (disposed when Profile is hidden, suspended when the
+  app is backgrounded). Sheet previews call the exact same
+  `drawCoverGradient` — preview and banner are pixel-identical by
+  construction.
+- The design was tuned in a faithful PIL replica of the mathematical model
+  (2× supersampled, four palettes × four time samples, portrait and
+  2.2:1 banner AR) before porting; the replica used int32-exact hashing
+  and the Kotlin core samples the same smoothstep color sweep.
+
+- The photo collection grew 6 → 14: added `photo_forest` (Misty forest),
+  `photo_glacier` (Glacier lake), `photo_reef` (Coral reef),
+  `photo_cosmic` (Cosmic night), `photo_lavender` (Lavender skies),
+  `photo_foliage` (Emerald foliage), `photo_ice` (Frozen world),
+  `photo_coast` (Coastal escape). All are original AI-generated artwork
+  bundled offline — provenance, licensing and per-file dimensions/sizes
+  are recorded in `PRESET_IMAGES.md` at the repo root (deliberately
+  outside `res/` so it never ships in the APK).
+- The new eight are 1440×720 WebP (2:1, subject clear of the lower-middle
+  avatar zone) totalling 844,956 bytes; the original six 1280×640 JPEGs
+  are byte-for-byte unchanged. Whole folder: 14 files, 1,296,234 bytes.
+  Encode recipe: 2:1 center-crop → LANCZOS → Gaussian σ0.8 → WebP q78
+  method 6 (see `PRESET_IMAGES.md`).
+- The sheet needed no code change: grids are `CoverPresets.IMAGES/
+  GRADIENTS.chunked(2)`, so 14 tiles flow as seven rows automatically.
+
+**Tests.**
+- `CoverPresetsTest`: 14/4 split, all 18 ids spot-checked, gradient
+  palettes ≥3 stops + opaque RGB + dark-first luminance contract.
+- New `CoverGradientTest`: layerRand determinism/range/distinctness,
+  `ribbonParams` purity + per-layer spread, `ribbonCenterY` continuity in
+  t (per-frame jump bound) and in x, `paletteColor` wrap-point
+  continuity (including negative drift), stop-hull containment and exact
+  stop values. Compose's `Color.lerp` is perceptual, so midpoint tests
+  compare to that interpolation (not a raw encoded-RGB arithmetic mean)
+  while also proving the result differs from both endpoints.
+
+**How to test it live.**
+1. Profile → pencil → sheet. **Expected:** BUILT-IN PHOTOS now shows 14
+   tiles in 7 rows (scrollable), each labeled (Misty forest … Coastal
+   escape); ANIMATED GRADIENTS unchanged as 4 tiles.
+2. Tap each gradient on the banner. **Expected:** layered ribbons flow
+   slowly across the banner with light accumulating where bands cross;
+   colors morph gradually (no palette "clicks"); no snapping, no seam,
+   no flicker at any watch duration; sheet tile and banner animate
+   identically.
+3. Tap each new photo. **Expected:** fills the banner (crop, no bars, no
+   stretch), subject sits above the avatar's lower-middle overlap; check
+   portrait and landscape.
+4. Reduce Motion → gradients still, photo tiles unchanged; backgrounding
+   the app stops the clock (no CPU while hidden).
+5. Switching between any photo/gradient/"Your photo" behaves exactly as
+   before (preset id and gallery uri remain independent; restart
+   persists).
+
+**Deliberately left undone / limitations.**
+- Video covers and avatar-derived backgrounds remain future phases.
+- `PRESET_IMAGES.md` row count is the source of truth for provenance; if
+  a preset is added, extend it (checklist at the bottom of the file).
+- Preview-phase tuning renders (`grad_preview/`) were working artifacts
+  and were deleted before commit; the Kotlin math + `CoverGradientTest`
+  are the durable record.
