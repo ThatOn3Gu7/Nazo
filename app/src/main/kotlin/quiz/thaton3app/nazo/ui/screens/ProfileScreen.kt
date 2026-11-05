@@ -55,6 +55,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -65,6 +66,7 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -94,6 +96,71 @@ import quiz.thaton3app.nazo.ui.theme.*
 val ProfileHeaderFont = FontFamily(
     Font(R.font.plus_jakarta_sans_bold, FontWeight.Bold)
 )
+
+// --- Profile cover banner (Phase 1: layout & layering only) ---------------
+//
+// Facebook-style cover: a wide rounded band across the top of the Profile
+// screen with the avatar straddling its bottom edge — 90% of the circle
+// inside the band, 10% hanging below. The band is drawn inside the screen
+// subtree, which sits above the root-level particle background, so it hides
+// the particles beneath it while they keep drifting behind everything else.
+// Later phases add real banner backgrounds (gradients, gallery, video,
+// avatar-derived), the bottom-edge blur/fade blend, and the selection sheet;
+// this phase only fixes the geometry and the layering those features plug
+// into. The gradient below is a static placeholder, not a selectable preset.
+
+/** Avatar diameter used by the cover straddle (same 132.dp as before). */
+private val CoverAvatarSize = 132.dp
+
+/** Share of the avatar that hangs BELOW the cover's bottom edge (10%). */
+private const val CoverOverhangFraction = 0.10f
+
+/** Corner radius of the cover band. */
+private val CoverCornerRadius = 20.dp
+
+/** Distance the avatar overhangs the cover edge: 10% of its diameter. */
+internal fun coverOverhang(avatarSize: Dp): Dp = avatarSize * CoverOverhangFraction
+
+/**
+ * Top spacing between the cover band and the username row, so the row keeps
+ * its original 16.dp distance from the avatar's bottom edge: the avatar
+ * itself hangs [coverOverhang] past the band, so the spacer is that slice
+ * plus the old avatar→username gap.
+ */
+internal fun coverContentGap(avatarSize: Dp): Dp = coverOverhang(avatarSize) + 16.dp
+
+/** Cover band height: a substantial slice of the screen, tighter in landscape. */
+internal fun coverHeight(isLandscape: Boolean): Dp = if (isLandscape) 120.dp else 160.dp
+
+/**
+ * The cover band itself: a full-width rounded rectangle with a static
+ * placeholder gradient. Opaque on purpose — it must hide the particle
+ * background beneath it (the root draws the ambient particle layer behind
+ * the transparent screens).
+ *
+ * The background is applied with `background(brush, shape)` rather than
+ * `clip(shape)` on purpose: children — the straddling avatar — must be
+ * allowed to overflow the bottom edge, and a clip would slice the
+ * overhanging 10% off. The later blur/fade blend for the bottom edge gets
+ * its own layer inside this Box.
+ */
+@Composable
+private fun ProfileCoverBanner(
+    height: Dp,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(height)
+            .background(
+                brush = Brush.verticalGradient(listOf(NazoPrimary, NazoSurface)),
+                shape = RoundedCornerShape(CoverCornerRadius),
+            ),
+        content = content,
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -202,109 +269,128 @@ fun ProfileScreen(
 
         if (isLandscape) {
             // --- LANDSCAPE LAYOUT ---
-            Row(
+            Column(
                 modifier = Modifier
                     .padding(padding)
-                    .fillMaxSize()
-                    .padding(horizontal = 24.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(32.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .fillMaxSize(),
             ) {
-                // Left Column: Avatar & Username
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .verticalScroll(rememberScrollState()),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+                // Cover band: same straddling avatar as portrait; 24.dp
+                // gutters keep it aligned with the row content below.
+                ProfileCoverBanner(
+                    height = coverHeight(isLandscape = true),
+                    modifier = Modifier.padding(horizontal = 24.dp),
                 ) {
-                    Box(modifier = Modifier.padding(bottom = 16.dp)) {
-                        ProfileAvatar(
-                            name = username,
-                            pictureUri = profilePictureUri,
-                            size = 132.dp,
-                            onClick = { showPictureDialog = true },
-                            onLongClick = avatarLongPress,
-                            paused = avatarBehindDialogsPaused,
-                            anchorId = AvatarAnchorId.Profile,
-                        )
-                    }
-
-                    Surface(
-                        onClick = { showUsernameDialog = true },
-                        shape = MaterialTheme.shapes.extraLarge,
-                        color = Color.Transparent,
-                        modifier = Modifier.clip(MaterialTheme.shapes.extraLarge)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                        ) {
-                            Text(
-                                text = username.ifBlank {
-                                    if (quizStats.totalQuizzes > 0) "Edit Profile" else "Create Profile"
-                                },
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                color = NazoTextPrimary
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Icon(
-                                imageVector = Icons.Rounded.Edit,
-                                contentDescription = "Edit username",
-                                tint = NazoPrimary,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-                    // Discloses both picture gestures; the press-and-hold
-                    // preview was previously a hidden easter egg.
-                    Text(
-                        text = if (profilePictureUri.isNullOrBlank())
-                            "Tap the picture to choose one"
-                        else
-                            "Tap the picture to change it · press and hold to preview",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NazoTextSecondary,
-                        textAlign = TextAlign.Center,
+                    ProfileAvatar(
+                        // Bottom-centered, pushed down by exactly the
+                        // overhang so the 10% slice clears the band's edge.
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .offset(y = coverOverhang(CoverAvatarSize)),
+                        name = username,
+                        pictureUri = profilePictureUri,
+                        size = CoverAvatarSize,
+                        onClick = { showPictureDialog = true },
+                        onLongClick = avatarLongPress,
+                        paused = avatarBehindDialogsPaused,
+                        anchorId = AvatarAnchorId.Profile,
                     )
                 }
 
-                // Right Column: Stats & Menu
-                Column(
+                // Keep the avatar's overhang clear of the row content.
+                Spacer(Modifier.height(coverContentGap(CoverAvatarSize)))
+
+                Row(
                     modifier = Modifier
-                        .weight(1.5f)
-                        .fillMaxHeight()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.Center
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(32.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (quizStats.totalQuizzes > 0) {
-                        ProfileStatsCard(stats = quizStats)
-                        Spacer(modifier = Modifier.height(16.dp))
+                    // Left Column: Username & hint
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState()),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Surface(
+                            onClick = { showUsernameDialog = true },
+                            shape = MaterialTheme.shapes.extraLarge,
+                            color = Color.Transparent,
+                            modifier = Modifier.clip(MaterialTheme.shapes.extraLarge)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = username.ifBlank {
+                                        if (quizStats.totalQuizzes > 0) "Edit Profile" else "Create Profile"
+                                    },
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = NazoTextPrimary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    imageVector = Icons.Rounded.Edit,
+                                    contentDescription = "Edit username",
+                                    tint = NazoPrimary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+                        // Discloses both picture gestures; the press-and-hold
+                        // preview was previously a hidden easter egg.
+                        Text(
+                            text = if (profilePictureUri.isNullOrBlank())
+                                "Tap the picture to choose one"
+                            else
+                                "Tap the picture to change it · press and hold to preview",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NazoTextSecondary,
+                            textAlign = TextAlign.Center,
+                        )
                     }
 
+                    // Right Column: Stats & Menu
                     Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        modifier = Modifier
+                            .weight(1.5f)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.Center
                     ) {
-                        ProfileMenuItem(
-                            icon = Icons.Filled.BarChart,
-                            title = "Statistics",
-                            subtitle = "View your quiz insights",
-                            onClick = onNavigateToStatistics
-                        )
-                        ProfileMenuItem(
-                            icon = Icons.Filled.Settings,
-                            title = "Settings",
-                            subtitle = "Appearance, categories, backup",
-                            onClick = onNavigateToSettings
-                        )
+                        if (quizStats.totalQuizzes > 0) {
+                            ProfileStatsCard(stats = quizStats)
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            ProfileMenuItem(
+                                icon = Icons.Filled.BarChart,
+                                title = "Statistics",
+                                subtitle = "View your quiz insights",
+                                onClick = onNavigateToStatistics
+                            )
+                            ProfileMenuItem(
+                                icon = Icons.Filled.Settings,
+                                title = "Settings",
+                                subtitle = "Appearance, categories, backup",
+                                onClick = onNavigateToSettings
+                            )
+                        }
                     }
                 }
             }
@@ -318,17 +404,26 @@ fun ProfileScreen(
                     .padding(horizontal = 24.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Box(modifier = Modifier.padding(bottom = 16.dp)) {
+                // Cover band spans the content width; the avatar straddles
+                // its bottom edge — 90% inside the band, 10% below it.
+                ProfileCoverBanner(height = coverHeight(isLandscape = false)) {
                     ProfileAvatar(
+                        // Bottom-centered, pushed down by exactly the
+                        // overhang so the 10% slice clears the band's edge.
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .offset(y = coverOverhang(CoverAvatarSize)),
                         name = username,
                         pictureUri = profilePictureUri,
-                        size = 132.dp,
+                        size = CoverAvatarSize,
                         onClick = { showPictureDialog = true },
                         onLongClick = avatarLongPress,
                         paused = avatarBehindDialogsPaused,
                         anchorId = AvatarAnchorId.Profile,
                     )
                 }
+
+                Spacer(Modifier.height(coverContentGap(CoverAvatarSize)))
 
                 Surface(
                     onClick = { showUsernameDialog = true },

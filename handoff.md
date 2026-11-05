@@ -3658,3 +3658,56 @@ does not reintroduce per-screen TextureViews or surface handoffs.
    WebP, and emoji avatars. **Expected:** their pre-existing behavior is
    unchanged.
 
+
+
+## Profile cover banner: Phase 1 layout & layering (2026-11-05)
+
+**What changed.** The Profile screen now opens with a Facebook-style cover:
+a wide rounded band across the top of the content area (160.dp tall in
+portrait, 120.dp in landscape, static placeholder gradient, 20.dp corners)
+with the profile avatar straddling its bottom edge — 90% of the 132.dp circle
+inside the band, 10% hanging below it. The username row keeps its original
+16.dp distance from the avatar's bottom edge via an overhang-aware spacer. In
+landscape the band spans the top of the screen; the username/hint (left) and
+stats/menu (right) columns sit below it, unchanged apart from moving under the
+band. The avatar keeps every existing behavior: tap to change picture,
+press-and-hold preview, GIF/video/emoji rendering, and the
+`AvatarAnchorId.Profile` anchor for the persistent video overlay (the overlay
+simply tracks the slot's new window position).
+
+**Why.** Foundation for the later customizable-banner phases (gradient
+presets, gallery/video backgrounds, avatar-derived art, selection sheet). The
+band is drawn inside the screen subtree, which the root composes ON TOP of
+the ambient particle layer, so an opaque band hides the particles beneath it
+with no changes to `AmbientBackground`; particles keep drifting behind the
+rest of the screen. The band paints its background with
+`background(brush, shape)` and deliberately does NOT use `clip`: a clip would
+slice the avatar's overhanging 10% off. Geometry lives in three tiny pure
+helpers (`coverOverhang`, `coverContentGap`, `coverHeight`) so the 90/10
+straddle, the 16.dp rhythm, and the orientation heights are unit-tested.
+
+**How to test it live.**
+1. Preconditions: any avatar set (static/GIF/MP4/emoji all valid), particle
+   background enabled (Settings → Appearance → Background), portrait phone.
+2. Open Profile from the home avatar. **Expected:** a rounded cover band sits
+   under the "Profile" top bar spanning the content width; the avatar is
+   centered on it with only a thin (~10%) slice of the circle below the
+   band's bottom edge; the username row sits 16.dp under the avatar as
+   before. **Before:** the avatar floated directly on the particle field.
+3. With particles running, scroll the profile and switch background styles.
+   **Expected:** particles drift behind the username/stats/menu but are
+   hidden while they pass behind the band; no particles draw on top of it.
+4. Rotate to landscape. **Expected:** a shorter band across the top with the
+   same centered straddling avatar; username/hint left, stats/menu right;
+   nothing overlaps the avatar's overhang.
+5. Tap / long-press the avatar (MP4 avatar too). **Expected:** picker and
+   full-size viewer open exactly as before; the persistent video keeps
+   playing and stays glued to the circle through Home ↔ Profile.
+6. With an MP4 avatar, run predictive-back enter/cancel on Profile.
+   **Expected:** the video overlay slides/fades with the screen as before —
+   the anchor's new position is picked up automatically.
+
+**Deliberately left undone (later phases).** Gradient presets, gallery/video/
+avatar-derived backgrounds, the bottom-edge blur/fade blend, and any
+selection sheet, banner settings, or persistence. The placeholder gradient is
+static and not user-selectable.
