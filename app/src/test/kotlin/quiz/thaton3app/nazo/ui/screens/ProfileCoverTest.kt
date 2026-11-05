@@ -35,17 +35,17 @@ class ProfileCoverTest {
 
     @Test
     fun coverHeightIsResponsiveAndClampedPerOrientation() {
-        // Portrait: 44 % of screen height, clamped to the agreed 300–360.dp
-        // band — small screens get the floor, tall screens the cap, and the
-        // common case scales in between.
-        assertEquals(300f, coverHeight(isLandscape = false, screenHeightDp = 600).value, 0.01f)
-        assertEquals(352f, coverHeight(isLandscape = false, screenHeightDp = 800).value, 0.01f)
-        assertEquals(360f, coverHeight(isLandscape = false, screenHeightDp = 900).value, 0.01f)
-        // Landscape: 46 %, clamped 160–220.dp — responsive, and never the
-        // portrait height (the left column must keep the stats side visible).
-        assertEquals(160f, coverHeight(isLandscape = true, screenHeightDp = 300).value, 0.01f)
-        assertEquals(165.6f, coverHeight(isLandscape = true, screenHeightDp = 360).value, 0.01f)
-        assertEquals(220f, coverHeight(isLandscape = true, screenHeightDp = 500).value, 0.01f)
+        // Portrait: 34 % of screen height, clamped to 220–280.dp. The
+        // reduced header moves the avatar higher without losing the cover's
+        // visual prominence.
+        assertEquals(220f, coverHeight(isLandscape = false, screenHeightDp = 600).value, 0.01f)
+        assertEquals(272f, coverHeight(isLandscape = false, screenHeightDp = 800).value, 0.01f)
+        assertEquals(280f, coverHeight(isLandscape = false, screenHeightDp = 900).value, 0.01f)
+        // Landscape: 34 %, clamped 110–170.dp to preserve room for the
+        // avatar and the right-side statistics/menu column.
+        assertEquals(110f, coverHeight(isLandscape = true, screenHeightDp = 300).value, 0.01f)
+        assertEquals(122.4f, coverHeight(isLandscape = true, screenHeightDp = 360).value, 0.01f)
+        assertEquals(170f, coverHeight(isLandscape = true, screenHeightDp = 500).value, 0.01f)
     }
 
     @Test
@@ -53,9 +53,9 @@ class ProfileCoverTest {
         // The cover preview dialog's frame must match the real banner pixel
         // for pixel, or "what you see is what you get" would be a lie.
         // Portrait: cover width (screen − 24.dp for the 12.dp gutters) over
-        // the responsive height (640.dp screen → 44 % → floor 300.dp).
+        // the responsive height (640.dp screen → 34 % → floor 220.dp).
         assertEquals(
-            336f / 300f,
+            336f / 220f,
             coverPreviewAspectRatio(
                 screenWidthDp = 360,
                 screenHeightDp = 640,
@@ -64,9 +64,9 @@ class ProfileCoverTest {
             0.001f,
         )
         // Landscape 40/60 split: (screen − 48 − 32 spacing) × 0.4 over the
-        // responsive height (360.dp window → 46 % → 165.6.dp).
+        // responsive height (360.dp window → 34 % → 122.4.dp).
         assertEquals(
-            288f / 165.6f,
+            288f / 122.4f,
             coverPreviewAspectRatio(
                 screenWidthDp = 800,
                 screenHeightDp = 360,
