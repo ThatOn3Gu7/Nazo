@@ -3612,7 +3612,7 @@ alpha is not readable at all).
 - A native `AndroidView`/`TextureView` is layered above Compose drawing. Do not
   assume `isClickable = false` makes the underlying composable a reliable
   touch-through target. The overlay must forward tap/long-press to the active
-  anchor and disable input whenever no visible avatar anchor owns the surface.
+  anchor, and set the native view to INVISIBLE whenever no visible avatar anchor owns the surface.
 - On a true cold start the very first frame can still show initials for the
   few dozen milliseconds it takes the background poster decode to land —
   that is genuine initialization, not a navigation artifact.
@@ -3635,9 +3635,10 @@ actions to the currently active anchor.
 callbacks. The persistent `TextureView` forwards native clicks to whichever
 anchor currently owns it (Home navigates to Profile; Profile opens the picture
 flow; Profile long-press opens the avatar viewer). It only claims click/long-
-press input while a visible anchor has the corresponding action, and is marked
-not important for accessibility so the underlying Compose control remains the
-single accessible target. This keeps one player and one rendering surface; it
+press input while a visible anchor has the corresponding action; otherwise the
+native view is INVISIBLE (but remains attached, preserving the SurfaceTexture).
+It is marked not important for accessibility so the underlying Compose control
+remains the single accessible target. This keeps one player and one rendering surface; it
 does not reintroduce per-screen TextureViews or surface handoffs.
 
 **How to test on device.**
