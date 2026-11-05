@@ -3797,12 +3797,14 @@ no longer stretches across the full screen. Portrait layout is unchanged.
 
 **What changed.** The cover went from a small band to the dominant element
 of the upper Profile screen. **Responsive height** replaces the fixed
-160/120.dp: portrait = 44 % of the window height clamped to **300–360.dp**,
-landscape (left column) = 46 % clamped to **160–220.dp** — small screens get
-the floor, tall screens the cap, split-screen windows scale down instead of
-overflowing. The portrait cover also widened to **12.dp gutters** (content
+160/120.dp: portrait = 34 % of the window height clamped to **220–280.dp**,
+landscape (left column) = 34 % clamped to **110–170.dp**. The shorter header
+lifts the overlapping avatar away from the screen midpoint while retaining
+a prominent cover; scrollable content remains reachable on short windows. The portrait cover also widened to **12.dp gutters** (content
 below keeps its original 24.dp, now via a nested content column so nothing
-else moved). The bottom **40 % of the header fades into `NazoBackground`**
+else moved). The toolbar back/title controls share a compact theme-aware
+pill, inset 8.dp from the cover's top and leading edges in both orientations.
+The bottom **40 % of the header fades into `NazoBackground`**
 with a 3-stop transparent → 55 % → opaque gradient (the exact color the
 page paints, so it is correct in every theme and matches the particle
 layer's base). Paint order inside the header: photo → fade → avatar →
@@ -3814,7 +3816,7 @@ is untouched.
 **Why / notes.**
 - The fade is a static gradient, not a blur: it adds no layer, no
   `RenderEffect`, and no per-frame work (the modest-phone budget), and a
-  300+ dp transparent→background ramp already reads as a natural dissolve.
+  220+ dp transparent→background ramp already reads as a natural dissolve.
   A complementary bottom-strip blur was considered and skipped — it would
   need a second, blurred copy of the photo under the gradient for marginal
   gain; revisit only if the owner sees banding on device.
@@ -3830,7 +3832,7 @@ is untouched.
 1. Preconditions: a cover photo set (or none — the placeholder scales the
    same way), particle background on, portrait phone.
 2. Open Profile. **Expected:** the cover now fills roughly the upper third-
-   half of the screen (300–360.dp depending on the phone), wider than
+   the screen midpoint (220–280.dp before the toolbar overlap), wider than
    before (12.dp margins), with its bottom dissolving smoothly into the
    page — no hard rectangle edge, no visible seam; username/hint/stats/
    menus all reachable by scrolling as before.
@@ -3840,7 +3842,7 @@ is untouched.
 4. Check the avatar: still horizontally centered, same size, 10 % slice
    below the cover edge, tap/hold/video overlay all unchanged; the pencil
    is still in the bottom-right corner and opens the sheet.
-5. Rotate to landscape. **Expected:** smaller responsive cover (160–220.dp)
+5. Rotate to landscape. **Expected:** compact responsive cover (110–170.dp)
    entirely in the left column; stats/menu right; both columns usable;
    avatar straddle unchanged.
 6. Pick a new cover (pencil → gallery). **Expected:** the preview frame's
@@ -3848,12 +3850,12 @@ is untouched.
    center-crop (wide-short images crop top/bottom, tall images crop sides,
    never stretched, never letterboxed).
 7. Small window / split-screen if available. **Expected:** the header
-   shrinks with the window (floor160/300.dp) instead of pushing content
+   shrinks with the window (floor110/220.dp by orientation) instead of pushing content
    off-screen.
 
 **Deliberately left undone / limitations.**
 - No blur on the fade (rationale above); no changes to image validation,
   formats, storage, backup payload — still the Phase 2 follow-ups.
-- On very short portrait windows the floor (300.dp) still wins over
+- On very short portrait windows the floor (220.dp portrait / 110.dp landscape) still wins over
   "space permits": the content below simply scrolls, which is the
   portrait column's existing behavior.
