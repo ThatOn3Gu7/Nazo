@@ -25,13 +25,25 @@ themable, no account, no ads.
 
 ## 📱 Screenshots
 
-| Home | Quiz | Results | Review |
-|:---:|:---:|:---:|:---:|
-| <img src="assets/screenshots/home.png" width="180"/> | <img src="assets/screenshots/quiz.png" width="180"/> | <img src="assets/screenshots/results.png" width="180"/> | <img src="assets/screenshots/review.png" width="180"/> |
+| Home | Quiz |
+|:---:|:---:|
+| <img src="assets/screenshots/home.png" width="180"/> | <img src="assets/screenshots/quiz.png" width="180"/> |
 
-| Guessing Game | Statistics | Appearance | AI Providers |
-|:---:|:---:|:---:|:---:|
-| <img src="assets/screenshots/guessing.png" width="180"/> | <img src="assets/screenshots/stats.png" width="180"/> | <img src="assets/screenshots/appearance.png" width="180"/> | <img src="assets/screenshots/providers.png" width="180"/> |
+| Results | Review |
+|:---:|:---:|
+| <img src="assets/screenshots/results.png" width="180"/> | <img src="assets/screenshots/review.png" width="180"/> | 
+
+| Profile | Backup |
+|:---|:---:|
+| <img src="assets/screenshots/profile.png" with="180"/> | <img src="assets/screenshots/backup.png" with="180"/>
+
+| Guessing Game | Statistics |
+|:---:|:---:|
+| <img src="assets/screenshots/guessing.png" width="180"/> | <img src="assets/screenshots/stats.png" width="180"/> |
+
+| Appearance | AI Providers |
+|:---:|:---:|
+| <img src="assets/screenshots/appearance.png" width="180"/> | <img src="assets/screenshots/providers.png" width="180"/> |
 
 ## Features
 
