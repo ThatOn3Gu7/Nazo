@@ -166,21 +166,22 @@ internal fun coverHeight(isLandscape: Boolean, screenHeightDp: Int): Dp {
  * with the cover preview dialog so its frame is exactly WYSIWYG. Mirrors
  * the layout math: portrait = cover width (screen − 24.dp for the cover's
  * 12.dp gutters) over the responsive [coverHeight]; landscape = left column
- * (40 % of screen − 48.dp gutters − 32.dp column spacing) over the same
- * responsive height. See the landscape Row and portrait Column in
- * [ProfileScreen].
+ * (40 % of screen − 48.dp gutters − 32.dp column spacing) over the responsive
+ * cover height, including the top-bar overlap. See the landscape Row and
+ * portrait Column in [ProfileScreen].
  */
 internal fun coverPreviewAspectRatio(
     screenWidthDp: Int,
     screenHeightDp: Int,
     isLandscape: Boolean,
+    coverTopExtensionDp: Float = 0f,
 ): Float {
     val width = if (isLandscape) {
         (screenWidthDp - 80) * 0.4f
     } else {
         (screenWidthDp - 24).toFloat()
     }
-    val height = coverHeight(isLandscape, screenHeightDp).value
+    val height = coverHeight(isLandscape, screenHeightDp).value + coverTopExtensionDp
     // Degenerate-width guard (absurd split-screen slivers): never hand the
     // preview an aspect ratio at or below 1:1.
     return (width / height).coerceAtLeast(1f)
