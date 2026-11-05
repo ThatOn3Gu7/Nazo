@@ -425,7 +425,7 @@ fun ProfileScreen(
                 title = {},
                 navigationIcon = {
                     Surface(
-                        modifier = Modifier.padding(start = 26.dp),
+                        modifier = Modifier.padding(start = 30.dp),
                         shape = CircleShape,
                         color = NazoSurface.copy(alpha = 0.94f),
                         contentColor = NazoTextPrimary,
