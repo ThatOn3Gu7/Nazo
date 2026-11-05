@@ -28,37 +28,29 @@ import quiz.thaton3app.nazo.data.profile.CoverGradientStyle
 /**
  * Draws one built-in animated-gradient cover into the current draw scope.
  *
- * The design is a set of layered, luminous ribbons — broad undulating bands
- * that flow across the banner like curtains of light (aurora), ocean swell,
- * forest canopy, or sunset haze, depending on the preset's palette:
+ * [CoverGradientStyle] selects a visual family, not just a palette:
  *
- *  1. Five ribbons, each with its own base height, tilt, two harmonic
- *     wave components (primary + a gentler detail wave), thickness,
- *     opacity, color position and drift rate. All parameters derive from
- *     a deterministic hash ([layerRand]) of (layer, seed, salt), so every
- *     preset and layer is distinct yet reproducible — no randomness at
- *     draw time.
- *  2. Each ribbon is stroked five times: a wide, faint halo, two mid
- *     passes, a shoulder, and a bright core whose color sweeps smoothly
- *     across the palette along the ribbon's length. The passes are drawn
- *     with [BlendMode.Plus], so overlaps accumulate light instead of
- *     muddying — that is where the "luminous" depth comes from.
- *  3. Color selection is a continuous ring interpolation over the whole
- *     palette ([paletteColor]) driven by unbounded time, so hues morph
- *     gradually forever — there is no palette-index snapping and no loop
- *     seam to flicker at.
+ * - [CoverGradientStyle.RIBBONS] is the original five-layer flowing-line
+ *   renderer retained for the first four presets.
+ * - [CoverGradientStyle.AURORA_CURTAIN] draws tall, folded veils with
+ *   luminous vertical strands.
+ * - [CoverGradientStyle.OCEAN_SWELL] draws broad filled wave sheets.
+ * - [CoverGradientStyle.NEBULA_DRIFT] blends moving radial cloud fields.
+ * - [CoverGradientStyle.SOLAR_RAYS] fans warm beams out from a bright source.
  *
- * All time terms are multiplied by `speed` and phase-shifted by `seed`, so
- * presets never move in lockstep. The math is pure and unit-tested
- * (see CoverGradientTest); this function only rasterizes it.
+ * Geometry is deterministic for a given seed and continuous in time. Where
+ * palettes move, [paletteColor] interpolates smoothly rather than snapping
+ * between discrete stops. The math is pure and the original ribbon functions
+ * remain covered by the JVM tests in CoverGradientTest.
  *
- * Cost: one background rect + 25 path strokes per frame, no bitmaps, no
- * retained shaders. Transient Path/point allocations are small and
- * short-lived; the frame clock only runs while the banner is composed.
+ * Each style uses only Compose brushes and paths — no bitmaps, videos,
+ * external animation libraries, or retained shader objects. The frame clock
+ * runs only while the banner or selection sheet is composed.
  *
  * @param t unbounded time in seconds (0 = static first frame).
- * @param speed relative pace from the preset; multiplies [t].
- * @param seed per-preset phase offset so side-by-side previews differ.
+ * @param speed relative animation pace from the preset; multiplies [t].
+ * @param seed deterministic per-preset shape and phase offset.
+ * @param style visual family selected by the preset.
  */
 internal fun DrawScope.drawCoverGradient(
     colors: List<Color>,
