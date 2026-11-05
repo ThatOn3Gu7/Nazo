@@ -27,14 +27,15 @@ class CoverPresetsTest {
             "photo_forest", "photo_glacier", "photo_reef", "photo_cosmic",
             "photo_lavender", "photo_foliage", "photo_ice", "photo_coast",
             "gradient_aurora", "gradient_sunset", "gradient_tides",
-            "gradient_grove",
+            "gradient_grove", "gradient_borealis", "gradient_ocean_current",
+            "gradient_nebula", "gradient_solar_rays",
         )))
     }
 
     @Test
     fun collectionsAreSplitByKind() {
         assertEquals(14, CoverPresets.IMAGES.size)
-        assertEquals(4, CoverPresets.GRADIENTS.size)
+        assertEquals(8, CoverPresets.GRADIENTS.size)
         assertEquals(CoverPresets.ALL.size, CoverPresets.IMAGES.size + CoverPresets.GRADIENTS.size)
         CoverPresets.IMAGES.forEach { preset ->
             assertEquals(CoverPresetKind.IMAGE, preset.kind)
@@ -76,11 +77,29 @@ class CoverPresetsTest {
             "gradient_sunset" to listOf(0x2A0F3FL, 0xC1386BL, 0xF07B54L, 0xF7C56AL),
             "gradient_tides" to listOf(0x07203BL, 0x1573A8L, 0x3FC3D8L, 0x9BEAF4L),
             "gradient_grove" to listOf(0x0A1F14L, 0x147A4EL, 0x2FBF87L, 0xA8F0CFL),
+            "gradient_borealis" to listOf(0x030D20L, 0x0A6855L, 0x19D9A8L, 0xB2FFE9L),
+            "gradient_ocean_current" to listOf(0x04182DL, 0x0B527FL, 0x20AFC2L, 0xB1F6EFL),
+            "gradient_nebula" to listOf(0x100C2BL, 0x50358AL, 0xB85C9BL, 0xF4C0D2L),
+            "gradient_solar_rays" to listOf(0x210F2AL, 0x87334FL, 0xE86D48L, 0xFFD17CL),
         )
         assertEquals(expected.keys, CoverPresets.GRADIENTS.map { it.id }.toSet())
         CoverPresets.GRADIENTS.forEach { preset ->
             assertEquals("palette for ${preset.id}", expected[preset.id], preset.gradientColors)
         }
+    }
+
+    @Test
+    fun newGradientsUseDistinctRenderersAndLegacyIdsKeepTheirRenderer() {
+        val styles = CoverPresets.GRADIENTS.associate { it.id to it.gradientStyle }
+        assertEquals(CoverGradientStyle.RIBBONS, styles["gradient_aurora"])
+        assertEquals(CoverGradientStyle.RIBBONS, styles["gradient_sunset"])
+        assertEquals(CoverGradientStyle.RIBBONS, styles["gradient_tides"])
+        assertEquals(CoverGradientStyle.RIBBONS, styles["gradient_grove"])
+        assertEquals(CoverGradientStyle.AURORA_CURTAIN, styles["gradient_borealis"])
+        assertEquals(CoverGradientStyle.OCEAN_SWELL, styles["gradient_ocean_current"])
+        assertEquals(CoverGradientStyle.NEBULA_DRIFT, styles["gradient_nebula"])
+        assertEquals(CoverGradientStyle.SOLAR_RAYS, styles["gradient_solar_rays"])
+        assertEquals(5, styles.values.toSet().size)
     }
 
     @Test
