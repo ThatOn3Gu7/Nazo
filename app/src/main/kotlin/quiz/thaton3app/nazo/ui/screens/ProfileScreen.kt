@@ -63,6 +63,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -469,13 +470,25 @@ fun ProfileScreen(
             )
         }
 
+        // Scaffold draws the transparent top app bar above its body content.
+        // Start the body at the top of the window, then extend the cover by the
+        // inset/gutter that used to sit above it. This puts the image behind the
+        // toolbar without shifting the avatar or the content below the cover.
+        val layoutDirection = LocalLayoutDirection.current
+        val coverTopExtension = padding.calculateTopPadding() +
+            (if (isLandscape) 8.dp else 16.dp)
+
         if (isLandscape) {
             // --- LANDSCAPE LAYOUT ---
             Row(
                 modifier = Modifier
-                    .padding(padding)
+                    .padding(
+                        start = padding.calculateStartPadding(layoutDirection),
+                        end = padding.calculateEndPadding(layoutDirection),
+                        bottom = padding.calculateBottomPadding(),
+                    )
                     .fillMaxSize()
-                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                    .padding(horizontal = 24.dp, bottom = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(32.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -496,7 +509,7 @@ fun ProfileScreen(
                         height = coverHeight(
                             isLandscape = true,
                             screenHeightDp = configuration.screenHeightDp,
-                        ),
+                        ) + coverTopExtension,
                         coverUri = coverPictureUri,
                         editButton = coverEditButton,
                     ) {
@@ -570,6 +583,7 @@ fun ProfileScreen(
                     modifier = Modifier
                         .weight(1.5f)
                         .fillMaxHeight()
+                        .padding(top = coverTopExtension)
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.Center
                 ) {
@@ -601,10 +615,14 @@ fun ProfileScreen(
             // --- PORTRAIT LAYOUT (Original) ---
             Column(
                 modifier = Modifier
-                    .padding(padding)
+                    .padding(
+                        start = padding.calculateStartPadding(layoutDirection),
+                        end = padding.calculateEndPadding(layoutDirection),
+                        bottom = padding.calculateBottomPadding(),
+                    )
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(vertical = 16.dp),
+                    .padding(bottom = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Expanded cover: wider than the content (12.dp gutters
@@ -615,7 +633,7 @@ fun ProfileScreen(
                     height = coverHeight(
                         isLandscape = false,
                         screenHeightDp = configuration.screenHeightDp,
-                    ),
+                    ) + coverTopExtension,
                     coverUri = coverPictureUri,
                     editButton = coverEditButton,
                     modifier = Modifier.padding(horizontal = 12.dp),
