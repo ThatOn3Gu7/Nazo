@@ -148,17 +148,16 @@ internal fun coverContentGap(avatarSize: Dp): Dp = coverOverhang(avatarSize) + 1
  * Cover height, responsive to the window so the header is the dominant
  * element of the upper profile without starving the content below (which
  * scrolls in portrait, and inside each column in landscape):
- *  - portrait: 44 % of the screen height, clamped to 300–360.dp — the
- *    agreed "substantial but not overwhelming" band;
- *  - landscape: 46 % of the screen height, clamped to 160–220.dp — the
- *    left column is short, so the cover must never take the portrait size.
- * Heights below the floor (tiny split-screen windows) still fit the block:
- * the columns scroll.
+ *  - portrait: 34 % of the screen height, clamped to 220–280.dp;
+ *  - landscape: 34 % of the screen height, clamped to 110–170.dp.
+ * These shorter heights lift the avatar away from the screen midpoint while
+ * leaving the cover visually prominent. Tiny split-screen windows still
+ * scroll rather than clipping the profile content.
  */
 internal fun coverHeight(isLandscape: Boolean, screenHeightDp: Int): Dp {
     // Shorten the expanded header so the overlapping avatar sits clearly
     // above the screen midpoint while the cover still dominates the profile.
-    val fraction = if (isLandscape) 0.34f else 0.34f
+    val fraction = 0.34f
     val (min, max) = if (isLandscape) 110f to 170f else 220f to 280f
     return (screenHeightDp * fraction).coerceIn(min, max).dp
 }
