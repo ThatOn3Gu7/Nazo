@@ -489,7 +489,7 @@ fun ProfileScreen(
                         bottom = padding.calculateBottomPadding(),
                     )
                     .fillMaxSize()
-                    .padding(horizontal = 24.dp, bottom = 8.dp),
+                    .padding(start = 24.dp, end = 24.dp, bottom = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(32.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
