@@ -420,27 +420,40 @@ fun ProfileScreen(
         containerColor = Color.Transparent,
         topBar = {
             CenterAlignedTopAppBar(
+                // Keep the cover fully visible behind the toolbar. Only the
+                // back action and title share a compact, theme-aware capsule.
                 title = {
-                    Text(
-                        "Profile",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontFamily = ProfileHeaderFont,
-                        fontWeight = FontWeight.Bold,
-                        color = NazoPrimary,
-                        letterSpacing = 0.5.sp
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    Surface(
+                        shape = CircleShape,
+                        color = NazoSurface.copy(alpha = 0.94f),
+                        contentColor = NazoTextPrimary,
+                        border = BorderStroke(1.dp, NazoPrimary.copy(alpha = 0.18f)),
+                        shadowElevation = 2.dp,
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(end = 18.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            IconButton(onClick = onBack) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = NazoTextPrimary,
+                                )
+                            }
+                            Text(
+                                "Profile",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontFamily = ProfileHeaderFont,
+                                fontWeight = FontWeight.Bold,
+                                color = NazoPrimary,
+                                letterSpacing = 0.5.sp,
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    // A soft theme-colored scrim keeps the title and back
-                    // action readable over busy cover artwork while allowing
-                    // the image to remain subtly visible underneath.
-                    containerColor = NazoBackground.copy(alpha = 0.92f),
-                    navigationIconContentColor = NazoTextPrimary,
+                    containerColor = Color.Transparent,
                 )
             )
         }
