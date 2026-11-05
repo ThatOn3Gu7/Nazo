@@ -156,8 +156,10 @@ internal fun coverContentGap(avatarSize: Dp): Dp = coverOverhang(avatarSize) + 1
  * the columns scroll.
  */
 internal fun coverHeight(isLandscape: Boolean, screenHeightDp: Int): Dp {
-    val fraction = if (isLandscape) 0.46f else 0.44f
-    val (min, max) = if (isLandscape) 160f to 220f else 300f to 360f
+    // Shorten the expanded header so the overlapping avatar sits clearly
+    // above the screen midpoint while the cover still dominates the profile.
+    val fraction = if (isLandscape) 0.34f else 0.34f
+    val (min, max) = if (isLandscape) 110f to 170f else 220f to 280f
     return (screenHeightDp * fraction).coerceIn(min, max).dp
 }
 
@@ -425,7 +427,10 @@ fun ProfileScreen(
                 title = {},
                 navigationIcon = {
                     Surface(
-                        modifier = Modifier.padding(start = 30.dp),
+                        // Match the pill's 8.dp top breathing room: portrait
+                        // cover starts at 12.dp; landscape's left column at
+                        // 24.dp. Add the same 8.dp inset in either orientation.
+                        modifier = Modifier.padding(start = if (isLandscape) 32.dp else 20.dp),
                         shape = CircleShape,
                         color = NazoSurface.copy(alpha = 0.94f),
                         contentColor = NazoTextPrimary,
