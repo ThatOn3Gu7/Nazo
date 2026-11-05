@@ -3,6 +3,8 @@ package quiz.thaton3app.nazo.ui.components
 import androidx.compose.animation.core.FastOutSlowInEasing
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import quiz.thaton3app.nazo.ui.Screen
 
@@ -219,4 +221,25 @@ class AvatarOverlayTest {
             ),
         )
     }
+    @Test
+    fun persistentSurfaceActionsFollowTheCurrentAvatarAnchor() {
+        val home = AvatarAnchorState(AvatarAnchorId.Home)
+        val profile = AvatarAnchorState(AvatarAnchorId.Profile)
+        var homeClicks = 0
+        var profileClicks = 0
+        var profileLongPresses = 0
+        home.onClick = { homeClicks++ }
+        profile.onClick = { profileClicks++ }
+        profile.onLongClick = { profileLongPresses++ }
+
+        dispatchAvatarAnchorClick(home)
+        dispatchAvatarAnchorClick(profile)
+        assertEquals(1, homeClicks)
+        assertEquals(1, profileClicks)
+
+        assertFalse(dispatchAvatarAnchorLongClick(home))
+        assertTrue(dispatchAvatarAnchorLongClick(profile))
+        assertEquals(1, profileLongPresses)
+    }
+
 }

@@ -144,6 +144,11 @@ fun ProfileAvatar(
     SideEffect {
         anchorState?.suppressed = paused
         anchorState?.centerVisible = playback.visible
+        // The persistent TextureView visually overlays this composable and
+        // receives native input first. Keep its forwarded actions in sync with
+        // the screen-owned tap and press-and-hold behavior.
+        anchorState?.onClick = onClick
+        anchorState?.onLongClick = onLongClick
     }
 
     val content: @Composable () -> Unit = {
