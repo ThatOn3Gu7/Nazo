@@ -407,6 +407,7 @@ private fun CoverPresetTile(
                         t = time(),
                         speed = preset.gradientSpeed,
                         seed = preset.gradientSeed,
+                        style = preset.gradientStyle,
                     )
                 }
             }
