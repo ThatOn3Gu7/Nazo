@@ -32,6 +32,18 @@ enum class CoverPresetKind {
 }
 
 /**
+ * Rendering personality for procedural gradient covers. RIBBONS is the
+ * original renderer and remains the default for the four shipped presets.
+ */
+enum class CoverGradientStyle {
+    RIBBONS,
+    AURORA_CURTAIN,
+    OCEAN_SWELL,
+    NEBULA_DRIFT,
+    SOLAR_RAYS,
+}
+
+/**
  * One selectable built-in cover.
  *
  * @param id stable persisted key (e.g. `"photo_aurora"`).
@@ -51,6 +63,7 @@ data class CoverPreset(
     val gradientColors: List<Long> = emptyList(),
     val gradientSpeed: Float = 1f,
     val gradientSeed: Int = 0,
+    val gradientStyle: CoverGradientStyle = CoverGradientStyle.RIBBONS,
 )
 
 /** The bundled collections, in sheet display order. */
@@ -181,6 +194,44 @@ object CoverPresets {
             gradientColors = listOf(0x0A1F14, 0x147A4E, 0x2FBF87, 0xA8F0CF),
             gradientSpeed = 1.1f,
             gradientSeed = 3,
+        ),
+
+        // --- New animation families: distinct renderers, not recolors ---
+        CoverPreset(
+            id = "gradient_borealis",
+            kind = CoverPresetKind.GRADIENT,
+            label = "Aurora veil",
+            gradientColors = listOf(0x030D20, 0x0A6855, 0x19D9A8, 0xB2FFE9),
+            gradientSpeed = 0.52f,
+            gradientSeed = 4,
+            gradientStyle = CoverGradientStyle.AURORA_CURTAIN,
+        ),
+        CoverPreset(
+            id = "gradient_ocean_current",
+            kind = CoverPresetKind.GRADIENT,
+            label = "Ocean current",
+            gradientColors = listOf(0x04182D, 0x0B527F, 0x20AFC2, 0xB1F6EF),
+            gradientSpeed = 0.68f,
+            gradientSeed = 5,
+            gradientStyle = CoverGradientStyle.OCEAN_SWELL,
+        ),
+        CoverPreset(
+            id = "gradient_nebula",
+            kind = CoverPresetKind.GRADIENT,
+            label = "Nebula drift",
+            gradientColors = listOf(0x100C2B, 0x50358A, 0xB85C9B, 0xF4C0D2),
+            gradientSpeed = 0.44f,
+            gradientSeed = 6,
+            gradientStyle = CoverGradientStyle.NEBULA_DRIFT,
+        ),
+        CoverPreset(
+            id = "gradient_solar_rays",
+            kind = CoverPresetKind.GRADIENT,
+            label = "Solar flare",
+            gradientColors = listOf(0x210F2A, 0x87334F, 0xE86D48, 0xFFD17C),
+            gradientSpeed = 0.48f,
+            gradientSeed = 7,
+            gradientStyle = CoverGradientStyle.SOLAR_RAYS,
         ),
     )
 
