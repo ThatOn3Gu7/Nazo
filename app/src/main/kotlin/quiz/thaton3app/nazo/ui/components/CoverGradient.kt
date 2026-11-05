@@ -9,6 +9,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -21,6 +23,7 @@ import androidx.compose.ui.graphics.lerp
 import kotlin.math.PI
 import kotlin.math.sin
 import quiz.thaton3app.nazo.data.profile.CoverPreset
+import quiz.thaton3app.nazo.data.profile.CoverGradientStyle
 
 /**
  * Draws one built-in animated-gradient cover into the current draw scope.
@@ -62,11 +65,34 @@ internal fun DrawScope.drawCoverGradient(
     t: Float,
     speed: Float,
     seed: Int,
+    style: CoverGradientStyle = CoverGradientStyle.RIBBONS,
 ) {
     if (colors.size < 2 || size.width <= 0f || size.height <= 0f) return
     val w = size.width
     val h = size.height
     val tt = t * speed
+
+    // Keep the original four presets on their original renderer. New presets
+    // opt into a genuinely different visual structure via this style switch.
+    when (style) {
+        CoverGradientStyle.RIBBONS -> Unit
+        CoverGradientStyle.AURORA_CURTAIN -> {
+            drawAuroraCurtains(colors, tt, seed)
+            return
+        }
+        CoverGradientStyle.OCEAN_SWELL -> {
+            drawOceanSwell(colors, tt, seed)
+            return
+        }
+        CoverGradientStyle.NEBULA_DRIFT -> {
+            drawNebulaDrift(colors, tt, seed)
+            return
+        }
+        CoverGradientStyle.SOLAR_RAYS -> {
+            drawSolarRays(colors, tt, seed)
+            return
+        }
+    }
 
     // Background: a slow breath between the first two stops at the top,
     // falling off to a darkened base at the bottom (same depth cue the
@@ -299,6 +325,359 @@ private fun ribbonPath(pts: FloatArray, steps: Int): Path {
 }
 
 /**
+ * Aurora Borealis: tall, translucent curtains with vertical folds. Each
+ * broad veil bends independently as it descends, while thin luminous strands
+ * move through it. This is deliberately not the old horizontal ribbon look.
+ */
+private fun DrawScope.drawAuroraCurtains(
+    colors: List<Color>,
+    t: Float,
+    seed: Int,
+) {
+    val w = size.width
+    val h = size.height
+    val base = colors.first()
+    val bottom = Color(base.red * 0.34f, base.green * 0.38f, base.blue * 0.52f)
+    drawRect(
+        Brush.verticalGradient(
+            listOf(lerp(base, colors[1], 0.12f), lerp(base, colors[1], 0.04f), bottom),
+        ),
+    )
+    drawRect(
+        Brush.radialGradient(
+            colors = listOf(colors[2].copy(alpha = 0.19f), Color.Transparent),
+            center = Offset(w * 0.48f, h * 0.14f),
+            radius = w * 0.88f,
+        ),
+    )
+
+    val twoPi = (2.0 * PI).toFloat()
+    val samples = 34
+    for (veil in 0 until 5) {
+        fun r(salt: Int) = layerRand(veil, seed, salt)
+        val centerX = w * (0.04f + 0.92f * r(0))
+        val bandWidth = w * (0.12f + 0.13f * r(1))
+        val topY = h * (-0.10f + 0.22f * r(2))
+        val bottomY = h * (0.76f + 0.32f * r(3))
+        val phase = r(4) * twoPi
+        val frequency = 2.3f + 1.5f * r(5)
+        val sway = bandWidth * (0.055f + 0.045f * r(6))
+        val drift = (0.075f + 0.055f * r(7)) * if (r(8) < 0.5f) -1f else 1f
+        val veilColor = lerp(colors[1], colors[2], 0.20f + 0.62f * r(9))
+
+        fun fold(y: Float, extraPhase: Float = 0f): Float {
+            val v = y / h
+            return sin(v * frequency * twoPi + t * drift + phase + extraPhase) * sway +
+                sin(v * frequency * 1.85f - t * drift * 0.72f + phase * 1.31f + extraPhase) *
+                sway * 0.27f
+        }
+
+        fun edgeX(y: Float, side: Float): Float =
+            centerX + side * bandWidth * 0.5f + fold(y)
+
+        val veilPath = Path()
+        for (sample in 0..samples) {
+            val y = topY + (bottomY - topY) * sample / samples
+            val x = edgeX(y, -1f)
+            if (sample == 0) veilPath.moveTo(x, y) else veilPath.lineTo(x, y)
+        }
+        for (sample in samples downTo 0) {
+            val y = topY + (bottomY - topY) * sample / samples
+            veilPath.lineTo(edgeX(y, 1f), y)
+        }
+        veilPath.close()
+
+        val veilBrush = Brush.verticalGradient(
+            colorStops = arrayOf(
+                0.00f to veilColor.copy(alpha = 0.00f),
+                0.16f to veilColor.copy(alpha = 0.045f),
+                0.48f to colors[2].copy(alpha = 0.16f),
+                0.76f to veilColor.copy(alpha = 0.085f),
+                1.00f to Color.Transparent,
+            ),
+            startY = topY,
+            endY = bottomY,
+        )
+        drawPath(veilPath, brush = veilBrush, blendMode = BlendMode.Plus)
+
+        // One compound path keeps the six moving folds inexpensive to draw.
+        val folds = Path()
+        for (strand in 0 until 6) {
+            val across = (strand / 5f - 0.5f) * 0.76f
+            val strandPhase = strand * 0.39f
+            for (sample in 0..samples) {
+                val y = topY + (bottomY - topY) * sample / samples
+                val x = centerX + across * bandWidth + fold(y, strandPhase) * 0.38f
+                if (sample == 0) folds.moveTo(x, y) else folds.lineTo(x, y)
+            }
+        }
+        drawPath(
+            path = folds,
+            color = veilColor.copy(alpha = 0.105f),
+            style = Stroke(width = bandWidth * 0.105f, cap = StrokeCap.Round),
+            blendMode = BlendMode.Plus,
+        )
+        drawPath(
+            path = folds,
+            color = colors.last().copy(alpha = 0.22f),
+            style = Stroke(
+                width = (bandWidth * 0.009f).coerceAtLeast(1.2f),
+                cap = StrokeCap.Round,
+            ),
+            blendMode = BlendMode.Plus,
+        )
+    }
+}
+
+/**
+ * Ocean current: three broad, semi-transparent water sheets roll across one
+ * another. Unlike a stroked ribbon, each layer is a filled moving wave band.
+ */
+private fun DrawScope.drawOceanSwell(
+    colors: List<Color>,
+    t: Float,
+    seed: Int,
+) {
+    val w = size.width
+    val h = size.height
+    val base = colors.first()
+    drawRect(
+        Brush.verticalGradient(
+            listOf(lerp(base, colors[1], 0.19f), base, Color(base.red * 0.42f, base.green * 0.54f, base.blue * 0.62f)),
+        ),
+    )
+    drawRect(
+        Brush.radialGradient(
+            colors = listOf(colors.last().copy(alpha = 0.10f), Color.Transparent),
+            center = Offset(w * 0.72f, h * 0.32f),
+            radius = w * 0.82f,
+        ),
+    )
+
+    val twoPi = (2.0 * PI).toFloat()
+    val steps = 54
+    for (layer in 0 until 4) {
+        fun r(salt: Int) = layerRand(layer, seed + 29, salt)
+        val baseY = h * (0.22f + layer * 0.185f)
+        val amplitude = h * (0.040f + 0.035f * r(0))
+        val frequency = 0.78f + 0.48f * r(1)
+        val phase = r(2) * twoPi
+        val drift = 0.10f + 0.055f * r(3)
+        val thickness = h * (0.105f + 0.035f * r(4))
+
+        fun waveY(x: Float): Float {
+            val u = x / w
+            return baseY +
+                amplitude * sin(twoPi * frequency * u + phase + t * drift) +
+                amplitude * 0.34f * sin(twoPi * frequency * 1.78f * u - phase * 0.63f - t * drift * 1.21f)
+        }
+
+        val wave = Path()
+        val pad = w * 0.08f
+        for (sample in 0..steps) {
+            val x = -pad + (w + 2f * pad) * sample / steps
+            val y = waveY(x)
+            if (sample == 0) wave.moveTo(x, y) else wave.lineTo(x, y)
+        }
+        for (sample in steps downTo 0) {
+            val x = -pad + (w + 2f * pad) * sample / steps
+            val y = waveY(x) + thickness * (
+                0.92f + 0.08f * sin(twoPi * 0.62f * (x / w) + phase + t * drift * 0.7f)
+            )
+            wave.lineTo(x, y)
+        }
+        wave.close()
+
+        val near = paletteColor(colors, 1.05f + layer * 0.47f)
+        val far = paletteColor(colors, 1.65f + layer * 0.43f)
+        drawPath(
+            path = wave,
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    near.copy(alpha = 0.15f),
+                    far.copy(alpha = 0.20f),
+                    base.copy(alpha = 0.015f),
+                ),
+                startY = baseY - amplitude,
+                endY = baseY + thickness + amplitude,
+            ),
+            blendMode = BlendMode.Plus,
+        )
+
+        val crest = Path()
+        for (sample in 0..steps) {
+            val x = -pad + (w + 2f * pad) * sample / steps
+            val y = waveY(x)
+            if (sample == 0) crest.moveTo(x, y) else crest.lineTo(x, y)
+        }
+        drawPath(
+            path = crest,
+            color = colors.last().copy(alpha = 0.13f + layer * 0.012f),
+            style = Stroke(width = (h * 0.006f).coerceAtLeast(1.2f), cap = StrokeCap.Round),
+            blendMode = BlendMode.Plus,
+        )
+    }
+}
+
+/**
+ * Nebula drift: large soft radial clouds overlap and slowly migrate through
+ * a dark space field. Tiny fixed stars give the clouds depth and scale.
+ */
+private fun DrawScope.drawNebulaDrift(
+    colors: List<Color>,
+    t: Float,
+    seed: Int,
+) {
+    val w = size.width
+    val h = size.height
+    val base = colors.first()
+    drawRect(
+        Brush.verticalGradient(
+            listOf(lerp(base, colors[1], 0.13f), base, Color(base.red * 0.36f, base.green * 0.31f, base.blue * 0.52f)),
+        ),
+    )
+
+    for (cloud in 0 until 7) {
+        fun r(salt: Int) = layerRand(cloud, seed + 53, salt)
+        val phase = r(0) * (2.0 * PI).toFloat()
+        val drift = 0.028f + r(1) * 0.035f
+        val centerX = w * (
+            0.08f + 0.84f * r(2) + 0.055f * sin(t * drift + phase)
+        )
+        val centerY = h * (
+            0.20f + 0.62f * r(3) + 0.085f * sin(t * drift * 0.71f + phase * 1.4f)
+        )
+        val radiusX = w * (0.15f + 0.12f * r(4))
+        val radiusY = h * (0.25f + 0.16f * r(5))
+        val hue = paletteColor(colors, 0.85f + r(6) * 2.15f)
+        val core = paletteColor(colors, 1.35f + r(7) * 1.35f)
+        val center = Offset(centerX, centerY)
+
+        drawOval(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    core.copy(alpha = 0.22f),
+                    hue.copy(alpha = 0.145f),
+                    core.copy(alpha = 0.045f),
+                    Color.Transparent,
+                ),
+                center = center,
+                radius = radiusX * 1.18f,
+            ),
+            topLeft = Offset(centerX - radiusX, centerY - radiusY),
+            size = Size(radiusX * 2f, radiusY * 2f),
+            blendMode = BlendMode.Plus,
+        )
+    }
+
+    // Deterministic star positions; only their very subtle brightness breathes.
+    for (star in 0 until 24) {
+        val x = w * layerRand(star, seed + 97, 0)
+        val y = h * layerRand(star, seed + 97, 1)
+        val phase = layerRand(star, seed + 97, 2) * (2.0 * PI).toFloat()
+        val pulse = 0.5f + 0.5f * sin(t * 0.24f + phase)
+        drawCircle(
+            color = Color.White.copy(alpha = 0.12f + pulse * 0.12f),
+            radius = 0.65f + layerRand(star, seed + 97, 3) * 0.85f,
+            center = Offset(x, y),
+        )
+    }
+}
+
+/**
+ * Solar rays: warm, translucent fans radiate from a bright off-canvas source.
+ * Their edges breathe independently, creating a slow atmospheric flare
+ * rather than another set of parallel ribbons.
+ */
+private fun DrawScope.drawSolarRays(
+    colors: List<Color>,
+    t: Float,
+    seed: Int,
+) {
+    val w = size.width
+    val h = size.height
+    val base = colors.first()
+    val source = Offset(w * 0.91f, h * 0.015f)
+    drawRect(
+        Brush.verticalGradient(
+            listOf(lerp(base, colors[1], 0.16f), base, Color(base.red * 0.48f, base.green * 0.35f, base.blue * 0.48f)),
+        ),
+    )
+    drawRect(
+        Brush.radialGradient(
+            colors = listOf(colors[2].copy(alpha = 0.18f), colors[1].copy(alpha = 0.07f), Color.Transparent),
+            center = source,
+            radius = w * 0.78f,
+        ),
+    )
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(colors.last().copy(alpha = 0.32f), colors[2].copy(alpha = 0.13f), Color.Transparent),
+            center = source,
+            radius = h * 0.48f,
+        ),
+        radius = h * 0.48f,
+        center = source,
+        blendMode = BlendMode.Plus,
+    )
+
+    for (beam in 0 until 6) {
+        fun r(salt: Int) = layerRand(beam, seed + 71, salt)
+        val phase = r(0) * (2.0 * PI).toFloat()
+        val endX = -w * (0.04f + 0.10f * r(1))
+        val endY = h * (
+            0.14f + beam * 0.135f + 0.026f * sin(t * 0.15f + phase)
+        )
+        val spread = h * (0.045f + r(2) * 0.045f)
+        val shoulder = h * (0.11f + r(3) * 0.12f)
+        val flare = Path().apply {
+            moveTo(source.x, source.y)
+            cubicTo(
+                w * 0.62f, h * (-0.05f + r(4) * 0.10f),
+                w * 0.18f, endY - shoulder,
+                endX, endY - spread,
+            )
+            lineTo(endX, endY + spread)
+            cubicTo(
+                w * 0.22f, endY + shoulder,
+                w * 0.66f, h * (0.10f + r(5) * 0.12f),
+                source.x, source.y,
+            )
+            close()
+        }
+        val rayColor = paletteColor(colors, 1.0f + beam * 0.34f)
+        drawPath(
+            path = flare,
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    colors.last().copy(alpha = 0.055f),
+                    rayColor.copy(alpha = 0.15f),
+                    colors[1].copy(alpha = 0.025f),
+                ),
+                start = source,
+                end = Offset(endX, endY),
+            ),
+            blendMode = BlendMode.Plus,
+        )
+
+        val core = Path().apply {
+            moveTo(source.x, source.y)
+            cubicTo(
+                w * 0.60f, h * 0.04f,
+                w * 0.17f, endY - shoulder * 0.34f,
+                endX, endY,
+            )
+        }
+        drawPath(
+            path = core,
+            color = colors.last().copy(alpha = 0.105f),
+            style = Stroke(width = (h * 0.0055f).coerceAtLeast(1.1f), cap = StrokeCap.Round),
+            blendMode = BlendMode.Plus,
+        )
+    }
+}
+
+/**
  * The banner's animated-gradient layer.
  *
  * Lifecycle story (the "no work while Profile isn't visible" requirement):
@@ -336,6 +715,7 @@ internal fun AnimatedCoverGradient(
             t = if (reduceMotion) 0f else t,
             speed = preset.gradientSpeed,
             seed = preset.gradientSeed,
+            style = preset.gradientStyle,
         )
     }
 }
