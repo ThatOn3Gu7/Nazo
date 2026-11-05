@@ -229,25 +229,6 @@ fun ProfileScreen(
                             paused = avatarBehindDialogsPaused,
                             anchorId = AvatarAnchorId.Profile,
                         )
-                        // Visible "change picture" affordance — the tap target
-                        // below was undiscoverable. Decorative overlay: taps
-                        // fall through to the avatar underneath.
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(NazoPrimary)
-                                .border(2.dp, NazoBackground, CircleShape),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.PhotoCamera,
-                                contentDescription = null,
-                                tint = NazoOnPrimary,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
                     }
 
                     Surface(
@@ -347,25 +328,6 @@ fun ProfileScreen(
                         paused = avatarBehindDialogsPaused,
                         anchorId = AvatarAnchorId.Profile,
                     )
-                    // Visible "change picture" affordance — the tap target
-                    // below was undiscoverable. Decorative overlay: taps fall
-                    // through to the avatar underneath.
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(NazoPrimary)
-                            .border(2.dp, NazoBackground, CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.PhotoCamera,
-                            contentDescription = null,
-                            tint = NazoOnPrimary,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
                 }
 
                 Surface(
