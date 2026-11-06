@@ -316,10 +316,9 @@ private fun ProfileCoverBanner(
 /**
  * Pencil in the banner's bottom-right corner: opens the unified cover
  * selection sheet (photos, animated gradients, custom gallery option).
- * 44.dp target with 8.dp margins — the geometry in handoff.md shows the
- * target clears the straddling avatar's circle even on the narrowest
- * landscape left column (40/60 split on a 640.dp screen). The icon carries
- * the accessibility label; the clickable Box merges it so TalkBack
+ * 44.dp target with 8.dp margins; it clears the straddling avatar even in the
+ * narrowest supported landscape left column (40/60 split at 640.dp). The icon
+ * carries the accessibility label; the clickable Box merges it so TalkBack
  * announces one "Change cover background" control.
  */
 @Composable

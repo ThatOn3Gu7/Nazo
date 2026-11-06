@@ -6,13 +6,13 @@ This file has **two parts**, and the split matters:
 
 | Part | Applies to | Covers |
 |---|---|---|
-| [Part 1 — Universal rules](#part-1--universal-rules) | **Everyone.** Every agent, every bot, every human, every environment. | Commit tags, release cadence, live-test guides, `handoff.md` entries. |
+| [Part 1 — Universal rules](#part-1--universal-rules) | **Everyone.** Every agent, every bot, every human, every environment. | Commit tags, release cadence, and live-test guides. |
 | [Part 2 — Arena.ai sandbox rules](#part-2--arenaai-sandbox-rules-nobody-else) | **Only** agents running in Arena.ai Agent Mode on an `arena/**` branch. | Building via CI, PR handling, sandbox quirks. |
 
-**Part 1 is mandatory for everyone.** Tagged commit subjects, a `handoff.md`
-entry, and a live-test guide are project conventions — not Arena conventions —
-so an agent working in Termux, a local terminal, or any other platform follows
-them exactly the same way.
+**Part 1 is mandatory for everyone.** Tagged commit subjects and a live-test
+guide are project conventions — not Arena conventions — so an agent working in
+Termux, a local terminal, or any other platform follows them exactly the same
+way.
 
 > **If you are not an Arena.ai agent, follow Part 1 and skip Part 2.**
 > Part 2 describes workarounds for a sandbox that has no Android SDK and no
@@ -90,30 +90,8 @@ Each guide must answer three things:
 
 If a change is genuinely not user-visible (a lock, a refactor), say so plainly
 and give the closest observable proxy — the stress case that used to crash, the
-screen that used to stutter.
-
-Mirror the same steps into a `handoff.md` entry for the session, so a future
-agent touching related code can re-verify the feature.
-
-## Session handoff notes (`handoff.md`)
-
-**Every session that changes anything must append an entry to `handoff.md`.**
-This applies to every agent in every environment — it is how the next
-contributor (human or AI) learns why the code looks the way it does.
-
-Append at the **bottom** (newest last), under a `##` heading naming the topic.
-An entry contains:
-
-1. **What changed** — the behaviour, not a file list. A table works well when
-   several distinct fixes ship together.
-2. **Why** — the underlying cause, and any option you considered and rejected.
-   Future agents keep re-introducing bugs whose fix looks arbitrary.
-3. **How to test it live** — the same steps handed to the owner (see above).
-4. **Anything deliberately left undone**, so the next session doesn't assume
-   it was overlooked.
-
-Record dead ends too: an approach that failed and *why* saves the next agent
-from repeating it.
+screen that used to stutter. Put durable rationale next to the code it explains;
+do not add running research or session-log files to the repository.
 
 Keep `AGENTS.md` current as well. If a rule here is stale or wrong, fix it in
 the same commit as the work that revealed the problem.
@@ -241,8 +219,8 @@ The gate removes the *cost* of a stray docs push, not the reason to be tidy:
 
   Correct order:
   1. make the code changes,
-  2. write the `handoff.md` / doc updates,
-  3. `git add -A` and commit **once**,
+  2. update only durable code-adjacent or user-facing documentation,
+  3. commit the complete change set in coherent categorized commits,
   4. push **once**.
 - **Never push mid-task just to check CI.** Finish the change set first.
 - Never use `[skip ci]` on a commit that touches app code to dodge a red
