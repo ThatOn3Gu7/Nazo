@@ -4311,3 +4311,135 @@ loops, cancellation/backgrounding, API 26 GLES behavior, thermal load and R8
 release output on physical devices. No preset ids, dimensions, status-bar/
 toolbar/fade geometry, avatar interactions, manual cover storage, or Phase-4
 playback ownership were redesigned.
+
+## Profile cover polish: bounded background transitions (2026-11-06)
+
+**Design.** Every change to the resolved `CoverVisual` now passes through one
+`TransitioningCoverArtwork` composable. The profile frame, rounded clipping,
+bottom fade, avatar, edit control and all status/app-bar geometry remain outside
+that composable and are unchanged. A normal change uses a 520ms emphasized
+crossfade (`0.2, 0, 0, 1`) with only a 1.2% incoming settle (1.012 -> 1.0) and a
+0.6% outgoing settle (1.0 -> 0.994). This is intentionally below the movement
+of navigation transitions: it reads as depth in the artwork, not as another
+screen animation. Android Remove animations snaps immediately. Navigation
+commit also disables/snaps artwork motion, so an outgoing Profile screen never
+runs a competing internal transition.
+
+**Media readiness and failure.** Bundled images/gradients/default are ready
+synchronously. App-owned custom/automatic images are decoded into Coil's shared
+memory cache at a bounded 1024x576 request before becoming the incoming layer.
+Videos must have a decoded cached poster before they can enter. Preparation is a
+separate cancellable effect from presentation: if the user taps again while an
+image/poster is loading, obsolete preparation is cancelled while the transition
+already on screen continues. A failed preparation does not retarget the renderer,
+so the last valid cover remains. Video surfaces stay transparent until a real
+frame and use the prepared per-URI poster underneath, never a black rectangle.
+The custom photo/video acceptance previews use the same fade/scale language when
+validated media becomes ready; the automatic tile transitions from its
+preparing state to the actual generated artwork. Selection badges use that
+restrained reveal as well.
+
+**Rapid-selection contract.** The transition state can retain exactly one
+outgoing and one incoming visual. A new prepared selection samples the current
+fade, keeps whichever layer is visually dominant, drops the other immediately,
+and retargets to the latest choice. Selecting the dominant old choice again
+simply eases it back to full opacity. There is no animation queue and no list of
+old content, so repeated taps cannot leave stale artwork, stack many bitmaps or
+finish on anything except the latest successfully prepared selection.
+
+**Video safety.** There is still one `CoverVideoHost`, one MediaPlayer session
+and one active decoder. `TransitioningCoverArtwork` owns one persistent video
+plane:
+
+- video -> image/gradient/default keeps the old live loop through the fade and
+  releases it through the existing grace path only after it is invisible;
+- image/gradient/default -> video fades to a prepared poster/live plane;
+- video A -> video B keeps A playing while B's prepared poster fades in, then
+  changes the persistent TextureView target to B underneath that identical
+  poster. Only then is the one MediaPlayer session necessarily replaced. No
+  second decoder is created for overlap and there is no jump to A's first frame;
+- rapid video changes follow the same dominant-layer rule and source-swap the
+  one plane only when necessary.
+
+`CoverVideoBackground` no longer unregisters/recreates its TextureView merely
+because its URI changes; `Host.update` changes the source session while retaining
+the surface target. Posters are per URI rather than one global flow, and poster
+decodes are mutex-coalesced to avoid duplicate retriever work from warming and
+transition preparation. Explicit target priority is **dialog preview > cover
+sheet preview > banner**, with newest target only breaking equal-priority ties.
+This prevents a behind-the-sheet banner recomposition from stealing the one live
+surface. Closing a modal hands the same session/surface ownership back using the
+existing position/sync and lifecycle rules. Automatic avatar-position sync and
+manual saved positions are unchanged.
+
+**Animated gradients.** Banner gradient instances now read one process-wide
+monotonic timeline rather than starting local time at zero. During a transition,
+outgoing and incoming gradients therefore move continuously on the same clock;
+switching away and back in the same process does not reset the pattern. The
+frame loop still exists only while a gradient is composed and Choreographer
+still suspends it in background. Sheet cards retain their existing single shared
+preview clock.
+
+**Resource bounds.** At steady state there is one artwork layer. For at most
+520ms a static change can hold two image/gradient layers; interruption collapses
+back to two before retargeting. Video changes always hold one live plane plus at
+most one already-cached poster/static layer. The poster cache remains bounded to
+three entries and saved positions to eight. No screenshot capture, full-banner
+bitmap allocation, second player, second decoder, per-frame blur or new root
+overlay was introduced. Scale/alpha update graphics layers; they do not change
+cover measurement or re-layout Profile.
+
+**Tests.** `CoverArtworkTransitionTest` pins the 400-600ms/sub-2% motion budget,
+early/late dominant-layer retargeting, latest-wins two-layer behavior, selection
+reversal and clamped endpoint math. `CoverVideoPlaybackTest` now pins modal
+priority and equal-priority recency in addition to lifecycle/playback/sync gates.
+`CoverGradientTest` pins process-timeline continuity. Existing cover resolver,
+all preset IDs (including all five gradients), image/video policy, automatic
+derivation, geometry, navigation and predictive-back tests remain unchanged.
+
+### Live verification for transitions
+
+1. Keep Profile visible and tap slowly through Default/remove, every bundled
+   photo, all five gradients, Your photo, Your video and Automatic. Confirm each
+   artwork crossfades for about half a second with only a barely perceptible
+   depth settle. The fade/cover dimensions, app bar, fade strip, avatar overlap
+   and edit button must not move.
+2. Tap 8-10 different presets as quickly as possible, including reversing to
+   the first choice mid-fade. The latest tap must win; no older cover may appear
+   later, no animation queue should continue, and memory must return to steady
+   state after one fade.
+3. Switch gradient -> gradient and gradient -> photo -> gradient. Confirm both
+   gradients continue moving during overlap and a re-entered gradient does not
+   visibly restart at its initial phase. Repeat with Android Remove animations;
+   artwork and preview reveals should switch immediately.
+4. Test image -> video, video -> image and custom-video -> automatic-video.
+   Confirm the outgoing video continues during its fade. For video -> video,
+   confirm motion gives way to the new poster, then the new loop begins with no
+   black flash or old first-frame jump. Use `dumpsys media.codec`/profiler on a
+   modest device to verify only one cover decoder is live (plus the independent
+   avatar decoder when applicable).
+5. With a video avatar and video cover, open the cover sheet. Confirm its live
+   automatic preview owns playback even if selecting another option recomposes
+   the banner behind it. Close the sheet: the banner resumes through the normal
+   handoff without player fights, surface recreation flashes or loss of avatar
+   sync. Repeat with the custom video acceptance dialog.
+6. Pick a large photo and a valid MP4. The current cover must remain until the
+   new image/poster is ready; preview media should fade in after validation.
+   Test a deleted/corrupt URI or decoder failure: never fade to an empty/black
+   cover, and the persisted selection/removal behavior must remain as before.
+7. While a transition is active, start predictive back, cancel, then commit.
+   Cancel must preserve the in-progress/latest cover. Commit must snap/cancel
+   internal artwork work cleanly and retain existing screen playback-position
+   behavior. Repeat with dialogs, rotation, background/foreground and Remove
+   animations.
+8. Stress repeated mixed changes while an automatic MP4 is exporting and while
+   poster decoding is in progress. Obsolete preparation must not later win,
+   temporary layers must stay bounded, and automatic generation cancellation/
+   cache rules from the previous phase must remain unchanged.
+
+**Physical-device verification still required.** Arena cannot inspect real
+TextureView buffers, vendor MediaPlayer/MediaCodec handoff, Coil GPU bitmap
+pressure or Choreographer smoothness. Verify frame pacing at 60/90/120Hz,
+poster-to-first-frame continuity, one-decoder behavior, API 26 graphics layers,
+video-avatar + video-cover concurrency, predictive-back composition, thermal/
+memory stability and release/R8 behavior on physical target devices.

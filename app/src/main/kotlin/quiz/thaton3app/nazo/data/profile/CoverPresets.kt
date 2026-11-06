@@ -221,8 +221,8 @@ object CoverPresets {
 
 /**
  * What the cover banner should draw right now. The only source of truth for
- * banner rendering — [resolveCoverVisual] maps the two persisted values
- * (gallery uri + preset id) onto it.
+ * banner rendering — [resolveCoverVisual] maps the persisted automatic flag,
+ * generated artifact, gallery URI and preset id onto it.
  */
 sealed interface CoverVisual {
     /** Nothing selected: the banner's placeholder gradient shows. */

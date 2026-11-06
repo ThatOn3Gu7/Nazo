@@ -119,10 +119,14 @@ fun ProfileCoverVideoPreviewDialog(
                             .background(NazoSurfaceVariant),
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (info != null) {
+                        CoverPreviewReveal(
+                            visible = info != null,
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
                             CoverVideoBackground(
                                 uri = source.uri.toString(),
                                 playbackAllowed = !saving,
+                                priority = CoverVideoPriority.DIALOG_PREVIEW,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }

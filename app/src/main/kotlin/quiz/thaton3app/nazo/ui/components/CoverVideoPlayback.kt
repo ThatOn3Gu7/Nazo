@@ -13,8 +13,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -31,9 +31,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
@@ -48,13 +48,29 @@ internal fun coverVideoShouldPlay(
 internal fun normalizeCoverSyncPosition(positionMs: Int, durationMs: Int): Int =
     if (durationMs > 0) positionMs.coerceAtLeast(0) % durationMs else positionMs.coerceAtLeast(0)
 
+/** Modal previews must retain the one live cover surface over the banner behind them. */
+internal enum class CoverVideoPriority {
+    BANNER,
+    SHEET_PREVIEW,
+    DIALOG_PREVIEW,
+}
+
+internal fun coverVideoTargetOutranks(
+    candidatePriority: CoverVideoPriority,
+    candidateSequence: Long,
+    activePriority: CoverVideoPriority,
+    activeSequence: Long,
+): Boolean = candidatePriority.ordinal > activePriority.ordinal ||
+    (candidatePriority == activePriority && candidateSequence > activeSequence)
+
 /**
  * The cover's independent playback owner.
  *
  * This intentionally does not touch [AvatarVideoHost]. A video cover and video
  * avatar can therefore decode at the same time. The host owns at most one cover
- * MediaPlayer and hands it between the banner and the modal cover preview; the
- * newest registered TextureView is the active surface. Returning from a modal
+ * MediaPlayer and hands it between the banner and modal previews. Explicit
+ * preview priority prevents a banner recomposition from stealing the surface;
+ * equal-priority targets still use newest registration. Returning from a modal
  * restores the still-composed banner target automatically.
  *
  * A short no-surface grace period absorbs navigation animations and cancelled
@@ -71,6 +87,8 @@ internal object CoverVideoHost {
         var playbackAllowed: Boolean,
         var lifecycleStarted: Boolean,
         var syncPositionProvider: (() -> Int?)?,
+        var priority: CoverVideoPriority,
+        val sequence: Long,
     )
 
     private data class Session(
@@ -83,13 +101,12 @@ internal object CoverVideoHost {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val targets = LinkedHashMap<TextureView, Target>()
     private val savedPositions = LinkedHashMap<String, Int>(MAX_SAVED_POSITIONS, 0.75f, true)
-    private val _poster = MutableStateFlow<Bitmap?>(null)
-    val poster = _poster.asStateFlow()
 
     private var session: Session? = null
     private var activeTarget: Target? = null
     private var surface: Surface? = null
     private var releaseJob: Job? = null
+    private var nextTargetSequence = 0L
 
     fun attach(
         context: Context,
@@ -98,6 +115,7 @@ internal object CoverVideoHost {
         playbackAllowed: Boolean,
         lifecycleStarted: Boolean,
         syncPositionProvider: (() -> Int?)?,
+        priority: CoverVideoPriority,
     ) {
         releaseJob?.cancel()
         releaseJob = null
@@ -143,16 +161,16 @@ internal object CoverVideoHost {
 
         targets.remove(view)
         val target = Target(
-            view,
-            uri,
-            playbackAllowed,
-            lifecycleStarted,
-            syncPositionProvider,
+            view = view,
+            uri = uri,
+            playbackAllowed = playbackAllowed,
+            lifecycleStarted = lifecycleStarted,
+            syncPositionProvider = syncPositionProvider,
+            priority = priority,
+            sequence = ++nextTargetSequence,
         )
         targets[view] = target
-        activeTarget = target
-        showPoster(context, uri)
-        bindActiveSurface(context)
+        refreshActiveTarget(context, forceRebind = target)
     }
 
     fun update(
@@ -162,6 +180,7 @@ internal object CoverVideoHost {
         playbackAllowed: Boolean,
         lifecycleStarted: Boolean,
         syncPositionProvider: (() -> Int?)?,
+        priority: CoverVideoPriority,
     ) {
         val target = targets[view]
         if (target == null) {
@@ -172,21 +191,25 @@ internal object CoverVideoHost {
                 playbackAllowed,
                 lifecycleStarted,
                 syncPositionProvider,
+                priority,
             )
             return
         }
         val sourceChanged = target.uri != uri
+        val priorityChanged = target.priority != priority
+        if (sourceChanged) target.view.alpha = 0f
         target.uri = uri
         target.playbackAllowed = playbackAllowed
         target.lifecycleStarted = lifecycleStarted
         target.syncPositionProvider = syncPositionProvider
-        if (activeTarget?.view === view) {
-            if (sourceChanged) {
-                showPoster(context, uri)
-                bindActiveSurface(context)
-            } else {
-                updatePlayback()
-            }
+        target.priority = priority
+        if (sourceChanged || priorityChanged) {
+            refreshActiveTarget(
+                context = context,
+                forceRebind = target.takeIf { sourceChanged },
+            )
+        } else if (activeTarget?.view === view) {
+            updatePlayback()
         }
     }
 
@@ -197,14 +220,12 @@ internal object CoverVideoHost {
         view.alpha = 0f
         if (!wasActive) return
 
+        pauseAndRemember()
         clearSurface()
-        activeTarget = targets.values.lastOrNull()
-        val restored = activeTarget
-        if (restored != null) {
-            showPoster(context, restored.uri)
+        activeTarget = bestTarget()
+        if (activeTarget != null) {
             bindActiveSurface(context)
         } else {
-            pauseAndRemember()
             releaseJob?.cancel()
             releaseJob = scope.launch {
                 delay(RELEASE_GRACE_MS)
@@ -219,10 +240,37 @@ internal object CoverVideoHost {
         if (activeTarget?.view === view) updatePlayback()
     }
 
-    suspend fun warmPoster(context: Context, uri: String): Bitmap? {
-        val bitmap = CoverPosterCache.getOrCreate(context.applicationContext, uri)
-        if (activeTarget?.uri == uri) _poster.value = bitmap
-        return bitmap
+    suspend fun warmPoster(context: Context, uri: String): Bitmap? =
+        CoverPosterCache.getOrCreate(context.applicationContext, uri)
+
+    private fun bestTarget(): Target? {
+        var best: Target? = null
+        targets.values.forEach { candidate ->
+            val current = best
+            if (
+                current == null || coverVideoTargetOutranks(
+                    candidatePriority = candidate.priority,
+                    candidateSequence = candidate.sequence,
+                    activePriority = current.priority,
+                    activeSequence = current.sequence,
+                )
+            ) {
+                best = candidate
+            }
+        }
+        return best
+    }
+
+    private fun refreshActiveTarget(context: Context, forceRebind: Target?) {
+        val previous = activeTarget
+        val next = bestTarget()
+        activeTarget = next
+        val activeChanged = previous?.view !== next?.view
+        if (next != null && (activeChanged || forceRebind === next)) {
+            bindActiveSurface(context)
+        } else if (next != null) {
+            updatePlayback()
+        }
     }
 
     private fun bindActiveSurface(context: Context) {
@@ -353,22 +401,21 @@ internal object CoverVideoHost {
         session = null
     }
 
-    private fun showPoster(context: Context, uri: String) {
-        _poster.value = CoverPosterCache.get(uri)
-        scope.launch { warmPoster(context, uri) }
-    }
 }
 
 /** Three full-size frames at the cover's validated 1080p ceiling (about 24 MB). */
 private object CoverPosterCache {
     private const val MAX_ENTRIES = 3
     private val entries = LinkedHashMap<String, Bitmap>(MAX_ENTRIES, 0.75f, true)
+    private val decodeMutex = Mutex()
 
     @Synchronized
     fun get(uri: String): Bitmap? = entries[uri]
 
     suspend fun getOrCreate(context: Context, uri: String): Bitmap? = withContext(Dispatchers.IO) {
-        get(uri) ?: decode(context, uri)?.also { put(uri, it) }
+        decodeMutex.withLock {
+            get(uri) ?: decode(context, uri)?.also { put(uri, it) }
+        }
     }
 
     @Synchronized
@@ -428,10 +475,11 @@ internal fun CoverVideoBackground(
     playbackAllowed: Boolean,
     modifier: Modifier = Modifier,
     syncPositionProvider: (() -> Int?)? = null,
+    priority: CoverVideoPriority = CoverVideoPriority.BANNER,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val poster by CoverVideoHost.poster.collectAsState()
+    var poster by remember(uri) { mutableStateOf(CoverPosterCache.get(uri)) }
     val textureView = remember {
         TextureView(context).apply {
             isOpaque = false
@@ -440,10 +488,12 @@ internal fun CoverVideoBackground(
     }
 
     LaunchedEffect(uri) {
-        CoverVideoHost.warmPoster(context, uri)
+        poster = CoverVideoHost.warmPoster(context, uri)
     }
 
-    DisposableEffect(textureView, uri) {
+    // Keep the TextureView registered across URI changes. Host.update swaps the
+    // necessary MediaPlayer session while retaining this rendering surface.
+    DisposableEffect(textureView) {
         CoverVideoHost.attach(
             context = context,
             view = textureView,
@@ -452,6 +502,7 @@ internal fun CoverVideoBackground(
             lifecycleStarted = lifecycleOwner.lifecycle.currentState
                 .isAtLeast(Lifecycle.State.STARTED),
             syncPositionProvider = syncPositionProvider,
+            priority = priority,
         )
         onDispose { CoverVideoHost.detach(context, textureView) }
     }
@@ -496,6 +547,7 @@ internal fun CoverVideoBackground(
                     lifecycleStarted = lifecycleOwner.lifecycle.currentState
                         .isAtLeast(Lifecycle.State.STARTED),
                     syncPositionProvider = syncPositionProvider,
+                    priority = priority,
                 )
             },
             modifier = Modifier.fillMaxSize(),

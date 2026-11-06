@@ -54,6 +54,7 @@ import quiz.thaton3app.nazo.data.profile.AutomaticCoverKind
 import quiz.thaton3app.nazo.data.profile.AutomaticCoverState
 import quiz.thaton3app.nazo.data.profile.CoverPreset
 import quiz.thaton3app.nazo.data.profile.CoverPresetKind
+import quiz.thaton3app.nazo.data.profile.CoverVisual
 import quiz.thaton3app.nazo.data.profile.CoverPresets
 import quiz.thaton3app.nazo.data.profile.CoverVideoMedia
 import quiz.thaton3app.nazo.ui.theme.NazoError
@@ -260,9 +261,10 @@ internal fun CoverBackgroundSheet(
                         )
                     }
                 }
-                if (customSelected) {
-                    SelectedBadge(modifier = Modifier.align(Alignment.TopEnd))
-                }
+                AnimatedSelectedBadge(
+                    visible = customSelected,
+                    modifier = Modifier.align(Alignment.TopEnd),
+                )
             }
             Spacer(Modifier.height(10.dp))
             Row(
@@ -401,22 +403,24 @@ private fun AutomaticCoverTile(
             .semantics { contentDescription = "Automatically match profile picture" }
             .clickable(enabled = ready != null, onClick = onClick),
     ) {
-        when (val current = state) {
-            is AutomaticCoverState.Ready -> when (current.artifact.kind) {
-                AutomaticCoverKind.IMAGE -> SafeRemoteImage(
-                    url = current.artifact.uri,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                AutomaticCoverKind.VIDEO -> CoverVideoBackground(
-                    uri = current.artifact.uri,
-                    playbackAllowed = true,
-                    syncPositionProvider = {
-                        AvatarVideoHost.currentPositionFor(current.artifact.sourceUri)
-                    },
-                    modifier = Modifier.fillMaxSize(),
+        val previewVisual = ready?.artifact?.let { artifact ->
+            when (artifact.kind) {
+                AutomaticCoverKind.IMAGE -> CoverVisual.AutomaticImage(artifact.uri)
+                AutomaticCoverKind.VIDEO -> CoverVisual.AutomaticVideo(
+                    uri = artifact.uri,
+                    avatarUri = artifact.sourceUri,
                 )
             }
+        } ?: CoverVisual.Default
+        TransitioningCoverArtwork(
+            visual = previewVisual,
+            playbackAllowed = true,
+            videoPriority = CoverVideoPriority.SHEET_PREVIEW,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        when (val current = state) {
+            is AutomaticCoverState.Ready -> Unit
             is AutomaticCoverState.Preparing,
             AutomaticCoverState.Idle -> Box(
                 modifier = Modifier.fillMaxSize(),
@@ -474,7 +478,10 @@ private fun AutomaticCoverTile(
                 fontWeight = FontWeight.SemiBold,
             )
         }
-        if (selected) SelectedBadge(modifier = Modifier.align(Alignment.TopEnd))
+        AnimatedSelectedBadge(
+            visible = selected,
+            modifier = Modifier.align(Alignment.TopEnd),
+        )
     }
 }
 
@@ -525,6 +532,16 @@ private fun SheetSectionLabel(text: String) {
 }
 
 /** Round check badge shown on the selected option's top-end corner. */
+@Composable
+private fun AnimatedSelectedBadge(
+    visible: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    CoverPreviewReveal(visible = visible, modifier = modifier) {
+        SelectedBadge()
+    }
+}
+
 @Composable
 private fun SelectedBadge(modifier: Modifier = Modifier) {
     Box(
@@ -612,8 +629,9 @@ private fun CoverPresetTile(
                 maxLines = 1,
             )
         }
-        if (selected) {
-            SelectedBadge(modifier = Modifier.align(Alignment.TopEnd))
-        }
+        AnimatedSelectedBadge(
+            visible = selected,
+            modifier = Modifier.align(Alignment.TopEnd),
+        )
     }
 }
