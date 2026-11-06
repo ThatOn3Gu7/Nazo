@@ -20,7 +20,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.using
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -2299,8 +2298,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                                                 animationSpec = tween(220),
                                             ) + fadeOut(animationSpec = tween(220)),
                                         )
-                                        .apply { targetContentZIndex = -1f }
-                                        .using(null)
+                                        .apply {
+                                            targetContentZIndex = -1f
+                                            sizeTransform = null
+                                        }
                                 }
 
                                 predictiveBackTarget != null && initialState == predictiveBackTarget -> {
@@ -2317,8 +2318,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                                                 animationSpec = tween(220),
                                             ) + fadeOut(animationSpec = tween(180)),
                                         )
-                                        .apply { targetContentZIndex = 1f }
-                                        .using(null)
+                                        .apply {
+                                            targetContentZIndex = 1f
+                                            sizeTransform = null
+                                        }
                                 }
 
                                 else -> {
@@ -2361,8 +2364,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                                     )
                                         .apply {
                                             targetContentZIndex = if (direction > 0) 1f else -1f
+                                            sizeTransform = null
                                         }
-                                        .using(null)
                                 }
                             }
                         },
