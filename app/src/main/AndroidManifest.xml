@@ -198,14 +198,17 @@
 
 
 
-        <!-- Brush: "N" mark. Real <activity> so its manifest theme colors the starting
-             window before the process exists. -->
+        <!-- Retired Brush N / Pixel N migration shims. Existing installs can have one
+             of these component names explicitly enabled by PackageManager. Keep them
+             launchable for one release, but render Sumi Ember; startup sanitization
+             enables LauncherLight and disables the retired component. Fresh installs
+             never expose either entry because both default to disabled. -->
         <activity
             android:name=".LauncherBrush"
             android:label="@string/app_name"
-            android:icon="@mipmap/ic_launcher_nbrush"
-            android:roundIcon="@mipmap/ic_launcher_round_nbrush"
-            android:theme="@style/Theme.Nazo.Splash.Brush"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:theme="@style/Theme.Nazo.Splash"
             android:launchMode="singleTask"
             android:enabled="false"
             android:exported="true">
@@ -222,14 +225,12 @@
                 android:resource="@xml/shortcuts" />
         </activity>
 
-        <!-- Pixel: "N" mark. Real <activity> so its manifest theme colors the starting
-             window before the process exists. -->
         <activity
             android:name=".LauncherPixel"
             android:label="@string/app_name"
-            android:icon="@mipmap/ic_launcher_npixel"
-            android:roundIcon="@mipmap/ic_launcher_round_npixel"
-            android:theme="@style/Theme.Nazo.Splash.Pixel"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:theme="@style/Theme.Nazo.Splash"
             android:launchMode="singleTask"
             android:enabled="false"
             android:exported="true">
