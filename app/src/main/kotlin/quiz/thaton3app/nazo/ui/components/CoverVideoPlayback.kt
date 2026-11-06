@@ -2,6 +2,7 @@ package quiz.thaton3app.nazo.ui.components
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Matrix
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.net.Uri
@@ -36,6 +37,53 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
+
+internal data class CoverVideoSize(val width: Int, val height: Int)
+
+internal data class CoverVideoCropScale(val x: Float, val y: Float)
+
+/**
+ * Turns encoded dimensions into display dimensions. Android's video pipeline
+ * applies rotation metadata to the output buffer; 90°/270° therefore swap the
+ * axes used by our crop transform. This is also the fallback when a player has
+ * not reported its already-rotated display size yet.
+ */
+internal fun coverVideoDisplaySize(
+    encodedWidth: Int,
+    encodedHeight: Int,
+    rotationDegrees: Int,
+): CoverVideoSize? {
+    if (encodedWidth <= 0 || encodedHeight <= 0) return null
+    val normalizedRotation = ((rotationDegrees % 360) + 360) % 360
+    return if (normalizedRotation == 90 || normalizedRotation == 270) {
+        CoverVideoSize(encodedHeight, encodedWidth)
+    } else {
+        CoverVideoSize(encodedWidth, encodedHeight)
+    }
+}
+
+/**
+ * Center-crop correction for a TextureView whose producer maps content to the
+ * full view bounds. Exactly one axis grows; the composite source-to-screen
+ * scale is uniform, so source pixels are never stretched or compressed.
+ */
+internal fun coverVideoCropScale(
+    viewWidth: Int,
+    viewHeight: Int,
+    videoWidth: Int,
+    videoHeight: Int,
+): CoverVideoCropScale? {
+    if (viewWidth <= 0 || viewHeight <= 0 || videoWidth <= 0 || videoHeight <= 0) {
+        return null
+    }
+    val viewAspectRatio = viewWidth.toFloat() / viewHeight
+    val videoAspectRatio = videoWidth.toFloat() / videoHeight
+    return if (videoAspectRatio > viewAspectRatio) {
+        CoverVideoCropScale(x = videoAspectRatio / viewAspectRatio, y = 1f)
+    } else {
+        CoverVideoCropScale(x = 1f, y = viewAspectRatio / videoAspectRatio)
+    }
+}
 
 /** Pure gate shared by the host and JVM tests for every pause/resume input. */
 internal fun coverVideoShouldPlay(
@@ -96,6 +144,8 @@ internal object CoverVideoHost {
         val player: MediaPlayer,
         var prepared: Boolean = false,
         var rendering: Boolean = false,
+        var playerDisplaySize: CoverVideoSize? = null,
+        var posterDisplaySize: CoverVideoSize? = null,
     )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -122,20 +172,26 @@ internal object CoverVideoHost {
 
         view.isOpaque = false
         view.alpha = 0f
+        view.setTransform(null)
         view.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
             override fun onSurfaceTextureAvailable(
                 surfaceTexture: android.graphics.SurfaceTexture,
                 width: Int,
                 height: Int,
             ) {
-                if (activeTarget?.view === view) bindActiveSurface(context)
+                if (activeTarget?.view === view) {
+                    applyActiveTransform()
+                    bindActiveSurface(context)
+                }
             }
 
             override fun onSurfaceTextureSizeChanged(
                 surfaceTexture: android.graphics.SurfaceTexture,
                 width: Int,
                 height: Int,
-            ) = Unit
+            ) {
+                if (activeTarget?.view === view) revealActiveFrameIfReady()
+            }
 
             override fun onSurfaceTextureDestroyed(
                 surfaceTexture: android.graphics.SurfaceTexture,
@@ -154,7 +210,7 @@ internal object CoverVideoHost {
                 // the safe point to reveal an otherwise-black TextureView.
                 if (activeTarget?.view === view && session?.prepared == true) {
                     session?.rendering = true
-                    view.alpha = 1f
+                    revealActiveFrameIfReady()
                 }
             }
         }
@@ -197,7 +253,10 @@ internal object CoverVideoHost {
         }
         val sourceChanged = target.uri != uri
         val priorityChanged = target.priority != priority
-        if (sourceChanged) target.view.alpha = 0f
+        if (sourceChanged) {
+            target.view.alpha = 0f
+            target.view.setTransform(null)
+        }
         target.uri = uri
         target.playbackAllowed = playbackAllowed
         target.lifecycleStarted = lifecycleStarted
@@ -218,6 +277,7 @@ internal object CoverVideoHost {
         targets.remove(view)
         view.surfaceTextureListener = null
         view.alpha = 0f
+        view.setTransform(null)
         if (!wasActive) return
 
         pauseAndRemember()
@@ -240,8 +300,18 @@ internal object CoverVideoHost {
         if (activeTarget?.view === view) updatePlayback()
     }
 
-    suspend fun warmPoster(context: Context, uri: String): Bitmap? =
-        CoverPosterCache.getOrCreate(context.applicationContext, uri)
+    suspend fun warmPoster(context: Context, uri: String): Bitmap? {
+        val entry = CoverPosterCache.getOrCreate(context.applicationContext, uri)
+        entry?.displaySize?.let { displaySize ->
+            withContext(Dispatchers.Main.immediate) {
+                session?.takeIf { it.uri == uri }?.let { current ->
+                    current.posterDisplaySize = displaySize
+                    revealActiveFrameIfReady()
+                }
+            }
+        }
+        return entry?.bitmap
+    }
 
     private fun bestTarget(): Target? {
         var best: Target? = null
@@ -288,6 +358,7 @@ internal object CoverVideoHost {
             releaseSession()
             createSession(context.applicationContext, target.uri)
         }
+        applyActiveTransform()
 
         surface = Surface(texture).also { videoSurface ->
             session?.takeIf { it.prepared }?.player?.setSurface(videoSurface)
@@ -298,28 +369,49 @@ internal object CoverVideoHost {
 
     private fun createSession(context: Context, uri: String) {
         val player = MediaPlayer()
-        val created = Session(uri = uri, player = player)
+        val created = Session(
+            uri = uri,
+            player = player,
+            posterDisplaySize = CoverPosterCache.getDisplaySize(uri),
+        )
         session = created
         try {
             player.setVolume(0f, 0f)
             player.isLooping = true
+            player.setOnVideoSizeChangedListener { _, width, height ->
+                if (session !== created) return@setOnVideoSizeChangedListener
+                created.playerDisplaySize = coverVideoDisplaySize(width, height, rotationDegrees = 0)
+                revealActiveFrameIfReady()
+            }
             player.setOnPreparedListener { preparedPlayer ->
                 if (session !== created) return@setOnPreparedListener
                 created.prepared = true
+                created.playerDisplaySize = coverVideoDisplaySize(
+                    encodedWidth = preparedPlayer.videoWidth,
+                    encodedHeight = preparedPlayer.videoHeight,
+                    // AOSP MediaPlayer reports display-oriented dimensions:
+                    // NuPlayer has already swapped 90°/270° video axes.
+                    rotationDegrees = 0,
+                ) ?: created.playerDisplaySize
                 runCatching {
+                    // FIT deliberately maps the decoded frame to the TextureView
+                    // bounds; our explicit matrix below reverses that non-uniform
+                    // map into deterministic ContentScale.Crop semantics. Using
+                    // codec-side CROP as well would apply the crop twice.
                     preparedPlayer.setVideoScalingMode(
-                        MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+                        MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT
                     )
                 }
                 surface?.let { videoSurface ->
                     runCatching { preparedPlayer.setSurface(videoSurface) }
                 }
+                revealActiveFrameIfReady()
                 updatePlayback()
             }
             player.setOnInfoListener { _, what, _ ->
                 if (what == MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START && session === created) {
                     created.rendering = true
-                    activeTarget?.view?.alpha = 1f
+                    revealActiveFrameIfReady()
                 }
                 false
             }
@@ -332,6 +424,12 @@ internal object CoverVideoHost {
                 true
             }
             player.setDataSource(context, Uri.parse(uri))
+            // Documented valid from Initialized onward and established before
+            // prepare so no first frame can use an implicit vendor default.
+            // FIT is also the documented default if an OEM rejects this call.
+            runCatching {
+                player.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT)
+            }
             player.prepareAsync()
         } catch (_: Throwable) {
             if (session === created) {
@@ -339,6 +437,46 @@ internal object CoverVideoHost {
                 activeTarget?.view?.alpha = 0f
             }
         }
+    }
+
+    /** Applies the same centered crop as the poster's ContentScale.Crop. */
+    private fun applyActiveTransform(): Boolean {
+        val target = activeTarget ?: return false
+        val current = session?.takeIf { it.uri == target.uri } ?: return false
+        // A decoded poster is the strongest framing reference because it is
+        // exactly what Compose shows beneath this view. MediaPlayer's display
+        // size is available earlier and is already rotation-adjusted by AOSP.
+        val displaySize = current.posterDisplaySize ?: current.playerDisplaySize
+        val scale = displaySize?.let { size ->
+            coverVideoCropScale(
+                viewWidth = target.view.width,
+                viewHeight = target.view.height,
+                videoWidth = size.width,
+                videoHeight = size.height,
+            )
+        } ?: run {
+            target.view.setTransform(null)
+            return false
+        }
+        target.view.setTransform(
+            Matrix().apply {
+                setScale(
+                    scale.x,
+                    scale.y,
+                    target.view.width / 2f,
+                    target.view.height / 2f,
+                )
+            }
+        )
+        return true
+    }
+
+    private fun revealActiveFrameIfReady() {
+        val current = session ?: return
+        val target = activeTarget ?: return
+        if (current.uri != target.uri) return
+        val geometryReady = applyActiveTransform()
+        target.view.alpha = if (current.prepared && current.rendering && geometryReady) 1f else 0f
     }
 
     private fun updatePlayback() {
@@ -403,24 +541,40 @@ internal object CoverVideoHost {
 
 }
 
+private data class CoverPosterEntry(
+    val bitmap: Bitmap?,
+    val displaySize: CoverVideoSize?,
+)
+
 /** Three full-size frames at the cover's validated 1080p ceiling (about 24 MB). */
 private object CoverPosterCache {
     private const val MAX_ENTRIES = 3
-    private val entries = LinkedHashMap<String, Bitmap>(MAX_ENTRIES, 0.75f, true)
+    private val entries = LinkedHashMap<String, CoverPosterEntry>(MAX_ENTRIES, 0.75f, true)
     private val decodeMutex = Mutex()
 
     @Synchronized
-    fun get(uri: String): Bitmap? = entries[uri]
-
-    suspend fun getOrCreate(context: Context, uri: String): Bitmap? = withContext(Dispatchers.IO) {
-        decodeMutex.withLock {
-            get(uri) ?: decode(context, uri)?.also { put(uri, it) }
-        }
-    }
+    fun get(uri: String): Bitmap? = entries[uri]?.bitmap
 
     @Synchronized
-    private fun put(uri: String, bitmap: Bitmap) {
-        entries[uri] = bitmap
+    fun getDisplaySize(uri: String): CoverVideoSize? = entries[uri]?.displaySize
+
+    suspend fun getOrCreate(context: Context, uri: String): CoverPosterEntry? =
+        withContext(Dispatchers.IO) {
+            decodeMutex.withLock {
+                getEntry(uri) ?: decode(context, uri)?.also { decoded ->
+                    // Metadata-only fallbacks are useful to this live session,
+                    // but do not make a transient frame-decode miss permanent.
+                    if (decoded.bitmap != null) put(uri, decoded)
+                }
+            }
+        }
+
+    @Synchronized
+    private fun getEntry(uri: String): CoverPosterEntry? = entries[uri]
+
+    @Synchronized
+    private fun put(uri: String, entry: CoverPosterEntry) {
+        entries[uri] = entry
         while (entries.size > MAX_ENTRIES) {
             val eldest = entries.entries.firstOrNull()?.key ?: break
             entries.remove(eldest)
@@ -430,11 +584,34 @@ private object CoverPosterCache {
         }
     }
 
-    private fun decode(context: Context, uri: String): Bitmap? {
+    private fun decode(context: Context, uri: String): CoverPosterEntry? {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(context, Uri.parse(uri))
-            retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            val encodedWidth = retriever.extractMetadata(
+                MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH
+            )?.toIntOrNull() ?: 0
+            val encodedHeight = retriever.extractMetadata(
+                MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT
+            )?.toIntOrNull() ?: 0
+            val rotation = retriever.extractMetadata(
+                MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION
+            )?.toIntOrNull() ?: 0
+            val frame = retriever.getFrameAtTime(
+                0,
+                MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+            )
+            // Framework frame extraction normally applies rotation itself. Its
+            // actual bitmap dimensions are therefore the best poster/live
+            // agreement; metadata supplies a rotation-aware fallback when no
+            // representative frame can be decoded.
+            val frameSize = frame?.let {
+                coverVideoDisplaySize(it.width, it.height, rotationDegrees = 0)
+            }
+            val metadataSize = coverVideoDisplaySize(encodedWidth, encodedHeight, rotation)
+            if (frame == null && metadataSize == null) null else {
+                CoverPosterEntry(bitmap = frame, displaySize = frameSize ?: metadataSize)
+            }
         } catch (_: Throwable) {
             null
         } finally {

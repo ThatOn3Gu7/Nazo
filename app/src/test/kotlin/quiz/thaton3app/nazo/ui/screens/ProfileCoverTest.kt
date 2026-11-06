@@ -49,6 +49,32 @@ class ProfileCoverTest {
     }
 
     @Test
+    fun landscapeCoverShiftIsResponsiveWithoutMovingOrNarrowingTheRightPane() {
+        val narrow = landscapeProfileSpacing(screenWidthDp = 600)
+        assertEquals(24f, narrow.startPadding.value, 0.001f)
+        assertEquals(32f, narrow.columnSpacing.value, 0.001f)
+
+        val normal = landscapeProfileSpacing(screenWidthDp = 800)
+        assertEquals(32f, normal.startPadding.value, 0.001f) // cover/avatar +8dp
+        assertEquals(24f, normal.columnSpacing.value, 0.001f)
+
+        val wide = landscapeProfileSpacing(screenWidthDp = 1200)
+        assertEquals(36f, wide.startPadding.value, 0.001f) // clamped +12dp
+        assertEquals(20f, wide.columnSpacing.value, 0.001f)
+
+        // The exchanged spacing always totals 56dp. Consequently the left
+        // column keeps its old width and the right column keeps its old x edge.
+        listOf(narrow, normal, wide).forEach { spacing ->
+            assertEquals(
+                56f,
+                spacing.startPadding.value + spacing.columnSpacing.value,
+                0.001f,
+            )
+        }
+        assertEquals(8f, LandscapeRightColumnTopPadding.value, 0f)
+    }
+
+    @Test
     fun previewAspectRatioMirrorsTheLayoutMath() {
         // The cover preview dialog's frame must match the real banner pixel
         // for pixel, or "what you see is what you get" would be a lie.

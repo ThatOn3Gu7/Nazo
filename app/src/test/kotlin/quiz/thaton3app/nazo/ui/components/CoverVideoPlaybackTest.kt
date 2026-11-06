@@ -2,6 +2,7 @@ package quiz.thaton3app.nazo.ui.components
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -70,5 +71,49 @@ class CoverVideoPlaybackTest {
                 )
             )
         }
+    }
+
+    @Test
+    fun rotationMetadataSwapsOnlyQuarterTurnDisplayAxes() {
+        assertEquals(CoverVideoSize(1920, 1080), coverVideoDisplaySize(1920, 1080, 0))
+        assertEquals(CoverVideoSize(1080, 1920), coverVideoDisplaySize(1920, 1080, 90))
+        assertEquals(CoverVideoSize(1920, 1080), coverVideoDisplaySize(1920, 1080, 180))
+        assertEquals(CoverVideoSize(1080, 1920), coverVideoDisplaySize(1920, 1080, 270))
+        assertEquals(CoverVideoSize(1080, 1920), coverVideoDisplaySize(1920, 1080, -90))
+        assertNull(coverVideoDisplaySize(0, 1080, 90))
+    }
+
+    @Test
+    fun cropTransformPreservesProportionsForLandscapeAndPortraitVideo() {
+        val landscape = requireNotNull(
+            coverVideoCropScale(
+                viewWidth = 400,
+                viewHeight = 100,
+                videoWidth = 1920,
+                videoHeight = 1080,
+            )
+        )
+        // A 16:9 clip in a 4:1 banner fills width and crops vertically.
+        assertEquals(1f, landscape.x, 0.0001f)
+        assertEquals(2.25f, landscape.y, 0.0001f)
+
+        val portrait = requireNotNull(
+            coverVideoCropScale(
+                viewWidth = 400,
+                viewHeight = 100,
+                videoWidth = 1080,
+                videoHeight = 1920,
+            )
+        )
+        // A portrait recording uses the same centered fill rule without
+        // distortion; only the vertical overflow is clipped by the banner.
+        assertEquals(1f, portrait.x, 0.0001f)
+        assertEquals(400f / 100f / (1080f / 1920f), portrait.y, 0.0001f)
+
+        assertEquals(
+            CoverVideoCropScale(1f, 1f),
+            coverVideoCropScale(400, 100, 1600, 400),
+        )
+        assertNull(coverVideoCropScale(0, 100, 1920, 1080))
     }
 }
