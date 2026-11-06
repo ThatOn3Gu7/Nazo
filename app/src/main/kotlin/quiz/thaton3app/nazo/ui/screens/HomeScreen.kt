@@ -22,6 +22,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -55,8 +56,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -66,6 +69,7 @@ import kotlin.math.PI
 import kotlin.math.sin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import quiz.thaton3app.nazo.R
 import quiz.thaton3app.nazo.daily.DailyChallengeCard
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.ui.components.Haptics
@@ -599,22 +603,23 @@ private fun HomeHeader(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth()
     ) {
-        // Brand lockup: solid mark + wordmark. Deliberately NOT pill-shaped —
-        // pills on this screen mean "status or selection", and the logo used
-        // to wear the same chrome as the interactive chips below it.
+        // Brand lockup: the same custom brush mark as the default launcher,
+        // rather than a system-font approximation. Deliberately NOT pill-shaped—
+        // pills on this screen mean "status or selection". The fixed bottle-
+        // green tile keeps the identity stable across user-selected app accents.
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(RoundedCornerShape(11.dp))
-                    .background(NazoPrimary),
+                    .background(Color(0xFF1B4135)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = "謎",
-                    color = NazoOnPrimary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 19.sp,
+                Image(
+                    painter = painterResource(R.drawable.ic_mark_nazo_brand),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.size(28.dp),
                 )
             }
             Spacer(Modifier.width(10.dp))

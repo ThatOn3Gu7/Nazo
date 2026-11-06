@@ -46,8 +46,8 @@ import quiz.thaton3app.nazo.R
 /** Raster size for the punched-out mark. Matches the legacy 512px PNG foreground. */
 private const val MARK_RASTER_PX = 512
 
-private val IntroBackgroundLight = Color(0xFF36A06F)
-private val IntroBackgroundDark = Color(0xFF246D4C)
+private val IntroBackgroundLight = Color(0xFF1B4135)
+private val IntroBackgroundDark = Color(0xFF0F1713)
 
 // Slow initial swell, then rapid acceleration past the camera
 private val WarpSpeedEasing = CubicBezierEasing(0.7f, 0f, 0.15f, 1f)
@@ -71,7 +71,7 @@ private val WarpSpeedEasing = CubicBezierEasing(0.7f, 0f, 0.15f, 1f)
 fun IntroOverlay(
     isDark: Boolean,
     backgroundColor: Color? = null,
-    mark: Int = R.drawable.ic_launcher_foreground,
+    mark: Int = R.drawable.ic_mark_nazo_silhouette,
     style: IntroStyle = IntroStyle.WARP,
 ) {
     var dismissed by remember { mutableStateOf(false) }

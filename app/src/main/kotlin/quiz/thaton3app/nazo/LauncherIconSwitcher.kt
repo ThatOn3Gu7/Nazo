@@ -41,15 +41,16 @@ data class AppIconOption(
     val splashColor: Long? = null,
     /**
      * Silhouette drawable used by the intro zoom-through (BlendMode.DstOut needs a
-     * flat alpha mask, not full-color art) — defaults to the 謎 kanji foreground.
+     * flat alpha mask, not full-color art). Color variants keep the legacy kanji;
+     * the default pair overrides this with the custom Sumi Ember silhouette.
      */
     @DrawableRes val introMark: Int = R.drawable.ic_launcher_foreground,
     /** Which launch animation this icon plays. See [IntroStyle]. */
     val introStyle: IntroStyle = IntroStyle.WARP,
     /**
-     * Full-color art shown in the Appearance picker (and nothing else). Defaults to
-     * the 謎 kanji; illustrated variants point at their color mark so the list shows
-     * what actually lands on the home screen.
+     * Full-color art shown in the Appearance picker (and nothing else). Color-only
+     * variants retain the original kanji, while default and illustrated options
+     * point at the artwork that actually lands on the home screen.
      */
     @DrawableRes val previewMark: Int = R.drawable.ic_launcher_foreground,
 )
@@ -82,7 +83,7 @@ enum class IntroStyle {
  */
 object LauncherIconSwitcher {
 
-    /** The classic light/dark pair (used by the follow-OS-theme mode). */
+    /** The default Sumi Ember light/dark pair (used by follow-OS-theme mode). */
     const val ID_LIGHT = "light"
     const val ID_DARK = "dark"
 
@@ -90,20 +91,24 @@ object LauncherIconSwitcher {
         AppIconOption(
             id = ID_LIGHT,
             alias = "LauncherLight",
-            label = "Classic Green",
-            blurb = "The original Nazo mark on mint green",
-            startColor = 0xFF36A06F,
-            endColor = 0xFF36A06F,
+            label = "Sumi Ember",
+            blurb = "Brush-lit kanji on deep bottle green",
+            startColor = 0xFF1B4135,
+            endColor = 0xFF1B4135,
             themed = true,
+            introMark = R.drawable.ic_mark_nazo_silhouette,
+            previewMark = R.drawable.ic_launcher_foreground_nazo,
         ),
         AppIconOption(
             id = ID_DARK,
             alias = "LauncherDark",
-            label = "Deep Green",
-            blurb = "Darker take on the classic, easy on OLED",
-            startColor = 0xFF246D4C,
-            endColor = 0xFF246D4C,
+            label = "Sumi Ember Dark",
+            blurb = "Warm kanji on a forest-black ground",
+            startColor = 0xFF0F1713,
+            endColor = 0xFF0F1713,
             themed = true,
+            introMark = R.drawable.ic_mark_nazo_silhouette,
+            previewMark = R.drawable.ic_launcher_foreground_nazo,
         ),
         AppIconOption(
             id = "sakura",
