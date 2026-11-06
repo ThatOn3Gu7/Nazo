@@ -4510,24 +4510,28 @@ the menu keeps its existing 12.dp internal spacing. `fillMaxHeight` plus
 `verticalScroll` remains, so short landscape/split-screen windows can reach the
 bottom without entering status/navigation-bar regions.
 
-**Exact landscape horizontal adjustment.** Portrait is untouched. Landscape now
-computes a cover shift as `clamp((screenWidthDp - 600) * 0.04, 0, 12).dp`.
-That amount is added to the old 24.dp start gutter and subtracted from the old
-32.dp inter-column gap. At 600dp the shift is 0dp; at 640dp it is 1.6dp; at
-800dp it is 8dp; at 900dp and wider it is capped at 12dp. Thus cover and avatar
-move together while their alignment, overlap, sizes and column width stay exact.
-Because start gutter + gap remains 56.dp, the right pane's start edge and width
-also remain exact; the gap never falls below 20.dp. Toolbar coordinates are not
+**Exact landscape horizontal adjustment (final cutout correction).** Portrait is
+untouched. Scaffold's horizontal content inset already clears the camera/display
+cutout and system bars, so adding more start padding was the wrong direction.
+Landscape now computes a left shift as
+`clamp((screenWidthDp - 600) * 0.04, 0, 15).dp`. That amount is subtracted from
+the old 24.dp inner start gutter and added to the old 32.dp inter-column gap. At
+600dp the shift is 0dp; at 640dp it is 1.6dp; at 800dp it is 8dp; at 975dp and
+wider it is capped at 15dp, leaving a 9dp visual guard after the cutout-safe
+edge. Relative to the superseded inward adjustment, the common 800dp layout
+moves 16dp left. Cover and avatar move together while their alignment, overlap,
+sizes and column width stay exact. Because start gutter + gap remains 56.dp, the
+right pane's start edge and width also remain exact. Toolbar coordinates are not
 changed, and preview aspect math remains WYSIWYG because total horizontal space
 is unchanged.
 
 **Automated coverage.** `CoverVideoPlaybackTest` now pins rotation normalization
 (including 90, 270 and -90), invalid dimensions, square/no-op geometry, and the
 center-crop factors for both landscape and portrait videos. `ProfileCoverTest`
-pins the 0/8/12dp responsive shift, the invariant 56dp start-plus-gap sum, the
-20dp minimum gap and the right pane's 8dp top breathing room. Existing playback
-gates, target priority, position normalization, cover heights, preview aspect,
-avatar overlap and all other suites remain in the CI run.
+pins the responsive 24/16/9dp cutout-side gutters, matching 32/40/47dp gaps, the
+invariant 56dp start-plus-gap sum and the right pane's 8dp top breathing room.
+Existing playback gates, target priority, position normalization, cover heights,
+preview aspect, avatar overlap and all other suites remain in the CI run.
 
 ### Remaining physical-device checks
 

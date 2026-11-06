@@ -176,18 +176,19 @@ internal data class LandscapeProfileSpacing(
 )
 
 /**
- * Moves only the landscape cover/avatar column modestly toward the centre.
- * Every dp added to the 24.dp start gutter is removed from the 32.dp column
- * gap, so left-column width and the right-column start edge remain unchanged.
- * The shift ramps from 0.dp at 600dp to 12.dp at 900dp (4% of surplus width),
- * protecting narrow split-screen windows while giving normal/wide landscape
- * screens 8–12.dp of breathing room.
+ * Moves only the landscape cover/avatar column toward the cutout-safe edge.
+ * Scaffold's start inset already clears the display cutout/system bars, so the
+ * additional 24.dp content gutter can shrink as horizontal room increases.
+ * Every dp removed there is added to the 32.dp column gap: left-column width
+ * and the right-column start edge therefore remain unchanged. The left shift
+ * ramps at 4% above 600dp and caps at 15dp, retaining a 9dp visual guard even
+ * on wide screens while protecting narrow split-screen windows.
  */
 internal fun landscapeProfileSpacing(screenWidthDp: Int): LandscapeProfileSpacing {
-    val coverShift = ((screenWidthDp - 600) * 0.04f).coerceIn(0f, 12f).dp
+    val coverLeftShift = ((screenWidthDp - 600) * 0.04f).coerceIn(0f, 15f).dp
     return LandscapeProfileSpacing(
-        startPadding = 24.dp + coverShift,
-        columnSpacing = 32.dp - coverShift,
+        startPadding = 24.dp - coverLeftShift,
+        columnSpacing = 32.dp + coverLeftShift,
     )
 }
 
