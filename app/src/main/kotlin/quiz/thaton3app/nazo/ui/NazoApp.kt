@@ -78,6 +78,7 @@ import quiz.thaton3app.nazo.data.settings.ProfilePreferences
 import quiz.thaton3app.nazo.data.settings.QuestionHistoryStore
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
+import quiz.thaton3app.nazo.data.profile.CoverVideoMedia
 import quiz.thaton3app.nazo.modes.guessing_game.GuessApiClient
 import quiz.thaton3app.nazo.modes.guessing_game.GuessImageFetcher
 import quiz.thaton3app.nazo.modes.guessing_game.GuessPayload
@@ -96,6 +97,7 @@ import quiz.thaton3app.nazo.ui.components.AvatarAnchorId
 import quiz.thaton3app.nazo.ui.components.AvatarAnchorRegistry
 import quiz.thaton3app.nazo.ui.components.AvatarFrameCache
 import quiz.thaton3app.nazo.ui.components.AvatarVideoHost
+import quiz.thaton3app.nazo.ui.components.CoverVideoHost
 import quiz.thaton3app.nazo.ui.components.CHANGELOG_ID
 import quiz.thaton3app.nazo.ui.components.LocalAvatarAnchorRegistry
 import quiz.thaton3app.nazo.ui.components.PersistentAvatarVideo
@@ -270,6 +272,32 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     LaunchedEffect(profilePictureUri) {
         AvatarVideoHost.prepareForAvatar(context, profilePictureUri)
         AvatarFrameCache.warmFromDisc(context, profilePictureUri)
+    }
+    // Cover videos keep a bounded first-frame cache rather than preparing a
+    // second decoder at startup. Warming the poster prevents a black loading
+    // rectangle when Profile is first opened; actual playback is still owned
+    // by its independent, lifecycle-gated cover host.
+    LaunchedEffect(coverPictureUri) {
+        val uri = coverPictureUri ?: return@LaunchedEffect
+        val localPath = runCatching { Uri.parse(uri).path }.getOrNull()
+        if (uri.startsWith("file://") &&
+            (localPath.isNullOrBlank() || !java.io.File(localPath).isFile)
+        ) {
+            // App-owned cover files normally survive restarts. If storage was
+            // cleared or a non-portable backup path was restored, fail back to
+            // the normal cover instead of retrying a dead decoder forever.
+            coverPictureUri = null
+            profilePrefs.coverPictureUri = null
+            Toast.makeText(
+                context,
+                "Your saved cover is no longer available.",
+                Toast.LENGTH_LONG,
+            ).show()
+            return@LaunchedEffect
+        }
+        if (CoverVideoMedia.isVideoUri(uri)) {
+            CoverVideoHost.warmPoster(context, uri)
+        }
     }
     val backupPrefs = remember { BackupPrefs(context) }
     val settingsScrollState = rememberScrollState()
@@ -1695,6 +1723,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         profilePictureUri = profilePictureUri,
                         coverPictureUri = coverPictureUri,
                         coverPresetId = coverPresetId,
+                        screenActive = currentScreen == Screen.Profile,
                         quizStats = quizStats,
                         offline = offlineMode,
                         onBack = { goBack() },

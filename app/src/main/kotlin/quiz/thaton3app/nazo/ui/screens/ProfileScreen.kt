@@ -4,7 +4,9 @@ import java.io.File
 import androidx.compose.ui.res.painterResource
 import quiz.thaton3app.nazo.ui.components.AnimatedCoverGradient
 import quiz.thaton3app.nazo.ui.components.CoverBackgroundSheet
+import quiz.thaton3app.nazo.ui.components.CoverVideoBackground
 import quiz.thaton3app.nazo.ui.components.ProfileCoverPreviewDialog
+import quiz.thaton3app.nazo.ui.components.ProfileCoverVideoPreviewDialog
 import quiz.thaton3app.nazo.ui.components.ProfileImagePreviewDialog
 import quiz.thaton3app.nazo.data.profile.CoverPresetKind
 import quiz.thaton3app.nazo.data.profile.CoverVisual
@@ -115,16 +117,14 @@ val ProfileHeaderFont = FontFamily(
 // ends on a hard rectangle. It is drawn inside the screen subtree, which
 // sits above the root-level particle background, so it hides the particles
 // beneath it while they keep drifting behind everything else.
-// Gallery cover images (Phase 2): static only, center-crop, no URLs:
-// pencil sheet → ProfileCoverPreviewDialog (sniff + 1024×480 floor +
-// WYSIWYG frame) → ProfileImageStore.saveCover → coverPictureUri in prefs.
-// Built-in collections: the pencil opens CoverBackgroundSheet — bundled
-// static photos + animated gradients + the custom photo — and the chosen
-// preset id persists separately, so switching never discards the photo.
-// resolveCoverVisual decides what the banner draws (preset > gallery >
-// placeholder). Still to come: video / avatar-derived backgrounds and the
-// backup payload. The gradient is the placeholder whenever no cover is
-// selected — and the stand-in while a photo loads or fails.
+// Custom cover media: center-cropped photos plus validated, muted H.264 MP4
+// loops. The picker previews first, then ProfileImageStore writes an app-owned
+// file and only afterwards replaces coverPictureUri in preferences.
+// Built-in collections remain in CoverBackgroundSheet alongside the custom
+// photo/video; their preset id is separate, so switching never discards the
+// custom medium. resolveCoverVisual applies preset > custom media > default.
+// Avatar-derived backgrounds remain a later phase. The default gradient also
+// stays visible while a photo/poster loads or a decoder cannot produce output.
 
 /** Avatar diameter used by the cover straddle (same 132.dp as before). */
 private val CoverAvatarSize = 132.dp
@@ -209,7 +209,7 @@ internal fun coverPreviewTopExtensionDp(isLandscape: Boolean): Float =
 /**
  * The cover header itself: a large rounded rectangle drawn from the
  * resolved [CoverVisual] — the placeholder gradient (Default), the user's
- * gallery photo (Gallery), a bundled preset photo (IMAGE, same
+ * gallery photo (Gallery), a custom muted loop (Video), a bundled preset photo (IMAGE, same
  * `ContentScale.Crop` rules as gallery picks: fills the header, excess
  * clipped at the rounded corners, never letterboxed or stretched), or a
  * preset animated gradient (GRADIENT, procedural, lifecycle-aware — see
@@ -236,6 +236,7 @@ internal fun coverPreviewTopExtensionDp(isLandscape: Boolean): Float =
 private fun ProfileCoverBanner(
     height: Dp,
     visual: CoverVisual,
+    videoPlaybackAllowed: Boolean,
     modifier: Modifier = Modifier,
     editButton: @Composable BoxScope.() -> Unit = {},
     content: @Composable BoxScope.() -> Unit,
@@ -259,6 +260,13 @@ private fun ProfileCoverBanner(
             is CoverVisual.Gallery -> SafeRemoteImage(
                 url = visual.uri,
                 contentDescription = "Cover photo",
+                modifier = Modifier
+                    .matchParentSize()
+                    .clip(RoundedCornerShape(CoverCornerRadius)),
+            )
+            is CoverVisual.Video -> CoverVideoBackground(
+                uri = visual.uri,
+                playbackAllowed = videoPlaybackAllowed,
                 modifier = Modifier
                     .matchParentSize()
                     .clip(RoundedCornerShape(CoverCornerRadius)),
@@ -315,7 +323,7 @@ private fun ProfileCoverBanner(
  * target clears the straddling avatar's circle even on the narrowest
  * landscape left column (40/60 split on a 640.dp screen). The icon carries
  * the accessibility label; the clickable Box merges it so TalkBack
- * announces one "Change cover photo" control.
+ * announces one "Change cover background" control.
  */
 @Composable
 private fun CoverEditButton(onClick: () -> Unit) {
@@ -330,7 +338,7 @@ private fun CoverEditButton(onClick: () -> Unit) {
     ) {
         Icon(
             imageVector = Icons.Rounded.Edit,
-            contentDescription = "Change cover photo",
+            contentDescription = "Change cover background",
             tint = Color.White,
             modifier = Modifier.size(20.dp),
         )
@@ -342,10 +350,12 @@ private fun CoverEditButton(onClick: () -> Unit) {
 fun ProfileScreen(
     username: String,
     profilePictureUri: String?,
-    /** Cover banner image: null = no stored photo, else our own `file://`. */
+    /** Cover banner medium: null, or our app-owned photo/video `file://`. */
     coverPictureUri: String? = null,
-    /** Built-in cover preset id (`photo_*` / `gradient_*`); null = gallery/default flow. */
+    /** Built-in cover preset id (`photo_*` / `gradient_*`); null = custom/default flow. */
     coverPresetId: String? = null,
+    /** False as soon as navigation commits away, while the outgoing UI fades. */
+    screenActive: Boolean = true,
     quizStats: QuizStats = QuizStats(),
     /** When true, never hit the network: use the local generator directly. */
     offline: Boolean = false,
@@ -379,6 +389,7 @@ fun ProfileScreen(
     var showCoverSheet by rememberRetained("Profile.showCoverSheet") { false }
     var showCoverRemoveConfirm by rememberRetained("Profile.showCoverRemoveConfirm") { false }
     var pendingCoverSource by rememberRetained<ProfileImageSource?>("Profile.pendingCoverSource") { null }
+    var pendingCoverIsVideo by rememberRetained("Profile.pendingCoverIsVideo") { false }
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -425,16 +436,28 @@ fun ProfileScreen(
         }
     )
 
-    // Cover picks are STATIC images only: ImageOnly so the system picker
-    // never offers a video, and GIF / animated WebP (which still appear in
-    // an image picker) are rejected by byte-sniff inside the cover preview
-    // dialog. Gallery only — no URL path exists for covers at all.
-    val coverGalleryLauncher = rememberLauncherForActivityResult(
+    // Separate photo/video launch actions keep the system picker's filter
+    // honest. Both are previewed first; accepted media is copied into our
+    // private cover directory, so no long-lived provider permission is needed.
+    val coverPhotoLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri ->
-            uri?.let { pendingCoverSource = ProfileImageSource.ContentUri(it) }
+            uri?.let {
+                pendingCoverIsVideo = false
+                pendingCoverSource = ProfileImageSource.ContentUri(it)
+            }
         },
     )
+    val coverVideoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+        onResult = { uri ->
+            uri?.let {
+                pendingCoverIsVideo = true
+                pendingCoverSource = ProfileImageSource.ContentUri(it)
+            }
+        },
+    )
+
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -546,6 +569,7 @@ fun ProfileScreen(
                             screenHeightDp = configuration.screenHeightDp,
                         ) + coverTopExtension,
                         visual = coverVisual,
+                        videoPlaybackAllowed = screenActive && !avatarBehindDialogsPaused,
                         editButton = coverEditButton,
                     ) {
                         ProfileAvatar(
@@ -671,6 +695,7 @@ fun ProfileScreen(
                         screenHeightDp = configuration.screenHeightDp,
                     ) + coverTopExtension,
                     visual = coverVisual,
+                    videoPlaybackAllowed = screenActive && !avatarBehindDialogsPaused,
                     editButton = coverEditButton,
                     modifier = Modifier.padding(horizontal = 12.dp),
                 ) {
@@ -1712,24 +1737,37 @@ fun ProfileScreen(
         )
     }
 
-    // Cover pick preview: gallery pick → sniff/size validation → WYSIWYG
-    // banner frame → save. The source is retained, so a rotation reopens
-    // this dialog instead of dropping the pick (same rule as pendingSource).
+    // Cover pick preview: validate → WYSIWYG banner frame → safe app-private
+    // save. Video validation also proves an H.264 decoder can produce a frame.
     val activeCoverSource = pendingCoverSource
     if (activeCoverSource != null) {
-        ProfileCoverPreviewDialog(
-            source = activeCoverSource,
-            onDismiss = { pendingCoverSource = null },
-            onAccepted = { savedUri ->
-                pendingCoverSource = null
-                onCoverPictureChange(savedUri)
-                // A freshly picked photo becomes the active cover: clear any
-                // preset so it shows immediately (saveCover's prune replaces
-                // the old file exactly as before).
-                onCoverPresetChange(null)
-            },
-        )
+        val dismissCoverPreview = {
+            pendingCoverSource = null
+            pendingCoverIsVideo = false
+        }
+        val acceptCover: (String) -> Unit = { savedUri ->
+            pendingCoverSource = null
+            pendingCoverIsVideo = false
+            onCoverPictureChange(savedUri)
+            // The new custom medium should show immediately. The old custom
+            // file is only pruned after this save has fully validated.
+            onCoverPresetChange(null)
+        }
+        if (pendingCoverIsVideo && activeCoverSource is ProfileImageSource.ContentUri) {
+            ProfileCoverVideoPreviewDialog(
+                source = activeCoverSource,
+                onDismiss = dismissCoverPreview,
+                onAccepted = acceptCover,
+            )
+        } else {
+            ProfileCoverPreviewDialog(
+                source = activeCoverSource,
+                onDismiss = dismissCoverPreview,
+                onAccepted = acceptCover,
+            )
+        }
     }
+
 
     // Unified cover selection: bundled photos, animated gradients, and the
     // custom gallery option, each previewed at the real banner ratio.
@@ -1747,15 +1785,20 @@ fun ProfileScreen(
             ),
             onDismiss = { showCoverSheet = false },
             onSelectPreset = { id -> onCoverPresetChange(id) },
-            onUseCustomPhoto = { onCoverPresetChange(null) },
-            onPickFromGallery = {
-                // Same dismiss-then-launch the old menu did: the system
-                // picker (and then the preview dialog) should not stack on
-                // top of an open sheet.
+            onUseCustomMedia = { onCoverPresetChange(null) },
+            onPickPhoto = {
                 showCoverSheet = false
-                coverGalleryLauncher.launch(
+                coverPhotoLauncher.launch(
                     PickVisualMediaRequest(
                         ActivityResultContracts.PickVisualMedia.ImageOnly
+                    )
+                )
+            },
+            onPickVideo = {
+                showCoverSheet = false
+                coverVideoLauncher.launch(
+                    PickVisualMediaRequest(
+                        ActivityResultContracts.PickVisualMedia.VideoOnly
                     )
                 )
             },
@@ -1772,12 +1815,12 @@ fun ProfileScreen(
         AlertDialog(
             onDismissRequest = { showCoverRemoveConfirm = false },
             icon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = NazoError) },
-            title = { Text("Remove cover photo?") },
+            title = { Text("Remove cover background?") },
             text = {
                 Text(
                     if (!coverPictureUri.isNullOrBlank()) {
                         "Your profile goes back to the plain cover background. To use " +
-                            "the photo again you would need to choose it from your gallery."
+                            "this photo or video again you would need to choose it again."
                     } else {
                         "Your profile goes back to the plain cover background."
                     },

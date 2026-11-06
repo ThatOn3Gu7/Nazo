@@ -4055,3 +4055,119 @@ selection flow untouched).**
 - Preview-phase tuning renders (`grad_preview/`) were working artifacts
   and were deleted before commit; the Kotlin math + `CoverGradientTest`
   are the durable record.
+
+## Profile cover: custom muted video backgrounds (2026-11-06)
+
+**What changed.** The existing cover sheet now has separate **Choose photo**
+and **Choose video** actions. A video pick stays temporary while a WYSIWYG
+banner dialog validates and previews it; Accept copies it into app-private
+`profile_covers/` storage, then activates it. Stored videos autoplay muted,
+loop continuously, center-crop into the exact existing cover bounds, and can be
+reselected, replaced, removed, or hidden behind any built-in preset without
+changing the photo/preset flow. All 14 photo presets and all five gradient ids
+(including `gradient_ocean_current`) are unchanged.
+
+**Validation and safe replacement.** `CoverVideoMedia` and
+`ProfileImageStore.probeCoverVideo` enforce an MP4 container with an H.264/AVC
+video track, an available platform decoder and a forced decoded frame; maximum
+24 MB, 15 seconds, 30 fps, 1920x1080 / 2,073,600 pixels; minimum effective
+1024x480. Portrait, landscape and square clips are accepted within the same
+long/short-edge limits. The picker URI is never persisted: validation happens
+first, the stream is copied under the byte cap, and the completed private copy
+is validated again before old cover files are pruned. A failed validation,
+provider read, copy or second decode therefore leaves the selected cover and
+preference untouched. A missing private file found after restart is cleared
+with a visible explanation instead of leaving a dead player.
+
+**Playback architecture (do not merge this with avatar playback).**
+- `CoverVideoHost` owns one dedicated platform `MediaPlayer`; it never uses
+  `AvatarVideoHost`, so a video avatar and video cover can decode and play at
+  the same time. Media3 was deliberately not added for short, local, validated
+  H.264 MP4 loops.
+- The surface is one `TextureView` **inside the existing banner artwork layer**,
+  not another root moving overlay. Profile is the cover's only anchor, so a
+  root overlay would add transition/layering risk without solving an anchor
+  handoff. Existing dimensions, top-bar/status-bar overlap, fade, avatar
+  straddle, pencil and layout animation remain unchanged.
+- The host can hand its one cover player between the banner and the modal video
+  preview. The newest registered target is active; dismissing the preview
+  restores the still-composed banner automatically. Selection-sheet thumbnails
+  are poster-only and do not allocate a decoder.
+- Playback gates are per target (prepared + lifecycle started + screen/dialog
+  visible + live surface). This matters during Activity recreation: the old
+  Activity's late `ON_STOP` cannot pause the replacement Activity's surface.
+  Dialogs pause and retain the player; normal navigation pauses immediately;
+  predictive-back progress/cancel leaves the same Profile surface/player
+  intact, while commit pauses it.
+- Surface loss records position. A 1.5-second no-target grace absorbs ordinary
+  transition/recreation churn; genuine absence releases player/decoder/surface.
+  A later return reparses and seeks to the recorded position instead of
+  restarting. At most eight positions are retained.
+- A three-entry first-frame bitmap cache (about 24 MB at the validated ceiling)
+  is warmed at app startup. The `TextureView` stays transparent until an actual
+  video buffer arrives, so the cached poster—or the existing cover gradient—
+  remains visible instead of a black rectangle.
+
+**Persistence / backup inspection.** The same `profile_cover_uri` preference
+now points to either an app-owned image or `.mp4`, so accepted videos survive
+navigation, Activity recreation and process/app restart without persisted
+picker grants. Built-in preset precedence is now **preset > custom photo/video
+> default**; choosing a preset still retains custom media. The existing backup
+schema carries the preference string but has no custom-cover byte payload
+(the same pre-existing limitation as custom static covers); a foreign/missing
+restored path is now detected and cleared rather than repeatedly opened.
+Automatic avatar/cover-derived backgrounds remain a later phase.
+
+**Tests.** Pure JVM coverage pins every video-policy boundary (container URI
+dispatch, exact 24 MB / 15 s / 30 fps edges, min/max dimensions, square and
+portrait acceptance, AVC-only codec), resolver precedence for stored MP4s and
+presets, and all playback-gate inputs. Existing cover registry/gradient/layout
+and avatar tests remain the regression suite. Android metadata/decoder probing,
+`MediaPlayer`, `TextureView`, simultaneous hardware-decoder capacity and picker
+providers still require the real-device checks below.
+
+**How to test it live.**
+1. Preconditions: Android device with at least one H.264 MP4 at 1024x480 or
+   larger, <=1080p, <=15 seconds, <=30 fps and <=24 MB. For the concurrency
+   check, first set an MP4 avatar too.
+2. Profile -> pencil. Expected: existing custom/preset cards are unchanged;
+   separate **Choose photo** and **Choose video** buttons appear. A stored video
+   card says **Your video** and has a poster/play badge.
+3. Choose video -> pick the valid MP4. Expected: compatibility check, then a
+   muted looping crop in a frame shaped exactly like the banner. Cancel leaves
+   the old cover untouched. Repeat -> Accept: new video fills the existing
+   banner with no stretch/bars and no black loading flash; fade/avatar/pencil
+   stay in exactly their old positions.
+4. With an MP4 avatar and MP4 cover selected, watch Profile. Expected: both
+   animate simultaneously and stay muted. Open/close the cover sheet, username
+   dialog and remove confirmation: cover pauses behind modal UI, shows its last
+   frame/poster, then resumes without returning to zero or flashing black.
+5. Navigate Profile <-> Home repeatedly, including a slow predictive-back drag,
+   cancellation, then commit. Expected: cancellation preserves playback and
+   surface; commit pauses; a quick return reuses the prepared player, while a
+   later return seeks near the saved position after reprepare.
+6. Rotate repeatedly, background/foreground the app, then force-stop/relaunch.
+   Expected: the selected video persists, first frame is poster-backed, playback
+   resumes only while Profile is visible, and no audio/focus interruption occurs.
+7. Select a built-in photo and every gradient, especially Ocean current, then
+   tap Your video. Expected: all preset art/animation is unchanged and the video
+   returns without repicking. Pick/accept a static photo afterwards to confirm
+   the old photo preview/storage flow still works.
+8. Try MOV, HEVC/AV1 MP4, truncated/empty media, 60 fps, >15 s, >24 MB, below
+   1024x480 and above 1080p. Expected: specific actionable error, disabled
+   Accept, and the previously selected background remains intact.
+9. Replace a selected video, then remove it and cancel/confirm removal. Expected:
+   failed/cancelled replacement preserves old video; successful replacement
+   persists; Cancel removal preserves it; Remove returns to the default cover.
+10. Stress a modest device with simultaneous video avatar+cover for several
+    minutes and inspect memory/temperature. Expected: no runaway players,
+    surfaces or poster bitmaps; leaving Profile for >1.5 s releases the cover
+    decoder and returning remains seamless.
+
+**Deliberately left undone / real-device requirement.** Arena has no Android
+runtime, so actual codec choice (hardware vs software), vendor decoder limits,
+surface first-frame timing, concurrent avatar+cover decoding, Photo Picker URI
+behavior, rotation and predictive-back visuals must be verified on physical
+API 26+ devices before release. No Phase-5 avatar-derived/automatic cover
+background generation was added, and the backup schema was not expanded with a
+potentially 24 MB binary cover payload.

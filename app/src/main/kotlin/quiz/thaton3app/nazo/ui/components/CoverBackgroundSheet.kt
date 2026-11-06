@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -49,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import quiz.thaton3app.nazo.data.profile.CoverPreset
 import quiz.thaton3app.nazo.data.profile.CoverPresetKind
 import quiz.thaton3app.nazo.data.profile.CoverPresets
+import quiz.thaton3app.nazo.data.profile.CoverVideoMedia
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
@@ -57,7 +59,7 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 
 /**
- * The unified cover-selection sheet: the user's own photo, the bundled
+ * The unified cover-selection sheet: the user's own photo/video, the bundled
  * static photos, and the animated gradients — every option previewed at the
  * real banner aspect ratio ([bannerRatio], same WYSIWYG math as the gallery
  * preview dialog) and applied on tap.
@@ -68,11 +70,11 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
  * selecting applies instantly and keeps the sheet open for comparison.
  *
  * Pure presentation — persistence and precedence live in
- * `resolveCoverVisual` / `ProfilePreferences`; the caller wires the four
- * actions (pick preset, use custom photo, open gallery, remove).
+ * `resolveCoverVisual` / `ProfilePreferences`; the caller wires selection,
+ * custom-media reuse, the separate photo/video pickers, and removal.
  *
- * @param galleryUri the stored custom photo, if any (thumbnail + "switch
- *   back" affordance; never deleted by choosing a preset).
+ * @param galleryUri the stored custom photo/video, if any (thumbnail +
+ *   "switch back" affordance; never deleted by choosing a preset).
  * @param presetId currently applied preset id, or null for custom/default.
  * @param bannerRatio exact width/height ratio the real banner will render.
  */
@@ -84,8 +86,9 @@ fun CoverBackgroundSheet(
     bannerRatio: Float,
     onDismiss: () -> Unit,
     onSelectPreset: (String) -> Unit,
-    onUseCustomPhoto: () -> Unit,
-    onPickFromGallery: () -> Unit,
+    onUseCustomMedia: () -> Unit,
+    onPickPhoto: () -> Unit,
+    onPickVideo: () -> Unit,
     onRemove: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -141,17 +144,18 @@ fun CoverBackgroundSheet(
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "Preview each option, then tap to apply — your own photo " +
+                text = "Preview each option, then tap to apply — your own photo or video " +
                     "is kept even while a preset is active.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = NazoTextSecondary,
             )
             Spacer(Modifier.height(16.dp))
 
-            // --- YOUR PHOTO -------------------------------------------------
-            // One card doing both jobs: apply the already-stored photo (the
-            // "switch back without re-picking" promise), or open the existing
-            // gallery picker when none is stored yet / to replace it.
+            // --- YOUR MEDIA -------------------------------------------------
+            // The stored app-owned photo/video remains one first-class option,
+            // even while a preset is active. Replacement actions are explicit
+            // so Android's system picker opens with the right media filter.
+            val customIsVideo = galleryUri?.let(CoverVideoMedia::isVideoUri) == true
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -169,16 +173,40 @@ fun CoverBackgroundSheet(
                     )
                     .clickable {
                         Haptics.soft(context)
-                        if (hasCustom) onUseCustomPhoto() else onPickFromGallery()
+                        if (hasCustom) onUseCustomMedia() else onPickPhoto()
                     },
             ) {
                 if (hasCustom) {
-                    SafeRemoteImage(
-                        url = galleryUri!!,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    // Label chip: bottom-start.
+                    if (customIsVideo) {
+                        CoverVideoPoster(
+                            uri = galleryUri!!,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.45f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.PlayArrow,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                )
+                            }
+                        }
+                    } else {
+                        SafeRemoteImage(
+                            url = galleryUri!!,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
@@ -188,54 +216,48 @@ fun CoverBackgroundSheet(
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                     ) {
                         Text(
-                            text = "Your photo",
+                            text = if (customIsVideo) "Your video" else "Your photo",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.White,
-                        )
-                    }
-                    // Change chip: bottom-end, opens the existing picker.
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(8.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color.Black.copy(alpha = 0.45f))
-                            .clickable {
-                                Haptics.soft(context)
-                                onPickFromGallery()
-                            }
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                    ) {
-                        Text(
-                            text = "Change",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White,
-                            fontWeight = FontWeight.SemiBold,
                         )
                     }
                 } else {
-                    // Empty state: the whole card is the gallery entry point.
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Filled.Image,
-                                contentDescription = null,
-                                tint = NazoTextSecondary,
-                                modifier = Modifier.size(20.dp),
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = "Choose from gallery",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = NazoTextPrimary,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
+                        Text(
+                            text = "Choose a photo or video",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = NazoTextPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                        )
                     }
                 }
                 if (customSelected) {
                     SelectedBadge(modifier = Modifier.align(Alignment.TopEnd))
                 }
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                CoverPickerAction(
+                    label = if (hasCustom && !customIsVideo) "Replace photo" else "Choose photo",
+                    video = false,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        Haptics.soft(context)
+                        onPickPhoto()
+                    },
+                )
+                CoverPickerAction(
+                    label = if (hasCustom && customIsVideo) "Replace video" else "Choose video",
+                    video = true,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        Haptics.soft(context)
+                        onPickVideo()
+                    },
+                )
             }
 
             // --- BUILT-IN PHOTOS --------------------------------------------
@@ -325,6 +347,39 @@ fun CoverBackgroundSheet(
             }
             Spacer(Modifier.height(6.dp))
         }
+    }
+}
+
+@Composable
+private fun CoverPickerAction(
+    label: String,
+    video: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(NazoSurfaceVariant)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 11.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = if (video) Icons.Filled.PlayArrow else Icons.Filled.Image,
+            contentDescription = null,
+            tint = NazoPrimary,
+            modifier = Modifier.size(19.dp),
+        )
+        Spacer(Modifier.width(7.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = NazoTextPrimary,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
     }
 }
 
