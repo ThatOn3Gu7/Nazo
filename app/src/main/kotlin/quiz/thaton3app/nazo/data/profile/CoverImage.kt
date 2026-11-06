@@ -18,7 +18,8 @@ object CoverImage {
      * phone renders (160 dp @3x), so nothing ever scales vertically; width
      * 1024 keeps the upscale ≤ ~1.12× even on the largest phone (the widest
      * phone banner is ~1150 px). Tablets with a 1024-px source may soften to
-     * ~1.47× — accepted, documented in handoff.md.
+     * ~1.47×; that bounded tablet trade-off is accepted to keep phone picks
+     * practical.
      */
     const val MIN_WIDTH = 1024
     const val MIN_HEIGHT = 480

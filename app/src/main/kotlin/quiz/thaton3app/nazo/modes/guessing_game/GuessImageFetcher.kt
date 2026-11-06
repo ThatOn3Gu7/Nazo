@@ -20,9 +20,8 @@ import quiz.thaton3app.nazo.vision.AnimeImageGate
  * Resolves a direct image URL of the round's TARGET ENTITY using keyless
  * public sources, in order:
  *
- * GROUND STAGES (official art, franchise-anchored — the "100% official"
- * path from docs/official-art-research.md). The franchise is resolved ONCE
- * per round into each database's media row (1 call each, outside the
+ * GROUND STAGES (curated art, franchise-anchored). The franchise is resolved
+ * ONCE per round into each database's media row (1 call each, outside the
  * variant loop), then the target is looked up INSIDE that franchise's own
  * CAST LIST — a same-name-proof way to fetch the character's official
  * portrait with zero free-text image searching:
@@ -849,8 +848,8 @@ object GuessImageFetcher {
     }
 
     /**
-     * GROUND STAGE — the FANDOM infobox (see docs/official-art-research.md
-     * §2.5/§5.4). The franchise's own wiki is looked up in [FandomWikiMap],
+     * GROUND STAGE — the Fandom infobox. The franchise's own wiki is looked
+     * up in [FandomWikiMap],
      * so the page search is franchise-scoped BY CONSTRUCTION (a "Zoro"
      * search inside the One Piece wiki can only be One Piece's Zoro) —
      * and the infobox image on a character page is the official character-

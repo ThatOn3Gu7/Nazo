@@ -2,7 +2,7 @@ package quiz.thaton3app.nazo.modes.guessing_game
 
 /**
  * Curated franchise → Fandom-wiki-domain map for the guessing game's
- * Fandom infobox stage (see docs/official-art-research.md §5.4).
+ * franchise-scoped Fandom infobox stage.
  *
  * WHY A MAP: Fandom wikis live on per-franchise subdomains whose slugs are
  * NOT predictable from the franchise name — "One Piece" is on
