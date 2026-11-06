@@ -156,14 +156,20 @@ fun ProfileCoverPreviewDialog(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = NazoTextSecondary,
                             )
-                        } else {
-                            // Crop, exactly like the banner will draw it.
-                            Image(
-                                bitmap = current.asImageBitmap(),
-                                contentDescription = "Cover photo preview",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize(),
-                            )
+                        }
+                        CoverPreviewReveal(
+                            visible = current != null,
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            current?.let { readyBitmap ->
+                                // Crop, exactly like the banner will draw it.
+                                Image(
+                                    bitmap = readyBitmap.asImageBitmap(),
+                                    contentDescription = "Cover photo preview",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
                         }
                     }
                 }

@@ -25,6 +25,11 @@ import kotlin.math.sin
 import quiz.thaton3app.nazo.data.profile.CoverPreset
 import quiz.thaton3app.nazo.data.profile.CoverGradientStyle
 
+private val CoverGradientProcessOriginNanos = System.nanoTime()
+
+internal fun coverGradientTimelineSeconds(frameNanos: Long, originNanos: Long): Float =
+    ((frameNanos - originNanos).coerceAtLeast(0L) / 1_000_000_000.0).toFloat()
+
 /**
  * Draws one built-in animated-gradient cover into the current draw scope.
  *
@@ -396,8 +401,10 @@ private fun DrawScope.drawOceanSwell(
  * composable is composed — navigating away from Profile disposes the banner
  * and cancels the loop, and backgrounding the app stops the Choreographer,
  * which suspends [androidx.compose.runtime.withFrameNanos] with zero CPU.
- * System "Remove animations" ([rememberSystemReduceMotion]) renders a single
- * static frame at t = 0 and never starts the clock at all.
+ * Every instance reads one process-wide monotonic timeline, so changing
+ * gradient presets during a crossfade never restarts motion at t = 0. System
+ * "Remove animations" ([rememberSystemReduceMotion]) renders a single static
+ * frame at t = 0 and never starts the clock at all.
  *
  * One state write per frame invalidates only this layer's draw — the rest
  * of the profile (avatar, particles, content) does not recompose.
@@ -413,10 +420,9 @@ internal fun AnimatedCoverGradient(
     var t by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(reduceMotion) {
         if (reduceMotion) return@LaunchedEffect
-        val startNanos = withFrameNanos { it }
         while (true) {
             withFrameNanos { now ->
-                t = (now - startNanos) / 1_000_000_000f
+                t = coverGradientTimelineSeconds(now, CoverGradientProcessOriginNanos)
             }
         }
     }

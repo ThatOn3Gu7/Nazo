@@ -1,16 +1,13 @@
 package quiz.thaton3app.nazo.ui.screens
 
 import java.io.File
-import androidx.compose.ui.res.painterResource
-import quiz.thaton3app.nazo.ui.components.AnimatedCoverGradient
 import quiz.thaton3app.nazo.ui.components.CoverBackgroundSheet
-import quiz.thaton3app.nazo.ui.components.CoverVideoBackground
+import quiz.thaton3app.nazo.ui.components.TransitioningCoverArtwork
 import quiz.thaton3app.nazo.ui.components.ProfileCoverPreviewDialog
 import quiz.thaton3app.nazo.ui.components.ProfileCoverVideoPreviewDialog
 import quiz.thaton3app.nazo.ui.components.ProfileImagePreviewDialog
 import quiz.thaton3app.nazo.data.profile.AutomaticCoverState
 import quiz.thaton3app.nazo.data.profile.AutomaticCoverStore
-import quiz.thaton3app.nazo.data.profile.CoverPresetKind
 import quiz.thaton3app.nazo.data.profile.CoverVisual
 import quiz.thaton3app.nazo.data.profile.ProfileImageStore
 import quiz.thaton3app.nazo.data.profile.ProfileImageSource
@@ -98,7 +95,6 @@ import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.data.profile.AvatarMedia
 import quiz.thaton3app.nazo.ui.components.AnimatedAvatarImage
-import quiz.thaton3app.nazo.ui.components.AvatarVideoHost
 import quiz.thaton3app.nazo.ui.components.AvatarVideoView
 import quiz.thaton3app.nazo.ui.components.AvatarAnchorId
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
@@ -214,8 +210,8 @@ internal fun coverPreviewTopExtensionDp(isLandscape: Boolean): Float =
  * resolved [CoverVisual] — the placeholder gradient, custom photo/video,
  * generated avatar-matched image/video, a bundled preset photo (using the same
  * `ContentScale.Crop` rules: fill, clip excess, never stretch), or a preset
- * animated gradient (procedural and lifecycle-aware — see
- * [AnimatedCoverGradient]). Opaque either way, so it hides the particle
+ * animated gradient (procedural and lifecycle-aware). Opaque either way, so
+ * it hides the particle
  * background beneath it (the root draws the ambient particle layer behind
  * the transparent screens).
  *
@@ -239,6 +235,7 @@ private fun ProfileCoverBanner(
     height: Dp,
     visual: CoverVisual,
     videoPlaybackAllowed: Boolean,
+    transitionsAllowed: Boolean,
     modifier: Modifier = Modifier,
     editButton: @Composable BoxScope.() -> Unit = {},
     content: @Composable BoxScope.() -> Unit,
@@ -252,64 +249,18 @@ private fun ProfileCoverBanner(
                 shape = RoundedCornerShape(CoverCornerRadius),
             ),
     ) {
-        // The artwork layer for whichever visual is active. Paint order
-        // stays artwork → fade → content: the fade below blends over this
-        // layer, and the avatar/pencil draw above it. SafeRemoteImage draws
-        // nothing while loading or after a decode failure, so the
-        // placeholder gradient shows through both cases — and it only ever
-        // receives our own file:// (gallery-only covers).
-        when (visual) {
-            is CoverVisual.Gallery -> SafeRemoteImage(
-                url = visual.uri,
-                contentDescription = "Cover photo",
-                modifier = Modifier
-                    .matchParentSize()
-                    .clip(RoundedCornerShape(CoverCornerRadius)),
-            )
-            is CoverVisual.Video -> CoverVideoBackground(
-                uri = visual.uri,
-                playbackAllowed = videoPlaybackAllowed,
-                modifier = Modifier
-                    .matchParentSize()
-                    .clip(RoundedCornerShape(CoverCornerRadius)),
-            )
-            is CoverVisual.AutomaticImage -> SafeRemoteImage(
-                url = visual.uri,
-                contentDescription = "Cover generated from profile picture",
-                modifier = Modifier
-                    .matchParentSize()
-                    .clip(RoundedCornerShape(CoverCornerRadius)),
-            )
-            is CoverVisual.AutomaticVideo -> CoverVideoBackground(
-                uri = visual.uri,
-                playbackAllowed = videoPlaybackAllowed,
-                syncPositionProvider = {
-                    AvatarVideoHost.currentPositionFor(visual.avatarUri)
-                },
-                modifier = Modifier
-                    .matchParentSize()
-                    .clip(RoundedCornerShape(CoverCornerRadius)),
-            )
-            is CoverVisual.Preset -> when (visual.preset.kind) {
-                CoverPresetKind.IMAGE -> Image(
-                    painter = painterResource(visual.preset.imageRes),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .matchParentSize()
-                        .clip(RoundedCornerShape(CoverCornerRadius)),
-                )
-                CoverPresetKind.GRADIENT -> AnimatedCoverGradient(
-                    preset = visual.preset,
-                    modifier = Modifier
-                        .matchParentSize()
-                        .clip(RoundedCornerShape(CoverCornerRadius)),
-                )
-            }
-            CoverVisual.Default -> {
-                // Placeholder gradient already painted as the Box background.
-            }
-        }
+        // One bounded transition layer owns every artwork kind. It preloads
+        // local media, crossfades static/gradient content, and keeps at most one
+        // live video plane. Paint order stays artwork → fade → content, so the
+        // avatar and edit affordance retain their original geometry and depth.
+        TransitioningCoverArtwork(
+            visual = visual,
+            playbackAllowed = videoPlaybackAllowed,
+            transitionsAllowed = transitionsAllowed,
+            modifier = Modifier
+                .matchParentSize()
+                .clip(RoundedCornerShape(CoverCornerRadius)),
+        )
         // Bottom fade into the page: a soft transparent → NazoBackground
         // gradient over the lower part of the header. Static drawing only —
         // no blur layer, no per-frame work (the modest-phone budget from
@@ -613,6 +564,7 @@ fun ProfileScreen(
                         ) + coverTopExtension,
                         visual = coverVisual,
                         videoPlaybackAllowed = screenActive && !avatarBehindDialogsPaused,
+                        transitionsAllowed = screenActive,
                         editButton = coverEditButton,
                     ) {
                         ProfileAvatar(
@@ -739,6 +691,7 @@ fun ProfileScreen(
                     ) + coverTopExtension,
                     visual = coverVisual,
                     videoPlaybackAllowed = screenActive && !avatarBehindDialogsPaused,
+                    transitionsAllowed = screenActive,
                     editButton = coverEditButton,
                     modifier = Modifier.padding(horizontal = 12.dp),
                 ) {

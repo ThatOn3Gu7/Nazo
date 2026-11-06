@@ -28,6 +28,34 @@ class CoverVideoPlaybackTest {
     }
 
     @Test
+    fun modalPreviewOutranksBannerAndNewerTargetWinsEqualPriority() {
+        assertTrue(
+            coverVideoTargetOutranks(
+                candidatePriority = CoverVideoPriority.SHEET_PREVIEW,
+                candidateSequence = 1,
+                activePriority = CoverVideoPriority.BANNER,
+                activeSequence = 99,
+            )
+        )
+        assertFalse(
+            coverVideoTargetOutranks(
+                candidatePriority = CoverVideoPriority.BANNER,
+                candidateSequence = 100,
+                activePriority = CoverVideoPriority.DIALOG_PREVIEW,
+                activeSequence = 1,
+            )
+        )
+        assertTrue(
+            coverVideoTargetOutranks(
+                candidatePriority = CoverVideoPriority.SHEET_PREVIEW,
+                candidateSequence = 2,
+                activePriority = CoverVideoPriority.SHEET_PREVIEW,
+                activeSequence = 1,
+            )
+        )
+    }
+
+    @Test
     fun everyMissingGatePausesInsteadOfRecreatingThePlayer() {
         val valid = booleanArrayOf(true, true, true, true)
         for (blockedIndex in valid.indices) {

@@ -23,6 +23,16 @@ class CoverGradientTest {
         Color(0xFF8FF3E4),
     )
 
+    // --- Shared timeline --------------------------------------------------
+
+    @Test
+    fun processTimelineDoesNotRestartWhenGradientComposableChanges() {
+        val origin = 10_000_000_000L
+        assertEquals(0f, coverGradientTimelineSeconds(origin, origin), 0f)
+        assertEquals(1.5f, coverGradientTimelineSeconds(origin + 1_500_000_000L, origin), 0f)
+        assertEquals(0f, coverGradientTimelineSeconds(origin - 1L, origin), 0f)
+    }
+
     // --- Determinism ------------------------------------------------------
 
     @Test
