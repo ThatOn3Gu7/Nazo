@@ -4443,3 +4443,106 @@ pressure or Choreographer smoothness. Verify frame pacing at 60/90/120Hz,
 poster-to-first-frame continuity, one-decoder behavior, API 26 graphics layers,
 video-avatar + video-cover concurrency, predictive-back composition, thermal/
 memory stability and release/R8 behavior on physical target devices.
+
+## Profile landscape rendering and spacing correction (2026-11-06)
+
+**Video cause and Android-source research.** The banner poster and live plane were
+not following the same rendering contract. Posters used Compose
+`ContentScale.Crop`, while the live `TextureView` had the identity transform and
+its size-change callback did nothing; crop behavior was delegated entirely to
+`MediaPlayer`/the producer surface. That left no app-level correction when a
+short banner's view ratio differed sharply from the decoded display ratio, and
+no recalculation on a surface handoff or resize. This was especially fragile for
+portrait recordings and files whose encoded axes are swapped by 90/270-degree
+rotation metadata.
+
+The implementation was selected after checking Android framework source rather
+than treating Fit/Fill/Zoom labels as equivalent:
+
+- `MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT` maps content to the surface and
+  may distort it when aspect ratios differ; `...WITH_CROPPING` promises a
+  producer-side aspect-preserving crop. The default is FIT. See AOSP
+  `media/java/android/media/MediaPlayer.java` (`VIDEO_SCALING_MODE_*` and
+  `setVideoScalingMode`).
+- `TextureView.setTransform(Matrix)` affects only the surface content, not view
+  measurement or position. `TextureView` also resets its `SurfaceTexture` default
+  buffer size when the view size changes. See AOSP
+  `core/java/android/view/TextureView.java` (`onSizeChanged`, `setTransform`).
+- Android's playback pipeline reports display-oriented video dimensions: AOSP's
+  NuPlayer swaps width/height for 90/270-degree `rotation-degrees` before its
+  video-size notification. `MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION`
+  is documented as 0/90/180/270, and framework frame extraction applies the
+  orientation for the returned poster bitmap.
+- AndroidX Media's `AspectRatioFrameLayout` implements zoom/crop by increasing
+  exactly one measured axis from the source/view aspect-ratio quotient. The new
+  pure transform uses the equivalent centered geometry without introducing a
+  second player or changing the Compose frame.
+
+**Selected live-video solution.** `CoverVideoHost` now establishes MediaPlayer
+FIT before prepare, listens for display-size changes, and applies an explicit
+centered `TextureView` matrix. If the video is wider than the view, X grows by
+`videoAspect/viewAspect`; otherwise Y grows by
+`viewAspect/videoAspect`. Composed with FIT's independent source-to-view mapping,
+the final X and Y source-pixel scales are identical: the banner fills and clips
+overflow but never stretches. Codec-side crop is not also enabled, because that
+would crop twice.
+
+The transform is recalculated on surface availability, size changes, source
+changes and every one-player surface handoff. A new live frame remains
+transparent over its poster until both a real buffer and valid geometry exist.
+The poster cache records the decoded bitmap's display dimensions and also reads
+encoded width/height plus rotation metadata; 90/270 swap axes as a fallback.
+The poster dimensions are preferred once available, making the live matrix use
+the exact aspect ratio of the `ContentScale.Crop` frame beneath it. Portrait,
+landscape and square clips therefore use one centered cover-fill rule. There is
+still one `CoverVideoHost`, one cover `MediaPlayer`, the same priority/handoff,
+position, lifecycle and grace-release logic, and an independent avatar player.
+No transcode, player recreation, extra decoder, bitmap-per-frame work, playback
+seek or architecture replacement was added.
+
+**Landscape right column.** The landscape parent already starts at
+`statusBarTop` and ends inside Scaffold's bottom inset. The right pane previously
+added the cover-only `coverTopExtension` again and then centered all content,
+which compounded two downward offsets. It now uses `Arrangement.Top` and only
+8.dp of visual breathing room below the already-respected status bar. Statistics
+keeps its existing 16.dp gap to the unchanged Statistics/Settings menu column;
+the menu keeps its existing 12.dp internal spacing. `fillMaxHeight` plus
+`verticalScroll` remains, so short landscape/split-screen windows can reach the
+bottom without entering status/navigation-bar regions.
+
+**Exact landscape horizontal adjustment.** Portrait is untouched. Landscape now
+computes a cover shift as `clamp((screenWidthDp - 600) * 0.04, 0, 12).dp`.
+That amount is added to the old 24.dp start gutter and subtracted from the old
+32.dp inter-column gap. At 600dp the shift is 0dp; at 640dp it is 1.6dp; at
+800dp it is 8dp; at 900dp and wider it is capped at 12dp. Thus cover and avatar
+move together while their alignment, overlap, sizes and column width stay exact.
+Because start gutter + gap remains 56.dp, the right pane's start edge and width
+also remain exact; the gap never falls below 20.dp. Toolbar coordinates are not
+changed, and preview aspect math remains WYSIWYG because total horizontal space
+is unchanged.
+
+**Automated coverage.** `CoverVideoPlaybackTest` now pins rotation normalization
+(including 90, 270 and -90), invalid dimensions, square/no-op geometry, and the
+center-crop factors for both landscape and portrait videos. `ProfileCoverTest`
+pins the 0/8/12dp responsive shift, the invariant 56dp start-plus-gap sum, the
+20dp minimum gap and the right pane's 8dp top breathing room. Existing playback
+gates, target priority, position normalization, cover heights, preview aspect,
+avatar overlap and all other suites remain in the CI run.
+
+### Remaining physical-device checks
+
+1. Test custom and automatic MP4 covers with landscape, portrait and square
+   encoded frames, including phone-camera MP4s tagged 90 and 270 degrees. Compare
+   poster to first live frame: orientation, center crop and subject position must
+   not jump, squash or stretch in banner, sheet and dialog targets.
+2. Resize/rotate during playback and repeatedly open/close sheet/dialog targets.
+   Confirm the matrix updates without a black/stretched frame, the same player
+   resumes its position, and video avatar + cover remain simultaneous.
+3. Check API 26 and current Android vendor codecs, especially devices whose
+   video-size callback timing differs. Geometry-gated reveal should keep the
+   poster visible until dimensions arrive; playback must then fill immediately.
+4. Inspect landscape Profile around 600, 640, 800, 900 and 1200dp widths, with
+   and without quiz stats, gesture and 3-button navigation, display cutouts and
+   very short split-screen heights. Confirm the stats card begins 8dp below the
+   status-safe content edge, all menu content scrolls above the bottom inset,
+   cover/avatar shift is modest, and the right pane is unchanged horizontally.

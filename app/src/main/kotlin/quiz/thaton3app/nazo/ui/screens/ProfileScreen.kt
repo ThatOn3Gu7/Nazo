@@ -170,14 +170,40 @@ internal fun coverHeight(isLandscape: Boolean, screenHeightDp: Int): Dp {
     return (screenHeightDp * fraction).coerceIn(min, max).dp
 }
 
+internal data class LandscapeProfileSpacing(
+    val startPadding: Dp,
+    val columnSpacing: Dp,
+)
+
+/**
+ * Moves only the landscape cover/avatar column modestly toward the centre.
+ * Every dp added to the 24.dp start gutter is removed from the 32.dp column
+ * gap, so left-column width and the right-column start edge remain unchanged.
+ * The shift ramps from 0.dp at 600dp to 12.dp at 900dp (4% of surplus width),
+ * protecting narrow split-screen windows while giving normal/wide landscape
+ * screens 8–12.dp of breathing room.
+ */
+internal fun landscapeProfileSpacing(screenWidthDp: Int): LandscapeProfileSpacing {
+    val coverShift = ((screenWidthDp - 600) * 0.04f).coerceIn(0f, 12f).dp
+    return LandscapeProfileSpacing(
+        startPadding = 24.dp + coverShift,
+        columnSpacing = 32.dp - coverShift,
+    )
+}
+
+/** The right pane already starts below the status bar; this is visual breathing room only. */
+internal val LandscapeRightColumnTopPadding = 8.dp
+
 /**
  * The banner's width/height ratio for the current configuration, shared
  * with the cover preview dialog so its frame is exactly WYSIWYG. Mirrors
  * the layout math: portrait = cover width (screen − 24.dp for the cover's
  * 12.dp gutters) over the responsive [coverHeight]; landscape = left column
- * (40 % of screen − 48.dp gutters − 32.dp column spacing) over the responsive
- * cover height, including the top-bar overlap. See the landscape Row and
- * portrait Column in [ProfileScreen].
+ * (40 % of screen − 80.dp combined outer/column spacing) over the responsive
+ * cover height, including the top-bar overlap. [landscapeProfileSpacing]
+ * exchanges start gutter for inter-column spacing while preserving that 80.dp
+ * total, so the preview width remains exact. See the landscape Row and portrait
+ * Column in [ProfileScreen].
  */
 internal fun coverPreviewAspectRatio(
     screenWidthDp: Int,
@@ -531,6 +557,7 @@ fun ProfileScreen(
 
         if (isLandscape) {
             // --- LANDSCAPE LAYOUT ---
+            val landscapeSpacing = landscapeProfileSpacing(configuration.screenWidthDp)
             Row(
                 modifier = Modifier
                     .padding(
@@ -540,8 +567,12 @@ fun ProfileScreen(
                         bottom = padding.calculateBottomPadding(),
                     )
                     .fillMaxSize()
-                    .padding(start = 24.dp, end = 24.dp, bottom = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(32.dp),
+                    .padding(
+                        start = landscapeSpacing.startPadding,
+                        end = 24.dp,
+                        bottom = 8.dp,
+                    ),
+                horizontalArrangement = Arrangement.spacedBy(landscapeSpacing.columnSpacing),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Left Column: Cover & Username. The banner lives ENTIRELY
@@ -632,14 +663,17 @@ fun ProfileScreen(
 
                 }
 
-                // Right Column: Stats & Menu
+                // Right Column: Stats & Menu. The parent already begins below
+                // the status bar, so this pane must not reserve the toolbar's
+                // cover-only overlap. Top arrangement keeps the statistics card
+                // near the safe edge; verticalScroll still handles short windows.
                 Column(
                     modifier = Modifier
                         .weight(1.5f)
                         .fillMaxHeight()
-                        .padding(top = coverTopExtension)
+                        .padding(top = LandscapeRightColumnTopPadding)
                         .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.Center
+                    verticalArrangement = Arrangement.Top
                 ) {
                     if (quizStats.totalQuizzes > 0) {
                         ProfileStatsCard(stats = quizStats)
