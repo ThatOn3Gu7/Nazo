@@ -14,8 +14,8 @@ import quiz.thaton3app.nazo.R
  * that no longer exists simply falls back to the gallery/default flow).
  *
  * The sealed [CoverVisual] is the rendering seam: the banner draws exactly
- * what the resolver picks. Custom video uses that seam without changing any
- * preset ids; a later avatar-derived phase can add another resolver branch.
+ * what the resolver picks. Custom and avatar-derived video kinds use that seam
+ * without changing any stable preset id.
  */
 
 /** Which collection a [CoverPreset] belongs to. */
@@ -234,22 +234,43 @@ sealed interface CoverVisual {
     /** The user's validated, app-owned MP4 cover (`file://`). */
     data class Video(val uri: String) : CoverVisual
 
+    /** One-time generated static background following the current avatar. */
+    data class AutomaticImage(val uri: String) : CoverVisual
+
+    /** Low-resolution blurred MP4 following and initially synced to the avatar. */
+    data class AutomaticVideo(
+        val uri: String,
+        val avatarUri: String,
+    ) : CoverVisual
+
     /** A bundled preset (static image or animated gradient). */
     data class Preset(val preset: CoverPreset) : CoverVisual
 }
 
 /**
- * Pure precedence rule: **preset > custom media > default**.
+ * Pure precedence rule: **ready automatic > preset > custom media > default**.
  *
- * - Choosing a preset only writes the preset id — the custom-media uri is
- *   never touched, so "switch back to mine" is just clearing the preset id
- *   ([CoverVisual.Gallery] or [CoverVisual.Video] returns without re-picking).
- * - With no preset, a custom photo renders exactly as before and an app-owned
- *   `.mp4` dispatches to dedicated cover playback.
- * - An unknown preset id (removed in an update, corrupt prefs) falls back
- *   down the chain instead of showing a broken cover.
+ * Automatic mode is a separate selection flag. Its generated artifact wins
+ * only when preparation for the current avatar succeeded; while preparing or
+ * unavailable, the preserved manual selection remains visible instead of a
+ * broken/empty cover. Choosing manual content clears the flag in the caller,
+ * never by mutating the stored manual values here.
  */
-fun resolveCoverVisual(galleryUri: String?, presetId: String?): CoverVisual {
+internal fun resolveCoverVisual(
+    galleryUri: String?,
+    presetId: String?,
+    automaticEnabled: Boolean = false,
+    automaticArtifact: AutomaticCoverArtifact? = null,
+): CoverVisual {
+    if (automaticEnabled && automaticArtifact != null) {
+        return when (automaticArtifact.kind) {
+            AutomaticCoverKind.IMAGE -> CoverVisual.AutomaticImage(automaticArtifact.uri)
+            AutomaticCoverKind.VIDEO -> CoverVisual.AutomaticVideo(
+                uri = automaticArtifact.uri,
+                avatarUri = automaticArtifact.sourceUri,
+            )
+        }
+    }
     val preset = CoverPresets.byId(presetId)
     return when {
         preset != null -> CoverVisual.Preset(preset)

@@ -8,6 +8,8 @@ import quiz.thaton3app.nazo.ui.components.CoverVideoBackground
 import quiz.thaton3app.nazo.ui.components.ProfileCoverPreviewDialog
 import quiz.thaton3app.nazo.ui.components.ProfileCoverVideoPreviewDialog
 import quiz.thaton3app.nazo.ui.components.ProfileImagePreviewDialog
+import quiz.thaton3app.nazo.data.profile.AutomaticCoverState
+import quiz.thaton3app.nazo.data.profile.AutomaticCoverStore
 import quiz.thaton3app.nazo.data.profile.CoverPresetKind
 import quiz.thaton3app.nazo.data.profile.CoverVisual
 import quiz.thaton3app.nazo.data.profile.ProfileImageStore
@@ -96,6 +98,7 @@ import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.data.profile.AvatarMedia
 import quiz.thaton3app.nazo.ui.components.AnimatedAvatarImage
+import quiz.thaton3app.nazo.ui.components.AvatarVideoHost
 import quiz.thaton3app.nazo.ui.components.AvatarVideoView
 import quiz.thaton3app.nazo.ui.components.AvatarAnchorId
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
@@ -122,9 +125,9 @@ val ProfileHeaderFont = FontFamily(
 // file and only afterwards replaces coverPictureUri in preferences.
 // Built-in collections remain in CoverBackgroundSheet alongside the custom
 // photo/video; their preset id is separate, so switching never discards the
-// custom medium. resolveCoverVisual applies preset > custom media > default.
-// Avatar-derived backgrounds remain a later phase. The default gradient also
-// stays visible while a photo/poster loads or a decoder cannot produce output.
+// custom medium. Automatic matching has its own flag and cached artifact, so
+// it follows avatar changes without overwriting those manual values. The
+// default gradient remains visible while preparation/loading is incomplete.
 
 /** Avatar diameter used by the cover straddle (same 132.dp as before). */
 private val CoverAvatarSize = 132.dp
@@ -208,11 +211,10 @@ internal fun coverPreviewTopExtensionDp(isLandscape: Boolean): Float =
 
 /**
  * The cover header itself: a large rounded rectangle drawn from the
- * resolved [CoverVisual] — the placeholder gradient (Default), the user's
- * gallery photo (Gallery), a custom muted loop (Video), a bundled preset photo (IMAGE, same
- * `ContentScale.Crop` rules as gallery picks: fills the header, excess
- * clipped at the rounded corners, never letterboxed or stretched), or a
- * preset animated gradient (GRADIENT, procedural, lifecycle-aware — see
+ * resolved [CoverVisual] — the placeholder gradient, custom photo/video,
+ * generated avatar-matched image/video, a bundled preset photo (using the same
+ * `ContentScale.Crop` rules: fill, clip excess, never stretch), or a preset
+ * animated gradient (procedural and lifecycle-aware — see
  * [AnimatedCoverGradient]). Opaque either way, so it hides the particle
  * background beneath it (the root draws the ambient particle layer behind
  * the transparent screens).
@@ -267,6 +269,23 @@ private fun ProfileCoverBanner(
             is CoverVisual.Video -> CoverVideoBackground(
                 uri = visual.uri,
                 playbackAllowed = videoPlaybackAllowed,
+                modifier = Modifier
+                    .matchParentSize()
+                    .clip(RoundedCornerShape(CoverCornerRadius)),
+            )
+            is CoverVisual.AutomaticImage -> SafeRemoteImage(
+                url = visual.uri,
+                contentDescription = "Cover generated from profile picture",
+                modifier = Modifier
+                    .matchParentSize()
+                    .clip(RoundedCornerShape(CoverCornerRadius)),
+            )
+            is CoverVisual.AutomaticVideo -> CoverVideoBackground(
+                uri = visual.uri,
+                playbackAllowed = videoPlaybackAllowed,
+                syncPositionProvider = {
+                    AvatarVideoHost.currentPositionFor(visual.avatarUri)
+                },
                 modifier = Modifier
                     .matchParentSize()
                     .clip(RoundedCornerShape(CoverCornerRadius)),
@@ -354,6 +373,8 @@ fun ProfileScreen(
     coverPictureUri: String? = null,
     /** Built-in cover preset id (`photo_*` / `gradient_*`); null = custom/default flow. */
     coverPresetId: String? = null,
+    automaticCoverEnabled: Boolean = false,
+    automaticCoverState: AutomaticCoverState = AutomaticCoverState.Idle,
     /** False as soon as navigation commits away, while the outgoing UI fades. */
     screenActive: Boolean = true,
     quizStats: QuizStats = QuizStats(),
@@ -364,6 +385,9 @@ fun ProfileScreen(
     onProfilePictureChange: (String?) -> Unit,
     onCoverPictureChange: (String?) -> Unit = {},
     onCoverPresetChange: (String?) -> Unit = {},
+    onAutomaticCoverChange: (Boolean) -> Unit = {},
+    onPrepareAutomaticCover: () -> Unit = {},
+    onStopPreparingAutomaticCover: () -> Unit = {},
     onNavigateToStatistics: () -> Unit,
     onNavigateToSettings: () -> Unit = {},
 ) {
@@ -394,10 +418,29 @@ fun ProfileScreen(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-    // What the banner draws right now — pure function of the two
-    // persisted values (preset > gallery > placeholder). Choosing a
-    // preset never writes the gallery uri, so switching back is free.
-    val coverVisual = resolveCoverVisual(coverPictureUri, coverPresetId)
+    // A generated artifact is valid only for the avatar URI that produced it;
+    // this guard prevents one frame of the old background after an avatar swap.
+    val pendingAutomaticState = profilePictureUri?.let(AutomaticCoverState::Preparing)
+        ?: AutomaticCoverState.Unavailable(
+            null,
+            "Add a photo or MP4 video avatar to preview automatic matching.",
+        )
+    val visibleAutomaticState = when (val state = automaticCoverState) {
+        is AutomaticCoverState.Ready ->
+            if (state.artifact.sourceUri == profilePictureUri) state else pendingAutomaticState
+        is AutomaticCoverState.Preparing ->
+            if (state.sourceUri == profilePictureUri) state else pendingAutomaticState
+        is AutomaticCoverState.Unavailable ->
+            if (state.sourceUri == profilePictureUri) state else pendingAutomaticState
+        AutomaticCoverState.Idle -> state
+    }
+    val automaticArtifact = (visibleAutomaticState as? AutomaticCoverState.Ready)?.artifact
+    val coverVisual = resolveCoverVisual(
+        galleryUri = coverPictureUri,
+        presetId = coverPresetId,
+        automaticEnabled = automaticCoverEnabled,
+        automaticArtifact = automaticArtifact,
+    )
 
     // The image being previewed/cropped, and the temp file behind it (URL only).
     // Retained so a rotation does not throw away an edit in progress. The draft
@@ -1748,6 +1791,7 @@ fun ProfileScreen(
         val acceptCover: (String) -> Unit = { savedUri ->
             pendingCoverSource = null
             pendingCoverIsVideo = false
+            onAutomaticCoverChange(false)
             onCoverPictureChange(savedUri)
             // The new custom medium should show immediately. The old custom
             // file is only pruned after this save has fully validated.
@@ -1777,6 +1821,8 @@ fun ProfileScreen(
         CoverBackgroundSheet(
             galleryUri = coverPictureUri,
             presetId = coverPresetId,
+            automaticEnabled = automaticCoverEnabled,
+            automaticState = visibleAutomaticState,
             bannerRatio = coverPreviewAspectRatio(
                 screenWidthDp = configuration.screenWidthDp,
                 screenHeightDp = configuration.screenHeightDp,
@@ -1784,8 +1830,17 @@ fun ProfileScreen(
                 coverTopExtensionDp = coverPreviewTopExtensionDp(isLandscape),
             ),
             onDismiss = { showCoverSheet = false },
-            onSelectPreset = { id -> onCoverPresetChange(id) },
-            onUseCustomMedia = { onCoverPresetChange(null) },
+            onPrepareAutomatic = onPrepareAutomaticCover,
+            onStopPreparingAutomatic = onStopPreparingAutomaticCover,
+            onSelectAutomatic = { onAutomaticCoverChange(true) },
+            onSelectPreset = { id ->
+                onAutomaticCoverChange(false)
+                onCoverPresetChange(id)
+            },
+            onUseCustomMedia = {
+                onAutomaticCoverChange(false)
+                onCoverPresetChange(null)
+            },
             onPickPhoto = {
                 showCoverSheet = false
                 coverPhotoLauncher.launch(
@@ -1818,7 +1873,10 @@ fun ProfileScreen(
             title = { Text("Remove cover background?") },
             text = {
                 Text(
-                    if (!coverPictureUri.isNullOrBlank()) {
+                    if (automaticCoverEnabled) {
+                        "Automatic matching will be turned off and your profile will return " +
+                            "to the plain cover background."
+                    } else if (!coverPictureUri.isNullOrBlank()) {
                         "Your profile goes back to the plain cover background. To use " +
                             "this photo or video again you would need to choose it again."
                     } else {
@@ -1830,6 +1888,8 @@ fun ProfileScreen(
             confirmButton = {
                 NazoDangerButton(onClick = {
                     Haptics.doubleLight(context)
+                    onAutomaticCoverChange(false)
+                    AutomaticCoverStore.discardAll(context)
                     ProfileImageStore.deleteCover(coverPictureUri)
                     onCoverPictureChange(null)
                     // Removing clears BOTH layers (custom file + preset id)

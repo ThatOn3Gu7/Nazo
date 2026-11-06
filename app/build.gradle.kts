@@ -76,6 +76,10 @@ dependencies {
     // the singleton ImageLoader — see MainActivity.onCreate.
     implementation(libs.coil.gif)
     implementation(libs.androidx.exifinterface)
+    // Offline, one-shot avatar-video -> blurred low-resolution cover export.
+    // Playback remains the existing platform MediaPlayer architecture.
+    implementation(libs.androidx.media3.transformer)
+    implementation(libs.androidx.media3.effect)
     // WorkManager for background update checks + notifications
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     // JVM unit tests for the AI response parser (app/src/test). org.json is the

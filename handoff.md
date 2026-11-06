@@ -4171,3 +4171,143 @@ behavior, rotation and predictive-back visuals must be verified on physical
 API 26+ devices before release. No Phase-5 avatar-derived/automatic cover
 background generation was added, and the backup schema was not expanded with a
 potentially 24 MB binary cover payload.
+
+## Profile cover final phase: automatic avatar-matched backgrounds (2026-11-06)
+
+**What changed.** `CoverBackgroundSheet` now starts with one **AUTOMATIC — Match
+avatar automatically** tile. Opening the sheet prepares its real banner-shaped
+preview; a generated photo is shown as-is and a generated video preview loops
+live through the existing cover host. The tile cannot be selected while the
+avatar is missing, unsupported, still preparing or failed. Selecting it persists
+`profile_cover_automatic=true`; selecting any preset/custom medium turns that
+flag off, while leaving the manual preset and custom-cover URI untouched under
+the automatic layer. This means disabling automatic mode restores the previous
+manual choice, and avatar changes never overwrite it.
+
+**Resolver/persistence contract.** Precedence is now **ready automatic artifact
+> preset > custom photo/video > default**. If automatic generation is pending or
+unavailable, the preserved manual selection is the fallback (or the normal
+default gradient if none exists), so Profile never gets a broken/empty cover.
+The generated artifact is accepted only when its `sourceUri` exactly matches the
+current avatar, preventing a one-frame flash of the old avatar's background.
+The boolean rides the existing profile SharedPreferences/backup payload. The
+derived bytes do not need backup: accepted avatars already have a portable
+avatar payload, so restore writes a new local avatar and automatic mode
+regenerates from it.
+
+**Static-avatar pipeline.** `AutomaticCoverStore` decodes the accepted
+app-owned photo once. It measures three representative colours from a 96x96
+whole-avatar sample, centre-crops into a tiny 160x90 work bitmap, runs a
+three-pass separable box blur there (not at full size), then scales that soft
+field to 1024x576 and overlays low-alpha linear/radial fields from the measured
+palette. Output is an app-private JPEG. This avoids both the "stretched avatar"
+look and any real-time/static playback machinery; peak blur work is only 14,400
+pixels. Transparent source pixels sit over a palette colour rather than turning
+black.
+
+**Video-avatar pipeline and why Media3 was added.** Real-time blur was rejected:
+`RenderEffect` is API 31+, older-device software blur is expensive, and either
+approach would still decode the avatar's original full-resolution stream every
+frame. A hand-written MediaCodec/EGL/muxer pipeline would duplicate complex
+vendor-sensitive transformation code. Instead, Media3 Transformer/Effects 1.5.1
+is used **only for a cancellable one-shot export**: centre-crop to 16:9, cap the
+useful source crop at 960x540 without upscaling normal clips, drop to 24 fps,
+apply an 18px GPU Gaussian blur, remove audio, and encode H.264 MP4. Playback
+remains the Phase-4 platform `MediaPlayer`; Media3 owns no persistent player or
+decoder. The dependency/license entry is listed in About -> Licenses.
+
+**Caching/resource rules.** Artifacts live in `filesDir/profile_auto_covers/`
+under a SHA-256 source-URI key. Atomic temp->target replacement and post-export
+frame validation mean a cache hit is safe and cheap at startup. The current
+source has at most one artifact; a successful replacement prunes older files.
+Changing/removing the avatar drops stale files. Preview-only generation is
+active only while the cover sheet is composed; closing the sheet cancels an
+in-flight Transformer export and deletes its temp file. If automatic mode is
+selected, generation continues independently of Profile visibility so an avatar
+change updates without reopening settings. Disabling automatic mode releases
+the cover surface/player through the existing grace path while retaining the
+small current disk cache for an instant later preview; Remove cover deletes it.
+
+**Playback and synchronization.** Automatic MP4s use `CoverVideoHost`, never
+`AvatarVideoHost`, so avatar and cover retain independent players/lifecycles and
+can decode simultaneously. `AvatarVideoHost.currentPositionFor()` exposes only
+a main-thread position snapshot. Whenever the cover prepares, resumes, or hands
+its TextureView between the sheet and banner, it pauses, normalizes that snapshot
+to the derived loop duration, seeks when drift is >120ms, then starts. Both files
+share the source timeline and duration, so they begin together and loop as the
+same animation while remaining independently pausable/releasable. Manual video
+covers pass no sync provider and preserve their Phase-4 saved-position behavior.
+Navigation, dialogs, app lifecycle, poster-first rendering, predictive-back
+cancel/commit and the 1.5s decoder grace remain the same.
+
+**Unsupported/failure behavior.** Initials and emoji show “add a photo or MP4
+video”; GIF/animated WebP explain that automatic covers currently support static
+photos and MP4 avatars. Missing/corrupt sources, unavailable encoders and export
+errors leave automatic selected (so a future valid avatar still follows), show a
+sheet error and—when the failure occurs after an automatic avatar change—a toast.
+The preserved manual cover remains untouched and visible as fallback. A cancelled
+manual avatar/cover picker also leaves automatic mode unchanged; only a successful
+manual apply turns it off.
+
+**Tests.** `AutomaticCoverMediaTest` pins source classification, rotation-aware
+960x540/even output sizing without normal-source upscaling, deterministic opaque
+dominant palettes, and blur invariants. `CoverPresetsTest` pins automatic image/
+video precedence, avatar sync source and unavailable->manual fallback.
+`CoverVideoPlaybackTest` pins loop-position normalization in addition to every
+play/pause gate. Existing registry tests still pin all 14 photos and all five
+gradients, including `gradient_ocean_current`; existing custom photo/video,
+avatar, navigation and geometry tests remain the regression suite.
+
+### How to test it live
+
+1. Set a **static photo avatar**. Profile -> pencil. Wait for AUTOMATIC. Expected:
+   a soft 16:9 preview whose blended colours clearly come from the avatar but no
+   recognisable stretched/sharp portrait. Tap it: badge moves to Automatic; the
+   existing banner geometry/fade/avatar overlap/pencil stay pixel-positioned as
+   before. Reopen: preview is immediate from cache, with no repeated processing.
+2. While automatic is selected, replace the avatar with a very different photo.
+   Expected: the old derived cover disappears immediately to the preserved
+   manual/default fallback, then the new colour background arrives automatically
+   without reopening the cover sheet. Rotate and force-stop/relaunch: selection
+   and matching result persist.
+3. Set a valid **MP4 avatar** (try landscape, square and portrait sources).
+   Open the cover sheet and keep it open while “Preparing” runs. Expected: a
+   blurred moving 16:9 preview, no audio, no stretch/bars. Close during a long
+   export: processing cancels; reopen to retry. Apply it: avatar and cover move
+   together from approximately the same frame, loop together, but remain two
+   independent surfaces/players.
+4. Navigate Home <-> Profile repeatedly; open/close the cover sheet, username
+   dialog and remove confirmation; do predictive-back progress/cancel/commit;
+   background/foreground and rotate. Expected: no black frames or restarts on
+   cancellation, poster-backed handoff, re-sync on resume, commit/navigation
+   pause, and eventual cover-decoder release exactly as Phase 4.
+5. With automatic active, select every preset (all five gradients, especially
+   Ocean current), Your photo, a custom photo and a custom video. Expected: the
+   chosen manual option takes over unchanged. Change avatar now: manual cover
+   must NOT change. Re-select Automatic: the prior manual choice is preserved
+   underneath and returns if another manual option is chosen.
+6. Automatic active -> remove avatar. Expected: preserved manual/default cover,
+   no dead media. Add a new photo then MP4: automatic cover follows each without
+   another cover-setting action. Initials/emoji/GIF/animated WebP cards remain
+   disabled with specific explanatory text.
+7. Try a corrupt/unavailable MP4 or a device with no usable H.264 encoder.
+   Expected: actionable error, no preference/manual-file loss, no orphan temp;
+   future avatar replacement retries automatically.
+8. Stress a modest API 26+ device for several minutes with generated video cover
+   + video avatar. Confirm both remain smooth/muted, generated file is <=960x540
+   and ~24fps, temperature/memory stay reasonable, and no third long-lived
+   Media3 player/decoder exists. Check portrait/landscape/split-screen geometry.
+9. Backup/restore on another device or after clearing app data. Expected: avatar
+   restores, automatic boolean restores, derived artifact regenerates for the
+   new local avatar URI; no source-device auto-cover path is reused.
+10. Settings -> About -> Licenses. Expected: Media3 Transformer & Effects 1.5.1
+    appears. Existing custom cover and avatar flows still pass their prior live
+    guides unchanged.
+
+**Real-device verification still required.** Arena cannot run Android codecs or
+OpenGL. Verify Media3 export/blur/rotation on vendor AVC decoders/encoders,
+concurrent avatar+cover decode, first-frame timing, drift over repeated 15-second
+loops, cancellation/backgrounding, API 26 GLES behavior, thermal load and R8
+release output on physical devices. No preset ids, dimensions, status-bar/
+toolbar/fade geometry, avatar interactions, manual cover storage, or Phase-4
+playback ownership were redesigned.

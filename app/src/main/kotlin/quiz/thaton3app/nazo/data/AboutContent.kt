@@ -245,6 +245,10 @@ val NAZO_LIBRARIES: List<ThirdPartyLibrary> = listOf(
         "https://developer.android.com/jetpack/androidx/releases/compose-material",
     ),
     ThirdPartyLibrary(
+        "Media3 Transformer & Effects", "1.5.1", "Apache-2.0",
+        "https://developer.android.com/media/media3/transformer",
+    ),
+    ThirdPartyLibrary(
         "WorkManager", "2.9.1", "Apache-2.0",
         "https://developer.android.com/jetpack/androidx/releases/work",
     ),

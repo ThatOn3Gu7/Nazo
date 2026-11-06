@@ -78,6 +78,9 @@ import quiz.thaton3app.nazo.data.settings.ProfilePreferences
 import quiz.thaton3app.nazo.data.settings.QuestionHistoryStore
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
+import quiz.thaton3app.nazo.data.profile.AutomaticCoverKind
+import quiz.thaton3app.nazo.data.profile.AutomaticCoverState
+import quiz.thaton3app.nazo.data.profile.AutomaticCoverStore
 import quiz.thaton3app.nazo.data.profile.CoverVideoMedia
 import quiz.thaton3app.nazo.modes.guessing_game.GuessApiClient
 import quiz.thaton3app.nazo.modes.guessing_game.GuessImageFetcher
@@ -260,6 +263,17 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // Built-in cover preset id (photo_*/gradient_*); null = gallery/default.
     // Stored SEPARATELY from the photo uri so presets never discard it.
     var coverPresetId by remember { mutableStateOf(profilePrefs.coverPresetId) }
+    var automaticCoverEnabled by remember {
+        mutableStateOf(profilePrefs.automaticCoverEnabled)
+    }
+    var automaticCoverState by remember {
+        mutableStateOf<AutomaticCoverState>(
+            AutomaticCoverStore.cachedArtifact(context, profilePictureUri)
+                ?.let(AutomaticCoverState::Ready)
+                ?: AutomaticCoverState.Idle
+        )
+    }
+    var automaticCoverPreviewActive by remember { mutableStateOf(false) }
 
     // Video avatars prepare BEFORE any screen asks for them: as soon as the
     // saved URI is known (app start, avatar change, backup restore), kick off
@@ -273,6 +287,52 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         AvatarVideoHost.prepareForAvatar(context, profilePictureUri)
         AvatarFrameCache.warmFromDisc(context, profilePictureUri)
     }
+
+    // Automatic artifacts are generated only while selected or when the cover
+    // sheet explicitly requests a preview. A source-key guard in ProfileScreen
+    // prevents the old avatar's artifact from flashing during replacement.
+    LaunchedEffect(profilePictureUri, automaticCoverEnabled, automaticCoverPreviewActive) {
+        val source = profilePictureUri
+        val cached = AutomaticCoverStore.cachedArtifact(context, source)
+        if (cached != null) {
+            automaticCoverState = AutomaticCoverState.Ready(cached)
+            return@LaunchedEffect
+        }
+        if (!automaticCoverEnabled && !automaticCoverPreviewActive) {
+            AutomaticCoverStore.discardAll(context)
+            automaticCoverState = AutomaticCoverState.Idle
+            return@LaunchedEffect
+        }
+
+        automaticCoverState = source?.let(AutomaticCoverState::Preparing)
+            ?: AutomaticCoverState.Unavailable(
+                sourceUri = null,
+                message = "Add a photo or MP4 video avatar to preview automatic matching.",
+            )
+        if (source == null) {
+            AutomaticCoverStore.discardAll(context)
+            return@LaunchedEffect
+        }
+
+        AutomaticCoverStore.prepare(context, source)
+            .onSuccess { artifact ->
+                if (profilePictureUri == artifact.sourceUri) {
+                    automaticCoverState = AutomaticCoverState.Ready(artifact)
+                }
+            }
+            .onFailure { failure ->
+                if (profilePictureUri == source) {
+                    AutomaticCoverStore.discardAll(context)
+                    val message = failure.message
+                        ?: "Couldn't prepare an automatic cover from that avatar."
+                    automaticCoverState = AutomaticCoverState.Unavailable(source, message)
+                    if (automaticCoverEnabled) {
+                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+    }
+
     // Cover videos keep a bounded first-frame cache rather than preparing a
     // second decoder at startup. Warming the poster prevents a black loading
     // rectangle when Profile is first opened; actual playback is still owned
@@ -297,6 +357,12 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         }
         if (CoverVideoMedia.isVideoUri(uri)) {
             CoverVideoHost.warmPoster(context, uri)
+        }
+    }
+    LaunchedEffect(automaticCoverState) {
+        val artifact = (automaticCoverState as? AutomaticCoverState.Ready)?.artifact
+        if (artifact?.kind == AutomaticCoverKind.VIDEO) {
+            CoverVideoHost.warmPoster(context, artifact.uri)
         }
     }
     val backupPrefs = remember { BackupPrefs(context) }
@@ -1723,6 +1789,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         profilePictureUri = profilePictureUri,
                         coverPictureUri = coverPictureUri,
                         coverPresetId = coverPresetId,
+                        automaticCoverEnabled = automaticCoverEnabled,
+                        automaticCoverState = automaticCoverState,
                         screenActive = currentScreen == Screen.Profile,
                         quizStats = quizStats,
                         offline = offlineMode,
@@ -1742,6 +1810,16 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onCoverPresetChange = { id ->
                             coverPresetId = id
                             profilePrefs.coverPresetId = id
+                        },
+                        onAutomaticCoverChange = { enabled ->
+                            automaticCoverEnabled = enabled
+                            profilePrefs.automaticCoverEnabled = enabled
+                        },
+                        onPrepareAutomaticCover = {
+                            automaticCoverPreviewActive = true
+                        },
+                        onStopPreparingAutomaticCover = {
+                            automaticCoverPreviewActive = false
                         },
                         onNavigateToStatistics = { navigate(Screen.Statistics) },
                         onNavigateToSettings = { navigate(Screen.Settings) },
@@ -1856,6 +1934,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             profilePictureUri = profilePrefs.profilePictureUri
                             coverPictureUri = profilePrefs.coverPictureUri
                             coverPresetId = profilePrefs.coverPresetId
+                            automaticCoverEnabled = profilePrefs.automaticCoverEnabled
                             themeMode = themePrefs.mode
                             accentName = themePrefs.accent
                             navBarFloating = themePrefs.floatingNavBar

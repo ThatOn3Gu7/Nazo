@@ -19,16 +19,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -47,6 +50,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import quiz.thaton3app.nazo.data.profile.AutomaticCoverKind
+import quiz.thaton3app.nazo.data.profile.AutomaticCoverState
 import quiz.thaton3app.nazo.data.profile.CoverPreset
 import quiz.thaton3app.nazo.data.profile.CoverPresetKind
 import quiz.thaton3app.nazo.data.profile.CoverPresets
@@ -59,9 +64,10 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 
 /**
- * The unified cover-selection sheet: the user's own photo/video, the bundled
- * static photos, and the animated gradients — every option previewed at the
- * real banner aspect ratio ([bannerRatio], same WYSIWYG math as the gallery
+ * The unified cover-selection sheet: an avatar-matched automatic background,
+ * the user's own photo/video, bundled photos, and animated gradients — every
+ * option previewed at the real banner aspect ratio ([bannerRatio], the same
+ * WYSIWYG math as the gallery
  * preview dialog) and applied on tap.
  *
  * Follows the Background-effects sheet pattern exactly: Nazo modal sheet,
@@ -80,11 +86,16 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CoverBackgroundSheet(
+internal fun CoverBackgroundSheet(
     galleryUri: String?,
     presetId: String?,
+    automaticEnabled: Boolean,
+    automaticState: AutomaticCoverState,
     bannerRatio: Float,
     onDismiss: () -> Unit,
+    onPrepareAutomatic: () -> Unit,
+    onStopPreparingAutomatic: () -> Unit,
+    onSelectAutomatic: () -> Unit,
     onSelectPreset: (String) -> Unit,
     onUseCustomMedia: () -> Unit,
     onPickPhoto: () -> Unit,
@@ -111,7 +122,12 @@ fun CoverBackgroundSheet(
     val time: () -> Float = { previewTime }
 
     val hasCustom = !galleryUri.isNullOrBlank()
-    val customSelected = hasCustom && presetId == null
+    val customSelected = hasCustom && presetId == null && !automaticEnabled
+
+    DisposableEffect(Unit) {
+        onPrepareAutomatic()
+        onDispose { onStopPreparingAutomatic() }
+    }
 
     NazoModalSheet(
         onDismissRequest = onDismiss,
@@ -148,6 +164,19 @@ fun CoverBackgroundSheet(
                     "is kept even while a preset is active.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = NazoTextSecondary,
+            )
+            Spacer(Modifier.height(16.dp))
+
+            // --- AUTOMATIC --------------------------------------------------
+            SheetSectionLabel("AUTOMATIC")
+            AutomaticCoverTile(
+                state = automaticState,
+                selected = automaticEnabled,
+                bannerRatio = bannerRatio,
+                onClick = {
+                    Haptics.soft(context)
+                    onSelectAutomatic()
+                },
             )
             Spacer(Modifier.height(16.dp))
 
@@ -271,7 +300,7 @@ fun CoverBackgroundSheet(
                     row.forEach { preset ->
                         CoverPresetTile(
                             preset = preset,
-                            selected = presetId == preset.id,
+                            selected = !automaticEnabled && presetId == preset.id,
                             bannerRatio = bannerRatio,
                             time = time,
                             modifier = Modifier.weight(1f),
@@ -299,7 +328,7 @@ fun CoverBackgroundSheet(
                     row.forEach { preset ->
                         CoverPresetTile(
                             preset = preset,
-                            selected = presetId == preset.id,
+                            selected = !automaticEnabled && presetId == preset.id,
                             bannerRatio = bannerRatio,
                             time = time,
                             modifier = Modifier.weight(1f),
@@ -317,7 +346,7 @@ fun CoverBackgroundSheet(
             }
 
             // --- REMOVE (same destructive step as before) --------------------
-            if (hasCustom || presetId != null) {
+            if (automaticEnabled || hasCustom || presetId != null) {
                 Spacer(Modifier.height(6.dp))
                 Row(
                     modifier = Modifier
@@ -347,6 +376,105 @@ fun CoverBackgroundSheet(
             }
             Spacer(Modifier.height(6.dp))
         }
+    }
+}
+
+@Composable
+private fun AutomaticCoverTile(
+    state: AutomaticCoverState,
+    selected: Boolean,
+    bannerRatio: Float,
+    onClick: () -> Unit,
+) {
+    val ready = state as? AutomaticCoverState.Ready
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(bannerRatio)
+            .clip(RoundedCornerShape(16.dp))
+            .background(NazoSurfaceVariant)
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.12f),
+                shape = RoundedCornerShape(16.dp),
+            )
+            .semantics { contentDescription = "Automatically match profile picture" }
+            .clickable(enabled = ready != null, onClick = onClick),
+    ) {
+        when (val current = state) {
+            is AutomaticCoverState.Ready -> when (current.artifact.kind) {
+                AutomaticCoverKind.IMAGE -> SafeRemoteImage(
+                    url = current.artifact.uri,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                AutomaticCoverKind.VIDEO -> CoverVideoBackground(
+                    uri = current.artifact.uri,
+                    playbackAllowed = true,
+                    syncPositionProvider = {
+                        AvatarVideoHost.currentPositionFor(current.artifact.sourceUri)
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            is AutomaticCoverState.Preparing,
+            AutomaticCoverState.Idle -> Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = NazoPrimary,
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = "Preparing from your avatar…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = NazoTextSecondary,
+                    )
+                }
+            }
+            is AutomaticCoverState.Unavailable -> Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Filled.AutoAwesome,
+                        contentDescription = null,
+                        tint = NazoTextSecondary,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = current.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NazoTextSecondary,
+                        maxLines = 3,
+                    )
+                }
+            }
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(8.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color.Black.copy(alpha = 0.48f))
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+        ) {
+            Text(
+                text = "Match avatar automatically",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        if (selected) SelectedBadge(modifier = Modifier.align(Alignment.TopEnd))
     }
 }
 
