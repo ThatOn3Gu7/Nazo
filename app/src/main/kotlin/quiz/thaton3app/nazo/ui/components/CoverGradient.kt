@@ -30,6 +30,16 @@ private val CoverGradientProcessOriginNanos = System.nanoTime()
 internal fun coverGradientTimelineSeconds(frameNanos: Long, originNanos: Long): Float =
     ((frameNanos - originNanos).coerceAtLeast(0L) / 1_000_000_000.0).toFloat()
 
+internal fun coverGradientFrameClockAllowed(
+    animationAllowed: Boolean,
+    reduceMotion: Boolean,
+): Boolean = animationAllowed && !reduceMotion
+
+internal fun coverGradientFrameDeltaSeconds(
+    frameNanos: Long,
+    previousFrameNanos: Long,
+): Float = ((frameNanos - previousFrameNanos).coerceAtLeast(0L) / 1_000_000_000.0).toFloat()
+
 /**
  * Draws one built-in animated-gradient cover into the current draw scope.
  *
@@ -396,15 +406,15 @@ private fun DrawScope.drawOceanSwell(
 /**
  * The banner's animated-gradient layer.
  *
- * Lifecycle story (the "no work while Profile isn't visible" requirement):
- * the frame clock lives in [LaunchedEffect], so it exists only while this
- * composable is composed — navigating away from Profile disposes the banner
- * and cancels the loop, and backgrounding the app stops the Choreographer,
- * which suspends [androidx.compose.runtime.withFrameNanos] with zero CPU.
- * Every instance reads one process-wide monotonic timeline, so changing
- * gradient presets during a crossfade never restarts motion at t = 0. System
- * "Remove animations" ([rememberSystemReduceMotion]) renders a single static
- * frame at t = 0 and never starts the clock at all.
+ * Lifecycle story (the "no work while Profile is moving" requirement):
+ * the frame clock lives in [LaunchedEffect] and runs only when
+ * [animationAllowed]. AnimatedContent may keep Profile composed while entering
+ * or leaving, but that overlap retains one frozen frame with zero state writes.
+ * Resuming establishes a new frame-time baseline, so it continues smoothly
+ * instead of jumping by the time spent paused. A new instance initializes from
+ * one process-wide monotonic timeline, so changing presets during a crossfade
+ * does not restart motion at t = 0. System "Remove animations"
+ * ([rememberSystemReduceMotion]) renders a static first frame and starts no clock.
  *
  * One state write per frame invalidates only this layer's draw — the rest
  * of the profile (avatar, particles, content) does not recompose.
@@ -413,16 +423,28 @@ private fun DrawScope.drawOceanSwell(
 internal fun AnimatedCoverGradient(
     preset: CoverPreset,
     modifier: Modifier = Modifier,
+    /** False during screen motion: retain the last rendered frame exactly. */
+    animationAllowed: Boolean = true,
 ) {
     // Palette conversion once per preset, not once per frame.
     val colors = remember(preset) { preset.gradientColors.map { Color(0xFF000000L or it) } }
     val reduceMotion = rememberSystemReduceMotion()
-    var t by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(reduceMotion) {
-        if (reduceMotion) return@LaunchedEffect
-        while (true) {
-            withFrameNanos { now ->
-                t = coverGradientTimelineSeconds(now, CoverGradientProcessOriginNanos)
+    var t by remember {
+        mutableFloatStateOf(
+            coverGradientTimelineSeconds(System.nanoTime(), CoverGradientProcessOriginNanos),
+        )
+    }
+    LaunchedEffect(reduceMotion, animationAllowed) {
+        if (coverGradientFrameClockAllowed(animationAllowed, reduceMotion)) {
+            // Establish a fresh baseline whenever motion resumes. Advancing by
+            // frame deltas instead of jumping to the process clock keeps a
+            // navigation gesture on one exact frame, then continues smoothly.
+            var previousFrameNanos = withFrameNanos { it }
+            while (true) {
+                withFrameNanos { frameNanos ->
+                    t += coverGradientFrameDeltaSeconds(frameNanos, previousFrameNanos)
+                    previousFrameNanos = frameNanos
+                }
             }
         }
     }

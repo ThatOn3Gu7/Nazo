@@ -22,6 +22,12 @@ class AvatarOverlayTest {
     // ---- avatarOverlayTransform ----
 
     @Test
+    fun ordinaryMotionStaysSubtleAndResponsive() {
+        assertTrue(OrdinaryScreenTransitionDurationMs in 200..280)
+        assertTrue(OrdinaryScreenSlideFraction in 0.05f..0.12f)
+    }
+
+    @Test
     fun atRestTheOverlayIsFullyVisibleAndUnmoved() {
         // Every flag combination must collapse to the same rest state —
         // a lingering predictiveBackTarget after a settle must not dim or
@@ -45,7 +51,8 @@ class AvatarOverlayTest {
     }
 
     @Test
-    fun ordinaryNavigationIsAPureFadeOfTheIncomingScreen() {
+    fun ordinaryIncomingOverlayMirrorsTheSubtlePushSlideAndFade() {
+        val width = 1080f
         for (f in listOf(0f, 0.25f, 0.5f, 0.75f, 1f)) {
             val t = avatarOverlayTransform(
                 fraction = f,
@@ -55,18 +62,21 @@ class AvatarOverlayTest {
                 initialIsPredictive = false,
                 winnerIsTarget = true,
                 edgeDirection = 1,
-                containerWidth = 1080f,
+                ordinaryDirection = 1,
+                containerWidth = width,
             )
             assertEquals(eased(f), t.alpha, 0f)
-            assertEquals(0f, t.slideX, 0f)
+            assertEquals(
+                width * OrdinaryScreenSlideFraction * (1f - eased(f)),
+                t.slideX,
+                0.0001f,
+            )
         }
     }
 
     @Test
-    fun ordinaryNavigationRidesTheExitFadeWhenWinnerIsTheOutgoingScreen() {
-        // Navigation started while a settle was still running: the winner is
-        // the outgoing screen and must follow fadeOut (tween 160 of a 220 ms
-        // segment), not fade in.
+    fun ordinaryWinnerRidesOutgoingPushWithoutChangingNativeViewSize() {
+        val width = 1080f
         for (f in listOf(0f, 0.5f, 1f)) {
             val t = avatarOverlayTransform(
                 fraction = f,
@@ -76,11 +86,45 @@ class AvatarOverlayTest {
                 initialIsPredictive = false,
                 winnerIsTarget = false,
                 edgeDirection = 1,
-                containerWidth = 1080f,
+                ordinaryDirection = 1,
+                containerWidth = width,
             )
-            assertEquals(1f - eased(f * 220f / 160f), t.alpha, 0f)
-            assertEquals(0f, t.slideX, 0f)
+            assertEquals(1f - eased(f), t.alpha, 0f)
+            assertEquals(
+                -width * OrdinaryScreenSlideFraction * eased(f),
+                t.slideX,
+                0.0001f,
+            )
         }
+    }
+
+    @Test
+    fun ordinaryPopReversesTheSlideDirection() {
+        val width = 800f
+        val forward = avatarOverlayTransform(
+            fraction = 0.5f,
+            transitioning = true,
+            predictiveTargetPresent = false,
+            targetIsPredictive = false,
+            initialIsPredictive = false,
+            winnerIsTarget = false,
+            edgeDirection = 1,
+            ordinaryDirection = 1,
+            containerWidth = width,
+        )
+        val back = avatarOverlayTransform(
+            fraction = 0.5f,
+            transitioning = true,
+            predictiveTargetPresent = false,
+            targetIsPredictive = false,
+            initialIsPredictive = false,
+            winnerIsTarget = false,
+            edgeDirection = 1,
+            ordinaryDirection = -1,
+            containerWidth = width,
+        )
+        assertEquals(-forward.slideX, back.slideX, 0f)
+        assertEquals(forward.alpha, back.alpha, 0f)
     }
 
     @Test
@@ -157,26 +201,57 @@ class AvatarOverlayTest {
                 predictiveTarget = null,
             ),
         )
+    }
+
+    @Test
+    fun winnerOnForwardNavigationStaysWithOutgoingScreenUntilSettle() {
         assertSame(
-            Screen.Settings,
+            Screen.Home,
             resolveAvatarWinnerScreen(
-                currentScreen = Screen.Settings,
+                currentScreen = Screen.Profile,
                 currentState = Screen.Home,
-                targetState = Screen.Settings,
+                targetState = Screen.Profile,
                 predictiveTarget = null,
             ),
         )
     }
 
     @Test
-    fun winnerOnForwardNavigationIsTheIncomingScreen() {
-        // currentScreen flips at push time; no predictive target involved.
+    fun stackCommitBeforeAnimateToStillRetainsMeasuredOutgoingAnchor() {
+        // Compose can observe the stack mutation one frame before animateTo
+        // changes the seekable state's target. Profile is not measured yet.
+        assertSame(
+            Screen.Home,
+            resolveAvatarWinnerScreen(
+                currentScreen = Screen.Profile,
+                currentState = Screen.Home,
+                targetState = Screen.Home,
+                predictiveTarget = null,
+            ),
+        )
+    }
+
+    @Test
+    fun ordinaryWinnerChangesOnlyAfterTransitionSettlement() {
         assertSame(
             Screen.Profile,
             resolveAvatarWinnerScreen(
                 currentScreen = Screen.Profile,
-                currentState = Screen.Home,
+                currentState = Screen.Profile,
                 targetState = Screen.Profile,
+                predictiveTarget = null,
+            ),
+        )
+    }
+
+    @Test
+    fun ordinaryBackAlsoRetainsTheOutgoingProfileAnchor() {
+        assertSame(
+            Screen.Profile,
+            resolveAvatarWinnerScreen(
+                currentScreen = Screen.Home,
+                currentState = Screen.Profile,
+                targetState = Screen.Home,
                 predictiveTarget = null,
             ),
         )
@@ -221,6 +296,32 @@ class AvatarOverlayTest {
             ),
         )
     }
+
+    @Test
+    fun staleBoundsNeverBecomeVisibleForANewWinner() {
+        assertFalse(
+            avatarOverlayBoundsMatchWinner(
+                boundsOwner = AvatarAnchorId.Home,
+                winner = AvatarAnchorId.Profile,
+                ready = true,
+            )
+        )
+        assertFalse(
+            avatarOverlayBoundsMatchWinner(
+                boundsOwner = AvatarAnchorId.Profile,
+                winner = AvatarAnchorId.Profile,
+                ready = false,
+            )
+        )
+        assertTrue(
+            avatarOverlayBoundsMatchWinner(
+                boundsOwner = AvatarAnchorId.Profile,
+                winner = AvatarAnchorId.Profile,
+                ready = true,
+            )
+        )
+    }
+
     @Test
     fun persistentSurfaceActionsFollowTheCurrentAvatarAnchor() {
         val home = AvatarAnchorState(AvatarAnchorId.Home)
