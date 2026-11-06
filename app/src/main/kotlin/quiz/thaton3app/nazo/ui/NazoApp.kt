@@ -2461,13 +2461,13 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // Continue the system splash's color: when a custom app icon is active
             // its flat splash color carries into the zoom-through, so there's no
             // color jump between the two. The follow-OS-theme pair passes null and
-            // keeps the original light/dark greens.
+            // keeps the Sumi Ember bottle-green/forest-black grounds.
             val introIcon = if (themePrefs.iconFollowsOsTheme) null
             else LauncherIconSwitcher.option(appIcon)
             IntroOverlay(
                 isDark = isDark,
                 backgroundColor = introIcon?.splashColor?.let { Color(it) },
-                mark = introIcon?.introMark ?: R.drawable.ic_launcher_foreground,
+                mark = introIcon?.introMark ?: R.drawable.ic_mark_nazo_silhouette,
                 style = introIcon?.introStyle ?: IntroStyle.WARP,
             )
         }
