@@ -123,6 +123,22 @@ class CoverPresetsTest {
     }
 
     @Test
+    fun appOwnedMp4DispatchesToVideoWhenNoPreset() {
+        val uri = "file:///data/user/0/nazo/files/profile_covers/cover_42.mp4"
+        val visual = resolveCoverVisual(galleryUri = uri, presetId = null)
+        assertTrue(visual is CoverVisual.Video)
+        assertEquals(uri, (visual as CoverVisual.Video).uri)
+    }
+
+    @Test
+    fun presetStillWinsOverStoredVideo() {
+        val uri = "file:///data/user/0/nazo/files/profile_covers/cover_42.mp4"
+        val visual = resolveCoverVisual(galleryUri = uri, presetId = "gradient_aurora")
+        assertTrue(visual is CoverVisual.Preset)
+        assertEquals("gradient_aurora", (visual as CoverVisual.Preset).preset.id)
+    }
+
+    @Test
     fun defaultWhenNothingSelected() {
         assertTrue(resolveCoverVisual(galleryUri = null, presetId = null) is CoverVisual.Default)
         // Blank uri (defensive) behaves like none.

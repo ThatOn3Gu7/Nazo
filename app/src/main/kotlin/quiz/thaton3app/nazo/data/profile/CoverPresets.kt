@@ -5,8 +5,8 @@ import quiz.thaton3app.nazo.R
 
 /**
  * Built-in cover (banner) collections: premade static photos bundled in the
- * APK and premade animated-gradient designs — plus the user's own gallery
- * image, which stays a first-class option (see [resolveCoverVisual]).
+ * APK and premade animated-gradient designs — plus the user's own photo or
+ * video, which stays a first-class option (see [resolveCoverVisual]).
  *
  * Everything here is pure registry data with stable string ids: the id is
  * what [quiz.thaton3app.nazo.data.settings.ProfilePreferences] persists, so
@@ -14,9 +14,8 @@ import quiz.thaton3app.nazo.R
  * that no longer exists simply falls back to the gallery/default flow).
  *
  * The sealed [CoverVisual] is the rendering seam: the banner draws exactly
- * what the resolver picks, and later phases (video covers, avatar-derived
- * backgrounds) add a kind + a resolver branch + a banner case without
- * touching the selection flow or the persisted keys.
+ * what the resolver picks. Custom video uses that seam without changing any
+ * preset ids; a later avatar-derived phase can add another resolver branch.
  */
 
 /** Which collection a [CoverPreset] belongs to. */
@@ -27,8 +26,8 @@ enum class CoverPresetKind {
     /** A premade animated gradient drawn procedurally (no bitmaps, no video). */
     GRADIENT,
 
-    // Future phases: VIDEO, AVATAR_DERIVED — new kinds force explicit
-    // handling at each dispatch point (resolver, banner, selection sheet).
+    // A future bundled-video collection would add VIDEO here; custom videos
+    // are CoverVisual.Video and therefore do not alter the preset registry.
 }
 
 /**
@@ -232,17 +231,21 @@ sealed interface CoverVisual {
     /** The user's own gallery photo (existing Phase-2 flow, `file://`). */
     data class Gallery(val uri: String) : CoverVisual
 
+    /** The user's validated, app-owned MP4 cover (`file://`). */
+    data class Video(val uri: String) : CoverVisual
+
     /** A bundled preset (static image or animated gradient). */
     data class Preset(val preset: CoverPreset) : CoverVisual
 }
 
 /**
- * Pure precedence rule: **preset > gallery > default**.
+ * Pure precedence rule: **preset > custom media > default**.
  *
- * - Choosing a preset only writes the preset id — the gallery uri is never
- *   touched, so "switch back to my photo" is just clearing the preset id
- *   ([CoverVisual.Gallery] returns without re-picking anything).
- * - With no preset, the existing custom photo renders exactly as before.
+ * - Choosing a preset only writes the preset id — the custom-media uri is
+ *   never touched, so "switch back to mine" is just clearing the preset id
+ *   ([CoverVisual.Gallery] or [CoverVisual.Video] returns without re-picking).
+ * - With no preset, a custom photo renders exactly as before and an app-owned
+ *   `.mp4` dispatches to dedicated cover playback.
  * - An unknown preset id (removed in an update, corrupt prefs) falls back
  *   down the chain instead of showing a broken cover.
  */
@@ -250,7 +253,8 @@ fun resolveCoverVisual(galleryUri: String?, presetId: String?): CoverVisual {
     val preset = CoverPresets.byId(presetId)
     return when {
         preset != null -> CoverVisual.Preset(preset)
-        !galleryUri.isNullOrBlank() -> CoverVisual.Gallery(galleryUri)
-        else -> CoverVisual.Default
+        galleryUri.isNullOrBlank() -> CoverVisual.Default
+        CoverVideoMedia.isVideoUri(galleryUri) -> CoverVisual.Video(galleryUri)
+        else -> CoverVisual.Gallery(galleryUri)
     }
 }

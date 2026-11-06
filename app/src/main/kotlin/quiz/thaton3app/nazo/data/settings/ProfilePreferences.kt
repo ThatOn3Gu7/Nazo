@@ -24,11 +24,11 @@ class ProfilePreferences(context: Context) {
         set(value) = prefs.edit().putString(KEY_PICTURE, value).apply()
 
     /**
-     * Profile cover banner image: null (no stored photo) or a `file://`
-     * into this app's own cover storage. Gallery picks only — the value is
-     * always a file we own, never a content:// (permissions lapse) and never
-     * a network URL. Kept independent of [coverPresetId]: choosing a built-in
-     * preset never touches this, so the custom photo survives switching.
+     * Profile cover banner medium: null, or a `file://` into this app's own
+     * cover storage. It may be a validated static image or MP4 video; it is
+     * never a content:// (picker permissions lapse) and never a network URL.
+     * Kept independent of [coverPresetId]: choosing a built-in preset never
+     * touches this, so the custom photo/video survives switching.
      */
     var coverPictureUri: String?
         get() = prefs.getString(KEY_COVER, null)
