@@ -49,18 +49,18 @@ class ProfileCoverTest {
     }
 
     @Test
-    fun landscapeCoverShiftIsResponsiveWithoutMovingOrNarrowingTheRightPane() {
+    fun landscapeCoverShiftApproachesCutoutWithoutMovingOrNarrowingTheRightPane() {
         val narrow = landscapeProfileSpacing(screenWidthDp = 600)
         assertEquals(24f, narrow.startPadding.value, 0.001f)
         assertEquals(32f, narrow.columnSpacing.value, 0.001f)
 
         val normal = landscapeProfileSpacing(screenWidthDp = 800)
-        assertEquals(32f, normal.startPadding.value, 0.001f) // cover/avatar +8dp
-        assertEquals(24f, normal.columnSpacing.value, 0.001f)
+        assertEquals(16f, normal.startPadding.value, 0.001f) // cover/avatar −8dp
+        assertEquals(40f, normal.columnSpacing.value, 0.001f)
 
         val wide = landscapeProfileSpacing(screenWidthDp = 1200)
-        assertEquals(36f, wide.startPadding.value, 0.001f) // clamped +12dp
-        assertEquals(20f, wide.columnSpacing.value, 0.001f)
+        assertEquals(9f, wide.startPadding.value, 0.001f) // clamped −15dp
+        assertEquals(47f, wide.columnSpacing.value, 0.001f)
 
         // The exchanged spacing always totals 56dp. Consequently the left
         // column keeps its old width and the right column keeps its old x edge.
@@ -89,8 +89,8 @@ class ProfileCoverTest {
             ),
             0.001f,
         )
-        // Landscape 40/60 split: (screen − 48 − 32 spacing) × 0.4 over the
-        // responsive height (360.dp window → 34 % → 122.4.dp).
+        // Landscape 40/60 split: (screen − 80 combined outer/gap spacing)
+        // × 0.4 over the responsive height (360.dp → 34 % → 122.4.dp).
         assertEquals(
             288f / 122.4f,
             coverPreviewAspectRatio(
