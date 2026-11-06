@@ -289,10 +289,10 @@ internal fun dispatchAvatarAnchorLongClick(anchor: AvatarAnchorState?): Boolean 
 
 /** Old native-view geometry must stay transparent after the winner changes. */
 internal fun avatarOverlayBoundsMatchWinner(
-    boundsOwner: AvatarAnchorId,
-    winner: AvatarAnchorId,
+    boundsOwner: AvatarAnchorId?,
+    winner: AvatarAnchorId?,
     ready: Boolean,
-): Boolean = ready && boundsOwner == winner
+): Boolean = ready && winner != null && boundsOwner == winner
 
 /** Provided by NazoApp around the screens subtree. */
 internal val LocalAvatarAnchorRegistry = compositionLocalOf<AvatarAnchorRegistry?> { null }
