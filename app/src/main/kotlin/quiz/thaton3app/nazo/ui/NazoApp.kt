@@ -2298,10 +2298,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                                                 animationSpec = tween(220),
                                             ) + fadeOut(animationSpec = tween(220)),
                                         )
-                                        .apply {
-                                            targetContentZIndex = -1f
-                                            sizeTransform = null
-                                        }
+                                        .apply { targetContentZIndex = -1f }
+                                        .using(null)
                                 }
 
                                 predictiveBackTarget != null && initialState == predictiveBackTarget -> {
@@ -2318,10 +2316,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                                                 animationSpec = tween(220),
                                             ) + fadeOut(animationSpec = tween(180)),
                                         )
-                                        .apply {
-                                            targetContentZIndex = 1f
-                                            sizeTransform = null
-                                        }
+                                        .apply { targetContentZIndex = 1f }
+                                        .using(null)
                                 }
 
                                 else -> {
@@ -2331,7 +2327,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                                     // media may become ready during the overlap, but
                                     // that must never animate container measurement.
                                     val direction = ordinaryNavigationDirection
-                                    ((slideInHorizontally(
+                                    val enter = slideInHorizontally(
                                         initialOffsetX = { width ->
                                             (width * OrdinaryScreenSlideFraction * direction)
                                                 .roundToInt()
@@ -2345,27 +2341,27 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                                             OrdinaryScreenTransitionDurationMs,
                                             easing = FastOutSlowInEasing,
                                         ),
-                                    )).togetherWith(
-                                        slideOutHorizontally(
-                                            targetOffsetX = { width ->
-                                                (-width * OrdinaryScreenSlideFraction * direction)
-                                                    .roundToInt()
-                                            },
-                                            animationSpec = tween(
-                                                OrdinaryScreenTransitionDurationMs,
-                                                easing = FastOutSlowInEasing,
-                                            ),
-                                        ) + fadeOut(
-                                            animationSpec = tween(
-                                                OrdinaryScreenTransitionDurationMs,
-                                                easing = FastOutSlowInEasing,
-                                            ),
+                                    )
+                                    val exit = slideOutHorizontally(
+                                        targetOffsetX = { width ->
+                                            (-width * OrdinaryScreenSlideFraction * direction)
+                                                .roundToInt()
+                                        },
+                                        animationSpec = tween(
+                                            OrdinaryScreenTransitionDurationMs,
+                                            easing = FastOutSlowInEasing,
+                                        ),
+                                    ) + fadeOut(
+                                        animationSpec = tween(
+                                            OrdinaryScreenTransitionDurationMs,
+                                            easing = FastOutSlowInEasing,
                                         ),
                                     )
+                                    (enter togetherWith exit)
                                         .apply {
                                             targetContentZIndex = if (direction > 0) 1f else -1f
-                                            sizeTransform = null
                                         }
+                                        .using(null)
                                 }
                             }
                         },
