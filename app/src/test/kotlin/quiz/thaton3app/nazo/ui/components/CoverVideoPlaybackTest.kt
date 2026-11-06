@@ -1,5 +1,6 @@
 package quiz.thaton3app.nazo.ui.components
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -17,6 +18,13 @@ class CoverVideoPlaybackTest {
                 hasSurface = true,
             )
         )
+    }
+
+    @Test
+    fun avatarSyncPositionWrapsToTheDerivedLoop() {
+        assertEquals(2_250, normalizeCoverSyncPosition(12_250, 10_000))
+        assertEquals(0, normalizeCoverSyncPosition(-100, 10_000))
+        assertEquals(450, normalizeCoverSyncPosition(450, 0))
     }
 
     @Test

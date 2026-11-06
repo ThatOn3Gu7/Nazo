@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 
 /** Pure gate shared by the host and JVM tests for every pause/resume input. */
 internal fun coverVideoShouldPlay(
@@ -43,6 +44,9 @@ internal fun coverVideoShouldPlay(
     playbackAllowed: Boolean,
     hasSurface: Boolean,
 ): Boolean = prepared && lifecycleStarted && playbackAllowed && hasSurface
+
+internal fun normalizeCoverSyncPosition(positionMs: Int, durationMs: Int): Int =
+    if (durationMs > 0) positionMs.coerceAtLeast(0) % durationMs else positionMs.coerceAtLeast(0)
 
 /**
  * The cover's independent playback owner.
@@ -66,6 +70,7 @@ internal object CoverVideoHost {
         var uri: String,
         var playbackAllowed: Boolean,
         var lifecycleStarted: Boolean,
+        var syncPositionProvider: (() -> Int?)?,
     )
 
     private data class Session(
@@ -92,6 +97,7 @@ internal object CoverVideoHost {
         uri: String,
         playbackAllowed: Boolean,
         lifecycleStarted: Boolean,
+        syncPositionProvider: (() -> Int?)?,
     ) {
         releaseJob?.cancel()
         releaseJob = null
@@ -116,7 +122,10 @@ internal object CoverVideoHost {
             override fun onSurfaceTextureDestroyed(
                 surfaceTexture: android.graphics.SurfaceTexture,
             ): Boolean {
-                if (activeTarget?.view === view) clearSurface()
+                if (activeTarget?.view === view) {
+                    pauseAndRemember()
+                    clearSurface()
+                }
                 return true
             }
 
@@ -133,7 +142,13 @@ internal object CoverVideoHost {
         }
 
         targets.remove(view)
-        val target = Target(view, uri, playbackAllowed, lifecycleStarted)
+        val target = Target(
+            view,
+            uri,
+            playbackAllowed,
+            lifecycleStarted,
+            syncPositionProvider,
+        )
         targets[view] = target
         activeTarget = target
         showPoster(context, uri)
@@ -146,16 +161,25 @@ internal object CoverVideoHost {
         uri: String,
         playbackAllowed: Boolean,
         lifecycleStarted: Boolean,
+        syncPositionProvider: (() -> Int?)?,
     ) {
         val target = targets[view]
         if (target == null) {
-            attach(context, view, uri, playbackAllowed, lifecycleStarted)
+            attach(
+                context,
+                view,
+                uri,
+                playbackAllowed,
+                lifecycleStarted,
+                syncPositionProvider,
+            )
             return
         }
         val sourceChanged = target.uri != uri
         target.uri = uri
         target.playbackAllowed = playbackAllowed
         target.lifecycleStarted = lifecycleStarted
+        target.syncPositionProvider = syncPositionProvider
         if (activeTarget?.view === view) {
             if (sourceChanged) {
                 showPoster(context, uri)
@@ -205,6 +229,10 @@ internal object CoverVideoHost {
         val target = activeTarget ?: return
         val texture = target.view.surfaceTexture ?: return
 
+        // Every surface hand-off is a pause/resume boundary. Automatic video
+        // covers use that boundary to seek back to the avatar's live position;
+        // manual covers simply resume their remembered position.
+        pauseAndRemember()
         clearSurface()
         target.view.alpha = 0f
         val existing = session
@@ -237,10 +265,6 @@ internal object CoverVideoHost {
                 }
                 surface?.let { videoSurface ->
                     runCatching { preparedPlayer.setSurface(videoSurface) }
-                }
-                val position = savedPositions[uri] ?: 0
-                if (position > 0) {
-                    runCatching { preparedPlayer.seekTo(position) }
                 }
                 updatePlayback()
             }
@@ -279,7 +303,18 @@ internal object CoverVideoHost {
         )
         if (shouldPlay) {
             runCatching {
-                if (!current.player.isPlaying) current.player.start()
+                if (!current.player.isPlaying) {
+                    val desired = activeTarget?.syncPositionProvider?.invoke()
+                        ?: savedPositions[current.uri]
+                    if (desired != null) {
+                        val duration = current.player.duration
+                        val normalized = normalizeCoverSyncPosition(desired, duration)
+                        if (abs(current.player.currentPosition - normalized) > 120) {
+                            current.player.seekTo(normalized)
+                        }
+                    }
+                    current.player.start()
+                }
             }
         } else {
             pauseAndRemember()
@@ -392,6 +427,7 @@ internal fun CoverVideoBackground(
     uri: String,
     playbackAllowed: Boolean,
     modifier: Modifier = Modifier,
+    syncPositionProvider: (() -> Int?)? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -415,6 +451,7 @@ internal fun CoverVideoBackground(
             playbackAllowed = playbackAllowed,
             lifecycleStarted = lifecycleOwner.lifecycle.currentState
                 .isAtLeast(Lifecycle.State.STARTED),
+            syncPositionProvider = syncPositionProvider,
         )
         onDispose { CoverVideoHost.detach(context, textureView) }
     }
@@ -458,6 +495,7 @@ internal fun CoverVideoBackground(
                     playbackAllowed = playbackAllowed,
                     lifecycleStarted = lifecycleOwner.lifecycle.currentState
                         .isAtLeast(Lifecycle.State.STARTED),
+                    syncPositionProvider = syncPositionProvider,
                 )
             },
             modifier = Modifier.fillMaxSize(),

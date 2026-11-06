@@ -278,6 +278,12 @@ internal object AvatarVideoHost {
      * activation (which prepares through [sync]) can never reset a player
      * that is already preparing the same file. Main thread only.
      */
+    /** Main-thread snapshot used only to align an automatic derived cover. */
+    fun currentPositionFor(uri: String): Int? {
+        if (!prepared || preparedPath != uri) return null
+        return runCatching { player?.currentPosition }.getOrNull()
+    }
+
     fun prepareForAvatar(context: Context, uri: String?) {
         val isVideo = uri != null &&
             AvatarMedia.displayKind(uri) == AvatarMedia.DisplayKind.Video

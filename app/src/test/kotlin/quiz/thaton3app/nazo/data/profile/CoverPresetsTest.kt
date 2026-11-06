@@ -139,6 +139,64 @@ class CoverPresetsTest {
     }
 
     @Test
+    fun readyAutomaticImageWinsWithoutDestroyingManualSelection() {
+        val artifact = AutomaticCoverArtifact(
+            sourceUri = "file:///profile/avatar.jpg",
+            uri = "file:///profile_auto_covers/auto.jpg",
+            kind = AutomaticCoverKind.IMAGE,
+        )
+        val visual = resolveCoverVisual(
+            galleryUri = "file:///covers/manual.mp4",
+            presetId = "gradient_ocean_current",
+            automaticEnabled = true,
+            automaticArtifact = artifact,
+        )
+        assertTrue(visual is CoverVisual.AutomaticImage)
+        assertEquals(artifact.uri, (visual as CoverVisual.AutomaticImage).uri)
+
+        // The same untouched inputs resolve straight back to the preset when
+        // automatic mode is disabled.
+        val manual = resolveCoverVisual(
+            galleryUri = "file:///covers/manual.mp4",
+            presetId = "gradient_ocean_current",
+            automaticEnabled = false,
+            automaticArtifact = artifact,
+        )
+        assertTrue(manual is CoverVisual.Preset)
+    }
+
+    @Test
+    fun automaticVideoCarriesAvatarSyncSource() {
+        val artifact = AutomaticCoverArtifact(
+            sourceUri = "file:///profile/avatar.mp4",
+            uri = "file:///profile_auto_covers/auto.mp4",
+            kind = AutomaticCoverKind.VIDEO,
+        )
+        val visual = resolveCoverVisual(
+            galleryUri = null,
+            presetId = null,
+            automaticEnabled = true,
+            automaticArtifact = artifact,
+        )
+        assertTrue(visual is CoverVisual.AutomaticVideo)
+        visual as CoverVisual.AutomaticVideo
+        assertEquals(artifact.uri, visual.uri)
+        assertEquals(artifact.sourceUri, visual.avatarUri)
+    }
+
+    @Test
+    fun unavailableAutomaticFallsBackToPreservedManualCover() {
+        val visual = resolveCoverVisual(
+            galleryUri = "file:///covers/manual.jpg",
+            presetId = "gradient_grove",
+            automaticEnabled = true,
+            automaticArtifact = null,
+        )
+        assertTrue(visual is CoverVisual.Preset)
+        assertEquals("gradient_grove", (visual as CoverVisual.Preset).preset.id)
+    }
+
+    @Test
     fun defaultWhenNothingSelected() {
         assertTrue(resolveCoverVisual(galleryUri = null, presetId = null) is CoverVisual.Default)
         // Blank uri (defensive) behaves like none.
