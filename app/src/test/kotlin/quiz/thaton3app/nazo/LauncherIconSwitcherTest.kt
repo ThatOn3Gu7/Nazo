@@ -24,16 +24,37 @@ class LauncherIconSwitcherTest {
     }
 
     @Test
-    fun unrelatedSelectableIconsKeepTheirExistingMarks() {
-        listOf("sakura", "midnight", "ocean").forEach { id ->
+    fun colorThemesUseTheirOwnTexturedArtwork() {
+        val expectedMarks = mapOf(
+            "sakura" to R.drawable.ic_launcher_foreground_sakura,
+            "midnight" to R.drawable.ic_launcher_foreground_midnight,
+            "ocean" to R.drawable.ic_launcher_foreground_ocean,
+        )
+
+        expectedMarks.forEach { (id, mark) ->
             val option = LauncherIconSwitcher.option(id)
             assertFalse(option.themed)
-            assertEquals(R.drawable.ic_launcher_foreground, option.introMark)
-            assertEquals(R.drawable.ic_launcher_foreground, option.previewMark)
+            assertEquals(R.drawable.ic_mark_nazo_variant_silhouette, option.introMark)
+            assertEquals(mark, option.previewMark)
         }
-        assertEquals(R.drawable.ic_mark_lantern_silhouette, LauncherIconSwitcher.option("lantern").introMark)
-        assertEquals(R.drawable.ic_mark_n_brush_silhouette, LauncherIconSwitcher.option("nbrush").introMark)
-        assertEquals(R.drawable.ic_mark_n_pixel_silhouette, LauncherIconSwitcher.option("npixel").introMark)
+    }
+
+    @Test
+    fun lanternStaysUntouchedWhileWeakInitialIconsAreRetired() {
+        val lantern = LauncherIconSwitcher.option("lantern")
+        assertEquals(R.drawable.ic_mark_lantern_silhouette, lantern.introMark)
+        assertEquals(R.drawable.ic_mark_lantern, lantern.previewMark)
+
+        assertFalse(
+            LauncherIconSwitcher.OPTIONS.any { it.id == "nbrush" || it.id == "npixel" },
+        )
+        assertEquals(
+            setOf("LauncherBrush", "LauncherPixel"),
+            LauncherIconSwitcher.RETIRED_ALIASES,
+        )
+        listOf("nbrush", "npixel").forEach { retiredId ->
+            assertEquals(LauncherIconSwitcher.ID_LIGHT, LauncherIconSwitcher.option(retiredId).id)
+        }
     }
 
     @Test

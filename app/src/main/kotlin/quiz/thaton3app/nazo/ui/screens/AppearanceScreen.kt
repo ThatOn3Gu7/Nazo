@@ -568,7 +568,7 @@ fun AppearanceScreen(
 
     // --- APP ICON SHEET ---
     // Every launcher icon variant is drawn exactly as the adaptive icon renders
-    // it (gradient background + the shared foreground mark), so what you see in
+    // it (gradient background + its full-color foreground), so what you see in
     // the list is what lands on the home screen. Picking one only stages it:
     // Android kills the task when the active launcher alias is swapped, so the
     // change is confirmed through a dialog that spells out the restart.
@@ -1610,8 +1610,8 @@ private fun AppIconPreview(
         contentAlignment = Alignment.Center,
     ) {
         androidx.compose.foundation.Image(
-            // Full-color art for the illustrated marks; the kanji foreground for the
-            // color-only variants. Not the silhouette — that's only for the punch-out.
+            // Full-color production art, never the flat silhouette reserved for
+            // themed icons and the intro punch-out.
             painter = painterResource(id = option.previewMark),
             contentDescription = null,
             contentScale = ContentScale.Fit,
