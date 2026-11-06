@@ -33,6 +33,19 @@ class CoverGradientTest {
         assertEquals(0f, coverGradientTimelineSeconds(origin - 1L, origin), 0f)
     }
 
+    @Test
+    fun frameClockStopsForNavigationAndSystemReducedMotion() {
+        assertTrue(coverGradientFrameClockAllowed(animationAllowed = true, reduceMotion = false))
+        assertTrue(!coverGradientFrameClockAllowed(animationAllowed = false, reduceMotion = false))
+        assertTrue(!coverGradientFrameClockAllowed(animationAllowed = true, reduceMotion = true))
+    }
+
+    @Test
+    fun resumedClockUsesOnlyForwardFrameDelta() {
+        assertEquals(0.016f, coverGradientFrameDeltaSeconds(2_016_000_000L, 2_000_000_000L), 0f)
+        assertEquals(0f, coverGradientFrameDeltaSeconds(1_999_999_999L, 2_000_000_000L), 0f)
+    }
+
     // --- Determinism ------------------------------------------------------
 
     @Test

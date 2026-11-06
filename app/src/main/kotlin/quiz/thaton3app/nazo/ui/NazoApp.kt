@@ -20,6 +20,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.using
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -53,6 +54,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.math.PI
+import kotlin.math.roundToInt
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -78,10 +80,10 @@ import quiz.thaton3app.nazo.data.settings.ProfilePreferences
 import quiz.thaton3app.nazo.data.settings.QuestionHistoryStore
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
-import quiz.thaton3app.nazo.data.profile.AutomaticCoverKind
 import quiz.thaton3app.nazo.data.profile.AutomaticCoverState
 import quiz.thaton3app.nazo.data.profile.AutomaticCoverStore
-import quiz.thaton3app.nazo.data.profile.CoverVideoMedia
+import quiz.thaton3app.nazo.data.profile.CoverVisual
+import quiz.thaton3app.nazo.data.profile.resolveCoverVisual
 import quiz.thaton3app.nazo.modes.guessing_game.GuessApiClient
 import quiz.thaton3app.nazo.modes.guessing_game.GuessImageFetcher
 import quiz.thaton3app.nazo.modes.guessing_game.GuessPayload
@@ -100,8 +102,10 @@ import quiz.thaton3app.nazo.ui.components.AvatarAnchorId
 import quiz.thaton3app.nazo.ui.components.AvatarAnchorRegistry
 import quiz.thaton3app.nazo.ui.components.AvatarFrameCache
 import quiz.thaton3app.nazo.ui.components.AvatarVideoHost
-import quiz.thaton3app.nazo.ui.components.CoverVideoHost
 import quiz.thaton3app.nazo.ui.components.CHANGELOG_ID
+import quiz.thaton3app.nazo.ui.components.OrdinaryScreenSlideFraction
+import quiz.thaton3app.nazo.ui.components.OrdinaryScreenTransitionDurationMs
+import quiz.thaton3app.nazo.ui.components.prepareCoverArtwork
 import quiz.thaton3app.nazo.ui.components.LocalAvatarAnchorRegistry
 import quiz.thaton3app.nazo.ui.components.PersistentAvatarVideo
 import quiz.thaton3app.nazo.ui.components.avatarOverlayTransform
@@ -156,6 +160,41 @@ sealed interface Screen {
     data object VersusHandoff : Screen
     data object VersusResults : Screen
     data object VersusReview : Screen
+}
+
+/**
+ * Profile's expensive visual work is tied to transition REST, not merely to the
+ * navigation stack's destination. [AnimatedContent] composes both screens while
+ * moving between them; starting gradient frame clocks, GIFs, and a cover decoder
+ * in that overlap steals the exact frames needed by the screen animation.
+ *
+ * The live cover TextureView is a separate decision: keep an already-visible
+ * outgoing/predictive surface attached so its paused final frame remains stable,
+ * but defer creating a NEW one during an ordinary Profile entry until the layout
+ * has settled. The poster occupies identical bounds in the meantime.
+ */
+internal data class ProfileRenderPolicy(
+    val activeVisualWork: Boolean,
+    val liveCoverSurfaceAllowed: Boolean,
+)
+
+internal fun profileRenderPolicy(
+    currentScreen: Screen,
+    transitionCurrent: Screen,
+    transitionTarget: Screen,
+    predictiveBackTarget: Screen?,
+): ProfileRenderPolicy {
+    val atRest = currentScreen == Screen.Profile &&
+        transitionCurrent == Screen.Profile &&
+        transitionTarget == Screen.Profile &&
+        predictiveBackTarget == null
+    val ordinaryEntry = predictiveBackTarget == null &&
+        currentScreen == Screen.Profile &&
+        transitionCurrent != Screen.Profile
+    return ProfileRenderPolicy(
+        activeVisualWork = atRest,
+        liveCoverSurfaceAllowed = !ordinaryEntry,
+    )
 }
 
 /**
@@ -333,19 +372,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             }
     }
 
-    // Cover videos keep a bounded first-frame cache rather than preparing a
-    // second decoder at startup. Warming the poster prevents a black loading
-    // rectangle when Profile is first opened; actual playback is still owned
-    // by its independent, lifecycle-gated cover host.
+    // Validate the retained manual medium even when a preset currently sits on
+    // top of it. A dead private path should not survive indefinitely in prefs.
     LaunchedEffect(coverPictureUri) {
         val uri = coverPictureUri ?: return@LaunchedEffect
         val localPath = runCatching { Uri.parse(uri).path }.getOrNull()
         if (uri.startsWith("file://") &&
             (localPath.isNullOrBlank() || !java.io.File(localPath).isFile)
         ) {
-            // App-owned cover files normally survive restarts. If storage was
-            // cleared or a non-portable backup path was restored, fail back to
-            // the normal cover instead of retrying a dead decoder forever.
             coverPictureUri = null
             profilePrefs.coverPictureUri = null
             Toast.makeText(
@@ -353,17 +387,31 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 "Your saved cover is no longer available.",
                 Toast.LENGTH_LONG,
             ).show()
-            return@LaunchedEffect
-        }
-        if (CoverVideoMedia.isVideoUri(uri)) {
-            CoverVideoHost.warmPoster(context, uri)
         }
     }
-    LaunchedEffect(automaticCoverState) {
-        val artifact = (automaticCoverState as? AutomaticCoverState.Ready)?.artifact
-        if (artifact?.kind == AutomaticCoverKind.VIDEO) {
-            CoverVideoHost.warmPoster(context, artifact.uri)
-        }
+
+    // Prepare only the RESOLVED cover while Home is idle. Photos enter Coil's
+    // exact request cache and videos enter the bounded poster cache; no live
+    // decoder is created here. This moves disk/metadata work off the first
+    // Home -> Profile transition without wasting work on a hidden manual medium.
+    val activeAutomaticArtifact =
+        (automaticCoverState as? AutomaticCoverState.Ready)?.artifact
+            ?.takeIf { it.sourceUri == profilePictureUri }
+    val activeCoverVisual: CoverVisual = remember(
+        coverPictureUri,
+        coverPresetId,
+        automaticCoverEnabled,
+        activeAutomaticArtifact,
+    ) {
+        resolveCoverVisual(
+            galleryUri = coverPictureUri,
+            presetId = coverPresetId,
+            automaticEnabled = automaticCoverEnabled,
+            automaticArtifact = activeAutomaticArtifact,
+        )
+    }
+    LaunchedEffect(activeCoverVisual) {
+        prepareCoverArtwork(context, activeCoverVisual)
     }
     val backupPrefs = remember { BackupPrefs(context) }
     val settingsScrollState = rememberScrollState()
@@ -498,6 +546,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // in-app back arrows pop this stack, so a user always returns to the screen they came from.
     val navigationStack = remember { mutableStateListOf<Screen>(Screen.Home) }
     val currentScreen = navigationStack.last()
+    // +1 pushes toward deeper content (new screen enters from the right), -1
+    // returns toward Home (target enters from the left). Predictive back keeps
+    // using the gesture edge and ignores this ordinary-navigation direction.
+    var ordinaryNavigationDirection by remember { mutableIntStateOf(1) }
     // Video-avatar anchor slots (which circle the persistent app-level
     // video surface is positioned over). Remembered next to the navigation
     // state: it outlives every screen swap by design.
@@ -550,10 +602,21 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     val settingsDetail = currentScreen.asSettingsDetail()
     val showListDetail = isLandscape() && !showOnboarding &&
         (currentScreen == Screen.Settings || settingsDetail != null)
+    val profilePolicy = profileRenderPolicy(
+        currentScreen = currentScreen,
+        transitionCurrent = screenTransitionState.currentState,
+        transitionTarget = screenTransitionState.targetState,
+        predictiveBackTarget = predictiveBackTarget,
+    )
+    // Set this before either AnimatedContent child composes. Anchors then see
+    // the correct capture policy in the very first transition/settlement frame,
+    // rather than briefly publishing transformed placement as resting bounds.
+    avatarAnchorRegistry.captureEnabled =
+        screenTransitionState.currentState == screenTransitionState.targetState
 
-    // Keep the seekable transition aligned with ordinary navigation (forward
-    // fades still use the plain transition), and settle any interrupted
-    // predictive gesture. Commit: currentScreen is already the popped screen,
+    // Keep the seekable transition aligned with ordinary directional motion,
+    // and settle any interrupted predictive gesture. Commit: currentScreen is
+    // already the popped screen,
     // so animateTo continues the same segment to completion (unchanged).
     // Cancel: reverse the scrub on the SAME segment, frame-stepped exactly
     // like the finger, instead of letting animateTo flip the segment — the
@@ -622,6 +685,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         if (screen == Screen.Settings || screen.asSettingsDetail() != null) {
             val existing = navigationStack.indexOf(screen)
             if (existing >= 0) {
+                ordinaryNavigationDirection = -1
                 while (navigationStack.lastIndex > existing) {
                     navigationStack.removeAt(navigationStack.lastIndex)
                 }
@@ -634,19 +698,28 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 screen.asSettingsDetail() != null &&
                 !screen.isAboutDetail()
             ) {
+                ordinaryNavigationDirection = 1
                 navigationStack[navigationStack.lastIndex] = screen
                 return
             }
         }
+        ordinaryNavigationDirection = 1
         navigationStack.add(screen)
     }
     fun replace(screen: Screen) {
-        if (navigationStack.isNotEmpty()) navigationStack[navigationStack.lastIndex] = screen
+        if (navigationStack.isNotEmpty()) {
+            ordinaryNavigationDirection = 1
+            navigationStack[navigationStack.lastIndex] = screen
+        }
     }
     fun goBack() {
-        if (navigationStack.size > 1) navigationStack.removeAt(navigationStack.lastIndex)
+        if (navigationStack.size > 1) {
+            ordinaryNavigationDirection = -1
+            navigationStack.removeAt(navigationStack.lastIndex)
+        }
     }
     fun goHome() {
+        ordinaryNavigationDirection = -1
         navigationStack.clear()
         navigationStack.add(Screen.Home)
     }
@@ -1791,7 +1864,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         coverPresetId = coverPresetId,
                         automaticCoverEnabled = automaticCoverEnabled,
                         automaticCoverState = automaticCoverState,
-                        screenActive = currentScreen == Screen.Profile,
+                        screenActive = profilePolicy.activeVisualWork,
+                        coverVideoSurfaceAllowed = profilePolicy.liveCoverSurfaceAllowed,
                         quizStats = quizStats,
                         offline = offlineMode,
                         onBack = { goBack() },
@@ -2226,6 +2300,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                                             ) + fadeOut(animationSpec = tween(220)),
                                         )
                                         .apply { targetContentZIndex = -1f }
+                                        .using(null)
                                 }
 
                                 predictiveBackTarget != null && initialState == predictiveBackTarget -> {
@@ -2243,12 +2318,51 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                                             ) + fadeOut(animationSpec = tween(180)),
                                         )
                                         .apply { targetContentZIndex = 1f }
+                                        .using(null)
                                 }
 
                                 else -> {
-                                    // Ordinary navigation keeps the existing fade.
-                                    fadeIn(animationSpec = tween(220)) togetherWith
-                                        fadeOut(animationSpec = tween(160))
+                                    // Ordinary push/pop: both screens move as stable,
+                                    // full-size layers. Disabling AnimatedContent's
+                                    // SizeTransform is important here — Profile's
+                                    // media may become ready during the overlap, but
+                                    // that must never animate container measurement.
+                                    val direction = ordinaryNavigationDirection
+                                    ((slideInHorizontally(
+                                        initialOffsetX = { width ->
+                                            (width * OrdinaryScreenSlideFraction * direction)
+                                                .roundToInt()
+                                        },
+                                        animationSpec = tween(
+                                            OrdinaryScreenTransitionDurationMs,
+                                            easing = FastOutSlowInEasing,
+                                        ),
+                                    ) + fadeIn(
+                                        animationSpec = tween(
+                                            OrdinaryScreenTransitionDurationMs,
+                                            easing = FastOutSlowInEasing,
+                                        ),
+                                    )).togetherWith(
+                                        slideOutHorizontally(
+                                            targetOffsetX = { width ->
+                                                (-width * OrdinaryScreenSlideFraction * direction)
+                                                    .roundToInt()
+                                            },
+                                            animationSpec = tween(
+                                                OrdinaryScreenTransitionDurationMs,
+                                                easing = FastOutSlowInEasing,
+                                            ),
+                                        ) + fadeOut(
+                                            animationSpec = tween(
+                                                OrdinaryScreenTransitionDurationMs,
+                                                easing = FastOutSlowInEasing,
+                                            ),
+                                        ),
+                                    )
+                                        .apply {
+                                            targetContentZIndex = if (direction > 0) 1f else -1f
+                                        }
+                                        .using(null)
                                 }
                             }
                         },
@@ -2275,6 +2389,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 transitionState = screenTransitionState,
                 predictiveBackTarget = predictiveBackTarget,
                 edgeDirection = predictiveBackEdgeDirection,
+                ordinaryDirection = ordinaryNavigationDirection,
                 screensWidthPx = screensWidthPx,
                 railInset = railInset,
                 blurBlocking = offlineDialogMode != null || showAiMissingDialog,
@@ -2492,15 +2607,12 @@ private fun AvatarOverlayLayer(
     transitionState: SeekableTransitionState<Screen>,
     predictiveBackTarget: Screen?,
     edgeDirection: Int,
+    ordinaryDirection: Int,
     screensWidthPx: Int,
     railInset: Dp,
     blurBlocking: Boolean,
 ) {
     val transitioning = transitionState.currentState != transitionState.targetState
-    // While predictive-back motion animates, anchors keep their pre-gesture
-    // rest position; otherwise every layout pass refreshes it (pure fades
-    // don't move layout, so capturing through them is safe).
-    registry.captureEnabled = !(predictiveBackTarget != null && transitioning)
     val winner = resolveAvatarWinnerScreen(
         currentScreen = currentScreen,
         currentState = transitionState.currentState,
@@ -2517,6 +2629,7 @@ private fun AvatarOverlayLayer(
             transitionState.currentState == predictiveBackTarget,
         winnerIsTarget = winner == transitionState.targetState,
         edgeDirection = edgeDirection,
+        ordinaryDirection = ordinaryDirection,
         containerWidth = screensWidthPx.toFloat(),
     )
     PersistentAvatarVideo(

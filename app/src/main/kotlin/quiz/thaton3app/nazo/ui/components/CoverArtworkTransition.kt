@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.zIndex
 import coil.Coil
+import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import quiz.thaton3app.nazo.data.profile.CoverPresetKind
@@ -162,6 +163,11 @@ internal fun TransitioningCoverArtwork(
     playbackAllowed: Boolean,
     modifier: Modifier = Modifier,
     transitionsAllowed: Boolean = true,
+    /**
+     * False only while a new banner is entering: paint the prepared poster but
+     * do not create AndroidView/MediaPlayer until the parent transition settles.
+     */
+    liveVideoAllowed: Boolean = true,
     videoPriority: CoverVideoPriority = CoverVideoPriority.BANNER,
 ) {
     val context = LocalContext.current
@@ -250,6 +256,7 @@ internal fun TransitioningCoverArtwork(
                 CoverArtworkLayer(
                     visual = oldVisual,
                     videoAsPoster = oldVideo != null,
+                    animationAllowed = playbackAllowed,
                     modifier = Modifier
                         .fillMaxSize()
                         .zIndex(0f)
@@ -276,6 +283,7 @@ internal fun TransitioningCoverArtwork(
             CoverArtworkLayer(
                 visual = incomingVisual,
                 videoAsPoster = incomingVideo != null,
+                animationAllowed = playbackAllowed,
                 modifier = Modifier
                     .fillMaxSize()
                     .zIndex(1f)
@@ -298,46 +306,53 @@ internal fun TransitioningCoverArtwork(
 
         liveVideo?.let { video ->
             val layerIsIncoming = liveVideoIsIncoming
-            CoverVideoBackground(
-                uri = video.uri,
-                playbackAllowed = playbackAllowed,
-                syncPositionProvider = video.avatarUri?.let { avatarUri ->
-                    { AvatarVideoHost.currentPositionFor(avatarUri) }
-                },
-                priority = videoPriority,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .zIndex(if (layerIsIncoming) 1f else 0f)
-                    .graphicsLayer {
-                        if (layerIsIncoming) {
-                            alpha = transitionLayerAlpha(
-                                incomingStartAlpha,
-                                progress.value,
-                                incoming = true,
-                            )
-                            val scale = transitionLayerScale(
-                                incomingStartScale,
-                                progress.value,
-                                incoming = true,
-                            )
-                            scaleX = scale
-                            scaleY = scale
-                        } else {
-                            alpha = transitionLayerAlpha(
-                                outgoingStartAlpha,
-                                progress.value,
-                                incoming = false,
-                            )
-                            val scale = transitionLayerScale(
-                                outgoingStartScale,
-                                progress.value,
-                                incoming = false,
-                            )
-                            scaleX = scale
-                            scaleY = scale
-                        }
+            val videoModifier = Modifier
+                .fillMaxSize()
+                .zIndex(if (layerIsIncoming) 1f else 0f)
+                .graphicsLayer {
+                    if (layerIsIncoming) {
+                        alpha = transitionLayerAlpha(
+                            incomingStartAlpha,
+                            progress.value,
+                            incoming = true,
+                        )
+                        val scale = transitionLayerScale(
+                            incomingStartScale,
+                            progress.value,
+                            incoming = true,
+                        )
+                        scaleX = scale
+                        scaleY = scale
+                    } else {
+                        alpha = transitionLayerAlpha(
+                            outgoingStartAlpha,
+                            progress.value,
+                            incoming = false,
+                        )
+                        val scale = transitionLayerScale(
+                            outgoingStartScale,
+                            progress.value,
+                            incoming = false,
+                        )
+                        scaleX = scale
+                        scaleY = scale
+                    }
+                }
+            // When live video is deferred, CoverArtworkLayer already paints
+            // the prepared poster with this same transform. Keeping that as the
+            // only video layer makes the post-settle AndroidView creation a
+            // pixel-stable hand-off instead of transition-time assembly.
+            if (liveVideoAllowed) {
+                CoverVideoBackground(
+                    uri = video.uri,
+                    playbackAllowed = playbackAllowed,
+                    syncPositionProvider = video.avatarUri?.let { avatarUri ->
+                        { AvatarVideoHost.currentPositionFor(avatarUri) }
                     },
-            )
+                    priority = videoPriority,
+                    modifier = videoModifier,
+                )
+            }
         }
     }
 }
@@ -354,16 +369,17 @@ private fun CoverVisual.videoSpec(): CoverVideoSpec? = when (this) {
 private fun CoverArtworkLayer(
     visual: CoverVisual,
     videoAsPoster: Boolean,
+    animationAllowed: Boolean,
     modifier: Modifier,
 ) {
     when (visual) {
-        is CoverVisual.Gallery -> SafeRemoteImage(
-            url = visual.uri,
+        is CoverVisual.Gallery -> PreparedCoverImage(
+            uri = visual.uri,
             contentDescription = "Cover photo",
             modifier = modifier,
         )
-        is CoverVisual.AutomaticImage -> SafeRemoteImage(
-            url = visual.uri,
+        is CoverVisual.AutomaticImage -> PreparedCoverImage(
+            uri = visual.uri,
             contentDescription = "Cover generated from profile picture",
             modifier = modifier,
         )
@@ -383,13 +399,34 @@ private fun CoverArtworkLayer(
             CoverPresetKind.GRADIENT -> AnimatedCoverGradient(
                 preset = visual.preset,
                 modifier = modifier,
+                animationAllowed = animationAllowed,
             )
         }
         CoverVisual.Default -> Unit
     }
 }
 
-private suspend fun prepareCoverArtwork(context: Context, visual: CoverVisual): Boolean = when (visual) {
+@Composable
+private fun PreparedCoverImage(
+    uri: String,
+    contentDescription: String,
+    modifier: Modifier,
+) {
+    val context = LocalContext.current
+    // Use the exact same fixed-size request as root prewarming. AsyncImage also
+    // avoids SubcomposeAsyncImage's extra measure/subcomposition work in the
+    // AnimatedContent overlap; the banner's fallback color already covers a
+    // rare cache miss without changing geometry.
+    val request = remember(context, uri) { coverImageRequest(context, uri) }
+    AsyncImage(
+        model = request,
+        contentDescription = contentDescription,
+        contentScale = ContentScale.Crop,
+        modifier = modifier,
+    )
+}
+
+internal suspend fun prepareCoverArtwork(context: Context, visual: CoverVisual): Boolean = when (visual) {
     is CoverVisual.Gallery -> prepareCoverImage(context, visual.uri)
     is CoverVisual.AutomaticImage -> prepareCoverImage(context, visual.uri)
     is CoverVisual.Video -> CoverVideoHost.warmPoster(context, visual.uri) != null
@@ -398,12 +435,14 @@ private suspend fun prepareCoverArtwork(context: Context, visual: CoverVisual): 
     CoverVisual.Default -> true
 }
 
-private suspend fun prepareCoverImage(context: Context, uri: String): Boolean {
-    val request = ImageRequest.Builder(context)
+private fun coverImageRequest(context: Context, uri: String): ImageRequest =
+    ImageRequest.Builder(context)
         .data(uri)
         .size(1024, 576)
         .crossfade(false)
         .build()
-    return runCatching { Coil.imageLoader(context).execute(request) is SuccessResult }
-        .getOrDefault(false)
-}
+
+private suspend fun prepareCoverImage(context: Context, uri: String): Boolean =
+    runCatching {
+        Coil.imageLoader(context).execute(coverImageRequest(context, uri)) is SuccessResult
+    }.getOrDefault(false)

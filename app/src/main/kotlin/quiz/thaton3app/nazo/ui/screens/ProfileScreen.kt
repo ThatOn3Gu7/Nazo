@@ -262,6 +262,7 @@ private fun ProfileCoverBanner(
     height: Dp,
     visual: CoverVisual,
     videoPlaybackAllowed: Boolean,
+    liveVideoAllowed: Boolean,
     transitionsAllowed: Boolean,
     modifier: Modifier = Modifier,
     editButton: @Composable BoxScope.() -> Unit = {},
@@ -283,6 +284,7 @@ private fun ProfileCoverBanner(
         TransitioningCoverArtwork(
             visual = visual,
             playbackAllowed = videoPlaybackAllowed,
+            liveVideoAllowed = liveVideoAllowed,
             transitionsAllowed = transitionsAllowed,
             modifier = Modifier
                 .matchParentSize()
@@ -352,8 +354,14 @@ fun ProfileScreen(
     coverPresetId: String? = null,
     automaticCoverEnabled: Boolean = false,
     automaticCoverState: AutomaticCoverState = AutomaticCoverState.Idle,
-    /** False as soon as navigation commits away, while the outgoing UI fades. */
+    /** True only when Profile is the fully settled screen, never during overlap. */
     screenActive: Boolean = true,
+    /**
+     * False only for an ordinary Profile entry: show the prepared poster until
+     * the screen settles, then create the live TextureView/decoder. Outgoing and
+     * predictive transitions keep an existing paused surface attached.
+     */
+    coverVideoSurfaceAllowed: Boolean = true,
     quizStats: QuizStats = QuizStats(),
     /** When true, never hit the network: use the local generator directly. */
     offline: Boolean = false,
@@ -595,6 +603,7 @@ fun ProfileScreen(
                         ) + coverTopExtension,
                         visual = coverVisual,
                         videoPlaybackAllowed = screenActive && !avatarBehindDialogsPaused,
+                        liveVideoAllowed = coverVideoSurfaceAllowed,
                         transitionsAllowed = screenActive,
                         editButton = coverEditButton,
                     ) {
@@ -610,6 +619,7 @@ fun ProfileScreen(
                             onClick = { showPictureDialog = true },
                             onLongClick = avatarLongPress,
                             paused = avatarBehindDialogsPaused,
+                            animationAllowed = screenActive,
                             anchorId = AvatarAnchorId.Profile,
                         )
                     }
@@ -725,6 +735,7 @@ fun ProfileScreen(
                     ) + coverTopExtension,
                     visual = coverVisual,
                     videoPlaybackAllowed = screenActive && !avatarBehindDialogsPaused,
+                    liveVideoAllowed = coverVideoSurfaceAllowed,
                     transitionsAllowed = screenActive,
                     editButton = coverEditButton,
                     modifier = Modifier.padding(horizontal = 12.dp),
@@ -741,6 +752,7 @@ fun ProfileScreen(
                         onClick = { showPictureDialog = true },
                         onLongClick = avatarLongPress,
                         paused = avatarBehindDialogsPaused,
+                        animationAllowed = screenActive,
                         anchorId = AvatarAnchorId.Profile,
                     )
                 }
