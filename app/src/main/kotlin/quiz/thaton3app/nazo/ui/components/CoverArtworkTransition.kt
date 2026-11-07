@@ -32,6 +32,16 @@ import coil.request.SuccessResult
 import quiz.thaton3app.nazo.data.profile.CoverPresetKind
 import quiz.thaton3app.nazo.data.profile.CoverVisual
 
+/**
+ * The live TextureView owns a matching video layer only while it is actually
+ * rendered. During ordinary Profile entry, the poster must remain visible
+ * until liveVideoAllowed becomes true.
+ */
+internal fun coverVideoUsesLivePlane(
+    matchesLiveVideo: Boolean,
+    liveVideoAllowed: Boolean,
+): Boolean = matchesLiveVideo && liveVideoAllowed
+
 internal const val CoverArtworkTransitionDurationMs = 520
 internal const val CoverArtworkIncomingScale = 1.012f
 private const val CoverArtworkOutgoingScale = 0.994f
@@ -251,7 +261,12 @@ internal fun TransitioningCoverArtwork(
     Box(modifier = modifier) {
         outgoingVisual?.let { oldVisual ->
             val oldVideo = oldVisual.videoSpec()
-            val oldVideoUsesLivePlane = oldVideo != null && oldVideo == liveVideo
+            // A deferred live surface cannot own the visual yet: keep the
+            // cached poster in the artwork stack until the TextureView is allowed.
+            val oldVideoUsesLivePlane = oldVideo != null && coverVideoUsesLivePlane(
+                matchesLiveVideo = oldVideo == liveVideo,
+                liveVideoAllowed = liveVideoAllowed,
+            )
             if (oldVideo == null || !oldVideoUsesLivePlane) {
                 CoverArtworkLayer(
                     visual = oldVisual,
@@ -278,7 +293,10 @@ internal fun TransitioningCoverArtwork(
             }
         }
 
-        val incomingVideoUsesLivePlane = incomingVideo != null && incomingVideo == liveVideo
+        val incomingVideoUsesLivePlane = incomingVideo != null && coverVideoUsesLivePlane(
+            matchesLiveVideo = incomingVideo == liveVideo,
+            liveVideoAllowed = liveVideoAllowed,
+        )
         if (incomingVideo == null || !incomingVideoUsesLivePlane) {
             CoverArtworkLayer(
                 visual = incomingVisual,
