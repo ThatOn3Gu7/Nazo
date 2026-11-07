@@ -43,9 +43,9 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 /**
  * Bump this whenever CHANGELOG below gains entries the user should see.
  * NOTE: the id is a unique gate, not the release version; it only has to be
- * unique per set of entries. This is the 12.0-beta01 gate.
+ * unique per set of entries. This is the final 12.0 gate.
  */
-const val CHANGELOG_ID = "2026-10-25-v12.0-beta01"
+const val CHANGELOG_ID = "2026-11-06-v12.0"
 
 data class ChangeEntry(val title: String, val points: List<String>)
 
@@ -53,9 +53,25 @@ val CHANGELOG: List<ChangeEntry> = listOf(
     ChangeEntry(
         "Back gestures show where they'll take you",
         listOf(
-            "Swipe from the screen edge and the current screen slides away with your finger, revealing the screen behind it",
-            "Release to go back — or slide it back to change your mind",
-            "Works with gesture navigation on Android 13 and newer; buttons and older devices keep the usual instant back",
+            "Swipe from either edge to reveal the real destination screen beneath the current one",
+            "Release to go back or slide home to cancel",
+            "Available with gesture navigation on Android 13 and newer",
+        ),
+    ),
+    ChangeEntry(
+        "Profile pictures can move",
+        listOf(
+            "Choose a GIF, animated WebP or short MP4 and preview it before saving",
+            "Animated avatars loop smoothly across Home, Profile and the full-size viewer",
+            "Your animated avatar travels with profile backups",
+        ),
+    ),
+    ChangeEntry(
+        "Make the profile cover your own",
+        listOf(
+            "Use your own photo, 14 included artworks or five animated gradients",
+            "Choose a muted MP4 loop or automatically match the current avatar",
+            "Every cover change now crossfades smoothly and rapid taps always settle on the latest choice",
         ),
     ),
 )

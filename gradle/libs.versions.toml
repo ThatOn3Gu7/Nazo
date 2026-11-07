@@ -8,6 +8,7 @@ composeBom = "2025.10.01"
 coil = "2.7.0"
 coreSplashscreen = "1.2.0"
 exifinterface = "1.3.7"
+media3 = "1.5.1"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -30,3 +31,5 @@ androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-man
 coil = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 coil-gif = { group = "io.coil-kt", name = "coil-gif", version.ref = "coil" }
 androidx-exifinterface = { group = "androidx.exifinterface", name = "exifinterface", version.ref = "exifinterface" }
+androidx-media3-transformer = { group = "androidx.media3", name = "media3-transformer", version.ref = "media3" }
+androidx-media3-effect = { group = "androidx.media3", name = "media3-effect", version.ref = "media3" }

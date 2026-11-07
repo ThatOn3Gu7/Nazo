@@ -6,37 +6,32 @@
          hands the window back to the app's normal theme the moment content draws. -->
     <style name="Theme.Nazo.Splash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/nazo_splash_background</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground_nazo</item>
         <item name="postSplashScreenTheme">@style/Theme.ComposeEmptyActivity</item>
     </style>
 
     <!-- Per-app-icon splash themes. One per launcher variant, selected at runtime
          (SplashTheme.kt) so the cold-start splash matches whichever icon the user
-         picked. The classic green pair keeps @color/nazo_splash_background, which
-         is day/night aware; the custom variants are a single flat color (the
+         picked. The default Sumi Ember pair keeps @color/nazo_splash_background,
+         which is day/night aware; custom variants use one flat color (the
          midpoint of their icon gradient) in both themes, because the icon itself
          doesn't change with the OS theme. -->
     <style name="Theme.Nazo.Splash.Sakura" parent="Theme.Nazo.Splash">
         <item name="windowSplashScreenBackground">@color/nazo_splash_background_sakura</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground_sakura</item>
     </style>
     <style name="Theme.Nazo.Splash.Midnight" parent="Theme.Nazo.Splash">
         <item name="windowSplashScreenBackground">@color/nazo_splash_background_midnight</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground_midnight</item>
     </style>
     <style name="Theme.Nazo.Splash.Ocean" parent="Theme.Nazo.Splash">
         <item name="windowSplashScreenBackground">@color/nazo_splash_background_ocean</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground_ocean</item>
     </style>
 
-    <!-- Illustrated marks: the splash shows the mark's own art, not the kanji. -->
+    <!-- Lantern keeps its own illustrated splash mark. -->
     <style name="Theme.Nazo.Splash.Lantern" parent="Theme.Nazo.Splash">
         <item name="windowSplashScreenBackground">@color/nazo_splash_background_lantern</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_mark_lantern</item>
-    </style>
-    <style name="Theme.Nazo.Splash.Brush" parent="Theme.Nazo.Splash">
-        <item name="windowSplashScreenBackground">@color/nazo_splash_background_nbrush</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_mark_n_brush</item>
-    </style>
-    <style name="Theme.Nazo.Splash.Pixel" parent="Theme.Nazo.Splash">
-        <item name="windowSplashScreenBackground">@color/nazo_splash_background_npixel</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_mark_n_pixel</item>
     </style>
 </resources>

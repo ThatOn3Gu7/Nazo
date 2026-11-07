@@ -23,8 +23,42 @@ class ProfilePreferences(context: Context) {
         get() = prefs.getString(KEY_PICTURE, null)
         set(value) = prefs.edit().putString(KEY_PICTURE, value).apply()
 
+    /**
+     * Profile cover banner medium: null, or a `file://` into this app's own
+     * cover storage. It may be a validated static image or MP4 video; it is
+     * never a content:// (picker permissions lapse) and never a network URL.
+     * Kept independent of [coverPresetId]: choosing a built-in preset never
+     * touches this, so the custom photo/video survives switching.
+     */
+    var coverPictureUri: String?
+        get() = prefs.getString(KEY_COVER, null)
+        set(value) = prefs.edit().putString(KEY_COVER, value).apply()
+
+    /**
+     * Selected built-in cover preset id (`photo_*` / `gradient_*`), or null
+     * for the custom/default flow. Resolution order lives in
+     * `resolveCoverVisual` (ready automatic > preset > custom > placeholder); an unknown id
+     * (e.g. after a downgrade) simply falls back instead of breaking.
+     */
+    var coverPresetId: String?
+        get() = prefs.getString(KEY_COVER_PRESET, null)
+        set(value) = prefs.edit().putString(KEY_COVER_PRESET, value).apply()
+
+    /**
+     * Explicit cover-selection mode. When true, a cached cover is derived from
+     * [profilePictureUri] and follows every avatar change. The manual preset and
+     * custom-media values stay untouched underneath, so disabling automatic
+     * mode restores the owner's previous manual choice instead of destroying it.
+     */
+    var automaticCoverEnabled: Boolean
+        get() = prefs.getBoolean(KEY_COVER_AUTOMATIC, false)
+        set(value) = prefs.edit().putBoolean(KEY_COVER_AUTOMATIC, value).apply()
+
     private companion object {
         const val KEY_USERNAME = "profile_username"
         const val KEY_PICTURE = "profile_picture_uri"
+        const val KEY_COVER = "profile_cover_uri"
+        const val KEY_COVER_PRESET = "profile_cover_preset"
+        const val KEY_COVER_AUTOMATIC = "profile_cover_automatic"
     }
 }

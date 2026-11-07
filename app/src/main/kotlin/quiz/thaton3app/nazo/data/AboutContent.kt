@@ -38,6 +38,17 @@ data class ChangelogEntry(
  */
 val NAZO_CHANGELOG: List<ChangelogEntry> = listOf(
     ChangelogEntry(
+        version = "12.0",
+        date = "6 Nov 2026",
+        changes = listOf(
+            "Back gestures preview the real destination screen as you swipe on Android 13 and newer, then commit or cancel naturally with your finger.",
+            "Animated profile pictures: choose a GIF, animated WebP or short MP4, preview it before saving, view it full size, and carry it in backups.",
+            "Custom profile covers: use your own photo, one of 14 included artworks, or one of five animated gradients in the redesigned profile header.",
+            "Video and automatic covers: use a muted MP4 loop or let Nazo create a soft matching image or blurred video from the current avatar.",
+            "Cover changes now crossfade smoothly, rapid choices settle on the latest selection, and animated media keeps stable playback without extra players.",
+        ),
+    ),
+    ChangelogEntry(
         version = "12.0-beta01",
         date = "25 Oct 2026",
         changes = listOf(
@@ -243,6 +254,10 @@ val NAZO_LIBRARIES: List<ThirdPartyLibrary> = listOf(
     ThirdPartyLibrary(
         "Material Icons Extended", "2025.10.01", "Apache-2.0",
         "https://developer.android.com/jetpack/androidx/releases/compose-material",
+    ),
+    ThirdPartyLibrary(
+        "Media3 Transformer & Effects", "1.5.1", "Apache-2.0",
+        "https://developer.android.com/media/media3/transformer",
     ),
     ThirdPartyLibrary(
         "WorkManager", "2.9.1", "Apache-2.0",

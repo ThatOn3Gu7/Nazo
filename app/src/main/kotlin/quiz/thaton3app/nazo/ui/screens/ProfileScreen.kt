@@ -1,9 +1,17 @@
 package quiz.thaton3app.nazo.ui.screens
 
 import java.io.File
+import quiz.thaton3app.nazo.ui.components.CoverBackgroundSheet
+import quiz.thaton3app.nazo.ui.components.TransitioningCoverArtwork
+import quiz.thaton3app.nazo.ui.components.ProfileCoverPreviewDialog
+import quiz.thaton3app.nazo.ui.components.ProfileCoverVideoPreviewDialog
 import quiz.thaton3app.nazo.ui.components.ProfileImagePreviewDialog
+import quiz.thaton3app.nazo.data.profile.AutomaticCoverState
+import quiz.thaton3app.nazo.data.profile.AutomaticCoverStore
+import quiz.thaton3app.nazo.data.profile.CoverVisual
 import quiz.thaton3app.nazo.data.profile.ProfileImageStore
 import quiz.thaton3app.nazo.data.profile.ProfileImageSource
+import quiz.thaton3app.nazo.data.profile.resolveCoverVisual
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.layout.aspectRatio
@@ -62,6 +70,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -97,17 +106,24 @@ val ProfileHeaderFont = FontFamily(
     Font(R.font.plus_jakarta_sans_bold, FontWeight.Bold)
 )
 
-// --- Profile cover banner (Phase 1: layout & layering only) ---------------
+// --- Profile cover banner (expanded header + bottom fade) ------------------
 //
-// Facebook-style cover: a wide rounded band across the top of the Profile
-// screen with the avatar straddling its bottom edge — 90% of the circle
-// inside the band, 10% hanging below. The band is drawn inside the screen
-// subtree, which sits above the root-level particle background, so it hides
-// the particles beneath it while they keep drifting behind everything else.
-// Later phases add real banner backgrounds (gradients, gallery, video,
-// avatar-derived), the bottom-edge blur/fade blend, and the selection sheet;
-// this phase only fixes the geometry and the layering those features plug
-// into. The gradient below is a static placeholder, not a selectable preset.
+// Facebook-style cover: a large, responsively tall rounded header at the
+// top of the Profile screen (portrait 300–360.dp at 12.dp gutters;
+// landscape a smaller responsive share inside the left column) with the
+// avatar straddling its bottom edge — 90% of the circle inside, 10%
+// hanging below. The header's bottom fades into NazoBackground so it never
+// ends on a hard rectangle. It is drawn inside the screen subtree, which
+// sits above the root-level particle background, so it hides the particles
+// beneath it while they keep drifting behind everything else.
+// Custom cover media: center-cropped photos plus validated, muted H.264 MP4
+// loops. The picker previews first, then ProfileImageStore writes an app-owned
+// file and only afterwards replaces coverPictureUri in preferences.
+// Built-in collections remain in CoverBackgroundSheet alongside the custom
+// photo/video; their preset id is separate, so switching never discards the
+// custom medium. Automatic matching has its own flag and cached artifact, so
+// it follows avatar changes without overwriting those manual values. The
+// default gradient remains visible while preparation/loading is incomplete.
 
 /** Avatar diameter used by the cover straddle (same 132.dp as before). */
 private val CoverAvatarSize = 132.dp
@@ -117,6 +133,13 @@ private const val CoverOverhangFraction = 0.10f
 
 /** Corner radius of the cover band. */
 private val CoverCornerRadius = 20.dp
+
+/**
+ * Share of the cover's height taken by the bottom fade into the page
+ * background. Sized as a fraction (not a fixed dp) so the blend keeps the
+ * same proportions across the responsive header heights and orientations.
+ */
+private const val CoverBottomFadeFraction = 0.4f
 
 /** Distance the avatar overhangs the cover edge: 10% of its diameter. */
 internal fun coverOverhang(avatarSize: Dp): Dp = avatarSize * CoverOverhangFraction
@@ -129,25 +152,120 @@ internal fun coverOverhang(avatarSize: Dp): Dp = avatarSize * CoverOverhangFract
  */
 internal fun coverContentGap(avatarSize: Dp): Dp = coverOverhang(avatarSize) + 16.dp
 
-/** Cover band height: a substantial slice of the screen, tighter in landscape. */
-internal fun coverHeight(isLandscape: Boolean): Dp = if (isLandscape) 120.dp else 160.dp
+/**
+ * Cover height, responsive to the window so the header is the dominant
+ * element of the upper profile without starving the content below (which
+ * scrolls in portrait, and inside each column in landscape):
+ *  - portrait: 34 % of the screen height, clamped to 220–280.dp;
+ *  - landscape: 34 % of the screen height, clamped to 110–170.dp.
+ * These shorter heights lift the avatar away from the screen midpoint while
+ * leaving the cover visually prominent. Tiny split-screen windows still
+ * scroll rather than clipping the profile content.
+ */
+internal fun coverHeight(isLandscape: Boolean, screenHeightDp: Int): Dp {
+    // Shorten the expanded header so the overlapping avatar sits clearly
+    // above the screen midpoint while the cover still dominates the profile.
+    val fraction = 0.34f
+    val (min, max) = if (isLandscape) 110f to 170f else 220f to 280f
+    return (screenHeightDp * fraction).coerceIn(min, max).dp
+}
+
+internal data class LandscapeProfileSpacing(
+    val startPadding: Dp,
+    val columnSpacing: Dp,
+)
 
 /**
- * The cover band itself: a full-width rounded rectangle with a static
- * placeholder gradient. Opaque on purpose — it must hide the particle
+ * Moves only the landscape cover/avatar column toward the cutout-safe edge.
+ * Scaffold's start inset already clears the display cutout/system bars, so the
+ * additional 24.dp content gutter can shrink as horizontal room increases.
+ * Every dp removed there is added to the 32.dp column gap: left-column width
+ * and the right-column start edge therefore remain unchanged. The left shift
+ * ramps at 4% above 600dp and caps at 15dp, retaining a 9dp visual guard even
+ * on wide screens while protecting narrow split-screen windows.
+ */
+internal fun landscapeProfileSpacing(screenWidthDp: Int): LandscapeProfileSpacing {
+    val coverLeftShift = ((screenWidthDp - 600) * 0.04f).coerceIn(0f, 15f).dp
+    return LandscapeProfileSpacing(
+        startPadding = 24.dp - coverLeftShift,
+        columnSpacing = 32.dp + coverLeftShift,
+    )
+}
+
+/** The right pane already starts below the status bar; this is visual breathing room only. */
+internal val LandscapeRightColumnTopPadding = 8.dp
+
+/**
+ * The banner's width/height ratio for the current configuration, shared
+ * with the cover preview dialog so its frame is exactly WYSIWYG. Mirrors
+ * the layout math: portrait = cover width (screen − 24.dp for the cover's
+ * 12.dp gutters) over the responsive [coverHeight]; landscape = left column
+ * (40 % of screen − 80.dp combined outer/column spacing) over the responsive
+ * cover height, including the top-bar overlap. [landscapeProfileSpacing]
+ * exchanges start gutter for inter-column spacing while preserving that 80.dp
+ * total, so the preview width remains exact. See the landscape Row and portrait
+ * Column in [ProfileScreen].
+ */
+internal fun coverPreviewAspectRatio(
+    screenWidthDp: Int,
+    screenHeightDp: Int,
+    isLandscape: Boolean,
+    coverTopExtensionDp: Float = 0f,
+): Float {
+    val width = if (isLandscape) {
+        (screenWidthDp - 80) * 0.4f
+    } else {
+        (screenWidthDp - 24).toFloat()
+    }
+    val height = coverHeight(isLandscape, screenHeightDp).value + coverTopExtensionDp
+    // Degenerate-width guard (absurd split-screen slivers): never hand the
+    // preview an aspect ratio at or below 1:1.
+    return (width / height).coerceAtLeast(1f)
+}
+
+/**
+ * The app-bar chrome the cover extends upward into (64.dp bar plus the
+ * orientation-specific gutter), as plain dp for the preview dialog and the
+ * selection sheet's WYSIWYG frames. Keep in sync with `coverTopExtension`
+ * inside [ProfileScreen].
+ */
+internal fun coverPreviewTopExtensionDp(isLandscape: Boolean): Float =
+    64f + (if (isLandscape) 8f else 16f)
+
+/**
+ * The cover header itself: a large rounded rectangle drawn from the
+ * resolved [CoverVisual] — the placeholder gradient, custom photo/video,
+ * generated avatar-matched image/video, a bundled preset photo (using the same
+ * `ContentScale.Crop` rules: fill, clip excess, never stretch), or a preset
+ * animated gradient (procedural and lifecycle-aware). Opaque either way, so
+ * it hides the particle
  * background beneath it (the root draws the ambient particle layer behind
  * the transparent screens).
  *
- * The background is applied with `background(brush, shape)` rather than
- * `clip(shape)` on purpose: children — the straddling avatar — must be
- * allowed to overflow the bottom edge, and a clip would slice the
- * overhanging 10% off. The later blur/fade blend for the bottom edge gets
- * its own layer inside this Box.
+ * The bottom [CoverBottomFadeFraction] of the header fades into
+ * [NazoBackground] so the expanded cover doesn't end on a hard rectangular
+ * edge — the blend target is the exact color the page paints, which keeps
+ * it correct across themes. The strip's square bottom corners are
+ * invisible: they paint the same color as the page showing past the
+ * header's rounded corners.
+ *
+ * Two deliberate no-clip rules in this Box:
+ *  1. The Box's own background uses `background(brush, shape)` rather than
+ *     `clip(shape)` so children — the straddling avatar — can overflow the
+ *     bottom edge; a clip would slice the overhanging 10% off. The photo
+ *     and the fade are therefore clipped/sized on their OWN nodes.
+ *  2. Paint order is photo → fade → content (avatar) → edit slot: the
+ *     avatar and the pencil draw above the fade and stay crisp on top of it.
  */
 @Composable
 private fun ProfileCoverBanner(
     height: Dp,
+    visual: CoverVisual,
+    videoPlaybackAllowed: Boolean,
+    liveVideoAllowed: Boolean,
+    transitionsAllowed: Boolean,
     modifier: Modifier = Modifier,
+    editButton: @Composable BoxScope.() -> Unit = {},
     content: @Composable BoxScope.() -> Unit,
 ) {
     Box(
@@ -158,8 +276,71 @@ private fun ProfileCoverBanner(
                 brush = Brush.verticalGradient(listOf(NazoPrimary, NazoSurface)),
                 shape = RoundedCornerShape(CoverCornerRadius),
             ),
-        content = content,
-    )
+    ) {
+        // One bounded transition layer owns every artwork kind. It preloads
+        // local media, crossfades static/gradient content, and keeps at most one
+        // live video plane. Paint order stays artwork → fade → content, so the
+        // avatar and edit affordance retain their original geometry and depth.
+        TransitioningCoverArtwork(
+            visual = visual,
+            playbackAllowed = videoPlaybackAllowed,
+            liveVideoAllowed = liveVideoAllowed,
+            transitionsAllowed = transitionsAllowed,
+            modifier = Modifier
+                .matchParentSize()
+                .clip(RoundedCornerShape(CoverCornerRadius)),
+        )
+        // Bottom fade into the page: a soft transparent → NazoBackground
+        // gradient over the lower part of the header. Static drawing only —
+        // no blur layer, no per-frame work (the modest-phone budget from
+        // the particle/overlay work still holds), and the 3-stop curve
+        // eases the transition so no hard boundary is visible.
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .fillMaxHeight(CoverBottomFadeFraction)
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        0.45f to NazoBackground.copy(alpha = 0.55f),
+                        1f to NazoBackground,
+                    )
+                ),
+        )
+        content()
+        Box(modifier = Modifier.align(Alignment.BottomEnd)) {
+            editButton()
+        }
+    }
+}
+
+/**
+ * Pencil in the banner's bottom-right corner: opens the unified cover
+ * selection sheet (photos, animated gradients, custom gallery option).
+ * 44.dp target with 8.dp margins; it clears the straddling avatar even in the
+ * narrowest supported landscape left column (40/60 split at 640.dp). The icon
+ * carries the accessibility label; the clickable Box merges it so TalkBack
+ * announces one "Change cover background" control.
+ */
+@Composable
+private fun CoverEditButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .padding(8.dp)
+            .size(44.dp)
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.35f))
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Edit,
+            contentDescription = "Change cover background",
+            tint = Color.White,
+            modifier = Modifier.size(20.dp),
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -167,12 +348,31 @@ private fun ProfileCoverBanner(
 fun ProfileScreen(
     username: String,
     profilePictureUri: String?,
+    /** Cover banner medium: null, or our app-owned photo/video `file://`. */
+    coverPictureUri: String? = null,
+    /** Built-in cover preset id (`photo_*` / `gradient_*`); null = custom/default flow. */
+    coverPresetId: String? = null,
+    automaticCoverEnabled: Boolean = false,
+    automaticCoverState: AutomaticCoverState = AutomaticCoverState.Idle,
+    /** True only when Profile is the fully settled screen, never during overlap. */
+    screenActive: Boolean = true,
+    /**
+     * False only for an ordinary Profile entry: show the prepared poster until
+     * the screen settles, then create the live TextureView/decoder. Outgoing and
+     * predictive transitions keep an existing paused surface attached.
+     */
+    coverVideoSurfaceAllowed: Boolean = true,
     quizStats: QuizStats = QuizStats(),
     /** When true, never hit the network: use the local generator directly. */
     offline: Boolean = false,
     onBack: () -> Unit = {},
     onUsernameChange: (String) -> Unit,
     onProfilePictureChange: (String?) -> Unit,
+    onCoverPictureChange: (String?) -> Unit = {},
+    onCoverPresetChange: (String?) -> Unit = {},
+    onAutomaticCoverChange: (Boolean) -> Unit = {},
+    onPrepareAutomaticCover: () -> Unit = {},
+    onStopPreparingAutomaticCover: () -> Unit = {},
     onNavigateToStatistics: () -> Unit,
     onNavigateToSettings: () -> Unit = {},
 ) {
@@ -191,9 +391,41 @@ fun ProfileScreen(
     // Removing a picture is destructive from here (a custom photo would have
     // to be re-added by hand), so it gets one explicit confirmation step.
     var showRemoveConfirm by rememberRetained("Profile.showRemoveConfirm") { false }
+    // Cover (banner) flow: the pencil's action sheet, the remove
+    // confirmation (same destructive-action rule as the avatar's Remove),
+    // and the picked source — retained so a rotation reopens the preview
+    // dialog instead of dropping the pick (same rule as pendingSource).
+    var showCoverSheet by rememberRetained("Profile.showCoverSheet") { false }
+    var showCoverRemoveConfirm by rememberRetained("Profile.showCoverRemoveConfirm") { false }
+    var pendingCoverSource by rememberRetained<ProfileImageSource?>("Profile.pendingCoverSource") { null }
+    var pendingCoverIsVideo by rememberRetained("Profile.pendingCoverIsVideo") { false }
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    // A generated artifact is valid only for the avatar URI that produced it;
+    // this guard prevents one frame of the old background after an avatar swap.
+    val pendingAutomaticState = profilePictureUri?.let(AutomaticCoverState::Preparing)
+        ?: AutomaticCoverState.Unavailable(
+            null,
+            "Add a photo or MP4 video avatar to preview automatic matching.",
+        )
+    val visibleAutomaticState = when (val state = automaticCoverState) {
+        is AutomaticCoverState.Ready ->
+            if (state.artifact.sourceUri == profilePictureUri) state else pendingAutomaticState
+        is AutomaticCoverState.Preparing ->
+            if (state.sourceUri == profilePictureUri) state else pendingAutomaticState
+        is AutomaticCoverState.Unavailable ->
+            if (state.sourceUri == profilePictureUri) state else pendingAutomaticState
+        AutomaticCoverState.Idle -> state
+    }
+    val automaticArtifact = (visibleAutomaticState as? AutomaticCoverState.Ready)?.artifact
+    val coverVisual = resolveCoverVisual(
+        galleryUri = coverPictureUri,
+        presetId = coverPresetId,
+        automaticEnabled = automaticCoverEnabled,
+        automaticArtifact = automaticArtifact,
+    )
 
     // The image being previewed/cropped, and the temp file behind it (URL only).
     // Retained so a rotation does not throw away an edit in progress. The draft
@@ -208,7 +440,8 @@ fun ProfileScreen(
     // less work during the dialog's open animation, same visuals on return.
     val avatarBehindDialogsPaused =
         showPictureDialog || showAvatarPreview || showUrlDialog ||
-            showRemoveConfirm || pendingSource != null
+            showRemoveConfirm || pendingSource != null ||
+            pendingCoverSource != null || showCoverSheet || showCoverRemoveConfirm
 
     // PickVisualMedia is the system photo picker: a gallery grid with no
     // storage permission and no filesystem browsing. It replaces
@@ -231,27 +464,72 @@ fun ProfileScreen(
         }
     )
 
+    // Separate photo/video launch actions keep the system picker's filter
+    // honest. Both are previewed first; accepted media is copied into our
+    // private cover directory, so no long-lived provider permission is needed.
+    val coverPhotoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+        onResult = { uri ->
+            uri?.let {
+                pendingCoverIsVideo = false
+                pendingCoverSource = ProfileImageSource.ContentUri(it)
+            }
+        },
+    )
+    val coverVideoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+        onResult = { uri ->
+            uri?.let {
+                pendingCoverIsVideo = true
+                pendingCoverSource = ProfileImageSource.ContentUri(it)
+            }
+        },
+    )
+
+
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
             CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        "Profile",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontFamily = ProfileHeaderFont,
-                        fontWeight = FontWeight.Bold,
-                        color = NazoPrimary,
-                        letterSpacing = 0.5.sp
-                    )
-                },
+                // Align the compact toolbar capsule with the cover's left edge,
+                // inset slightly so it sits comfortably inside the artwork.
+                title = {},
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    Surface(
+                        // Match the pill's 8.dp top breathing room: portrait
+                        // cover starts at 12.dp; landscape's left column at
+                        // 24.dp. Add the same 8.dp inset in either orientation.
+                        modifier = Modifier.padding(start = if (isLandscape) 32.dp else 20.dp),
+                        shape = CircleShape,
+                        color = NazoSurface.copy(alpha = 0.94f),
+                        contentColor = NazoTextPrimary,
+                        border = BorderStroke(1.dp, NazoPrimary.copy(alpha = 0.18f)),
+                        shadowElevation = 2.dp,
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(end = 18.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            IconButton(onClick = onBack) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = NazoTextPrimary,
+                                )
+                            }
+                            Text(
+                                "Profile",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontFamily = ProfileHeaderFont,
+                                fontWeight = FontWeight.Bold,
+                                color = NazoPrimary,
+                                letterSpacing = 0.5.sp,
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
+                    containerColor = Color.Transparent,
                 )
             )
         }
@@ -267,130 +545,167 @@ fun ProfileScreen(
             }
         } else null
 
+        // One cover edit affordance for both orientations, handed to the
+        // banner as a slot so the pencil and its menu anchor to the banner's
+        // bottom-right corner regardless of layout.
+        val coverEditButton: @Composable BoxScope.() -> Unit = {
+            CoverEditButton(onClick = { showCoverSheet = true })
+        }
+
+        // Scaffold draws the transparent top app bar above its body content.
+        // Start the body at the top of the window, then extend the cover by the
+        // inset/gutter that used to sit above it. This puts the image behind the
+        // toolbar without shifting the avatar or the content below the cover.
+        val layoutDirection = LocalLayoutDirection.current
+        // Keep the system status-bar region clear. Only overlap the app-bar
+        // row itself; the status icons/clock/battery stay on the page surface.
+        val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        val coverTopExtension = (padding.calculateTopPadding() - statusBarTop)
+            .coerceAtLeast(0.dp) + (if (isLandscape) 8.dp else 16.dp)
+
         if (isLandscape) {
             // --- LANDSCAPE LAYOUT ---
-            Column(
+            val landscapeSpacing = landscapeProfileSpacing(configuration.screenWidthDp)
+            Row(
                 modifier = Modifier
-                    .padding(padding)
-                    .fillMaxSize(),
-            ) {
-                // Cover band: same straddling avatar as portrait; 24.dp
-                // gutters keep it aligned with the row content below.
-                ProfileCoverBanner(
-                    height = coverHeight(isLandscape = true),
-                    modifier = Modifier.padding(horizontal = 24.dp),
-                ) {
-                    ProfileAvatar(
-                        // Bottom-centered, pushed down by exactly the
-                        // overhang so the 10% slice clears the band's edge.
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .offset(y = coverOverhang(CoverAvatarSize)),
-                        name = username,
-                        pictureUri = profilePictureUri,
-                        size = CoverAvatarSize,
-                        onClick = { showPictureDialog = true },
-                        onLongClick = avatarLongPress,
-                        paused = avatarBehindDialogsPaused,
-                        anchorId = AvatarAnchorId.Profile,
+                    .padding(
+                        start = padding.calculateStartPadding(layoutDirection),
+                        top = statusBarTop,
+                        end = padding.calculateEndPadding(layoutDirection),
+                        bottom = padding.calculateBottomPadding(),
                     )
-                }
-
-                // Keep the avatar's overhang clear of the row content.
-                Spacer(Modifier.height(coverContentGap(CoverAvatarSize)))
-
-                Row(
+                    .fillMaxSize()
+                    .padding(
+                        start = landscapeSpacing.startPadding,
+                        end = 24.dp,
+                        bottom = 8.dp,
+                    ),
+                horizontalArrangement = Arrangement.spacedBy(landscapeSpacing.columnSpacing),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Left Column: Cover & Username. The banner lives ENTIRELY
+                // in this column (40/60 split) — it must not stretch across
+                // the screen or push the stats side out of view.
+                Column(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(32.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Top
                 ) {
-                    // Left Column: Username & hint
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .verticalScroll(rememberScrollState()),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                    // Cover band: same straddling avatar as portrait, living
+                    // entirely inside this column (40/60 split).
+                    ProfileCoverBanner(
+                        height = coverHeight(
+                            isLandscape = true,
+                            screenHeightDp = configuration.screenHeightDp,
+                        ) + coverTopExtension,
+                        visual = coverVisual,
+                        videoPlaybackAllowed = screenActive && !avatarBehindDialogsPaused,
+                        liveVideoAllowed = coverVideoSurfaceAllowed,
+                        transitionsAllowed = screenActive,
+                        editButton = coverEditButton,
                     ) {
-                        Surface(
-                            onClick = { showUsernameDialog = true },
-                            shape = MaterialTheme.shapes.extraLarge,
-                            color = Color.Transparent,
-                            modifier = Modifier.clip(MaterialTheme.shapes.extraLarge)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                            ) {
-                                Text(
-                                    text = username.ifBlank {
-                                        if (quizStats.totalQuizzes > 0) "Edit Profile" else "Create Profile"
-                                    },
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = NazoTextPrimary
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Icon(
-                                    imageVector = Icons.Rounded.Edit,
-                                    contentDescription = "Edit username",
-                                    tint = NazoPrimary,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(Modifier.height(8.dp))
-                        // Discloses both picture gestures; the press-and-hold
-                        // preview was previously a hidden easter egg.
-                        Text(
-                            text = if (profilePictureUri.isNullOrBlank())
-                                "Tap the picture to choose one"
-                            else
-                                "Tap the picture to change it · press and hold to preview",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = NazoTextSecondary,
-                            textAlign = TextAlign.Center,
+                        ProfileAvatar(
+                            // Bottom-centered, pushed down by exactly the
+                            // overhang so the 10% slice clears the band's edge.
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .offset(y = coverOverhang(CoverAvatarSize)),
+                            name = username,
+                            pictureUri = profilePictureUri,
+                            size = CoverAvatarSize,
+                            onClick = { showPictureDialog = true },
+                            onLongClick = avatarLongPress,
+                            paused = avatarBehindDialogsPaused,
+                            animationAllowed = screenActive,
+                            anchorId = AvatarAnchorId.Profile,
                         )
                     }
 
-                    // Right Column: Stats & Menu
-                    Column(
-                        modifier = Modifier
-                            .weight(1.5f)
-                            .fillMaxHeight()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        if (quizStats.totalQuizzes > 0) {
-                            ProfileStatsCard(stats = quizStats)
-                            Spacer(modifier = Modifier.height(16.dp))
-                        }
+                    // Keep the avatar's overhang clear of the row content.
+                    Spacer(Modifier.height(coverContentGap(CoverAvatarSize)))
 
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                    Surface(
+                        onClick = { showUsernameDialog = true },
+                        shape = MaterialTheme.shapes.extraLarge,
+                        color = Color.Transparent,
+                        modifier = Modifier.clip(MaterialTheme.shapes.extraLarge)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
-                            ProfileMenuItem(
-                                icon = Icons.Filled.BarChart,
-                                title = "Statistics",
-                                subtitle = "View your quiz insights",
-                                onClick = onNavigateToStatistics
+                            Text(
+                                text = username.ifBlank {
+                                    if (quizStats.totalQuizzes > 0) "Edit Profile" else "Create Profile"
+                                },
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = NazoTextPrimary
                             )
-                            ProfileMenuItem(
-                                icon = Icons.Filled.Settings,
-                                title = "Settings",
-                                subtitle = "Appearance, categories, backup",
-                                onClick = onNavigateToSettings
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(
+                                imageVector = Icons.Rounded.Edit,
+                                contentDescription = "Edit username",
+                                tint = NazoPrimary,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    // Discloses both picture gestures; the press-and-hold
+                    // preview was previously a hidden easter egg.
+                    Text(
+                        text = if (profilePictureUri.isNullOrBlank())
+                            "Tap the picture to choose one"
+                        else
+                            "Tap the picture to change it · press and hold to preview",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NazoTextSecondary,
+                        textAlign = TextAlign.Center,
+                    )
+
+                }
+
+                // Right Column: Stats & Menu. The parent already begins below
+                // the status bar, so this pane must not reserve the toolbar's
+                // cover-only overlap. Top arrangement keeps the statistics card
+                // near the safe edge; verticalScroll still handles short windows.
+                Column(
+                    modifier = Modifier
+                        .weight(1.5f)
+                        .fillMaxHeight()
+                        .padding(top = LandscapeRightColumnTopPadding)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.Top
+                ) {
+                    if (quizStats.totalQuizzes > 0) {
+                        ProfileStatsCard(stats = quizStats)
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        ProfileMenuItem(
+                            icon = Icons.Filled.BarChart,
+                            title = "Statistics",
+                            subtitle = "View your quiz insights",
+                            onClick = onNavigateToStatistics
+                        )
+                        ProfileMenuItem(
+                            icon = Icons.Filled.Settings,
+                            title = "Settings",
+                            subtitle = "Appearance, categories, backup",
+                            onClick = onNavigateToSettings
+                        )
                     }
                 }
             }
@@ -398,15 +713,33 @@ fun ProfileScreen(
             // --- PORTRAIT LAYOUT (Original) ---
             Column(
                 modifier = Modifier
-                    .padding(padding)
+                    .padding(
+                        start = padding.calculateStartPadding(layoutDirection),
+                        top = statusBarTop,
+                        end = padding.calculateEndPadding(layoutDirection),
+                        bottom = padding.calculateBottomPadding(),
+                    )
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                    .padding(bottom = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Cover band spans the content width; the avatar straddles
-                // its bottom edge — 90% inside the band, 10% below it.
-                ProfileCoverBanner(height = coverHeight(isLandscape = false)) {
+                // Expanded cover: wider than the content (12.dp gutters
+                // vs 24.dp) and responsively tall — the dominant element
+                // of the upper profile — with the avatar straddling its
+                // bottom edge: 90% inside the band, 10% below it.
+                ProfileCoverBanner(
+                    height = coverHeight(
+                        isLandscape = false,
+                        screenHeightDp = configuration.screenHeightDp,
+                    ) + coverTopExtension,
+                    visual = coverVisual,
+                    videoPlaybackAllowed = screenActive && !avatarBehindDialogsPaused,
+                    liveVideoAllowed = coverVideoSurfaceAllowed,
+                    transitionsAllowed = screenActive,
+                    editButton = coverEditButton,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                ) {
                     ProfileAvatar(
                         // Bottom-centered, pushed down by exactly the
                         // overhang so the 10% slice clears the band's edge.
@@ -419,83 +752,92 @@ fun ProfileScreen(
                         onClick = { showPictureDialog = true },
                         onLongClick = avatarLongPress,
                         paused = avatarBehindDialogsPaused,
+                        animationAllowed = screenActive,
                         anchorId = AvatarAnchorId.Profile,
                     )
                 }
 
                 Spacer(Modifier.height(coverContentGap(CoverAvatarSize)))
 
-                Surface(
-                    onClick = { showUsernameDialog = true },
-                    shape = MaterialTheme.shapes.extraLarge,
-                    color = Color.Transparent,
-                    modifier = Modifier.clip(MaterialTheme.shapes.extraLarge)
+                // Everything below keeps the original 24.dp gutters, so
+                // the wider cover doesn't disturb the content's rhythm.
+                Column(
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    Surface(
+                        onClick = { showUsernameDialog = true },
+                        shape = MaterialTheme.shapes.extraLarge,
+                        color = Color.Transparent,
+                        modifier = Modifier.clip(MaterialTheme.shapes.extraLarge)
                     ) {
-                        Text(
-                            text = username.ifBlank {
-                                if (quizStats.totalQuizzes > 0) "Edit Profile" else "Create Profile"
-                            },
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            color = NazoTextPrimary
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = username.ifBlank {
+                                    if (quizStats.totalQuizzes > 0) "Edit Profile" else "Create Profile"
+                                },
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = NazoTextPrimary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(
+                                imageVector = Icons.Rounded.Edit,
+                                contentDescription = "Edit username",
+                                tint = NazoPrimary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    // Discloses both picture gestures; the press-and-hold preview
+                    // was previously a hidden easter egg.
+                    Text(
+                        text = if (profilePictureUri.isNullOrBlank())
+                            "Tap the picture to choose one"
+                        else
+                            "Tap the picture to change it · press and hold to preview",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NazoTextSecondary,
+                        textAlign = TextAlign.Center,
+                    )
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    if (quizStats.totalQuizzes > 0) {
+                        ProfileStatsCard(stats = quizStats)
+                        Spacer(modifier = Modifier.height(24.dp))
+                    }
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        ProfileMenuItem(
+                            icon = Icons.Filled.BarChart,
+                            title = "Statistics",
+                            subtitle = "View your quiz insights",
+                            onClick = onNavigateToStatistics
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Icon(
-                            imageVector = Icons.Rounded.Edit,
-                            contentDescription = "Edit username",
-                            tint = NazoPrimary,
-                            modifier = Modifier.size(22.dp)
+                        ProfileMenuItem(
+                            icon = Icons.Filled.Settings,
+                            title = "Settings",
+                            subtitle = "Appearance, categories, backup",
+                            onClick = onNavigateToSettings
                         )
                     }
-                }
-
-                Spacer(Modifier.height(8.dp))
-                // Discloses both picture gestures; the press-and-hold preview
-                // was previously a hidden easter egg.
-                Text(
-                    text = if (profilePictureUri.isNullOrBlank())
-                        "Tap the picture to choose one"
-                    else
-                        "Tap the picture to change it · press and hold to preview",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NazoTextSecondary,
-                    textAlign = TextAlign.Center,
-                )
-
-                Spacer(modifier = Modifier.height(32.dp))
-
-                if (quizStats.totalQuizzes > 0) {
-                    ProfileStatsCard(stats = quizStats)
-                    Spacer(modifier = Modifier.height(24.dp))
-                }
-
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    ProfileMenuItem(
-                        icon = Icons.Filled.BarChart,
-                        title = "Statistics",
-                        subtitle = "View your quiz insights",
-                        onClick = onNavigateToStatistics
-                    )
-                    ProfileMenuItem(
-                        icon = Icons.Filled.Settings,
-                        title = "Settings",
-                        subtitle = "Appearance, categories, backup",
-                        onClick = onNavigateToSettings
-                    )
                 }
             }
         }
     }
+
     // Scaffold(
     //     containerColor = Color.Transparent,
     //     topBar = {
@@ -1434,6 +1776,135 @@ fun ProfileScreen(
                 pendingDraft = null
             },
             stateKeyPrefix = "Profile",
+        )
+    }
+
+    // Cover pick preview: validate → WYSIWYG banner frame → safe app-private
+    // save. Video validation also proves an H.264 decoder can produce a frame.
+    val activeCoverSource = pendingCoverSource
+    if (activeCoverSource != null) {
+        val dismissCoverPreview = {
+            pendingCoverSource = null
+            pendingCoverIsVideo = false
+        }
+        val acceptCover: (String) -> Unit = { savedUri ->
+            pendingCoverSource = null
+            pendingCoverIsVideo = false
+            onAutomaticCoverChange(false)
+            onCoverPictureChange(savedUri)
+            // The new custom medium should show immediately. The old custom
+            // file is only pruned after this save has fully validated.
+            onCoverPresetChange(null)
+        }
+        if (pendingCoverIsVideo && activeCoverSource is ProfileImageSource.ContentUri) {
+            ProfileCoverVideoPreviewDialog(
+                source = activeCoverSource,
+                onDismiss = dismissCoverPreview,
+                onAccepted = acceptCover,
+            )
+        } else {
+            ProfileCoverPreviewDialog(
+                source = activeCoverSource,
+                onDismiss = dismissCoverPreview,
+                onAccepted = acceptCover,
+            )
+        }
+    }
+
+
+    // Unified cover selection: bundled photos, animated gradients, and the
+    // custom gallery option, each previewed at the real banner ratio.
+    // Applying a preset writes only the preset id — the stored photo file
+    // and its uri stay untouched, so "Your photo" switches back for free.
+    if (showCoverSheet) {
+        CoverBackgroundSheet(
+            galleryUri = coverPictureUri,
+            presetId = coverPresetId,
+            automaticEnabled = automaticCoverEnabled,
+            automaticState = visibleAutomaticState,
+            bannerRatio = coverPreviewAspectRatio(
+                screenWidthDp = configuration.screenWidthDp,
+                screenHeightDp = configuration.screenHeightDp,
+                isLandscape = isLandscape,
+                coverTopExtensionDp = coverPreviewTopExtensionDp(isLandscape),
+            ),
+            onDismiss = { showCoverSheet = false },
+            onPrepareAutomatic = onPrepareAutomaticCover,
+            onStopPreparingAutomatic = onStopPreparingAutomaticCover,
+            onSelectAutomatic = { onAutomaticCoverChange(true) },
+            onSelectPreset = { id ->
+                onAutomaticCoverChange(false)
+                onCoverPresetChange(id)
+            },
+            onUseCustomMedia = {
+                onAutomaticCoverChange(false)
+                onCoverPresetChange(null)
+            },
+            onPickPhoto = {
+                showCoverSheet = false
+                coverPhotoLauncher.launch(
+                    PickVisualMediaRequest(
+                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                    )
+                )
+            },
+            onPickVideo = {
+                showCoverSheet = false
+                coverVideoLauncher.launch(
+                    PickVisualMediaRequest(
+                        ActivityResultContracts.PickVisualMedia.VideoOnly
+                    )
+                )
+            },
+            onRemove = {
+                showCoverSheet = false
+                showCoverRemoveConfirm = true
+            },
+        )
+    }
+
+    // Remove-cover confirmation — the same destructive-action step the
+    // avatar's Remove uses; Cancel leaves the photo untouched.
+    if (showCoverRemoveConfirm) {
+        AlertDialog(
+            onDismissRequest = { showCoverRemoveConfirm = false },
+            icon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = NazoError) },
+            title = { Text("Remove cover background?") },
+            text = {
+                Text(
+                    if (automaticCoverEnabled) {
+                        "Automatic matching will be turned off and your profile will return " +
+                            "to the plain cover background."
+                    } else if (!coverPictureUri.isNullOrBlank()) {
+                        "Your profile goes back to the plain cover background. To use " +
+                            "this photo or video again you would need to choose it again."
+                    } else {
+                        "Your profile goes back to the plain cover background."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                NazoDangerButton(onClick = {
+                    Haptics.doubleLight(context)
+                    onAutomaticCoverChange(false)
+                    AutomaticCoverStore.discardAll(context)
+                    ProfileImageStore.deleteCover(coverPictureUri)
+                    onCoverPictureChange(null)
+                    // Removing clears BOTH layers (custom file + preset id)
+                    // back to the placeholder — same destructive step as
+                    // before, with the same confirmation.
+                    onCoverPresetChange(null)
+                    showCoverRemoveConfirm = false
+                }) {
+                    Text("Remove", maxLines = 1)
+                }
+            },
+            dismissButton = {
+                NazoSecondaryButton(onClick = { showCoverRemoveConfirm = false }, muted = true) {
+                    Text("Cancel", maxLines = 1)
+                }
+            },
         )
     }
 }
