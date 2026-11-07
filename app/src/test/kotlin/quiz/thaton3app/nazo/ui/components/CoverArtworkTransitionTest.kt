@@ -1,11 +1,21 @@
 package quiz.thaton3app.nazo.ui.components
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CoverArtworkTransitionTest {
+
+    @Test
+    fun deferredLiveVideoKeepsPosterAsVisibleLayer() {
+        // A matching video is still rendered as a poster until the live plane
+        // is allowed to appear; unrelated video layers never claim that plane.
+        assertTrue(coverVideoUsesLivePlane(matchesLiveVideo = true, liveVideoAllowed = true))
+        assertFalse(coverVideoUsesLivePlane(matchesLiveVideo = true, liveVideoAllowed = false))
+        assertFalse(coverVideoUsesLivePlane(matchesLiveVideo = false, liveVideoAllowed = true))
+    }
 
     @Test
     fun motionStaysInsideTheRestrainedDesignBudget() {
