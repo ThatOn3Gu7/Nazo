@@ -37,6 +37,22 @@ class ActiveQuizPolishTest {
     }
 
     @Test
+    fun expressiveProgressWaveIsPeriodicAndReturnsToItsRestShape() {
+        val wavelength = 20f
+        assertEquals(0f, quizProgressWaveOffset(0f, wavelength, 0f), 0.0001f)
+        assertEquals(1f, quizProgressWaveOffset(5f, wavelength, 0f), 0.0001f)
+        assertEquals(0f, quizProgressWaveOffset(10f, wavelength, 0f), 0.0001f)
+        assertEquals(-1f, quizProgressWaveOffset(15f, wavelength, 0f), 0.0001f)
+        assertEquals(
+            quizProgressWaveOffset(7f, wavelength, 0f),
+            quizProgressWaveOffset(7f, wavelength, 1f),
+            0.0001f,
+        )
+        assertEquals(-1f, quizProgressWaveOffset(0f, wavelength, 0.25f), 0.0001f)
+        assertEquals(0f, quizProgressWaveOffset(10f, 0f, 0f), 0f)
+    }
+
+    @Test
     fun restrainedQuestionMotionMirrorsDirection() {
         assertEquals(80, questionTransitionOffset(width = 1_000, direction = 1))
         assertEquals(-80, questionTransitionOffset(width = 1_000, direction = -1))

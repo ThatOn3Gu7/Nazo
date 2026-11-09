@@ -51,8 +51,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -99,6 +103,17 @@ internal fun quizComboLabel(streak: Int): String? =
 internal fun quizProgressFraction(questionIndex: Int, totalQuestions: Int): Float =
     if (totalQuestions <= 0) 0f
     else ((questionIndex + 1).toFloat() / totalQuestions).coerceIn(0f, 1f)
+
+/** Normalized Material-Expressive wave. A full phase returns to the same rest shape. */
+internal fun quizProgressWaveOffset(
+    position: Float,
+    wavelength: Float,
+    phaseFraction: Float,
+): Float {
+    if (wavelength <= 0f) return 0f
+    val phase = phaseFraction * 2f * PI.toFloat()
+    return sin((position / wavelength) * 2f * PI.toFloat() - phase)
+}
 
 internal fun questionTransitionOffset(width: Int, direction: Int): Int =
     (width * QuestionTransitionSlideFraction * direction.coerceIn(-1, 1)).roundToInt()
@@ -467,8 +482,9 @@ fun ActiveQuizScreen(
 
             Spacer(Modifier.height(chromeGap))
             // Endless runs have no meaningful fraction — skip the bar. The
-            // custom bar is one Canvas and one bounded pulse: it gives progress
-            // a living leading edge without an infinite clock or extra layers.
+            // custom bar is one Canvas: a Material-Expressive wave advances
+            // through the completed portion on updates, then settles with no
+            // infinite clock or extra layers.
             if (!endless && !isBlitz) {
                 PremiumQuizProgress(
                     progress = quizProgressFraction(currentQuestionIndex, totalQuestions),
@@ -978,45 +994,88 @@ private fun PremiumQuizProgress(
         ),
         label = "premiumQuizProgress",
     )
-    val leadingPulse = remember { Animatable(0f) }
+    // One wavelength travels through the active line whenever progress changes.
+    // It ends at phase 1, which is visually identical to phase 0, so the snake
+    // settles without a snap and owns no infinite animation clock.
+    val waveTravel = remember { Animatable(0f) }
     LaunchedEffect(target, motionAllowed) {
         if (!motionAllowed || target <= 0f) {
-            leadingPulse.snapTo(0f)
+            waveTravel.snapTo(0f)
             return@LaunchedEffect
         }
-        leadingPulse.snapTo(1f)
-        leadingPulse.animateTo(
-            0f,
-            animationSpec = tween(480, easing = FastOutSlowInEasing),
+        waveTravel.snapTo(0f)
+        waveTravel.animateTo(
+            1f,
+            animationSpec = tween(520, easing = FastOutSlowInEasing),
         )
     }
 
-    Canvas(modifier = modifier.height(8.dp)) {
-        val radius = CornerRadius(size.height / 2f, size.height / 2f)
-        drawRoundRect(color = trackColor, cornerRadius = radius)
-        val filledWidth = size.width * displayed.coerceIn(0f, 1f)
-        if (filledWidth > 0f) {
-            // A soft cap bloom fires only when progress changes; unlike a
-            // shimmer it owns no infinite transition or always-running clock.
-            if (leadingPulse.value > 0f) {
+    Canvas(modifier = modifier.height(16.dp)) {
+        val strokeWidth = 4.dp.toPx()
+        val amplitude = 3.dp.toPx().coerceAtMost((size.height - strokeWidth) / 2f)
+        val wavelength = 20.dp.toPx()
+        val centerY = size.height / 2f
+        val startX = strokeWidth / 2f
+        val usableWidth = (size.width - strokeWidth).coerceAtLeast(0f)
+        val endX = startX + usableWidth * displayed.coerceIn(0f, 1f)
+
+        // Material Expressive's inactive rail stays calm while the completed
+        // portion carries the waveform, like a music-player progress indicator.
+        // A small token gap keeps the wave cap distinct from the remaining rail.
+        val trackEndX = (size.width - startX).coerceAtLeast(startX)
+        val trackStartX = if (endX <= startX) {
+            startX
+        } else {
+            (endX + strokeWidth * 1.5f).coerceAtMost(trackEndX)
+        }
+        if (trackStartX < trackEndX) {
+            drawLine(
+                color = trackColor,
+                start = Offset(trackStartX, centerY),
+                end = Offset(trackEndX, centerY),
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round,
+            )
+        }
+
+        if (endX > startX) {
+            val path = Path()
+            val sampleStep = 2.dp.toPx().coerceAtLeast(1f)
+            var x = startX
+            var endY = centerY
+            while (x <= endX) {
+                val y = centerY + amplitude * quizProgressWaveOffset(
+                    position = x - startX,
+                    wavelength = wavelength,
+                    phaseFraction = waveTravel.value,
+                )
+                if (x == startX) path.moveTo(x, y) else path.lineTo(x, y)
+                endY = y
+                x += sampleStep
+            }
+            // Always terminate exactly at the animated progress value rather
+            // than one sample before it; the round cap then advances smoothly.
+            endY = centerY + amplitude * quizProgressWaveOffset(
+                position = endX - startX,
+                wavelength = wavelength,
+                phaseFraction = waveTravel.value,
+            )
+            path.lineTo(endX, endY)
+
+            val travelEnvelope = sin(
+                waveTravel.value.coerceIn(0f, 1f) * PI.toFloat()
+            ).coerceAtLeast(0f)
+            if (travelEnvelope > 0f) {
                 drawCircle(
-                    color = color.copy(alpha = 0.16f * leadingPulse.value),
-                    radius = size.height * (0.8f + 0.7f * leadingPulse.value),
-                    center = androidx.compose.ui.geometry.Offset(filledWidth, size.height / 2f),
+                    color = color.copy(alpha = 0.14f * travelEnvelope),
+                    radius = strokeWidth * (1.2f + 0.5f * travelEnvelope),
+                    center = Offset(endX, endY),
                 )
             }
-            drawRoundRect(
+            drawPath(
+                path = path,
                 color = color,
-                size = androidx.compose.ui.geometry.Size(filledWidth, size.height),
-                cornerRadius = radius,
-            )
-            drawCircle(
-                color = Color.White.copy(alpha = 0.28f),
-                radius = size.height * 0.22f,
-                center = androidx.compose.ui.geometry.Offset(
-                    x = filledWidth.coerceAtLeast(size.height / 2f) - size.height * 0.28f,
-                    y = size.height / 2f,
-                ),
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
             )
         }
     }
