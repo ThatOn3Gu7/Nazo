@@ -72,6 +72,7 @@ private fun QuizStats.toJson(): String = JSONObject().apply {
     put("totalQuizzes", totalQuizzes)
     put("totalQuestionsAnswered", totalQuestionsAnswered)
     put("totalCorrect", totalCorrect)
+    put("bestCorrectCombo", bestCorrectCombo)
     put("currentStreakDays", currentStreakDays)
     put("bestStreakDays", bestStreakDays)
     put("lastQuizEpochDay", lastQuizEpochDay ?: JSONObject.NULL)
@@ -93,6 +94,7 @@ private fun QuizStats.Companion.fromJson(json: String?): QuizStats {
         totalQuizzes = o.optInt("totalQuizzes"),
         totalQuestionsAnswered = o.optInt("totalQuestionsAnswered"),
         totalCorrect = o.optInt("totalCorrect"),
+        bestCorrectCombo = o.optInt("bestCorrectCombo"),
         currentStreakDays = o.optInt("currentStreakDays"),
         bestStreakDays = o.optInt("bestStreakDays"),
         lastQuizEpochDay = if (o.has("lastQuizEpochDay") && !o.isNull("lastQuizEpochDay")) {

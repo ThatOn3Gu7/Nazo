@@ -245,12 +245,27 @@ class BackupRestoreTest {
     }
 
     @Test
+    fun olderQuizStatisticsDefaultBestComboToZero() {
+        val prefs = FakeSharedPreferences()
+        prefs.edit()
+            .putString("quiz_stats_v1", """{"totalQuizzes":4,"totalCorrect":12}""")
+            .commit()
+
+        val restored = QuizStatsStore(prefs).get()
+
+        assertEquals(4, restored.totalQuizzes)
+        assertEquals(12, restored.totalCorrect)
+        assertEquals(0, restored.bestCorrectCombo)
+    }
+
+    @Test
     fun restoreBringsBackQuizStatistics() {
         val source = FakeSharedPreferences()
         val fixture = QuizStats(
             totalQuizzes = 12,
             totalQuestionsAnswered = 90,
             totalCorrect = 70,
+            bestCorrectCombo = 11,
             currentStreakDays = 5,
             bestStreakDays = 9,
             lastQuizEpochDay = QuizStats.localEpochDay(),
