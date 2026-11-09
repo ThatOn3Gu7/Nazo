@@ -125,6 +125,7 @@ import quiz.thaton3app.nazo.data.fetchLatestRelease
 import quiz.thaton3app.nazo.data.isNewerVersion
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoModalSheet
+import quiz.thaton3app.nazo.ui.components.NazoSheetHeader
 import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
@@ -546,11 +547,10 @@ private fun UpdateMenuContent(
             .padding(horizontal = 24.dp, vertical = 16.dp)
             .padding(bottom = 32.dp)
     ) {
-        Text(
-            text = "App Updates",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = NazoTextPrimary,
+        NazoSheetHeader(
+            icon = Icons.Filled.NewReleases,
+            title = "App updates",
+            subtitle = "Installed version $currentVersion",
         )
 
         Spacer(Modifier.height(16.dp))

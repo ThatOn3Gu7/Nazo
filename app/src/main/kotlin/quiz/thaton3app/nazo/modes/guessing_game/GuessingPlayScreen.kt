@@ -7,10 +7,8 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -23,7 +21,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -105,6 +102,7 @@ import quiz.thaton3app.nazo.hints.HintPill
 import quiz.thaton3app.nazo.hints.HintRevealPill
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.NazoQuitDialog
 import quiz.thaton3app.nazo.ui.components.WavySpinner
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.mode.mysteryRevealStage
@@ -292,7 +290,7 @@ fun GuessingPlayScreen(
         onRoundComplete(correct, answer, remainingMs)
     }
 
-    BackHandler(enabled = true) { showQuitDialog = !showQuitDialog }
+    BackHandler(enabled = !showQuitDialog) { showQuitDialog = true }
 
     Box(
         modifier = Modifier
@@ -524,13 +522,12 @@ fun GuessingPlayScreen(
             }
         }
 
-        QuitDialog(
-            show = showQuitDialog,
+        NazoQuitDialog(
+            visible = showQuitDialog,
+            title = "Quit guessing game?",
+            message = "Your score in this game will be lost.",
             onStay = { showQuitDialog = false },
-            onQuit = {
-                showQuitDialog = false
-                onQuit()
-            },
+            onQuit = onQuit,
         )
     }
 }
@@ -1262,111 +1259,6 @@ private fun ErrorCard(
             GuessOutlineButton(label = "Open settings", onClick = onOpenSettings)
             Spacer(Modifier.height(10.dp))
             GuessTextButton(label = "Quit to home", onClick = onQuit)
-        }
-    }
-}
-
-@Composable
-private fun QuitDialog(
-    show: Boolean,
-    onStay: () -> Unit,
-    onQuit: () -> Unit,
-) {
-    val context = LocalContext.current
-    AnimatedVisibility(
-        visible = show,
-        enter = fadeIn(tween(180)) + scaleIn(tween(180, easing = LinearOutSlowInEasing), initialScale = 0.9f),
-        exit = fadeOut(tween(180)) + scaleOut(tween(180, easing = FastOutLinearInEasing), targetScale = 0.9f),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.5f))
-                .clickable { },
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(
-                modifier = Modifier
-                    .widthIn(max = 340.dp)
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(NazoSurface)
-                    .border(1.5.dp, NazoTextSecondary.copy(alpha = 0.3f), RoundedCornerShape(32.dp))
-                    .padding(28.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(CircleShape)
-                        .background(NazoError),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "!",
-                        color = NazoOnPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 34.sp,
-                    )
-                }
-                Spacer(Modifier.height(18.dp))
-                Text(
-                    text = "Quit guessing game?",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = NazoTextPrimary,
-                    fontWeight = FontWeight.Bold,
-                )
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    text = "Your score in this game will be lost.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = NazoTextSecondary,
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(Modifier.height(22.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(54.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(NazoPrimary)
-                            .clickable {
-                                Haptics.light(context)
-                                onStay()
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "Stay",
-                            color = NazoOnPrimary,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(54.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .border(1.5.dp, NazoError, RoundedCornerShape(16.dp))
-                            .clickable {
-                                Haptics.light(context)
-                                onQuit()
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "Quit",
-                            color = NazoError,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                }
-            }
         }
     }
 }

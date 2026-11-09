@@ -137,6 +137,8 @@ internal fun avatarOverlayTransform(
     edgeDirection: Int,
     ordinaryDirection: Int = 1,
     containerWidth: Float,
+    /** Zero under Remove animations; default preserves the shared 8% motion. */
+    slideFraction: Float = ScreenNavigationSlideFraction,
 ): AvatarOverlayTransform {
     if (!transitioning) return AvatarOverlayTransform(alpha = 1f, slideX = 0f)
     val eased: (Float) -> Float = { FastOutSlowInEasing.transform(it.coerceIn(0f, 1f)) }
@@ -147,7 +149,7 @@ internal fun avatarOverlayTransform(
             // travels only the shared 8% distance while fading with the same
             // 240 ms FastOutSlowIn curve scrubbed by gesture progress.
             alpha = 1f - eased(fraction),
-            slideX = containerWidth * ScreenNavigationSlideFraction *
+            slideX = containerWidth * slideFraction *
                 edgeDirection * eased(fraction),
         )
 
@@ -155,7 +157,7 @@ internal fun avatarOverlayTransform(
             // A flipped cancellation segment is the exact inverse of that
             // shared subtle motion; fade and slide use one duration/easing.
             alpha = eased(fraction),
-            slideX = containerWidth * ScreenNavigationSlideFraction *
+            slideX = containerWidth * slideFraction *
                 edgeDirection * (1f - eased(fraction)),
         )
 
@@ -167,12 +169,12 @@ internal fun avatarOverlayTransform(
         // 132dp while visible.
         winnerIsTarget -> AvatarOverlayTransform(
             alpha = eased(fraction),
-            slideX = containerWidth * ScreenNavigationSlideFraction *
+            slideX = containerWidth * slideFraction *
                 ordinaryDirection * (1f - eased(fraction)),
         )
         else -> AvatarOverlayTransform(
             alpha = 1f - eased(fraction),
-            slideX = -containerWidth * ScreenNavigationSlideFraction *
+            slideX = -containerWidth * slideFraction *
                 ordinaryDirection * eased(fraction),
         )
     }

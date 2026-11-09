@@ -9,9 +9,11 @@ import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -75,7 +77,9 @@ import quiz.thaton3app.nazo.ui.components.NazoConfirmButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.components.NazoModalSheet
 import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
+import quiz.thaton3app.nazo.ui.components.NazoSheetHeader
 import quiz.thaton3app.nazo.ui.components.NazoTab
+import quiz.thaton3app.nazo.ui.components.nazoPressFeedback
 import quiz.thaton3app.nazo.ui.components.SPARKLE_METEORS
 import quiz.thaton3app.nazo.ui.components.SPARKLE_STYLES
 import quiz.thaton3app.nazo.ui.components.SPARKLE_TWINKLE
@@ -578,34 +582,10 @@ fun AppearanceScreen(
             sheetState = iconSheetState,
         ) {
             NazoSheetColumn() {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(NazoPrimary.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.AppShortcut,
-                            contentDescription = null,
-                            tint = NazoPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "App icon",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = NazoTextPrimary,
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Pick the icon Nazo shows on your home screen. The startup splash and launch animation follow your choice. Applying one closes the app; reopen it and the new icon is there.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = NazoTextSecondary,
+                NazoSheetHeader(
+                    icon = Icons.Outlined.AppShortcut,
+                    title = "App icon",
+                    subtitle = "Pick the icon Nazo shows on your home screen. The startup splash and launch animation follow your choice. Applying one closes the app; reopen it and the new icon is there.",
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -650,34 +630,10 @@ fun AppearanceScreen(
             )
 
             NazoSheetColumn {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(NazoPrimary.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.AutoAwesome,
-                            contentDescription = null,
-                            tint = NazoPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "Generate button spark",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = NazoTextPrimary,
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "What plays when you tap Generate on the home screen.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = NazoTextSecondary,
+                NazoSheetHeader(
+                    icon = Icons.Outlined.AutoAwesome,
+                    title = "Generate button spark",
+                    subtitle = "What plays when you tap Generate on the home screen.",
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -761,34 +717,10 @@ fun AppearanceScreen(
             }
 
             NazoSheetColumn {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(NazoPrimary.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.AutoAwesome,
-                            contentDescription = null,
-                            tint = NazoPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "Background effects",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = NazoTextPrimary,
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Live previews — pick a vibe, or switch effects off entirely.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = NazoTextSecondary,
+                NazoSheetHeader(
+                    icon = Icons.Outlined.AutoAwesome,
+                    title = "Background effects",
+                    subtitle = "Live previews — pick a vibe, or switch effects off entirely.",
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -830,34 +762,10 @@ fun AppearanceScreen(
             }
 
             NazoSheetColumn {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(NazoPrimary.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Celebration,
-                            contentDescription = null,
-                            tint = NazoPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "Victory confetti",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = NazoTextPrimary,
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Live previews of the end-of-game cheer — colors follow your accent.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = NazoTextSecondary,
+                NazoSheetHeader(
+                    icon = Icons.Outlined.Celebration,
+                    title = "Victory confetti",
+                    subtitle = "Live previews of the end-of-game cheer — colors follow your accent.",
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -905,6 +813,8 @@ private fun ThemeModeRow(
     val backgroundColor = if (isSelected) NazoDarkCard else NazoSurface
     val contentColor = if (isSelected) Color.White else NazoTextPrimary
     val subtitleColor = if (isSelected) Color.White.copy(alpha = 0.7f) else NazoTextSecondary
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
 
     // One-shot celestial transit: when this row BECOMES the selected theme,
     // a sun ("sun"), a moon ("moon"), or a full sun-then-moon day/night
@@ -938,6 +848,7 @@ private fun ThemeModeRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .nazoPressFeedback(interactionSource)
             .clip(RoundedCornerShape(24.dp))
             .background(backgroundColor)
             .drawBehind {
@@ -952,7 +863,11 @@ private fun ThemeModeRow(
                 color = if (isSelected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.08f),
                 shape = RoundedCornerShape(24.dp),
             )
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = indication,
+                onClick = onClick,
+            )
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1009,11 +924,18 @@ private fun ColorAccentCircle(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
     Box(
         modifier = Modifier
             .size(48.dp)
+            .nazoPressFeedback(interactionSource, pressedScale = 0.94f)
             .clip(CircleShape)
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = indication,
+                onClick = onClick,
+            )
             .then(
                 if (isSelected) Modifier.border(2.dp, NazoTextPrimary, CircleShape)
                 else Modifier
@@ -1106,10 +1028,13 @@ private fun EffectOptionCard(
     time: () -> Float,
     onClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(78.dp)
+            .nazoPressFeedback(interactionSource)
             .clip(RoundedCornerShape(18.dp))
             .background(NazoSurfaceVariant)
             .border(
@@ -1117,7 +1042,11 @@ private fun EffectOptionCard(
                 color = if (selected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.12f),
                 shape = RoundedCornerShape(18.dp),
             )
-            .clickable(onClick = onClick),
+            .clickable(
+                interactionSource = interactionSource,
+                indication = indication,
+                onClick = onClick,
+            ),
     ) {
         Canvas(modifier = Modifier.matchParentSize()) {
             drawEffectPreview(effect.id, time())
@@ -1183,10 +1112,13 @@ private fun CelebrationOptionCard(
     time: () -> Float,
     onClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(78.dp)
+            .nazoPressFeedback(interactionSource)
             .clip(RoundedCornerShape(18.dp))
             .background(NazoSurfaceVariant)
             .border(
@@ -1194,7 +1126,11 @@ private fun CelebrationOptionCard(
                 color = if (selected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.12f),
                 shape = RoundedCornerShape(18.dp),
             )
-            .clickable(onClick = onClick),
+            .clickable(
+                interactionSource = interactionSource,
+                indication = indication,
+                onClick = onClick,
+            ),
     ) {
         Canvas(modifier = Modifier.matchParentSize()) {
             drawCelebrationPreview(style.id, time())
@@ -1258,9 +1194,12 @@ private fun SparkleOptionCard(
     progress: Float,
     onClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .nazoPressFeedback(interactionSource)
             .clip(RoundedCornerShape(18.dp))
             .background(NazoSurfaceVariant)
             .border(
@@ -1268,7 +1207,11 @@ private fun SparkleOptionCard(
                 color = if (selected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.12f),
                 shape = RoundedCornerShape(18.dp),
             )
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = indication,
+                onClick = onClick,
+            )
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1628,9 +1571,12 @@ private fun AppIconOptionCard(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .nazoPressFeedback(interactionSource)
             .clip(RoundedCornerShape(18.dp))
             .background(NazoSurfaceVariant)
             .border(
@@ -1638,7 +1584,11 @@ private fun AppIconOptionCard(
                 color = if (selected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.12f),
                 shape = RoundedCornerShape(18.dp),
             )
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = indication,
+                onClick = onClick,
+            )
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

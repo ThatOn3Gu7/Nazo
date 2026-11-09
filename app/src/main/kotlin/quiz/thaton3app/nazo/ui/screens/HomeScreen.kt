@@ -22,6 +22,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -75,6 +76,9 @@ import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.data.QuizStats
 import quiz.thaton3app.nazo.ui.components.NazoModalSheet
 import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
+import quiz.thaton3app.nazo.ui.components.NazoSheetHeader
+import quiz.thaton3app.nazo.ui.components.nazoPressFeedback
+import quiz.thaton3app.nazo.ui.components.rememberSystemReduceMotion
 import quiz.thaton3app.nazo.ui.components.AvatarAnchorId
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
 import quiz.thaton3app.nazo.ui.components.SPARKLE_METEORS
@@ -140,6 +144,7 @@ fun HomeScreen(
     val nazoMode = NazoMode.entries.firstOrNull { it.name == mode } ?: NazoMode.QUIZ
     val isGuessing = nazoMode == NazoMode.GUESSING
     val context = LocalContext.current
+    val reduceMotion = rememberSystemReduceMotion()
     var showProviderSheet by remember { mutableStateOf(false) }
     var showModeSheet by remember { mutableStateOf(false) }
 
@@ -223,8 +228,12 @@ fun HomeScreen(
         AnimatedContent(
             targetState = nazoMode,
             transitionSpec = {
-                (slideInVertically(spring(stiffness = Spring.StiffnessMediumLow)) { it / 4 } + fadeIn())
-                    .togetherWith(slideOutVertically { -it / 4 } + fadeOut())
+                if (reduceMotion) {
+                    fadeIn(tween(90)) togetherWith fadeOut(tween(70))
+                } else {
+                    (slideInVertically(spring(stiffness = Spring.StiffnessMediumLow)) { it / 4 } + fadeIn())
+                        .togetherWith(slideOutVertically { -it / 4 } + fadeOut())
+                }
             },
             label = "modeIdentity",
         ) { selectedMode ->
@@ -432,36 +441,11 @@ fun HomeScreen(
                 sheetState = modeSheetState,
             ) {
                 NazoSheetColumn {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(NazoPrimary.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.SportsEsports,
-                                contentDescription = null,
-                                tint = NazoPrimary,
-                                modifier = Modifier.size(23.dp),
-                            )
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = "Choose a game mode",
-                                style = MaterialTheme.typography.titleLarge,
-                                color = NazoTextPrimary,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            Text(
-                                text = "Five ways to play, one Nazo identity",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = NazoTextSecondary,
-                            )
-                        }
-                    }
+                    NazoSheetHeader(
+                        icon = Icons.Filled.SportsEsports,
+                        title = "Choose a game mode",
+                        subtitle = "Five ways to play, one Nazo identity",
+                    )
                     Spacer(Modifier.height(16.dp))
                     NazoMode.entries.forEach { candidate ->
                         ModePickerCard(
@@ -501,34 +485,10 @@ fun HomeScreen(
                 sheetState = sheetState,
             ) {
                 NazoSheetColumn {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(NazoPrimary.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Key,
-                                contentDescription = null,
-                                tint = NazoPrimary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Text(
-                            text = "Switch API key",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = NazoTextPrimary,
-                        )
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "Choose which configured provider generates your quizzes.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NazoTextSecondary,
+                    NazoSheetHeader(
+                        icon = Icons.Filled.Key,
+                        title = "Switch API key",
+                        subtitle = "Choose which configured provider generates your quizzes.",
                     )
                     Spacer(Modifier.height(16.dp))
                     
@@ -561,14 +521,20 @@ fun HomeScreen(
                             val name = PROVIDER_DISPLAY[id] ?: id
                             val icon = PROVIDER_ICONS[id] ?: Icons.Filled.Settings
                             val isSel = id == activeProvider
-                            
+                            val interactionSource = remember(id) { MutableInteractionSource() }
+                            val indication = LocalIndication.current
+
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .nazoPressFeedback(interactionSource, pressedScale = 0.99f)
                                     .clip(RoundedCornerShape(14.dp))
                                     .background(if (isSel) NazoPrimary.copy(alpha = 0.08f) else Color.Transparent)
-                                    .clickable {
+                                    .clickable(
+                                        interactionSource = interactionSource,
+                                        indication = indication,
+                                    ) {
                                         dismissSheet { onSelectProvider(id) }
                                     }
                                     .padding(horizontal = 14.dp, vertical = 14.dp),
@@ -1100,13 +1066,20 @@ private fun ModeIdentityCard(
     onClick: () -> Unit,
 ) {
     val identity = modeIdentitySpec(mode)
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .nazoPressFeedback(interactionSource)
             .clip(RoundedCornerShape(20.dp))
             .background(NazoSurface.copy(alpha = 0.72f))
             .border(1.dp, NazoPrimary.copy(alpha = 0.22f), RoundedCornerShape(20.dp))
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = indication,
+                onClick = onClick,
+            )
             .padding(horizontal = 14.dp, vertical = 13.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1171,6 +1144,8 @@ private fun ModePickerCard(
     onClick: () -> Unit,
 ) {
     val identity = modeIdentitySpec(mode)
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
     val borderColor by animateColorAsState(
         targetValue = if (selected) NazoPrimary.copy(alpha = 0.58f)
         else NazoTextSecondary.copy(alpha = 0.12f),
@@ -1180,10 +1155,15 @@ private fun ModePickerCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .nazoPressFeedback(interactionSource)
             .clip(RoundedCornerShape(22.dp))
             .background(if (selected) NazoPrimary.copy(alpha = 0.08f) else NazoBackground.copy(alpha = 0.58f))
             .border(if (selected) 1.5.dp else 1.dp, borderColor, RoundedCornerShape(22.dp))
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = indication,
+                onClick = onClick,
+            )
             .padding(14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1538,8 +1518,9 @@ private fun PillButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     onClick: () -> Unit,
 ) {
+    val reduceMotion = rememberSystemReduceMotion()
     val scale by animateFloatAsState(
-        targetValue = if (selected) 1.02f else 1f,
+        targetValue = if (selected && !reduceMotion) 1.02f else 1f,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "pillScale"
     )
@@ -1593,6 +1574,7 @@ private fun PillButton(
 private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val reduceMotion = rememberSystemReduceMotion()
 
     // Tap sequence: the sparkle twinkles, then navigation fires a beat later so
     // the animation is actually seen. `launching` also guards against a second
@@ -1609,7 +1591,7 @@ private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> U
     val pressed by interactionSource.collectIsPressedAsState()
 
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.97f else 1f,
+        targetValue = if (pressed && !reduceMotion) 0.97f else 1f,
         // Springy on release so it feels responsive rather than sluggish.
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
@@ -1618,35 +1600,40 @@ private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> U
         label = "generate_press_scale",
     )
     val pressOverlay by animateFloatAsState(
-        targetValue = if (pressed) 0.16f else 0f,
+        targetValue = if (pressed && !reduceMotion) 0.16f else 0f,
         animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
         label = "generate_press_overlay",
     )
     val elevation by animateDpAsState(
-        targetValue = if (pressed) 1.dp else 8.dp,
+        targetValue = if (pressed && !reduceMotion) 1.dp else 8.dp,
         animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
         label = "generate_press_elevation",
     )
 
     // Idle sheen: a soft highlight that travels left-to-right on a long loop,
     // with a pause between sweeps so it reads as a gentle shine, not a spinner.
-    val sheen = rememberInfiniteTransition(label = "generate_sheen")
-    val sheenX by sheen.animateFloat(
-        initialValue = -0.35f,
-        targetValue = 1.35f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes<Float> {
-                durationMillis = 4200
-                // Dwell off-screen, sweep across, then hold before repeating.
-                (-0.35f) at 0
-                (-0.35f) at 1400
-                1.35f at 3000 using LinearEasing
-                1.35f at 4200
-            },
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "generate_sheen_x",
-    )
+    val sheenX = if (reduceMotion) {
+        -0.35f
+    } else {
+        val sheen = rememberInfiniteTransition(label = "generate_sheen")
+        val animatedSheen by sheen.animateFloat(
+            initialValue = -0.35f,
+            targetValue = 1.35f,
+            animationSpec = infiniteRepeatable(
+                animation = keyframes<Float> {
+                    durationMillis = 4200
+                    // Dwell off-screen, sweep across, then hold before repeating.
+                    (-0.35f) at 0
+                    (-0.35f) at 1400
+                    1.35f at 3000 using LinearEasing
+                    1.35f at 4200
+                },
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "generate_sheen_x",
+        )
+        animatedSheen
+    }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -1670,7 +1657,7 @@ private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> U
             // while pressed so the two effects never overlap.
             .drawWithContent {
                 drawContent()
-                if (!pressed) {
+                if (!pressed && !reduceMotion) {
                     val bandWidth = size.width * 0.38f
                     val center = size.width * sheenX
                     drawRect(
@@ -1711,6 +1698,13 @@ private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> U
                 if (launching) return@clickable
                 launching = true
                 Haptics.light(context)
+                if (reduceMotion) {
+                    // The action stays immediate under Remove animations; no
+                    // decorative sheen, press transform, sparkle or delay.
+                    onClick()
+                    launching = false
+                    return@clickable
+                }
                 scope.launch {
                     twinkle.snapTo(0f)
                     // ~420ms of twinkle, then a short beat so the animation

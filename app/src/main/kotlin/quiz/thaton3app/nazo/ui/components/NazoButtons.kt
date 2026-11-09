@@ -11,7 +11,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.runtime.remember
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
@@ -74,10 +76,14 @@ fun NazoPrimaryButton(
     contentPadding: PaddingValues = DefaultContentPadding,
     content: @Composable RowScope.() -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     Button(
         onClick = onClick,
-        modifier = modifier.nazoTouchTarget(),
+        modifier = modifier
+            .nazoTouchTarget()
+            .nazoPressFeedback(interactionSource, enabled),
         enabled = enabled,
+        interactionSource = interactionSource,
         shape = NazoButtonShape,
         // A border on a filled button looks redundant in isolation but keeps
         // its silhouette identical to the outlined variants beside it.
@@ -107,10 +113,14 @@ fun NazoSecondaryButton(
     content: @Composable RowScope.() -> Unit,
 ) {
     val tint = if (muted) NazoTextSecondary else NazoPrimary
+    val interactionSource = remember { MutableInteractionSource() }
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier.nazoTouchTarget(),
+        modifier = modifier
+            .nazoTouchTarget()
+            .nazoPressFeedback(interactionSource, enabled),
         enabled = enabled,
+        interactionSource = interactionSource,
         shape = NazoButtonShape,
         // The accent edge is composited at the shared alpha that keeps it a
         // perceivable 3:1 control boundary; the muted variant is identified
@@ -159,10 +169,14 @@ fun NazoDangerButton(
     contentPadding: PaddingValues = DefaultContentPadding,
     content: @Composable RowScope.() -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     Button(
         onClick = onClick,
-        modifier = modifier.nazoTouchTarget(),
+        modifier = modifier
+            .nazoTouchTarget()
+            .nazoPressFeedback(interactionSource, enabled),
         enabled = enabled,
+        interactionSource = interactionSource,
         shape = NazoButtonShape,
         border = BorderStroke(BorderWidth, NazoError),
         colors = ButtonDefaults.buttonColors(
@@ -194,10 +208,14 @@ fun NazoQuietButton(
     contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
     content: @Composable RowScope.() -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier.nazoTouchTarget(),
+        modifier = modifier
+            .nazoTouchTarget()
+            .nazoPressFeedback(interactionSource, enabled),
         enabled = enabled,
+        interactionSource = interactionSource,
         shape = NazoButtonShape,
         // Decorative whisper edge (below 3:1 on purpose): this role is
         // identified by its 4.5:1 label, not its outline.

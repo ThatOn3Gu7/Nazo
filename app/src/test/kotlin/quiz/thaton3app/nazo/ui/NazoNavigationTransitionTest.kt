@@ -1,5 +1,6 @@
 package quiz.thaton3app.nazo.ui
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -82,6 +83,20 @@ class NazoNavigationTransitionTest {
         assertFalse(policy.activeVisualWork)
         assertTrue(policy.liveCoverSurfaceAllowed)
         assertTrue(policy.coverVideoPlaybackAllowed)
+    }
+
+    @Test
+    fun reducedMotionKeepsNavigationConnectedWithoutSliding() {
+        assertEquals(0f, screenNavigationSlideFraction(reduceMotion = true), 0f)
+        assertEquals(
+            quiz.thaton3app.nazo.ui.components.ScreenNavigationSlideFraction,
+            screenNavigationSlideFraction(reduceMotion = false),
+            0f,
+        )
+        assertTrue(
+            screenNavigationDurationMs(reduceMotion = true) <
+                screenNavigationDurationMs(reduceMotion = false)
+        )
     }
 
     @Test
