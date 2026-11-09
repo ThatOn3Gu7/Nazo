@@ -18,6 +18,7 @@ class NazoNavigationTransitionTest {
 
         assertTrue(policy.activeVisualWork)
         assertTrue(policy.liveCoverSurfaceAllowed)
+        assertTrue(policy.coverVideoPlaybackAllowed)
     }
 
     @Test
@@ -34,6 +35,9 @@ class NazoNavigationTransitionTest {
 
         assertFalse(policy.activeVisualWork)
         assertFalse(policy.liveCoverSurfaceAllowed)
+        // Playback is allowed in principle, but no live plane exists until the
+        // first settled frame, so the prepared poster remains the only layer.
+        assertTrue(policy.coverVideoPlaybackAllowed)
     }
 
     @Test
@@ -47,6 +51,7 @@ class NazoNavigationTransitionTest {
 
         assertFalse(policy.activeVisualWork)
         assertFalse(policy.liveCoverSurfaceAllowed)
+        assertTrue(policy.coverVideoPlaybackAllowed)
     }
 
     @Test
@@ -60,10 +65,11 @@ class NazoNavigationTransitionTest {
 
         assertFalse(policy.activeVisualWork)
         assertTrue(policy.liveCoverSurfaceAllowed)
+        assertFalse(policy.coverVideoPlaybackAllowed)
     }
 
     @Test
-    fun predictiveBackPausesWorkWithoutReplacingTheCurrentVideoFrame() {
+    fun predictiveBackKeepsTheCurrentCoverSurfacePlaying() {
         val policy = profileRenderPolicy(
             currentScreen = Screen.Profile,
             transitionCurrent = Screen.Profile,
@@ -71,7 +77,28 @@ class NazoNavigationTransitionTest {
             predictiveBackTarget = Screen.Home,
         )
 
+        // Decorative clocks can stand down during the scrub, but the already
+        // visible video must advance continuously until the gesture commits.
         assertFalse(policy.activeVisualWork)
         assertTrue(policy.liveCoverSurfaceAllowed)
+        assertTrue(policy.coverVideoPlaybackAllowed)
+    }
+
+    @Test
+    fun quizCompleteEntranceGateIsConsumedForReviewBackPreviews() {
+        val gate = QuizCompleteEntranceGate()
+
+        assertFalse(gate.shouldPlayEntrance())
+        gate.armForCompletedQuiz()
+        assertTrue(gate.shouldPlayEntrance())
+
+        gate.markEntranceStarted()
+        assertFalse(gate.shouldPlayEntrance())
+        // Repeated ordinary/predictive back compositions remain settled.
+        assertFalse(gate.shouldPlayEntrance())
+
+        // A later completed quiz owns a fresh one-shot entrance.
+        gate.armForCompletedQuiz()
+        assertTrue(gate.shouldPlayEntrance())
     }
 }

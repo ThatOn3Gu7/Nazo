@@ -274,9 +274,14 @@ fun DailyChallengeCard(
  * separate jumping object rather than part of the result choreography.
  */
 @Composable
-fun DailyBonusChip(bonusXp: Int, modifier: Modifier = Modifier) {
-    var shown by remember { mutableStateOf(false) }
+fun DailyBonusChip(
+    bonusXp: Int,
+    modifier: Modifier = Modifier,
+    animateEntrance: Boolean = true,
+) {
+    var shown by remember { mutableStateOf(!animateEntrance) }
     LaunchedEffect(Unit) {
+        if (!animateEntrance) return@LaunchedEffect
         delay(1000)
         shown = true
     }
