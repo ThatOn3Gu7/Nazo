@@ -28,6 +28,25 @@ class AvatarOverlayTest {
     }
 
     @Test
+    fun zeroSlidePolicyKeepsAvatarAlignedUnderReducedMotion() {
+        val transform = avatarOverlayTransform(
+            fraction = 0.5f,
+            transitioning = true,
+            predictiveTargetPresent = false,
+            targetIsPredictive = false,
+            initialIsPredictive = false,
+            winnerIsTarget = false,
+            edgeDirection = 1,
+            ordinaryDirection = 1,
+            containerWidth = 1080f,
+            slideFraction = 0f,
+        )
+
+        assertEquals(0f, transform.slideX, 0f)
+        assertTrue(transform.alpha in 0f..1f)
+    }
+
+    @Test
     fun atRestTheOverlayIsFullyVisibleAndUnmoved() {
         // Every flag combination must collapse to the same rest state —
         // a lingering predictiveBackTarget after a settle must not dim or

@@ -7,6 +7,8 @@ import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -14,10 +16,15 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
@@ -32,13 +39,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.node.DelegatableNode
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoSurface
 import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
@@ -180,6 +190,55 @@ fun NazoDragHandle() {
                     .clip(CircleShape)
                     .background(NazoTextSecondary.copy(alpha = 0.3f)),
             )
+        }
+    }
+}
+
+/**
+ * Shared sheet heading used by chooser, update and profile sheets. Keeping the
+ * icon tile, title baseline and optional explanation together prevents every
+ * sheet from feeling like a slightly different popup.
+ */
+@Composable
+fun NazoSheetHeader(
+    icon: ImageVector,
+    title: String,
+    subtitle: String? = null,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(NazoPrimary.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = NazoPrimary,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                color = NazoTextPrimary,
+                fontWeight = FontWeight.Bold,
+            )
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NazoTextSecondary,
+                )
+            }
         }
     }
 }

@@ -135,36 +135,11 @@ internal fun CoverBackgroundSheet(
         sheetState = sheetState,
     ) {
         NazoSheetColumn {
-            // Header — same anatomy as the Background-effects sheet.
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(NazoPrimary.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Image,
-                        contentDescription = null,
-                        tint = NazoPrimary,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    text = "Cover background",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = NazoTextPrimary,
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "Preview each option, then tap to apply — your own photo or video " +
+            NazoSheetHeader(
+                icon = Icons.Filled.Image,
+                title = "Cover background",
+                subtitle = "Preview each option, then tap to apply — your own photo or video " +
                     "is kept even while a preset is active.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = NazoTextSecondary,
             )
             Spacer(Modifier.height(16.dp))
 

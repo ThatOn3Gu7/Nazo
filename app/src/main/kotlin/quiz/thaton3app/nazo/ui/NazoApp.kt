@@ -239,37 +239,51 @@ internal class QuizCompleteEntranceGate {
  *
  * [direction] is +1 when the target enters from the right and -1 when it enters
  * from the left. [targetZIndex] keeps pushes above and back targets behind the
- * screen being dismissed without changing the motion itself.
+ * screen being dismissed without changing the motion itself. Android Remove
+ * animations keeps the same connected fade but sets the slide to zero and
+ * shortens the settle, rather than forcing vestibular motion.
  */
+internal const val ReducedMotionNavigationDurationMs = 90
+
+internal fun screenNavigationSlideFraction(reduceMotion: Boolean): Float =
+    if (reduceMotion) 0f else ScreenNavigationSlideFraction
+
+internal fun screenNavigationDurationMs(reduceMotion: Boolean): Int =
+    if (reduceMotion) ReducedMotionNavigationDurationMs
+    else ScreenNavigationTransitionDurationMs
+
 private fun subtleScreenNavigationTransform(
     direction: Int,
     targetZIndex: Float,
+    reduceMotion: Boolean,
 ): ContentTransform {
+    val slideFraction = screenNavigationSlideFraction(reduceMotion)
+    val durationMs = screenNavigationDurationMs(reduceMotion)
     val enter = slideInHorizontally(
         initialOffsetX = { width ->
-            (width * ScreenNavigationSlideFraction * direction).roundToInt()
+            (width * slideFraction * direction).roundToInt()
         },
         animationSpec = tween(
-            ScreenNavigationTransitionDurationMs,
+            durationMs,
             easing = FastOutSlowInEasing,
         ),
     ) + fadeIn(
         animationSpec = tween(
-            ScreenNavigationTransitionDurationMs,
+            durationMs,
             easing = FastOutSlowInEasing,
         ),
     )
     val exit = slideOutHorizontally(
         targetOffsetX = { width ->
-            (-width * ScreenNavigationSlideFraction * direction).roundToInt()
+            (-width * slideFraction * direction).roundToInt()
         },
         animationSpec = tween(
-            ScreenNavigationTransitionDurationMs,
+            durationMs,
             easing = FastOutSlowInEasing,
         ),
     ) + fadeOut(
         animationSpec = tween(
-            ScreenNavigationTransitionDurationMs,
+            durationMs,
             easing = FastOutSlowInEasing,
         ),
     )
@@ -2395,8 +2409,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 transitionSpec = {
                     // Same language and durations as the screen transition, so
                     // the mode switch does not stand out from normal navigation.
-                    fadeIn(animationSpec = tween(220)) togetherWith
-                        fadeOut(animationSpec = tween(160))
+                    fadeIn(animationSpec = tween(if (reduceMotion) 90 else 220)) togetherWith
+                        fadeOut(animationSpec = tween(if (reduceMotion) 70 else 160))
                 },
                 label = "layoutModeTransition",
             ) { listDetail ->
@@ -2419,8 +2433,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             AnimatedContent(
                                 targetState = settingsDetail,
                                 transitionSpec = {
-                                    fadeIn(animationSpec = tween(200)) togetherWith
-                                        fadeOut(animationSpec = tween(140))
+                                    fadeIn(animationSpec = tween(if (reduceMotion) 90 else 200)) togetherWith
+                                        fadeOut(animationSpec = tween(if (reduceMotion) 70 else 140))
                                 },
                                 label = "settingsDetailTransition",
                             ) { detail ->
@@ -2455,6 +2469,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                                     subtleScreenNavigationTransform(
                                         direction = -predictiveBackEdgeDirection,
                                         targetZIndex = -1f,
+                                        reduceMotion = reduceMotion,
                                     ).using(null)
                                 }
 
@@ -2466,6 +2481,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                                     subtleScreenNavigationTransform(
                                         direction = predictiveBackEdgeDirection,
                                         targetZIndex = 1f,
+                                        reduceMotion = reduceMotion,
                                     ).using(null)
                                 }
 
@@ -2479,6 +2495,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                                     subtleScreenNavigationTransform(
                                         direction = direction,
                                         targetZIndex = if (direction > 0) 1f else -1f,
+                                        reduceMotion = reduceMotion,
                                     ).using(null)
                                 }
                             }
@@ -2510,6 +2527,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 screensWidthPx = screensWidthPx,
                 railInset = railInset,
                 blurBlocking = offlineDialogMode != null || showAiMissingDialog,
+                reduceMotion = reduceMotion,
             )
 
             // The bottom nav lives OUTSIDE AnimatedContent, for the same reason
@@ -2728,6 +2746,7 @@ private fun AvatarOverlayLayer(
     screensWidthPx: Int,
     railInset: Dp,
     blurBlocking: Boolean,
+    reduceMotion: Boolean,
 ) {
     val transitioning = transitionState.currentState != transitionState.targetState
     val winner = resolveAvatarWinnerScreen(
@@ -2748,6 +2767,7 @@ private fun AvatarOverlayLayer(
         edgeDirection = edgeDirection,
         ordinaryDirection = ordinaryDirection,
         containerWidth = screensWidthPx.toFloat(),
+        slideFraction = screenNavigationSlideFraction(reduceMotion),
     )
     PersistentAvatarVideo(
         uri = uri,

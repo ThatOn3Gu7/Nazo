@@ -7,7 +7,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -22,7 +21,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
@@ -70,7 +68,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.PI
@@ -84,6 +81,7 @@ import quiz.thaton3app.nazo.hints.HintPill
 import quiz.thaton3app.nazo.hints.HintRevealPill
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.NazoQuitDialog
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.components.rememberSystemReduceMotion
 import quiz.thaton3app.nazo.ui.mode.BlitzUrgency
@@ -225,8 +223,8 @@ fun ActiveQuizScreen(
 
     // Intercept the system back gesture/button too, so leaving via gesture shows the same
     // "quit quiz?" confirmation as the X button (instead of silently going back).
-    BackHandler(enabled = true) {
-        showQuitDialog = !showQuitDialog
+    BackHandler(enabled = !showQuitDialog) {
+        showQuitDialog = true
     }
 
     // Lifecycle-safe countdown: one timer per question (keyed on the index). The
@@ -841,102 +839,13 @@ fun ActiveQuizScreen(
         }
         }
 
-        // Quit Dialog Backdrop & Content
-        AnimatedVisibility(
+        NazoQuitDialog(
             visible = showQuitDialog,
-            // Added scale animation for a "pop up" feel
-            enter = fadeIn(tween(180)) + scaleIn(tween(180, easing = LinearOutSlowInEasing), initialScale = 0.9f),
-            exit = fadeOut(tween(180)) + scaleOut(tween(180, easing = FastOutLinearInEasing), targetScale = 0.9f),
-        ) {
-            Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.5f))
-                        .clickable { },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .widthIn(max = 340.dp)
-                            .clip(RoundedCornerShape(32.dp))
-                            .background(NazoSurface)
-                            .border(1.5.dp, NazoTextSecondary.copy(alpha = 0.3f), RoundedCornerShape(32.dp))
-                            .padding(28.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp)
-                                .clip(CircleShape)
-                                .background(NazoError),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = "!",
-                                color = NazoOnPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 34.sp,
-                            )
-                        }
-                        Spacer(Modifier.height(18.dp))
-                        Text(
-                            text = "Quit quiz?",
-                            style = MaterialTheme.typography.headlineSmall,
-                            color = NazoTextPrimary,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            text = "Do you really want to quit? Your progress in this quiz will be lost.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = NazoTextSecondary,
-                            textAlign = TextAlign.Center,
-                        )
-                        Spacer(Modifier.height(22.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(54.dp)
-                                    .clip(RoundedCornerShape(16.dp))
-                                .background(NazoPrimary)
-                                .clickable { Haptics.light(context); showQuitDialog = false },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = "Stay",
-                                    color = NazoOnPrimary,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(54.dp)
-                                    .clip(RoundedCornerShape(16.dp))
-                                .border(1.5.dp, NazoError, RoundedCornerShape(16.dp))
-                                .clickable {
-                                    Haptics.light(context)
-                                    showQuitDialog = false
-                                    onCloseClick()
-                                },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = "Quit",
-                                    color = NazoError,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                        }
-                    }
-                }
-        }
+            title = "Quit quiz?",
+            message = "Your progress in this quiz will be lost.",
+            onStay = { showQuitDialog = false },
+            onQuit = onCloseClick,
+        )
     }
 }
 

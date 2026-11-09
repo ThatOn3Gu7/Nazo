@@ -14,10 +14,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -343,13 +345,19 @@ private fun NazoNavRailItem(
     val currentBg = if (isFloating) animatedBg else targetBg
 
     val context = LocalContext.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
         modifier = modifier
+            .nazoPressFeedback(interactionSource)
             .clip(if (isFloating) RoundedCornerShape(50) else RoundedCornerShape(18.dp))
             .background(currentBg)
-            .clickable {
+            .clickable(
+                interactionSource = interactionSource,
+                indication = indication,
+            ) {
                 Haptics.light(context)
                 onClick()
             }
@@ -438,12 +446,18 @@ private fun NazoNavItem(
     val currentBg = if (isFloating) animatedBg else targetBg
 
     val context = LocalContext.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
+            .nazoPressFeedback(interactionSource)
             .clip(RoundedCornerShape(50))
             .background(currentBg)
-            .clickable {
+            .clickable(
+                interactionSource = interactionSource,
+                indication = indication,
+            ) {
                 Haptics.light(context)
                 onClick()
             }
