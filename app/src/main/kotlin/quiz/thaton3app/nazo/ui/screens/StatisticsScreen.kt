@@ -365,16 +365,16 @@ private fun RankCard(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "LEVEL",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = NazoOnDarkCardMuted,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
                         text = stats.level.toString(),
                         style = MaterialTheme.typography.headlineMedium,
                         color = NazoOnDarkCard,
                         fontWeight = FontWeight.ExtraBold,
+                    )
+                    Text(
+                        text = "LEVEL",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NazoOnDarkCardMuted,
+                        fontWeight = FontWeight.Bold,
                     )
                 }
             }
