@@ -2051,16 +2051,16 @@ private fun ProfileProgressCard(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            "LV",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = NazoTextSecondary,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(
                             progression.level.toString(),
                             style = MaterialTheme.typography.titleLarge,
                             color = NazoPrimary,
                             fontWeight = FontWeight.ExtraBold,
+                        )
+                        Text(
+                            "LEVEL",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NazoTextSecondary,
+                            fontWeight = FontWeight.Bold,
                         )
                     }
                 }

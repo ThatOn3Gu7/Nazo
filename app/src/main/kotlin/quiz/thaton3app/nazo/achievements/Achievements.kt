@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -265,15 +264,16 @@ fun AchievementsCard(
         }
         Spacer(Modifier.height(16.dp))
 
-        // Three rows remain visible—the exact height of the original 12-badge
-        // wall. New tiers scroll inside this viewport instead of lengthening
-        // the Statistics screen or the collection card.
+        // Three rows remain visible at the original wall height. Each 68.dp
+        // slot fully contains its corner status seal; the 2.dp endpoint gutters
+        // keep the first/last visible row away from the scroll viewport clip.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(220.dp)
                 .verticalScroll(badgeScroll),
         ) {
+            Spacer(Modifier.height(2.dp))
             val rows = achievements.chunked(4)
             rows.forEachIndexed { rowIndex, row ->
                 Row(modifier = Modifier.fillMaxWidth()) {
@@ -293,8 +293,9 @@ fun AchievementsCard(
                     }
                     repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
-                if (rowIndex != rows.lastIndex) Spacer(Modifier.height(14.dp))
+                if (rowIndex != rows.lastIndex) Spacer(Modifier.height(6.dp))
             }
+            Spacer(Modifier.height(2.dp))
         }
 
         Spacer(Modifier.height(12.dp))
@@ -402,7 +403,7 @@ private fun AchievementBadge(
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Box(
             modifier = Modifier
-                .size(64.dp)
+                .size(68.dp)
                 .graphicsLayer {
                     scaleX = appear
                     scaleY = appear
@@ -446,7 +447,6 @@ private fun AchievementBadge(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .offset(x = 1.dp, y = 1.dp)
                     .size(20.dp)
                     .clip(CircleShape)
                     .background(if (achievement.unlocked) NazoSuccess else NazoSurface)
