@@ -23,19 +23,23 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.MilitaryTech
 import androidx.compose.material.icons.filled.School
@@ -434,17 +438,33 @@ private fun AchievementBadge(
                     else NazoTextSecondary.copy(alpha = 0.34f),
                     modifier = Modifier.size(25.dp),
                 )
-                if (achievement.unlocked) {
-                    Text(
-                        text = "✓",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = NazoSuccess,
-                        fontWeight = FontWeight.ExtraBold,
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(end = 4.dp, bottom = 1.dp),
-                    )
-                }
+            }
+
+            // The small status seal belongs to the plaque; only the large outer
+            // progress circle was removed. Both states retain the compact round
+            // body that makes the corner icon read clearly at badge size.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .offset(x = 1.dp, y = 1.dp)
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(if (achievement.unlocked) NazoSuccess else NazoSurface)
+                    .border(
+                        1.dp,
+                        if (achievement.unlocked) NazoSuccess
+                        else NazoTextSecondary.copy(alpha = 0.18f),
+                        CircleShape,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (achievement.unlocked) Icons.Filled.Check else Icons.Filled.Lock,
+                    contentDescription = null,
+                    tint = if (achievement.unlocked) Color.White
+                    else NazoTextSecondary.copy(alpha = 0.55f),
+                    modifier = Modifier.size(if (achievement.unlocked) 13.dp else 11.dp),
+                )
             }
         }
     }
