@@ -10,8 +10,8 @@ import android.widget.Toast
 import androidx.activity.BackEventCompat
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.SeekableTransitionState
 import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.core.tween
@@ -102,8 +102,8 @@ import quiz.thaton3app.nazo.ui.components.AvatarAnchorRegistry
 import quiz.thaton3app.nazo.ui.components.AvatarFrameCache
 import quiz.thaton3app.nazo.ui.components.AvatarVideoHost
 import quiz.thaton3app.nazo.ui.components.CHANGELOG_ID
-import quiz.thaton3app.nazo.ui.components.OrdinaryScreenSlideFraction
-import quiz.thaton3app.nazo.ui.components.OrdinaryScreenTransitionDurationMs
+import quiz.thaton3app.nazo.ui.components.ScreenNavigationSlideFraction
+import quiz.thaton3app.nazo.ui.components.ScreenNavigationTransitionDurationMs
 import quiz.thaton3app.nazo.ui.components.prepareCoverArtwork
 import quiz.thaton3app.nazo.ui.components.LocalAvatarAnchorRegistry
 import quiz.thaton3app.nazo.ui.components.PersistentAvatarVideo
@@ -128,8 +128,8 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 import quiz.thaton3app.nazo.ui.theme.NazoTheme
 import quiz.thaton3app.nazo.widget.NazoWidgetProvider
 
-// Every destination in the app. Wrapping this in AnimatedContent gives us a single,
-// uniform fade-in / fade-out transition between ALL screens (Roadmap #2).
+// Every destination in the app. One shared subtle slide/fade transition serves
+// taps, back arrows, and the progress-driven predictive-back preview.
 /**
  * Shortest time a generation loading card stays up before an error may replace
  * it. Comfortably longer than the card's own 160 ms fade-out + 220 ms fade-in,
@@ -194,6 +194,53 @@ internal fun profileRenderPolicy(
         activeVisualWork = atRest,
         liveCoverSurfaceAllowed = !ordinaryEntry,
     )
+}
+
+/**
+ * The one navigation visual language used by both committed navigation and
+ * predictive back. A predictive gesture does not substitute a different full-
+ * width transition: `SeekableTransitionState.seekTo(progress)` scrubs this same
+ * restrained 8% slide and fade as far as the finger has travelled.
+ *
+ * [direction] is +1 when the target enters from the right and -1 when it enters
+ * from the left. [targetZIndex] keeps pushes above and back targets behind the
+ * screen being dismissed without changing the motion itself.
+ */
+private fun subtleScreenNavigationTransform(
+    direction: Int,
+    targetZIndex: Float,
+): ContentTransform {
+    val enter = slideInHorizontally(
+        initialOffsetX = { width ->
+            (width * ScreenNavigationSlideFraction * direction).roundToInt()
+        },
+        animationSpec = tween(
+            ScreenNavigationTransitionDurationMs,
+            easing = FastOutSlowInEasing,
+        ),
+    ) + fadeIn(
+        animationSpec = tween(
+            ScreenNavigationTransitionDurationMs,
+            easing = FastOutSlowInEasing,
+        ),
+    )
+    val exit = slideOutHorizontally(
+        targetOffsetX = { width ->
+            (-width * ScreenNavigationSlideFraction * direction).roundToInt()
+        },
+        animationSpec = tween(
+            ScreenNavigationTransitionDurationMs,
+            easing = FastOutSlowInEasing,
+        ),
+    ) + fadeOut(
+        animationSpec = tween(
+            ScreenNavigationTransitionDurationMs,
+            easing = FastOutSlowInEasing,
+        ),
+    )
+    return (enter togetherWith exit).apply {
+        this.targetContentZIndex = targetZIndex
+    }
 }
 
 /**
@@ -554,7 +601,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // state: it outlives every screen swap by design.
     val avatarAnchorRegistry = remember { AvatarAnchorRegistry() }
     // Screen content width (post rail-inset) for the overlay's replicated
-    // predictive-back slide; probed from the screens AnimatedContent.
+    // subtle navigation slide; probed from the screens AnimatedContent.
     var screensWidthPx by remember { mutableIntStateOf(0) }
 
     // Dialog state that has to outlive the portrait <-> landscape layout swap.
@@ -575,9 +622,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // Predictive back: the system gesture drives the screen transition directly.
     // SeekableTransitionState lets BackEventCompat.progress scrub the real
     // AnimatedContent transition (the same mechanism Navigation Compose uses
-    // for its predictive-back pop previews), so the outgoing screen tracks the
-    // finger while the screen behind it is revealed. Committing settles to the
-    // popped screen; cancelling settles back to where we were. The state is
+    // for its predictive-back pop previews), so the shared subtle slide/fade
+    // tracks gesture progress while the screen behind is revealed. Committing
+    // settles to the popped screen; cancelling settles back to where we were. The state is
     // remembered HERE, above the layout-mode AnimatedContent, so it is bound
     // to its Transition exactly once and survives layout swaps.
     val screenTransitionState = remember { SeekableTransitionState<Screen>(Screen.Home) }
@@ -620,10 +667,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // Cancel: reverse the scrub on the SAME segment, frame-stepped exactly
     // like the finger, instead of letting animateTo flip the segment — the
     // flip runs the transition's target-change path, whose initial-value
-    // alignment animates toward the former target's values (the enter
-    // animation's declared off-edge start), which shows as a small rightward
-    // bounce before the settle. snapTo then normalizes the state machine at
-    // rest (a visual no-op at fraction 0), so the next navigation starts from
+    // alignment animates toward the former target's declared enter offset,
+    // which shows as a small directional bounce before the settle. snapTo then
+    // normalizes the state machine at rest (a visual no-op at fraction 0), so
+    // the next navigation starts from
     // a clean segment rather than a stale one.
     LaunchedEffect(currentScreen, predictiveBackInProgress) {
         val settle = coroutineContext[Job]
@@ -634,7 +681,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 if (cancelledTo != null && cancelledTo == screenTransitionState.targetState &&
                     currentScreen != screenTransitionState.targetState
                 ) {
-                    val durationNanos = 220_000_000L
+                    val durationNanos =
+                        ScreenNavigationTransitionDurationMs * 1_000_000L
                     val startNanos = withFrameNanos { it }
                     val from = screenTransitionState.fraction
                     var value = from
@@ -2274,8 +2322,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             .padding(end = railInset)
                             .then(if (offlineDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp) else Modifier)
                             // Content-area width for the avatar overlay's
-                            // replicated predictive-back slide: the same
-                            // post-padding width slideInHorizontally slides by.
+                            // replicated subtle slide: the same post-padding
+                            // width slideInHorizontally uses for its 8% offset.
                             .onGloballyPositioned { coords ->
                                 val w = coords.size.width
                                 if (w > 0 && w != screensWidthPx) screensWidthPx = w
@@ -2283,41 +2331,25 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         transitionSpec = {
                             when {
                                 predictiveBackTarget != null && targetState == predictiveBackTarget -> {
-                                    // A predictive gesture seeking toward the screen
-                                    // behind (or its commit settle): the screen being
-                                    // left tracks the finger toward the edge while the
-                                    // one behind is revealed from the opposite side —
-                                    // slide + fade in both directions.
-                                    (slideInHorizontally(
-                                        initialOffsetX = { width -> -width * predictiveBackEdgeDirection },
-                                        animationSpec = tween(220),
-                                    ) + fadeIn(animationSpec = tween(220)))
-                                        .togetherWith(
-                                            slideOutHorizontally(
-                                                targetOffsetX = { width -> width * predictiveBackEdgeDirection },
-                                                animationSpec = tween(220),
-                                            ) + fadeOut(animationSpec = tween(220)),
-                                        )
-                                        .apply { targetContentZIndex = -1f }
-                                        .using(null)
+                                    // Scrub the SAME subtle back transition used by a
+                                    // back arrow. The gesture edge only mirrors its
+                                    // direction; distance, alpha, easing, and duration
+                                    // are shared with ordinary navigation.
+                                    subtleScreenNavigationTransform(
+                                        direction = -predictiveBackEdgeDirection,
+                                        targetZIndex = -1f,
+                                    ).using(null)
                                 }
 
                                 predictiveBackTarget != null && initialState == predictiveBackTarget -> {
-                                    // A cancelled gesture settles back — continuous
-                                    // with the above: the dragged screen slides home
-                                    // while the revealed one retreats behind it.
-                                    (slideInHorizontally(
-                                        initialOffsetX = { width -> width * predictiveBackEdgeDirection },
-                                        animationSpec = tween(220),
-                                    ) + fadeIn(animationSpec = tween(180)))
-                                        .togetherWith(
-                                            slideOutHorizontally(
-                                                targetOffsetX = { width -> -width * predictiveBackEdgeDirection },
-                                                animationSpec = tween(220),
-                                            ) + fadeOut(animationSpec = tween(180)),
-                                        )
-                                        .apply { targetContentZIndex = 1f }
-                                        .using(null)
+                                    // If Compose flips the segment while cancelling,
+                                    // use the exact inverse of that same subtle motion
+                                    // so the current screen returns without a style
+                                    // switch or full-width retreat.
+                                    subtleScreenNavigationTransform(
+                                        direction = predictiveBackEdgeDirection,
+                                        targetZIndex = 1f,
+                                    ).using(null)
                                 }
 
                                 else -> {
@@ -2327,41 +2359,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                                     // media may become ready during the overlap, but
                                     // that must never animate container measurement.
                                     val direction = ordinaryNavigationDirection
-                                    val enter = slideInHorizontally(
-                                        initialOffsetX = { width ->
-                                            (width * OrdinaryScreenSlideFraction * direction)
-                                                .roundToInt()
-                                        },
-                                        animationSpec = tween(
-                                            OrdinaryScreenTransitionDurationMs,
-                                            easing = FastOutSlowInEasing,
-                                        ),
-                                    ) + fadeIn(
-                                        animationSpec = tween(
-                                            OrdinaryScreenTransitionDurationMs,
-                                            easing = FastOutSlowInEasing,
-                                        ),
-                                    )
-                                    val exit = slideOutHorizontally(
-                                        targetOffsetX = { width ->
-                                            (-width * OrdinaryScreenSlideFraction * direction)
-                                                .roundToInt()
-                                        },
-                                        animationSpec = tween(
-                                            OrdinaryScreenTransitionDurationMs,
-                                            easing = FastOutSlowInEasing,
-                                        ),
-                                    ) + fadeOut(
-                                        animationSpec = tween(
-                                            OrdinaryScreenTransitionDurationMs,
-                                            easing = FastOutSlowInEasing,
-                                        ),
-                                    )
-                                    (enter togetherWith exit)
-                                        .apply {
-                                            targetContentZIndex = if (direction > 0) 1f else -1f
-                                        }
-                                        .using(null)
+                                    subtleScreenNavigationTransform(
+                                        direction = direction,
+                                        targetZIndex = if (direction > 0) 1f else -1f,
+                                    ).using(null)
                                 }
                             }
                         },
