@@ -359,9 +359,15 @@ fun ProfileScreen(
     /**
      * False only for an ordinary Profile entry: show the prepared poster until
      * the screen settles, then create the live TextureView/decoder. Outgoing and
-     * predictive transitions keep an existing paused surface attached.
+     * predictive transitions keep an existing surface attached.
      */
     coverVideoSurfaceAllowed: Boolean = true,
+    /**
+     * Remains true during an uncommitted predictive-back scrub, so the banner
+     * video keeps advancing exactly like the persistent video avatar. Becomes
+     * false only after navigation commits away from Profile.
+     */
+    coverVideoPlaybackAllowed: Boolean = screenActive,
     quizStats: QuizStats = QuizStats(),
     /** When true, never hit the network: use the local generator directly. */
     offline: Boolean = false,
@@ -602,7 +608,8 @@ fun ProfileScreen(
                             screenHeightDp = configuration.screenHeightDp,
                         ) + coverTopExtension,
                         visual = coverVisual,
-                        videoPlaybackAllowed = screenActive && !avatarBehindDialogsPaused,
+                        videoPlaybackAllowed =
+                            coverVideoPlaybackAllowed && !avatarBehindDialogsPaused,
                         liveVideoAllowed = coverVideoSurfaceAllowed,
                         transitionsAllowed = screenActive,
                         editButton = coverEditButton,
@@ -734,7 +741,8 @@ fun ProfileScreen(
                         screenHeightDp = configuration.screenHeightDp,
                     ) + coverTopExtension,
                     visual = coverVisual,
-                    videoPlaybackAllowed = screenActive && !avatarBehindDialogsPaused,
+                    videoPlaybackAllowed =
+                        coverVideoPlaybackAllowed && !avatarBehindDialogsPaused,
                     liveVideoAllowed = coverVideoSurfaceAllowed,
                     transitionsAllowed = screenActive,
                     editButton = coverEditButton,

@@ -103,10 +103,14 @@ class RecordsStore(context: Context) {
  * haptic tap. Render it only when the run actually set a record.
  */
 @Composable
-fun NewRecordBadge(modifier: Modifier = Modifier) {
+fun NewRecordBadge(
+    modifier: Modifier = Modifier,
+    animateEntrance: Boolean = true,
+) {
     val context = LocalContext.current
-    var shown by remember { mutableStateOf(false) }
+    var shown by remember { mutableStateOf(!animateEntrance) }
     LaunchedEffect(Unit) {
+        if (!animateEntrance) return@LaunchedEffect
         delay(700)
         shown = true
         Haptics.light(context)

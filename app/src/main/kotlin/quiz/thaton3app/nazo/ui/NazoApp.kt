@@ -168,13 +168,20 @@ sealed interface Screen {
  * in that overlap steals the exact frames needed by the screen animation.
  *
  * The live cover TextureView is a separate decision: keep an already-visible
- * outgoing/predictive surface attached so its paused final frame remains stable,
- * but defer creating a NEW one during an ordinary Profile entry until the layout
- * has settled. The poster occupies identical bounds in the meantime.
+ * outgoing/predictive surface attached, and keep playback running for an
+ * uncommitted predictive scrub just like the persistent avatar player. Defer
+ * creating a NEW surface during an ordinary Profile entry until the layout has
+ * settled; the poster occupies identical bounds in the meantime.
  */
 internal data class ProfileRenderPolicy(
     val activeVisualWork: Boolean,
     val liveCoverSurfaceAllowed: Boolean,
+    /**
+     * Unlike decorative clocks, a playing cover is visible feedback. Keep it
+     * live while Profile remains the foreground destination — including an
+     * uncommitted predictive-back scrub — and pause only when the pop commits.
+     */
+    val coverVideoPlaybackAllowed: Boolean,
 )
 
 internal fun profileRenderPolicy(
@@ -193,7 +200,31 @@ internal fun profileRenderPolicy(
     return ProfileRenderPolicy(
         activeVisualWork = atRest,
         liveCoverSurfaceAllowed = !ordinaryEntry,
+        coverVideoPlaybackAllowed = currentScreen == Screen.Profile,
     )
+}
+
+/**
+ * Session-scoped one-shot gate for the normal quiz result choreography.
+ *
+ * AnimatedContent may dispose Results after Review is opened and compose it
+ * again for an ordinary or predictive back preview. Compose-local `remember`
+ * cannot distinguish that reconstruction from a newly completed quiz, so the
+ * owner above the navigation transition records whether this run's entrance
+ * has already started.
+ */
+internal class QuizCompleteEntranceGate {
+    private var pending = false
+
+    fun armForCompletedQuiz() {
+        pending = true
+    }
+
+    fun shouldPlayEntrance(): Boolean = pending
+
+    fun markEntranceStarted() {
+        pending = false
+    }
 }
 
 /**
@@ -878,6 +909,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var score by remember { mutableIntStateOf(0) }
     var quizDifficulty by remember { mutableStateOf("Medium") }
     var quizStartedAt by remember { mutableStateOf(0L) }
+    // Lives above AnimatedContent so reconstructing Results as Review's back
+    // target cannot replay completion sounds, confetti, haptics, or entrances.
+    val quizCompleteEntranceGate = remember { QuizCompleteEntranceGate() }
 
     // ---- Question-based game modes (share the quiz screen/flow) ----
     // "normal" (incl. daily & practice) | "survival" | "blitz" | "versus".
@@ -1247,6 +1281,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         }
         quizPrevBest = recordsStore.survivalBest()
         quizNewRecord = recordsStore.submitSurvival(score)
+        quizCompleteEntranceGate.armForCompletedQuiz()
         replace(Screen.Results)
     }
 
@@ -1297,6 +1332,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         }
         quizPrevBest = recordsStore.blitzBest()
         quizNewRecord = recordsStore.submitBlitz(score)
+        quizCompleteEntranceGate.armForCompletedQuiz()
         replace(Screen.Results)
     }
 
@@ -1478,6 +1514,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // gesture from the results screen returns to the last question.
             // Back from Results now lands on Home. (Guessing mode already did
             // this via replace(Screen.GuessingResults).)
+            quizCompleteEntranceGate.armForCompletedQuiz()
             replace(Screen.Results)
         }
     }
@@ -1913,6 +1950,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         automaticCoverState = automaticCoverState,
                         screenActive = profilePolicy.activeVisualWork,
                         coverVideoSurfaceAllowed = profilePolicy.liveCoverSurfaceAllowed,
+                        coverVideoPlaybackAllowed = profilePolicy.coverVideoPlaybackAllowed,
                         quizStats = quizStats,
                         offline = offlineMode,
                         onBack = { goBack() },
@@ -2131,6 +2169,11 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             "survival", "survival-done" -> "Survival"
                             "blitz", "blitz-done" -> "Blitz"
                             else -> null
+                        },
+                        playEntranceSequence =
+                            quizCompleteEntranceGate.shouldPlayEntrance(),
+                        onEntranceSequenceStarted = {
+                            quizCompleteEntranceGate.markEntranceStarted()
                         },
                         onPlayAnother = { goHome() },
                         onReviewAnswers = { navigate(Screen.Review) },

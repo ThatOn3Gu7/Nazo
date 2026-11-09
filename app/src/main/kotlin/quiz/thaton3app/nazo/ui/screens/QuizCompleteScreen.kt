@@ -58,6 +58,10 @@ fun QuizCompleteScreen(
     // personal-best caption: those modes track a COUNT (longest run / most
     // correct in 60s) in bestPercent's slot, not a percentage.
     modeLabel: String? = null,
+    /** True only for the first presentation immediately after gameplay ends. */
+    playEntranceSequence: Boolean = true,
+    /** Consumes the owner-level one-shot before any sound or delay can run. */
+    onEntranceSequenceStarted: () -> Unit = {},
     onPlayAnother: () -> Unit,
     onReviewAnswers: () -> Unit,
     onSettingsClick: () -> Unit
@@ -66,11 +70,18 @@ fun QuizCompleteScreen(
     val accuracy = if (totalQuestions > 0) ((score.toFloat() / totalQuestions) * 100).toInt() else 0
     val isSuccess = accuracy >= 50
 
-    // Staggered visibility states
-    var showHeader by remember { mutableStateOf(false) }
-    var showCard by remember { mutableStateOf(false) }
-    var showStats by remember { mutableStateOf(false) }
-    var showButtons by remember { mutableStateOf(false) }
+    // Capture this composition's role. The owner consumes the gate as soon as
+    // the first effect starts; later recompositions of this same screen must
+    // continue that choreography, while a reconstructed back target starts in
+    // its settled static state.
+    val runEntranceSequence = remember { playEntranceSequence }
+
+    // Staggered visibility states. Review -> Results reconstructs this screen,
+    // so a non-entrance presentation must be complete on its very first frame.
+    var showHeader by remember { mutableStateOf(!runEntranceSequence) }
+    var showCard by remember { mutableStateOf(!runEntranceSequence) }
+    var showStats by remember { mutableStateOf(!runEntranceSequence) }
+    var showButtons by remember { mutableStateOf(!runEntranceSequence) }
     var triggerConfetti by remember { mutableStateOf(false) }
 
     // Number roll states
@@ -97,6 +108,10 @@ fun QuizCompleteScreen(
     val context = LocalContext.current
     val celebrationStyle = remember { ThemePreferences(context).celebrationStyle }
     LaunchedEffect(Unit) {
+        if (!runEntranceSequence) return@LaunchedEffect
+        // Consume first: Results can now be rebuilt for an ordinary or
+        // predictive back preview without replaying any part of this sequence.
+        onEntranceSequenceStarted()
         Sounds.complete(context) // opt-in, no-op when sounds are disabled
         delay(100)
         showHeader = true
@@ -188,7 +203,7 @@ fun QuizCompleteScreen(
                     Spacer(Modifier.height(14.dp))
                     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                         if (isNewRecord) {
-                            NewRecordBadge()
+                            NewRecordBadge(animateEntrance = runEntranceSequence)
                         } else {
                             Text(
                                 text = when (modeLabel) {
@@ -208,7 +223,10 @@ fun QuizCompleteScreen(
                 if (dailyBonusXp > 0) {
                     Spacer(Modifier.height(10.dp))
                     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        DailyBonusChip(bonusXp = dailyBonusXp)
+                        DailyBonusChip(
+                            bonusXp = dailyBonusXp,
+                            animateEntrance = runEntranceSequence,
+                        )
                     }
                 }
 
