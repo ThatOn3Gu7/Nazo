@@ -2,7 +2,6 @@ package quiz.thaton3app.nazo.ui.screens
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -49,7 +48,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -143,16 +141,27 @@ fun HomeScreen(
     val isGuessing = nazoMode == NazoMode.GUESSING
     val context = LocalContext.current
     var showProviderSheet by remember { mutableStateOf(false) }
-    
+    var showModeSheet by remember { mutableStateOf(false) }
+
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val modeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
 
-    // Smooth dismiss helper that lets the slide-down animation complete before unmounting
+    // Smooth dismiss helpers let each slide-down finish before its sheet unmounts.
     fun dismissSheet(onComplete: () -> Unit = {}) {
         scope.launch {
             sheetState.hide()
         }.invokeOnCompletion {
             showProviderSheet = false
+            onComplete()
+        }
+    }
+
+    fun dismissModeSheet(onComplete: () -> Unit = {}) {
+        scope.launch {
+            modeSheetState.hide()
+        }.invokeOnCompletion {
+            showModeSheet = false
             onComplete()
         }
     }
@@ -207,20 +216,10 @@ fun HomeScreen(
 
         SectionLabel("MODE")
         Spacer(Modifier.height(8.dp))
-        ModeSelector(
-            selected = nazoMode,
-            onSelect = { m ->
-                if (nazoMode != m) Haptics.light(context)
-                onModeChange(m.name)
-            },
-        )
 
-        Spacer(Modifier.height(10.dp))
-
-        // A compact mode promise makes the choice tangible before setup. The
-        // palette remains Nazo's active palette; hierarchy, iconography and the
-        // little mode diagram carry the personality instead of five unrelated
-        // background colours.
+        // This identity card is now the sole mode picker on Home. Tapping it
+        // opens the richer bottom sheet; there is no second dropdown competing
+        // with the mode's personality or repeating the same selection.
         AnimatedContent(
             targetState = nazoMode,
             transitionSpec = {
@@ -229,7 +228,13 @@ fun HomeScreen(
             },
             label = "modeIdentity",
         ) { selectedMode ->
-            ModeIdentityCard(selectedMode)
+            ModeIdentityCard(
+                mode = selectedMode,
+                onClick = {
+                    Haptics.light(context)
+                    showModeSheet = true
+                },
+            )
         }
     }
 
@@ -418,6 +423,75 @@ fun HomeScreen(
                 // Spacer separating the sections dynamically when in portrait
                 Spacer(Modifier.height(16.dp))
                 rightContent()
+            }
+        }
+
+        if (showModeSheet) {
+            NazoModalSheet(
+                onDismissRequest = { showModeSheet = false },
+                sheetState = modeSheetState,
+            ) {
+                NazoSheetColumn {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(NazoPrimary.copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.SportsEsports,
+                                contentDescription = null,
+                                tint = NazoPrimary,
+                                modifier = Modifier.size(23.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "Choose a game mode",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = NazoTextPrimary,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                text = "Five ways to play, one Nazo identity",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NazoTextSecondary,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    NazoMode.entries.forEach { candidate ->
+                        ModePickerCard(
+                            mode = candidate,
+                            selected = candidate == nazoMode,
+                            onClick = {
+                                if (candidate != nazoMode) Haptics.light(context)
+                                dismissModeSheet {
+                                    if (candidate != nazoMode) onModeChange(candidate.name)
+                                }
+                            },
+                        )
+                        Spacer(Modifier.height(10.dp))
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { dismissModeSheet() },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "Cancel",
+                            color = NazoTextSecondary,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
             }
         }
 
@@ -1019,153 +1093,30 @@ private val MODE_ICONS = mapOf(
     NazoMode.VERSUS to Icons.Filled.Groups,
 )
 
-private fun modeBlurb(m: NazoMode): String = modeIdentitySpec(m).description
-
-/**
- * Compact mode dropdown: a single card showing the selected mode with its
- * icon and one-line pitch; tapping expands it in place to list the other
- * modes. Replaces the old 3-row pill grid to keep Home short.
- */
+/** The selected identity is also Home's sole mode-selection control. */
 @Composable
-private fun ModeSelector(
-    selected: NazoMode,
-    onSelect: (NazoMode) -> Unit,
+private fun ModeIdentityCard(
+    mode: NazoMode,
+    onClick: () -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    val chevron by animateFloatAsState(
-        targetValue = if (expanded) 180f else 0f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label = "modeChevron",
-    )
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
-            .background(NazoSurface)
-            .border(
-                width = 1.dp,
-                color = if (expanded) NazoPrimary.copy(alpha = 0.35f)
-                else NazoTextSecondary.copy(alpha = 0.08f),
-                shape = RoundedCornerShape(22.dp),
-            )
-            .animateContentSize(spring(stiffness = Spring.StiffnessMediumLow)),
-    ) {
-        // Selected mode header — always visible, toggles the list.
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { expanded = !expanded }
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-        ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(42.dp)
-                    .clip(CircleShape)
-                    .background(NazoPrimary.copy(alpha = 0.14f)),
-            ) {
-                Icon(
-                    imageVector = MODE_ICONS[selected] ?: Icons.Filled.Quiz,
-                    contentDescription = null,
-                    tint = NazoPrimary,
-                    modifier = Modifier.size(22.dp),
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = selected.label,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = NazoTextPrimary,
-                )
-                Text(
-                    text = modeBlurb(selected),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NazoTextSecondary,
-                    maxLines = 1,
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            Icon(
-                imageVector = Icons.Filled.KeyboardArrowDown,
-                contentDescription = if (expanded) "Collapse modes" else "Expand modes",
-                tint = NazoTextSecondary,
-                modifier = Modifier
-                    .size(24.dp)
-                    .rotate(chevron),
-            )
-        }
-        if (expanded) {
-            HorizontalDivider(color = NazoTextSecondary.copy(alpha = 0.08f))
-            NazoMode.entries.filter { it != selected }.forEach { m ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            expanded = false
-                            onSelect(m)
-                        }
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(NazoPillUnselected),
-                    ) {
-                        Icon(
-                            imageVector = MODE_ICONS[m] ?: Icons.Filled.Quiz,
-                            contentDescription = null,
-                            tint = NazoTextSecondary,
-                            modifier = Modifier.size(19.dp),
-                        )
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            text = m.label,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = NazoTextPrimary,
-                        )
-                        Text(
-                            text = modeBlurb(m),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = NazoTextSecondary,
-                            maxLines = 1,
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.height(6.dp))
-        }
-    }
-}
-
-/** Shared Nazo card with a different visual grammar for each mode. */
-@Composable
-private fun ModeIdentityCard(mode: NazoMode) {
     val identity = modeIdentitySpec(mode)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(NazoSurface.copy(alpha = 0.72f))
-            .border(1.dp, NazoPrimary.copy(alpha = 0.16f), RoundedCornerShape(20.dp))
+            .border(1.dp, NazoPrimary.copy(alpha = 0.22f), RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 13.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = identity.eyebrow,
+                    text = "${mode.label.uppercase()}  •  ${identity.eyebrow}",
                     style = MaterialTheme.typography.labelSmall,
                     color = NazoPrimary,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.2.sp,
+                    letterSpacing = 1.1.sp,
                 )
                 Spacer(Modifier.height(3.dp))
                 Text(
@@ -1185,8 +1136,141 @@ private fun ModeIdentityCard(mode: NazoMode) {
                 )
             }
             Spacer(Modifier.width(12.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                ModeSignature(mode)
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "CHANGE",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NazoPrimary,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp,
+                    )
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowUp,
+                        contentDescription = "Choose game mode",
+                        tint = NazoPrimary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Rich sheet row. [ModeSignature] is intentionally reused here so the future
+ * personality animations have one obvious home instead of a second visual
+ * system that can drift away from the selected card.
+ */
+@Composable
+private fun ModePickerCard(
+    mode: NazoMode,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val identity = modeIdentitySpec(mode)
+    val borderColor by animateColorAsState(
+        targetValue = if (selected) NazoPrimary.copy(alpha = 0.58f)
+        else NazoTextSecondary.copy(alpha = 0.12f),
+        animationSpec = tween(220),
+        label = "modePickerBorder",
+    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .background(if (selected) NazoPrimary.copy(alpha = 0.08f) else NazoBackground.copy(alpha = 0.58f))
+            .border(if (selected) 1.5.dp else 1.dp, borderColor, RoundedCornerShape(22.dp))
+            .clickable(onClick = onClick)
+            .padding(14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(if (selected) NazoPrimary.copy(alpha = 0.16f) else NazoSurfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = MODE_ICONS[mode] ?: Icons.Filled.Quiz,
+                    contentDescription = null,
+                    tint = if (selected) NazoPrimary else NazoTextSecondary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Spacer(Modifier.width(11.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = mode.label,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (selected) NazoPrimary else NazoTextPrimary,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = identity.eyebrow,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoTextSecondary,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.9.sp,
+                )
+            }
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = "Selected mode",
+                    tint = NazoPrimary,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(11.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = identity.headline,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = NazoTextPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = identity.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NazoTextSecondary,
+                    lineHeight = 18.sp,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
             ModeSignature(mode)
         }
+        Spacer(Modifier.height(9.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            identity.cues.forEach { cue -> ModeCuePill(cue, selected) }
+        }
+    }
+}
+
+@Composable
+private fun ModeCuePill(text: String, selected: Boolean) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(
+                if (selected) NazoPrimary.copy(alpha = 0.12f)
+                else NazoSurfaceVariant
+            )
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (selected) NazoPrimary else NazoTextSecondary,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
     }
 }
 

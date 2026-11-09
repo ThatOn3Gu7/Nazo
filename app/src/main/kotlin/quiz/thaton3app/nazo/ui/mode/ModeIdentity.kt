@@ -25,7 +25,7 @@ data class ModeIdentitySpec(
 
 fun modeIdentitySpec(mode: NazoMode): ModeIdentitySpec = when (mode) {
     NazoMode.QUIZ -> ModeIdentitySpec(
-        eyebrow = "FOCUSED QUIZ",
+        eyebrow = "CALM & FOCUSED",
         headline = "A calm test of what you know",
         description = "Polished questions, clear progress, and time to think.",
         cues = listOf("Clear progress", "Explanations"),
