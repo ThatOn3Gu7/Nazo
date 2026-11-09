@@ -107,6 +107,7 @@ import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.WavySpinner
 import quiz.thaton3app.nazo.ui.components.isLandscape
+import quiz.thaton3app.nazo.ui.mode.mysteryRevealStage
 import quiz.thaton3app.nazo.ui.theme.*
 import quiz.thaton3app.nazo.vision.PortraitCrop
 
@@ -368,6 +369,37 @@ fun GuessingPlayScreen(
                         color = if (displaySeconds <= 5) NazoError else NazoPrimary,
                         trackColor = NazoSurface
                     )
+                    Spacer(Modifier.height(7.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Filled.AutoAwesome,
+                            contentDescription = null,
+                            tint = NazoPrimary,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "MYSTERY REVEAL",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NazoPrimary,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.9.sp,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        AnimatedContent(
+                            targetState = mysteryRevealStage(timerFrac(), revealed),
+                            transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(140)) },
+                            label = "mysteryRevealStage",
+                        ) { stage ->
+                            Text(
+                                text = stage.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = NazoTextSecondary,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp,
+                            )
+                        }
+                    }
                 }
             }
 
@@ -652,6 +684,7 @@ private fun MysteryImageCard(
             .height(cardHeight)
             .clip(RoundedCornerShape(28.dp))
             .background(NazoSurfaceVariant)
+            .border(1.dp, NazoPrimary.copy(alpha = 0.24f), RoundedCornerShape(28.dp))
     ) {
         if (!imageReady) {
             ImageFetchingIndicator()

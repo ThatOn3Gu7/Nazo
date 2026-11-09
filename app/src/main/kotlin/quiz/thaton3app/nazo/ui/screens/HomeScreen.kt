@@ -84,6 +84,8 @@ import quiz.thaton3app.nazo.ui.components.SPARKLE_TWINKLE
 import quiz.thaton3app.nazo.ui.components.drawMeteorShower
 import quiz.thaton3app.nazo.ui.components.drawTwinklingStars
 import quiz.thaton3app.nazo.ui.components.isLandscape
+import quiz.thaton3app.nazo.ui.mode.NazoMode
+import quiz.thaton3app.nazo.ui.mode.modeIdentitySpec
 import quiz.thaton3app.nazo.ui.theme.*
 
 enum class Difficulty(val label: String) {
@@ -91,15 +93,6 @@ enum class Difficulty(val label: String) {
     MEDIUM("Medium"),
     HARD("Hard"),
     OTAKU_MASTER("Otaku Master"),
-}
-
-/** Which game mode the Home screen is configured to start. */
-enum class NazoMode(val label: String) {
-    QUIZ("Quiz"),
-    GUESSING("Guessing Game"),
-    SURVIVAL("Survival"),
-    BLITZ("Blitz"),
-    VERSUS("Versus"),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -222,31 +215,21 @@ fun HomeScreen(
             },
         )
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(10.dp))
 
-        // One line of flavor per mode. The old 28sp two-line hero duplicated
-        // the blurb inside the selector above and pushed the setup controls a
-        // full screen down; the pitch stays, the wall of text goes.
+        // A compact mode promise makes the choice tangible before setup. The
+        // palette remains Nazo's active palette; hierarchy, iconography and the
+        // little mode diagram carry the personality instead of five unrelated
+        // background colours.
         AnimatedContent(
             targetState = nazoMode,
             transitionSpec = {
-                (slideInVertically(spring(stiffness = Spring.StiffnessMediumLow)) { it / 3 } + fadeIn())
-                    .togetherWith(slideOutVertically { -it / 3 } + fadeOut())
+                (slideInVertically(spring(stiffness = Spring.StiffnessMediumLow)) { it / 4 } + fadeIn())
+                    .togetherWith(slideOutVertically { -it / 4 } + fadeOut())
             },
-            label = "modeHeadline",
-        ) { m ->
-            Text(
-                text = when (m) {
-                    NazoMode.GUESSING -> "Can you spot the mystery image?"
-                    NazoMode.SURVIVAL -> "How long can you survive?"
-                    NazoMode.BLITZ -> "How many in 60 seconds?"
-                    NazoMode.VERSUS -> "Who knows their anime better?"
-                    else -> "Ready to test your anime knowledge?"
-                },
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = NazoTextSecondary,
-            )
+            label = "modeIdentity",
+        ) { selectedMode ->
+            ModeIdentityCard(selectedMode)
         }
     }
 
@@ -1036,13 +1019,7 @@ private val MODE_ICONS = mapOf(
     NazoMode.VERSUS to Icons.Filled.Groups,
 )
 
-private fun modeBlurb(m: NazoMode): String = when (m) {
-    NazoMode.QUIZ -> "AI-crafted questions on any topic you pick"
-    NazoMode.GUESSING -> "Guess the anime from a mystery image"
-    NazoMode.SURVIVAL -> "Endless questions • 3 lives • how far can you go?"
-    NazoMode.BLITZ -> "60 seconds on the clock • works offline"
-    NazoMode.VERSUS -> "Pass & play — 2 players, same questions"
-}
+private fun modeBlurb(m: NazoMode): String = modeIdentitySpec(m).description
 
 /**
  * Compact mode dropdown: a single card showing the selected mode with its
@@ -1166,6 +1143,182 @@ private fun ModeSelector(
             }
             Spacer(Modifier.height(6.dp))
         }
+    }
+}
+
+/** Shared Nazo card with a different visual grammar for each mode. */
+@Composable
+private fun ModeIdentityCard(mode: NazoMode) {
+    val identity = modeIdentitySpec(mode)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(NazoSurface.copy(alpha = 0.72f))
+            .border(1.dp, NazoPrimary.copy(alpha = 0.16f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 14.dp, vertical = 13.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = identity.eyebrow,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoPrimary,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.2.sp,
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = identity.headline,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = NazoTextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = identity.cues.joinToString("  •  "),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoTextSecondary,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            ModeSignature(mode)
+        }
+    }
+}
+
+@Composable
+private fun ModeSignature(mode: NazoMode) {
+    Box(
+        modifier = Modifier
+            .width(88.dp)
+            .height(58.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(NazoBackground.copy(alpha = 0.88f))
+            .border(1.dp, NazoPrimary.copy(alpha = 0.16f), RoundedCornerShape(16.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        when (mode) {
+            NazoMode.QUIZ -> Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(NazoPrimary.copy(alpha = 0.14f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Filled.Quiz, null, tint = NazoPrimary, modifier = Modifier.size(17.dp))
+                }
+                Spacer(Modifier.width(7.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf(26.dp, 20.dp, 24.dp).forEachIndexed { index, width ->
+                        Box(
+                            Modifier
+                                .width(width)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    if (index == 0) NazoPrimary
+                                    else NazoTextSecondary.copy(alpha = 0.28f)
+                                )
+                        )
+                    }
+                }
+            }
+            NazoMode.GUESSING -> Box(
+                modifier = Modifier
+                    .size(width = 58.dp, height = 38.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(NazoSurfaceVariant)
+                    .border(1.dp, NazoPrimary.copy(alpha = 0.36f), RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "?",
+                    color = NazoPrimary,
+                    fontSize = 23.sp,
+                    fontWeight = FontWeight.Black,
+                )
+                Icon(
+                    imageVector = Icons.Filled.ImageSearch,
+                    contentDescription = null,
+                    tint = NazoPrimary,
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(5.dp).size(13.dp),
+                )
+            }
+            NazoMode.SURVIVAL -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "LIVES",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoTextSecondary,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                )
+                Spacer(Modifier.height(5.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    repeat(3) {
+                        Icon(
+                            Icons.Filled.Favorite,
+                            contentDescription = null,
+                            tint = NazoError,
+                            modifier = Modifier.size(17.dp),
+                        )
+                    }
+                }
+            }
+            NazoMode.BLITZ -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Timer, null, tint = NazoPrimary, modifier = Modifier.size(23.dp))
+                Spacer(Modifier.width(5.dp))
+                Column {
+                    Text("60", color = NazoTextPrimary, fontWeight = FontWeight.Black, fontSize = 20.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        repeat(4) { index ->
+                            Box(
+                                Modifier
+                                    .width((10 - index).dp)
+                                    .height(2.dp)
+                                    .background(NazoPrimary.copy(alpha = 1f - index * 0.16f))
+                            )
+                        }
+                    }
+                }
+            }
+            NazoMode.VERSUS -> Row(verticalAlignment = Alignment.CenterVertically) {
+                VersusMiniPlayer("P1", active = true)
+                Text(
+                    text = "VS",
+                    color = NazoTextSecondary,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+                VersusMiniPlayer("P2", active = false)
+            }
+        }
+    }
+}
+
+@Composable
+private fun VersusMiniPlayer(label: String, active: Boolean) {
+    Box(
+        modifier = Modifier
+            .size(28.dp)
+            .clip(CircleShape)
+            .background(if (active) NazoPrimary else NazoPillUnselected),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = if (active) NazoOnPrimary else NazoTextSecondary,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 

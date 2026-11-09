@@ -41,11 +41,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -82,6 +85,15 @@ import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.components.rememberSystemReduceMotion
+import quiz.thaton3app.nazo.ui.mode.BlitzUrgency
+import quiz.thaton3app.nazo.ui.mode.GameplayPresentation
+import quiz.thaton3app.nazo.ui.mode.blitzClockText
+import quiz.thaton3app.nazo.ui.mode.blitzUrgency
+import quiz.thaton3app.nazo.ui.mode.gameplayPresentation
+import quiz.thaton3app.nazo.ui.mode.questionTransitionDurationMs
+import quiz.thaton3app.nazo.ui.mode.questionTransitionSlideFraction
+import quiz.thaton3app.nazo.ui.mode.survivalDanger
+import quiz.thaton3app.nazo.ui.mode.survivalDangerLabel
 import quiz.thaton3app.nazo.ui.theme.*
 
 /** A question's graded state, frozen the moment it is revealed. */
@@ -94,8 +106,6 @@ private data class GradedAnswer(val selected: String?, val timeUp: Boolean)
  */
 private data class QuestionSlot(val index: Int, val question: Question)
 
-private const val QuestionTransitionDurationMs = 300
-private const val QuestionTransitionSlideFraction = 0.08f
 private const val AnswerFeedbackDurationMs = 420
 private const val QuizProgressWavePeriodMs = 1_200
 
@@ -122,7 +132,13 @@ internal fun quizProgressWaveOffset(
 }
 
 internal fun questionTransitionOffset(width: Int, direction: Int): Int =
-    (width * QuestionTransitionSlideFraction * direction.coerceIn(-1, 1)).roundToInt()
+    questionTransitionOffset(width, direction, GameplayPresentation.QUIZ)
+
+internal fun questionTransitionOffset(
+    width: Int,
+    direction: Int,
+    presentation: GameplayPresentation,
+): Int = (width * questionTransitionSlideFraction(presentation) * direction.coerceIn(-1, 1)).roundToInt()
 
 /** Damped horizontal motion in normalized units; exactly at rest at both ends. */
 internal fun wrongAnswerShakeOffset(progress: Float): Float {
@@ -141,6 +157,8 @@ fun ActiveQuizScreen(
     question: Question,
     currentQuestionIndex: Int,
     totalQuestions: Int,
+    /** Read-only score used by mode chrome; grading remains owned by the host. */
+    currentScore: Int = 0,
     difficulty: String = "Medium",
     isAiGenerated: Boolean = false,
     // Survival mode: header shows lives instead of "x of y" / progress.
@@ -182,8 +200,17 @@ fun ActiveQuizScreen(
     }
 
     val isBlitz = blitzDeadlineMs != null
+    val presentation = gameplayPresentation(
+        endless = endless,
+        blitz = isBlitz,
+        playerLabel = playerLabel,
+    )
     val secondsPerQuestion = QuizEngine.specFor(difficulty).secondsPerQuestion
-    var remainingSeconds by remember { mutableIntStateOf(secondsPerQuestion) }
+    // Blitz's first frame should already read as the global 60-second sprint;
+    // the monotonic deadline effect below remains the authoritative clock.
+    var remainingSeconds by remember {
+        mutableIntStateOf(if (isBlitz) 60 else secondsPerQuestion)
+    }
     val context = LocalContext.current
     val reduceMotion = rememberSystemReduceMotion()
     var showQuitDialog by remember { mutableStateOf(false) }
@@ -311,6 +338,10 @@ fun ActiveQuizScreen(
             // a whisper instead of passing under the question text.
             .background(NazoBackground.copy(alpha = 0.9f))
     ) {
+        ModeAtmosphere(
+            presentation = presentation,
+            livesLeft = livesLeft,
+        )
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -355,15 +386,24 @@ fun ActiveQuizScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        // anime: theme, e.g. "Jujutsu Kaisen: Shibuya Arc" — the
-                        // anime name makes generic questions ("What is the name of
-                        // the first arc?") unambiguous about their franchise. It is
-                        // context, so it rides under the progress instead of
-                        // competing with it (and with the question card below).
-                        text = listOf(question.anime, question.theme)
-                            .filter { it.isNotBlank() }.joinToString(": "),
+                        // The mode name becomes part of orientation in special
+                        // runs; Quiz keeps the quiet franchise-only treatment.
+                        text = buildString {
+                            when (presentation) {
+                                GameplayPresentation.SURVIVAL -> append("SURVIVAL • ")
+                                GameplayPresentation.BLITZ -> append("BLITZ • ")
+                                GameplayPresentation.VERSUS -> append("HEAD-TO-HEAD • ")
+                                GameplayPresentation.QUIZ -> Unit
+                            }
+                            append(
+                                listOf(question.anime, question.theme)
+                                    .filter { it.isNotBlank() }
+                                    .joinToString(": ")
+                            )
+                        },
                         style = MaterialTheme.typography.bodyMedium,
-                        color = NazoTextSecondary
+                        color = NazoTextSecondary,
+                        maxLines = 1,
                     )
                 }
                 if (daily) {
@@ -386,42 +426,7 @@ fun ActiveQuizScreen(
                     }
                     Spacer(Modifier.width(8.dp))
                 }
-                if (playerLabel != null) {
-                    // Versus: whose turn is it (P1 / P2).
-                    Spacer(Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50.dp))
-                            .background(NazoPrimary.copy(alpha = 0.16f))
-                            .padding(horizontal = 10.dp, vertical = 5.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = playerLabel,
-                            color = NazoPrimary,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                    Spacer(Modifier.width(10.dp))
-                }
-                if (endless) {
-                    // Survival lives: three hearts, misses hollow them out.
-                    Spacer(Modifier.width(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        repeat(3) { i ->
-                            Icon(
-                                imageVector = if (i < livesLeft) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                                contentDescription = null,
-                                tint = if (i < livesLeft) NazoError else NazoTextSecondary.copy(alpha = 0.35f),
-                                modifier = Modifier.size(18.dp),
-                            )
-                            if (i < 2) Spacer(Modifier.width(2.dp))
-                        }
-                    }
-                    Spacer(Modifier.width(10.dp))
-                }
-                if (isAiGenerated) {
+                if (isAiGenerated && presentation == GameplayPresentation.QUIZ) {
                     Spacer(Modifier.width(8.dp))
                     Box(
                         modifier = Modifier
@@ -439,51 +444,40 @@ fun ActiveQuizScreen(
                     }
                     Spacer(Modifier.width(8.dp))
                 }
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        // Urgency shows on the whole chip, not just the digit:
-                        // in a row of badges the tinted disc is what the eye
-                        // finds at a glance.
-                        .background(
-                            animateColorAsState(
-                                targetValue = if (isTimeUp || remainingSeconds <= 5) NazoErrorBg else NazoSurface,
-                                animationSpec = tween(400),
-                                label = "timerBg",
-                            ).value
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Smoothly animate the timer color when hitting the final 5 seconds
-                    val timerColor by animateColorAsState(
-                        targetValue = if (isTimeUp || remainingSeconds <= 5) NazoError else NazoPrimary,
-                        animationSpec = tween(400),
-                        label = "timerColor"
+                if (presentation == GameplayPresentation.QUIZ) {
+                    CountdownDisc(
+                        seconds = remainingSeconds,
+                        timeUp = isTimeUp,
                     )
-                    
-                    // The rolling countdown animation
-                    AnimatedContent(
-                        targetState = remainingSeconds,
-                        transitionSpec = {
-                            if (targetState < initialState) {
-                                (slideInVertically { height -> height } + fadeIn()) togetherWith 
-                                (slideOutVertically { height -> -height } + fadeOut())
-                            } else {
-                                (slideInVertically { height -> -height } + fadeIn()) togetherWith 
-                                (slideOutVertically { height -> height } + fadeOut())
-                            }.using(SizeTransform(clip = false))
-                        },
-                        label = "timerAnimation"
-                    ) { sec ->
-                        Text(
-                            text = sec.toString(),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = timerColor,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
                 }
+            }
+
+            when (presentation) {
+                GameplayPresentation.SURVIVAL -> {
+                    Spacer(Modifier.height(chromeGap))
+                    SurvivalStatusPanel(
+                        livesLeft = livesLeft,
+                        seconds = remainingSeconds,
+                        motionAllowed = !reduceMotion,
+                    )
+                }
+                GameplayPresentation.BLITZ -> {
+                    Spacer(Modifier.height(chromeGap))
+                    BlitzStatusPanel(
+                        seconds = remainingSeconds,
+                        score = currentScore,
+                        questionNumber = currentQuestionIndex + 1,
+                        motionAllowed = !reduceMotion,
+                    )
+                }
+                GameplayPresentation.VERSUS -> {
+                    Spacer(Modifier.height(chromeGap))
+                    VersusTurnPanel(
+                        activePlayer = playerLabel.orEmpty(),
+                        seconds = remainingSeconds,
+                    )
+                }
+                GameplayPresentation.QUIZ -> Unit
             }
 
             Spacer(Modifier.height(chromeGap))
@@ -565,17 +559,17 @@ fun ActiveQuizScreen(
                     val direction = if (targetState.index >= initialState.index) 1 else -1
                     val enter = slideInHorizontally(
                         animationSpec = tween(
-                            QuestionTransitionDurationMs,
+                            questionTransitionDurationMs(presentation),
                             easing = FastOutSlowInEasing,
                         ),
-                    ) { width -> questionTransitionOffset(width, direction) } +
+                    ) { width -> questionTransitionOffset(width, direction, presentation) } +
                         fadeIn(tween(220))
                     val exit = slideOutHorizontally(
                         animationSpec = tween(
-                            QuestionTransitionDurationMs,
+                            questionTransitionDurationMs(presentation),
                             easing = FastOutSlowInEasing,
                         ),
-                    ) { width -> questionTransitionOffset(width, -direction) } +
+                    ) { width -> questionTransitionOffset(width, -direction, presentation) } +
                         fadeOut(tween(180))
                     (enter togetherWith exit).using(null).apply {
                         targetContentZIndex = 1f
@@ -602,8 +596,25 @@ fun ActiveQuizScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(24.dp))
                         .background(NazoSurface)
+                        .border(
+                            width = if (presentation == GameplayPresentation.QUIZ) 0.dp else 1.dp,
+                            color = when (presentation) {
+                                GameplayPresentation.SURVIVAL -> NazoError.copy(
+                                    alpha = 0.14f + survivalDanger(livesLeft).intensity * 0.34f
+                                )
+                                GameplayPresentation.BLITZ -> NazoPrimary.copy(alpha = 0.34f)
+                                GameplayPresentation.VERSUS -> NazoPrimary.copy(alpha = 0.26f)
+                                GameplayPresentation.QUIZ -> Color.Transparent
+                            },
+                            shape = RoundedCornerShape(24.dp),
+                        )
                         .padding(if (landscape) 18.dp else 24.dp)
                 ) {
+                    ModeQuestionKicker(
+                        presentation = presentation,
+                        playerLabel = playerLabel,
+                        livesLeft = livesLeft,
+                    )
                     Text(
                         text = q.text,
                         style = MaterialTheme.typography.headlineSmall,
@@ -926,6 +937,369 @@ fun ActiveQuizScreen(
                 }
         }
     }
+}
+
+@Composable
+private fun ModeAtmosphere(
+    presentation: GameplayPresentation,
+    livesLeft: Int,
+) {
+    if (presentation != GameplayPresentation.SURVIVAL) return
+    val danger = survivalDanger(livesLeft)
+    val alpha by animateFloatAsState(
+        targetValue = danger.intensity * 0.13f,
+        animationSpec = tween(520, easing = FastOutSlowInEasing),
+        label = "survivalAtmosphereAlpha",
+    )
+    Canvas(Modifier.fillMaxSize()) {
+        if (alpha <= 0f) return@Canvas
+        drawRect(
+            brush = Brush.radialGradient(
+                colors = listOf(Color.Transparent, NazoError.copy(alpha = alpha)),
+                center = Offset(size.width / 2f, size.height / 2f),
+                radius = maxOf(size.width, size.height) * 0.72f,
+            )
+        )
+    }
+}
+
+@Composable
+private fun CountdownDisc(
+    seconds: Int,
+    timeUp: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    val urgent = timeUp || seconds <= 5
+    val timerColor by animateColorAsState(
+        targetValue = if (urgent) NazoError else NazoPrimary,
+        animationSpec = tween(400),
+        label = "countdownDiscColor",
+    )
+    val timerBackground by animateColorAsState(
+        targetValue = if (urgent) NazoErrorBg else NazoSurface,
+        animationSpec = tween(400),
+        label = "countdownDiscBackground",
+    )
+    Box(
+        modifier = modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(timerBackground),
+        contentAlignment = Alignment.Center,
+    ) {
+        AnimatedContent(
+            targetState = seconds,
+            transitionSpec = {
+                if (targetState < initialState) {
+                    (slideInVertically { height -> height } + fadeIn()) togetherWith
+                        (slideOutVertically { height -> -height } + fadeOut())
+                } else {
+                    (slideInVertically { height -> -height } + fadeIn()) togetherWith
+                        (slideOutVertically { height -> height } + fadeOut())
+                }.using(SizeTransform(clip = false))
+            },
+            label = "countdownDiscNumber",
+        ) { sec ->
+            Text(
+                text = sec.toString(),
+                style = MaterialTheme.typography.titleMedium,
+                color = timerColor,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SurvivalStatusPanel(
+    livesLeft: Int,
+    seconds: Int,
+    motionAllowed: Boolean,
+) {
+    val danger = survivalDanger(livesLeft)
+    val pulseScale = if (motionAllowed && danger.intensity >= 0.7f) {
+        val transition = rememberInfiniteTransition(label = "survivalStatus")
+        transition.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.012f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(900, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "survivalStatusPulse",
+        ).value
+    } else {
+        1f
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = pulseScale
+                scaleY = pulseScale
+            }
+            .clip(RoundedCornerShape(20.dp))
+            .background(
+                Brush.horizontalGradient(
+                    colors = listOf(
+                        NazoError.copy(alpha = 0.05f + danger.intensity * 0.09f),
+                        NazoSurface,
+                    )
+                )
+            )
+            .border(
+                1.dp,
+                NazoError.copy(alpha = 0.16f + danger.intensity * 0.38f),
+                RoundedCornerShape(20.dp),
+            )
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "SURVIVAL",
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoError,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.1.sp,
+            )
+            Text(
+                text = survivalDangerLabel(livesLeft),
+                style = MaterialTheme.typography.bodySmall,
+                color = NazoTextSecondary,
+                fontWeight = if (livesLeft <= 1) FontWeight.Bold else FontWeight.Normal,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            repeat(3) { index ->
+                val alive = index < livesLeft
+                val heartScale by animateFloatAsState(
+                    targetValue = if (alive) 1f else 0.78f,
+                    animationSpec = tween(280, easing = FastOutSlowInEasing),
+                    label = "survivalHeartScale",
+                )
+                Icon(
+                    imageVector = if (alive) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    contentDescription = null,
+                    tint = if (alive) NazoError else NazoTextSecondary.copy(alpha = 0.32f),
+                    modifier = Modifier.size(20.dp).scale(heartScale),
+                )
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        CountdownDisc(seconds = seconds)
+    }
+}
+
+@Composable
+private fun BlitzStatusPanel(
+    seconds: Int,
+    score: Int,
+    questionNumber: Int,
+    motionAllowed: Boolean,
+) {
+    val urgency = blitzUrgency(seconds)
+    val urgencyColor = if (
+        urgency == BlitzUrgency.PRESSURE ||
+        urgency == BlitzUrgency.FINAL_SECONDS ||
+        urgency == BlitzUrgency.TIME_UP
+    ) NazoError else NazoPrimary
+    val pulseScale = if (motionAllowed && urgency == BlitzUrgency.FINAL_SECONDS) {
+        val transition = rememberInfiniteTransition(label = "blitzClock")
+        transition.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.018f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(430, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "blitzClockPulse",
+        ).value
+    } else {
+        1f
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = pulseScale
+                scaleY = pulseScale
+            }
+            .clip(RoundedCornerShape(20.dp))
+            .background(NazoSurface)
+            .border(1.dp, urgencyColor.copy(alpha = 0.42f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Filled.Bolt,
+                contentDescription = null,
+                tint = urgencyColor,
+                modifier = Modifier.size(22.dp),
+            )
+            Spacer(Modifier.width(9.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = when (urgency) {
+                        BlitzUrgency.CRUISING -> "BLITZ CLOCK"
+                        BlitzUrgency.PRESSURE -> "PRESSURE ZONE"
+                        BlitzUrgency.FINAL_SECONDS -> "FINAL PUSH"
+                        BlitzUrgency.TIME_UP -> "TIME"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = urgencyColor,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.1.sp,
+                )
+                AnimatedContent(
+                    targetState = blitzClockText(seconds),
+                    transitionSpec = {
+                        (slideInVertically { it / 2 } + fadeIn(tween(100))) togetherWith
+                            (slideOutVertically { -it / 2 } + fadeOut(tween(100)))
+                    },
+                    label = "blitzHeroClock",
+                ) { clock ->
+                    Text(
+                        text = clock,
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = urgencyColor,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp,
+                    )
+                }
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "$score",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = NazoTextPrimary,
+                    fontWeight = FontWeight.Black,
+                )
+                Text(
+                    text = "CORRECT • Q$questionNumber",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoTextSecondary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+        Spacer(Modifier.height(9.dp))
+        val litSegments = ((seconds.coerceIn(0, 60) + 4) / 5).coerceIn(0, 12)
+        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            repeat(12) { index ->
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(
+                            if (index < litSegments) urgencyColor
+                            else NazoTextSecondary.copy(alpha = 0.14f)
+                        )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VersusTurnPanel(activePlayer: String, seconds: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(NazoSurface)
+            .border(1.dp, NazoPrimary.copy(alpha = 0.24f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 10.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        VersusPlayerTurnCard(
+            label = "P1",
+            active = activePlayer == "P1",
+            modifier = Modifier.weight(1f),
+        )
+        Column(
+            modifier = Modifier.padding(horizontal = 9.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = "VS",
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoTextSecondary,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.sp,
+            )
+            Spacer(Modifier.height(3.dp))
+            CountdownDisc(seconds = seconds)
+        }
+        VersusPlayerTurnCard(
+            label = "P2",
+            active = activePlayer == "P2",
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun VersusPlayerTurnCard(
+    label: String,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (active) NazoPrimary.copy(alpha = 0.14f) else NazoBackground.copy(alpha = 0.72f))
+            .border(
+                1.dp,
+                if (active) NazoPrimary.copy(alpha = 0.48f) else Color.Transparent,
+                RoundedCornerShape(14.dp),
+            )
+            .padding(vertical = 9.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleMedium,
+            color = if (active) NazoPrimary else NazoTextSecondary,
+            fontWeight = FontWeight.Black,
+        )
+        Text(
+            text = if (active) "YOUR TURN" else "WAITING",
+            style = MaterialTheme.typography.labelSmall,
+            color = if (active) NazoPrimary else NazoTextSecondary,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun ModeQuestionKicker(
+    presentation: GameplayPresentation,
+    playerLabel: String?,
+    livesLeft: Int,
+) {
+    if (presentation == GameplayPresentation.QUIZ) return
+    val (icon, text) = when (presentation) {
+        GameplayPresentation.SURVIVAL -> Icons.Filled.Whatshot to
+            if (livesLeft <= 1) "LAST LIFE • STAY ALIVE" else "STAY ALIVE"
+        GameplayPresentation.BLITZ -> Icons.Filled.Bolt to "QUICK READ • KEEP MOVING"
+        GameplayPresentation.VERSUS -> Icons.Filled.Groups to
+            "${playerLabel.orEmpty()} • LOCK IN YOUR ANSWER"
+        GameplayPresentation.QUIZ -> return
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = null, tint = NazoPrimary, modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = NazoPrimary,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.8.sp,
+        )
+    }
+    Spacer(Modifier.height(10.dp))
 }
 
 /**
