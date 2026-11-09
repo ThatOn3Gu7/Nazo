@@ -1,5 +1,7 @@
 package quiz.thaton3app.nazo
 
+import java.io.File
+import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -54,6 +56,56 @@ class LauncherIconSwitcherTest {
         )
         listOf("nbrush", "npixel").forEach { retiredId ->
             assertEquals(LauncherIconSwitcher.ID_LIGHT, LauncherIconSwitcher.option(retiredId).id)
+        }
+    }
+
+    @Test
+    fun everyRealLauncherActivityHandlesRotationWithoutRecreatingNazo() {
+        val manifest = sequenceOf(
+            File("src/main/AndroidManifest.xml"),
+            File("app/src/main/AndroidManifest.xml"),
+        ).firstOrNull { it.isFile }
+        assertTrue("AndroidManifest.xml must be available to this contract test", manifest != null)
+
+        val document = DocumentBuilderFactory.newInstance().apply {
+            isNamespaceAware = true
+        }.newDocumentBuilder().parse(requireNotNull(manifest))
+        val androidNamespace = "http://schemas.android.com/apk/res/android"
+        val activities = document.getElementsByTagName("activity")
+        val configByName = buildMap {
+            for (index in 0 until activities.length) {
+                val activity = activities.item(index)
+                val attributes = activity.attributes
+                val name = attributes.getNamedItemNS(androidNamespace, "name")?.nodeValue
+                    ?: continue
+                val config = attributes.getNamedItemNS(androidNamespace, "configChanges")?.nodeValue
+                put(name.removePrefix("."), config)
+            }
+        }
+        val requiredConfigChanges = setOf(
+            "orientation",
+            "screenSize",
+            "smallestScreenSize",
+            "screenLayout",
+            "keyboardHidden",
+        )
+        val realLauncherActivities = buildSet {
+            add("MainActivity")
+            addAll(LauncherIconSwitcher.OPTIONS.filterNot { it.themed }.map { it.alias })
+            addAll(LauncherIconSwitcher.RETIRED_ALIASES)
+        }
+
+        realLauncherActivities.forEach { activity ->
+            val config = configByName[activity]
+            assertTrue(
+                "$activity must declare configChanges; manifest attributes are not inherited",
+                config != null,
+            )
+            assertEquals(
+                "$activity must use MainActivity's complete rotation contract",
+                requiredConfigChanges,
+                requireNotNull(config).split('|').toSet(),
+            )
         }
     }
 

@@ -20,10 +20,16 @@ package quiz.thaton3app.nazo
  * (splash handoff, intent handling, the Daily Challenge shortcut action) from
  * [MainActivity]. Only the manifest theme differs.
  *
+ * Important: Android does not inherit `<activity>` attributes from a Kotlin
+ * superclass. Every real launcher activity must repeat MainActivity's full
+ * `android:configChanges` declaration in the manifest. Without it, rotation
+ * destroys that subclass, rebuilds NazoApp from Home, and plays splash again —
+ * even though the same rotation is handled in-place through the default aliases.
+ *
  * Active variants are registered in [LauncherIconSwitcher.OPTIONS] via
  * `AppIconOption.alias`; exactly one is enabled at a time. Adding a new icon means:
  * an adaptive icon, a `Theme.Nazo.Splash.*` style, a subclass here, a manifest
- * `<activity>`, and one `OPTIONS` entry.
+ * `<activity>` with the shared configChanges contract, and one `OPTIONS` entry.
  */
 class LauncherSakura : MainActivity()
 
