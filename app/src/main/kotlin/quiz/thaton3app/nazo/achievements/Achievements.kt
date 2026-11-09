@@ -12,7 +12,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,22 +23,23 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.MilitaryTech
 import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.filled.TrackChanges
 import androidx.compose.material.icons.filled.Whatshot
@@ -56,8 +56,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -73,10 +71,11 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 
 /**
- * Achievements (Phase 5). Every badge is computed PURELY from data the app
- * already persists (QuizStats + personal-best records + daily-challenge
- * counts) — nothing new is written, so the set can grow later without any
- * migration. Locked badges expose progress toward unlocking.
+ * Achievements remain derived from Nazo's shared player data: QuizStats,
+ * personal-best records, and Daily completion counts. The combo tiers use the
+ * single best-combo field folded into QuizStats when a quiz is recorded; badge
+ * unlocks themselves are still never persisted separately. Locked badges
+ * expose progress toward unlocking.
  */
 data class Achievement(
     val id: String,
@@ -104,28 +103,36 @@ object AchievementEngine {
             (stats.difficultyPlays["Otaku Master"] ?: 0)
         val sharpReady = answered >= 20
         val best = stats.bestStreakDays
+        val bestCombo = stats.bestCorrectCombo
         return listOf(
             Achievement(
                 "first_game", "First Steps", "Finish your first game in any mode.",
                 Icons.Filled.TaskAlt, games >= 1, frac(games, 1), "$games / 1 game",
             ),
             Achievement(
-                "ten_games", "Getting Serious", "Finish 10 games across both modes.",
-                Icons.Filled.DoneAll, games >= 10, frac(games, 10), "$games / 10 games",
+                "combo_3", "Combo Spark", "Get 3 correct answers in a row in one quiz run.",
+                Icons.Filled.AutoAwesome, bestCombo >= 3, frac(bestCombo, 3), "$bestCombo / 3 combo",
             ),
             Achievement(
-                "fifty_games", "Marathon Otaku", "Finish 50 games. True dedication.",
-                Icons.Filled.MilitaryTech, games >= 50, frac(games, 50), "$games / 50 games",
+                "ten_games", "Getting Serious", "Finish 10 games across both modes.",
+                Icons.Filled.DoneAll, games >= 10, frac(games, 10), "$games / 10 games",
             ),
             Achievement(
                 "hundred_answers", "Century Club", "Answer 100 questions in total.",
                 Icons.Filled.Bolt, answered >= 100, frac(answered, 100), "$answered / 100 answered",
             ),
             Achievement(
-                "sharpshooter", "Sharpshooter", "Reach 80% overall accuracy (needs 20+ answers).",
-                Icons.Filled.TrackChanges, sharpReady && accuracy >= 80,
-                if (sharpReady) frac(accuracy, 80) else frac(answered, 20),
-                if (sharpReady) "$accuracy% / 80% accuracy" else "$answered / 20 answered",
+                "streak_3", "On Fire", "Play 3 days in a row.",
+                Icons.Filled.LocalFireDepartment, best >= 3, frac(best, 3), "$best / 3 days",
+            ),
+            Achievement(
+                "daily_first", "Daily Ritual", "Complete your first Daily Challenge.",
+                Icons.Filled.CalendarMonth, dailiesCompleted >= 1,
+                frac(dailiesCompleted, 1), "$dailiesCompleted / 1 daily",
+            ),
+            Achievement(
+                "explorer", "Genre Hopper", "Answer questions from 5 different anime.",
+                Icons.Filled.Explore, topics >= 5, frac(topics, 5), "$topics / 5 anime",
             ),
             Achievement(
                 "flawless", "Flawless", "Score 100% in any quiz.",
@@ -134,21 +141,18 @@ object AchievementEngine {
                 if (hasPerfectQuiz) "Perfect run achieved" else "No perfect run yet",
             ),
             Achievement(
-                "streak_3", "On Fire", "Play 3 days in a row.",
-                Icons.Filled.LocalFireDepartment, best >= 3, frac(best, 3), "$best / 3 days",
-            ),
-            Achievement(
-                "streak_7", "Unstoppable", "Play 7 days in a row.",
-                Icons.Filled.Whatshot, best >= 7, frac(best, 7), "$best / 7 days",
+                "combo_5", "In the Zone", "Get 5 correct answers in a row in one quiz run.",
+                Icons.Filled.Star, bestCombo >= 5, frac(bestCombo, 5), "$bestCombo / 5 combo",
             ),
             Achievement(
                 "elite", "Elite Challenger", "Finish a game on Hard or Otaku Master.",
                 Icons.Filled.School, elitePlays >= 1, frac(elitePlays, 1), "$elitePlays / 1 game",
             ),
             Achievement(
-                "daily_first", "Daily Ritual", "Complete your first Daily Challenge.",
-                Icons.Filled.CalendarMonth, dailiesCompleted >= 1,
-                frac(dailiesCompleted, 1), "$dailiesCompleted / 1 daily",
+                "sharpshooter", "Sharpshooter", "Reach 80% overall accuracy (needs 20+ answers).",
+                Icons.Filled.TrackChanges, sharpReady && accuracy >= 80,
+                if (sharpReady) frac(accuracy, 80) else frac(answered, 20),
+                if (sharpReady) "$accuracy% / 80% accuracy" else "$answered / 20 answered",
             ),
             Achievement(
                 "daily_seven", "Devoted", "Complete 7 Daily Challenges.",
@@ -156,8 +160,38 @@ object AchievementEngine {
                 frac(dailiesCompleted, 7), "$dailiesCompleted / 7 dailies",
             ),
             Achievement(
-                "explorer", "Genre Hopper", "Answer questions from 5 different anime.",
-                Icons.Filled.Explore, topics >= 5, frac(topics, 5), "$topics / 5 anime",
+                "streak_7", "Unstoppable", "Play 7 days in a row.",
+                Icons.Filled.Whatshot, best >= 7, frac(best, 7), "$best / 7 days",
+            ),
+            Achievement(
+                "fifty_games", "Marathon Otaku", "Finish 50 games. True dedication.",
+                Icons.Filled.MilitaryTech, games >= 50, frac(games, 50), "$games / 50 games",
+            ),
+            Achievement(
+                "combo_10", "Unbroken Ten", "Get 10 correct answers in a row in one quiz run.",
+                Icons.Filled.Bolt, bestCombo >= 10, frac(bestCombo, 10), "$bestCombo / 10 combo",
+            ),
+            Achievement(
+                "hundred_games", "Nazo Veteran", "Finish 100 games across Nazo's solo modes.",
+                Icons.Filled.MilitaryTech, games >= 100, frac(games, 100), "$games / 100 games",
+            ),
+            Achievement(
+                "thousand_answers", "Knowledge Archive", "Answer 1,000 questions in total.",
+                Icons.Filled.School, answered >= 1_000, frac(answered, 1_000), "$answered / 1,000 answered",
+            ),
+            Achievement(
+                "daily_thirty", "Daily Disciple", "Complete 30 Daily Challenges.",
+                Icons.Filled.CalendarMonth, dailiesCompleted >= 30,
+                frac(dailiesCompleted, 30), "$dailiesCompleted / 30 dailies",
+            ),
+            Achievement(
+                "streak_30", "Eternal Flame", "Build a 30-day play streak.",
+                Icons.Filled.Whatshot, best >= 30, frac(best, 30), "$best / 30 days",
+            ),
+            Achievement(
+                "combo_15", "Perfect Chain", "Get 15 correct answers in a row—the maximum standard quiz length.",
+                Icons.Filled.WorkspacePremium, bestCombo >= 15,
+                frac(bestCombo, 15), "$bestCombo / 15 combo",
             ),
         )
     }
@@ -181,6 +215,7 @@ fun AchievementsCard(
     val context = LocalContext.current
     var selectedId by remember { mutableStateOf<String?>(null) }
     val unlockedCount = achievements.count { it.unlocked }
+    val badgeScroll = rememberScrollState()
 
     Column(
         modifier = modifier
@@ -226,32 +261,41 @@ fun AchievementsCard(
         }
         Spacer(Modifier.height(16.dp))
 
-        achievements.chunked(4).forEachIndexed { rowIndex, row ->
-            Row(modifier = Modifier.fillMaxWidth()) {
-                row.forEachIndexed { colIndex, achievement ->
-                    AchievementBadge(
-                        achievement = achievement,
-                        selected = selectedId == achievement.id,
-                        animate = animate,
-                        index = rowIndex * 4 + colIndex,
-                        onClick = {
-                            Haptics.light(context)
-                            selectedId =
-                                if (selectedId == achievement.id) null else achievement.id
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
+        // Three rows remain visible—the exact height of the original 12-badge
+        // wall. New tiers scroll inside this viewport instead of lengthening
+        // the Statistics screen or the collection card.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(220.dp)
+                .verticalScroll(badgeScroll),
+        ) {
+            val rows = achievements.chunked(4)
+            rows.forEachIndexed { rowIndex, row ->
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    row.forEachIndexed { colIndex, achievement ->
+                        AchievementBadge(
+                            achievement = achievement,
+                            selected = selectedId == achievement.id,
+                            animate = animate,
+                            index = rowIndex * 4 + colIndex,
+                            onClick = {
+                                Haptics.light(context)
+                                selectedId =
+                                    if (selectedId == achievement.id) null else achievement.id
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
-                repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+                if (rowIndex != rows.lastIndex) Spacer(Modifier.height(14.dp))
             }
-            if (rowIndex != achievements.chunked(4).lastIndex) Spacer(Modifier.height(14.dp))
         }
 
-        // Discoverability: locked badges look inert without a hint that the
-        // wall is interactive.
         Spacer(Modifier.height(12.dp))
         Text(
-            text = "Tap a badge to see your progress.",
+            text = "Scroll for more · tap a badge to see progress.",
             style = MaterialTheme.typography.bodySmall,
             color = NazoTextSecondary,
         )
@@ -339,18 +383,18 @@ private fun AchievementBadge(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Staggered once per Statistics visit. The selected coin does not loop or
-    // pulse; collectible personality comes from its layered plaque and seal.
     val appear by animateFloatAsState(
         targetValue = if (animate) 1f else 0f,
         animationSpec = tween(320, delayMillis = 45 * index, easing = BadgePop),
         label = "badgeAppear",
     )
-    val ring by animateColorAsState(
+    val highlight by animateColorAsState(
         targetValue = if (selected) NazoPrimary else Color.Transparent,
         animationSpec = tween(200),
-        label = "badgeRing",
+        label = "badgeHighlight",
     )
+    val shape = RoundedCornerShape(17.dp)
+
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Box(
             modifier = Modifier
@@ -359,28 +403,16 @@ private fun AchievementBadge(
                     scaleX = appear
                     scaleY = appear
                     alpha = appear.coerceIn(0f, 1f)
-                }
-                .clickable { onClick() },
+                },
             contentAlignment = Alignment.Center,
         ) {
-            Canvas(Modifier.size(64.dp)) {
-                val stroke = 3.dp.toPx()
-                drawCircle(
-                    color = NazoTextSecondary.copy(alpha = 0.10f),
-                    style = Stroke(width = stroke),
-                )
-                drawArc(
-                    color = if (achievement.unlocked) NazoSuccess else NazoPrimary,
-                    startAngle = -90f,
-                    sweepAngle = 360f * achievement.progress.coerceIn(0f, 1f),
-                    useCenter = false,
-                    style = Stroke(width = stroke, cap = StrokeCap.Round),
-                )
-            }
+            // The rounded plaque is the only touch/indication surface. Keeping
+            // clickable after clip prevents the pressed ripple from painting a
+            // square around the badge.
             Box(
                 modifier = Modifier
                     .size(52.dp)
-                    .clip(RoundedCornerShape(17.dp))
+                    .clip(shape)
                     .background(
                         if (achievement.unlocked) NazoPrimary.copy(alpha = 0.18f)
                         else NazoSurface.copy(alpha = 0.82f),
@@ -389,46 +421,28 @@ private fun AchievementBadge(
                         1.dp,
                         if (achievement.unlocked) NazoPrimary.copy(alpha = 0.38f)
                         else NazoTextSecondary.copy(alpha = 0.10f),
-                        RoundedCornerShape(17.dp),
+                        shape,
                     )
-                    .border(2.dp, ring, RoundedCornerShape(17.dp)),
+                    .border(2.dp, highlight, shape)
+                    .clickable { onClick() },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = achievement.icon,
-                    contentDescription = achievement.title,
+                    contentDescription = "${achievement.title}, ${if (achievement.unlocked) "collected" else "locked"}",
                     tint = if (achievement.unlocked) NazoPrimary
                     else NazoTextSecondary.copy(alpha = 0.34f),
                     modifier = Modifier.size(25.dp),
                 )
-            }
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .offset(x = 1.dp, y = 1.dp)
-                    .size(20.dp)
-                    .clip(CircleShape)
-                    .background(if (achievement.unlocked) NazoSuccess else NazoSurface)
-                    .border(
-                        1.dp,
-                        if (achievement.unlocked) NazoSuccess else NazoTextSecondary.copy(alpha = 0.18f),
-                        CircleShape,
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
                 if (achievement.unlocked) {
                     Text(
                         text = "✓",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = NazoSuccess,
                         fontWeight = FontWeight.ExtraBold,
-                    )
-                } else {
-                    Icon(
-                        Icons.Filled.Lock,
-                        contentDescription = null,
-                        tint = NazoTextSecondary.copy(alpha = 0.55f),
-                        modifier = Modifier.size(11.dp),
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 4.dp, bottom = 1.dp),
                     )
                 }
             }
