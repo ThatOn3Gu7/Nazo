@@ -89,15 +89,15 @@ import kotlin.math.roundToInt
 // Overlay transform (pure — mirrors the screen transitionSpec in NazoApp)
 // ---------------------------------------------------------------------------
 
-/** Ordinary push/pop policy shared by the screen and persistent avatar overlay. */
-internal const val OrdinaryScreenTransitionDurationMs = 240
-internal const val OrdinaryScreenSlideFraction = 0.08f
+/** Shared visual policy for taps, back arrows, and predictive-back scrubbing. */
+internal const val ScreenNavigationTransitionDurationMs = 240
+internal const val ScreenNavigationSlideFraction = 0.08f
 
 /** What the overlay should look like for one frame of the screen transition. */
 internal data class AvatarOverlayTransform(
     /** 0f..1f — multiplied into the overlay's draw alpha. */
     val alpha: Float,
-    /** Horizontal slide in px, matching the predictive-back slide specs. */
+    /** Horizontal slide in px, matching the shared screen transition. */
     val slideX: Float,
 )
 
@@ -142,19 +142,21 @@ internal fun avatarOverlayTransform(
     val eased: (Float) -> Float = { FastOutSlowInEasing.transform(it.coerceIn(0f, 1f)) }
     return when {
         predictiveTargetPresent && targetIsPredictive -> AvatarOverlayTransform(
-            // Branch 1 of the spec: the screen being LEFT slides toward the
-            // edge (tween 220) and fades out (tween 220) while the revealed
-            // screen comes in behind it. The winner is that left screen.
+            // Predictive commit/preview: identical to an ordinary back pop,
+            // except the gesture edge mirrors direction. The outgoing winner
+            // travels only the shared 8% distance while fading with the same
+            // 240 ms FastOutSlowIn curve scrubbed by gesture progress.
             alpha = 1f - eased(fraction),
-            slideX = containerWidth * edgeDirection * eased(fraction),
+            slideX = containerWidth * ScreenNavigationSlideFraction *
+                edgeDirection * eased(fraction),
         )
 
         predictiveTargetPresent && initialIsPredictive -> AvatarOverlayTransform(
-            // Branch 2: the cancelled gesture settles back — the screen we
-            // stay on slides home (tween 220) while its fade-in (tween 180)
-            // runs against the segment's 220 ms total.
-            alpha = eased(fraction * 220f / 180f),
-            slideX = containerWidth * edgeDirection * (1f - eased(fraction)),
+            // A flipped cancellation segment is the exact inverse of that
+            // shared subtle motion; fade and slide use one duration/easing.
+            alpha = eased(fraction),
+            slideX = containerWidth * ScreenNavigationSlideFraction *
+                edgeDirection * (1f - eased(fraction)),
         )
 
         // Ordinary navigation uses one duration/easing for slide and fade.
@@ -165,12 +167,12 @@ internal fun avatarOverlayTransform(
         // 132dp while visible.
         winnerIsTarget -> AvatarOverlayTransform(
             alpha = eased(fraction),
-            slideX = containerWidth * OrdinaryScreenSlideFraction *
+            slideX = containerWidth * ScreenNavigationSlideFraction *
                 ordinaryDirection * (1f - eased(fraction)),
         )
         else -> AvatarOverlayTransform(
             alpha = 1f - eased(fraction),
-            slideX = -containerWidth * OrdinaryScreenSlideFraction *
+            slideX = -containerWidth * ScreenNavigationSlideFraction *
                 ordinaryDirection * eased(fraction),
         )
     }
@@ -348,7 +350,7 @@ internal fun AvatarVideoAnchorContent(
  *   has no avatar (the overlay hides and the player idles).
  * @param alpha from [avatarOverlayTransform], computed in NazoApp next to
  *   the transitionSpec it mirrors.
- * @param slideX likewise — the replicated predictive-back slide, in px.
+ * @param slideX likewise — the replicated shared navigation slide, in px.
  * @param railInset mirrors the screens area's rail padding so the container
  *   width equals the slide width the transitionSpec uses.
  * @param blurBlocking true while the NazoApp-level blocking dialogs blur the
@@ -399,7 +401,7 @@ internal fun PersistentAvatarVideo(
 
     // "Any part of the circle is inside the window" — position-based, so a
     // half-scrolled avatar still shows (and only pauses, via centerVisible),
-    // while a fully off-screen or fully slid-away slot hides the overlay.
+    // while a fully off-screen slot hides the overlay.
     val onWindow = anchor?.restBounds?.let { b ->
         window.width <= 0 || window.height <= 0 ||
             (b.left < window.width && b.top < window.height &&
@@ -512,7 +514,7 @@ internal fun PersistentAvatarVideo(
             Box(
                 modifier = Modifier
                     // Placement in px: window bounds → container-local, plus
-                    // the replicated predictive-back slide. offset moves the
+                    // the replicated shared navigation slide. offset moves the
                     // NODE (so clip/alpha follow it); layout below only fixes
                     // the node's size to the slot's own size — 42 dp Home and
                     // 132 dp Profile both match exactly.

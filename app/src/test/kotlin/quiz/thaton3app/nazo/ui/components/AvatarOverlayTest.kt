@@ -22,9 +22,9 @@ class AvatarOverlayTest {
     // ---- avatarOverlayTransform ----
 
     @Test
-    fun ordinaryMotionStaysSubtleAndResponsive() {
-        assertTrue(OrdinaryScreenTransitionDurationMs in 200..280)
-        assertTrue(OrdinaryScreenSlideFraction in 0.05f..0.12f)
+    fun sharedNavigationMotionStaysSubtleAndResponsive() {
+        assertTrue(ScreenNavigationTransitionDurationMs in 200..280)
+        assertTrue(ScreenNavigationSlideFraction in 0.05f..0.12f)
     }
 
     @Test
@@ -67,7 +67,7 @@ class AvatarOverlayTest {
             )
             assertEquals(eased(f), t.alpha, 0f)
             assertEquals(
-                width * OrdinaryScreenSlideFraction * (1f - eased(f)),
+                width * ScreenNavigationSlideFraction * (1f - eased(f)),
                 t.slideX,
                 0.0001f,
             )
@@ -91,7 +91,7 @@ class AvatarOverlayTest {
             )
             assertEquals(1f - eased(f), t.alpha, 0f)
             assertEquals(
-                -width * OrdinaryScreenSlideFraction * eased(f),
+                -width * ScreenNavigationSlideFraction * eased(f),
                 t.slideX,
                 0.0001f,
             )
@@ -128,7 +128,37 @@ class AvatarOverlayTest {
     }
 
     @Test
-    fun predictiveGestureSlidesAndFadesTheScreenBeingLeft() {
+    fun leftEdgePredictivePreviewMatchesOrdinaryBackAtEveryProgress() {
+        val width = 1080f
+        for (f in listOf(0f, 0.2f, 0.5f, 0.8f, 1f)) {
+            val predictive = avatarOverlayTransform(
+                fraction = f,
+                transitioning = true,
+                predictiveTargetPresent = true,
+                targetIsPredictive = true,
+                initialIsPredictive = false,
+                winnerIsTarget = false,
+                edgeDirection = 1,
+                containerWidth = width,
+            )
+            val ordinaryBack = avatarOverlayTransform(
+                fraction = f,
+                transitioning = true,
+                predictiveTargetPresent = false,
+                targetIsPredictive = false,
+                initialIsPredictive = false,
+                winnerIsTarget = false,
+                edgeDirection = 1,
+                ordinaryDirection = -1,
+                containerWidth = width,
+            )
+            assertEquals(ordinaryBack.alpha, predictive.alpha, 0f)
+            assertEquals(ordinaryBack.slideX, predictive.slideX, 0f)
+        }
+    }
+
+    @Test
+    fun predictiveGestureScrubsTheSameSubtleSlideAndFade() {
         val width = 1080f
         // Right-edge swipe: edgeDirection = -1 per NazoApp's mapping.
         for (f in listOf(0f, 0.5f, 1f)) {
@@ -142,9 +172,12 @@ class AvatarOverlayTest {
                 edgeDirection = -1,
                 containerWidth = width,
             )
-            // Mirror of slideOut(to +width*dir) + fadeOut, both tween 220.
             assertEquals(1f - eased(f), t.alpha, 0f)
-            assertEquals(width * -1 * eased(f), t.slideX, 0f)
+            assertEquals(
+                -width * ScreenNavigationSlideFraction * eased(f),
+                t.slideX,
+                0.0001f,
+            )
         }
         // Start: full alpha, no slide (continuous with the resting screen).
         val start = avatarOverlayTransform(
@@ -155,7 +188,7 @@ class AvatarOverlayTest {
         )
         assertEquals(1f, start.alpha, 0f)
         assertEquals(0f, start.slideX, 0f)
-        // End: fully faded out and fully off toward the edge.
+        // End: fully faded, but displaced by only the shared restrained 8%.
         val end = avatarOverlayTransform(
             fraction = 1f, transitioning = true, predictiveTargetPresent = true,
             targetIsPredictive = true, initialIsPredictive = false,
@@ -163,11 +196,11 @@ class AvatarOverlayTest {
             edgeDirection = -1, containerWidth = width,
         )
         assertEquals(0f, end.alpha, 0f)
-        assertEquals(-width, end.slideX, 0f)
+        assertEquals(-width * ScreenNavigationSlideFraction, end.slideX, 0f)
     }
 
     @Test
-    fun cancelSettleSlidesHomeWhileFadingInOnThe180msSpec() {
+    fun cancelSettleUsesTheExactInverseSharedMotion() {
         val width = 1080f
         for (f in listOf(0f, 0.5f, 1f)) {
             val t = avatarOverlayTransform(
@@ -180,11 +213,12 @@ class AvatarOverlayTest {
                 edgeDirection = 1,
                 containerWidth = width,
             )
-            // Mirror of slideIn(from +width*dir, tween 220) + fadeIn(tween 180)
-            // inside a 220 ms segment: the fade's local time runs at
-            // f * 220 / 180 (clamped by the animation at 1).
-            assertEquals(eased(f * 220f / 180f), t.alpha, 0f)
-            assertEquals(width * 1 * (1f - eased(f)), t.slideX, 0f)
+            assertEquals(eased(f), t.alpha, 0f)
+            assertEquals(
+                width * ScreenNavigationSlideFraction * (1f - eased(f)),
+                t.slideX,
+                0.0001f,
+            )
         }
     }
 
