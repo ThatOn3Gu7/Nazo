@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,6 +36,7 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.MilitaryTech
 import androidx.compose.material.icons.filled.School
@@ -53,6 +56,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -191,23 +196,31 @@ fun AchievementsCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "Achievements",
-                style = MaterialTheme.typography.titleMedium,
-                color = NazoTextPrimary,
-                fontWeight = FontWeight.Bold,
-            )
+            Column {
+                Text(
+                    text = "COLLECTION",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoTextSecondary,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = "Achievement Badges",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = NazoTextPrimary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
                     .background(NazoPrimary.copy(alpha = 0.12f))
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
             ) {
                 Text(
                     text = "$unlockedCount / ${achievements.size}",
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelSmall,
                     color = NazoPrimary,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.ExtraBold,
                 )
             }
         }
@@ -269,14 +282,12 @@ fun AchievementsCard(
                                 fontWeight = FontWeight.Bold,
                             )
                             Spacer(Modifier.width(8.dp))
-                            if (a.unlocked) {
-                                Text(
-                                    text = "UNLOCKED",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = NazoSuccess,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
+                            Text(
+                                text = if (a.unlocked) "COLLECTED" else "LOCKED",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (a.unlocked) NazoSuccess else NazoTextSecondary,
+                                fontWeight = FontWeight.Bold,
+                            )
                         }
                         Spacer(Modifier.height(4.dp))
                         Text(
@@ -328,8 +339,8 @@ private fun AchievementBadge(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Staggered pop-in with a slight overshoot, matching the screen's
-    // one-shot `animate` gate so it only plays once per visit.
+    // Staggered once per Statistics visit. The selected coin does not loop or
+    // pulse; collectible personality comes from its layered plaque and seal.
     val appear by animateFloatAsState(
         targetValue = if (animate) 1f else 0f,
         animationSpec = tween(320, delayMillis = 45 * index, easing = BadgePop),
@@ -343,25 +354,84 @@ private fun AchievementBadge(
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Box(
             modifier = Modifier
-                .size(52.dp)
+                .size(64.dp)
                 .graphicsLayer {
                     scaleX = appear
                     scaleY = appear
                     alpha = appear.coerceIn(0f, 1f)
                 }
-                .clip(CircleShape)
-                .background(if (achievement.unlocked) NazoPrimary.copy(alpha = 0.18f) else NazoSurface)
-                .border(2.dp, ring, CircleShape)
                 .clickable { onClick() },
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                imageVector = achievement.icon,
-                contentDescription = achievement.title,
-                tint = if (achievement.unlocked) NazoPrimary
-                else NazoTextSecondary.copy(alpha = 0.35f),
-                modifier = Modifier.size(24.dp),
-            )
+            Canvas(Modifier.size(64.dp)) {
+                val stroke = 3.dp.toPx()
+                drawCircle(
+                    color = NazoTextSecondary.copy(alpha = 0.10f),
+                    style = Stroke(width = stroke),
+                )
+                drawArc(
+                    color = if (achievement.unlocked) NazoSuccess else NazoPrimary,
+                    startAngle = -90f,
+                    sweepAngle = 360f * achievement.progress.coerceIn(0f, 1f),
+                    useCenter = false,
+                    style = Stroke(width = stroke, cap = StrokeCap.Round),
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(17.dp))
+                    .background(
+                        if (achievement.unlocked) NazoPrimary.copy(alpha = 0.18f)
+                        else NazoSurface.copy(alpha = 0.82f),
+                    )
+                    .border(
+                        1.dp,
+                        if (achievement.unlocked) NazoPrimary.copy(alpha = 0.38f)
+                        else NazoTextSecondary.copy(alpha = 0.10f),
+                        RoundedCornerShape(17.dp),
+                    )
+                    .border(2.dp, ring, RoundedCornerShape(17.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = achievement.icon,
+                    contentDescription = achievement.title,
+                    tint = if (achievement.unlocked) NazoPrimary
+                    else NazoTextSecondary.copy(alpha = 0.34f),
+                    modifier = Modifier.size(25.dp),
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .offset(x = 1.dp, y = 1.dp)
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(if (achievement.unlocked) NazoSuccess else NazoSurface)
+                    .border(
+                        1.dp,
+                        if (achievement.unlocked) NazoSuccess else NazoTextSecondary.copy(alpha = 0.18f),
+                        CircleShape,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (achievement.unlocked) {
+                    Text(
+                        text = "✓",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        fontWeight = FontWeight.ExtraBold,
+                    )
+                } else {
+                    Icon(
+                        Icons.Filled.Lock,
+                        contentDescription = null,
+                        tint = NazoTextSecondary.copy(alpha = 0.55f),
+                        modifier = Modifier.size(11.dp),
+                    )
+                }
+            }
         }
     }
 }

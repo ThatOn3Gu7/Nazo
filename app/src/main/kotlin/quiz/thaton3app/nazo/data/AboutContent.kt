@@ -47,6 +47,7 @@ val NAZO_CHANGELOG: List<ChangelogEntry> = listOf(
             "Video and automatic covers: use a muted MP4 loop or let Nazo create a soft matching image or blurred video from the current avatar.",
             "Cover changes now crossfade smoothly, rapid choices settle on the latest selection, and animated media keeps stable playback without extra players.",
             "Quiz play feels more responsive with restrained question hand-offs, an always-wobbling music-player-style progress line, rewarding correct-answer glow, clear wrong-answer motion, polished explanations and subtle consecutive-answer combos.",
+            "Progression now feels connected from results to Profile and Statistics, with a richer level card, animated XP progress, collectible achievement badges, and restrained level-up or unlock moments.",
         ),
     ),
     ChangelogEntry(

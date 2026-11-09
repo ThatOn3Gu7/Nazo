@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
+import quiz.thaton3app.nazo.progression.ProgressionReward
 import quiz.thaton3app.nazo.records.NewRecordBadge
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
@@ -68,6 +69,7 @@ import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoButtonShape
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
+import quiz.thaton3app.nazo.ui.components.ProgressionRewardBanner
 import quiz.thaton3app.nazo.ui.components.ShareResultCard
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
@@ -85,6 +87,7 @@ fun GuessingResultsScreen(
     difficulty: String,
     bestPoints: Int = -1,
     isNewRecord: Boolean = false,
+    progressionReward: ProgressionReward? = null,
     onPlayAgain: () -> Unit,
     onHomeClick: () -> Unit,
 ) {
@@ -227,6 +230,14 @@ fun GuessingResultsScreen(
                             )
                         }
                     }
+                }
+
+                progressionReward?.let { reward ->
+                    Spacer(Modifier.height(12.dp))
+                    ProgressionRewardBanner(
+                        reward = reward,
+                        animateEntrance = true,
+                    )
                 }
 
                     },
