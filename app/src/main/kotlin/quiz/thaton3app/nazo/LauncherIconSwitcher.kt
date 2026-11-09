@@ -47,7 +47,11 @@ data class AppIconOption(
     @DrawableRes val introMark: Int = R.drawable.ic_mark_nazo_silhouette,
     /** Which launch animation this icon plays. See [IntroStyle]. */
     val introStyle: IntroStyle = IntroStyle.WARP,
-    /** Full-color art shown in the Appearance picker. */
+    /**
+     * Full-color art shown in the Appearance picker. Kanji-family assets must
+     * keep Sumi Ember's optical footprint so switching icons changes pigment,
+     * not the apparent size; LauncherIconSwitcherTest pins their alpha bounds.
+     */
     @DrawableRes val previewMark: Int = R.drawable.ic_launcher_foreground_nazo,
 )
 
