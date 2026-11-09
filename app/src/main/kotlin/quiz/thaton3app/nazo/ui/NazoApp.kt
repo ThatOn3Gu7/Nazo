@@ -122,6 +122,7 @@ import quiz.thaton3app.nazo.ui.components.WhatsNewSheet
 import quiz.thaton3app.nazo.ui.components.WhatsNewStore
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.launch.IntroOverlay
+import quiz.thaton3app.nazo.ui.mode.NazoMode
 import quiz.thaton3app.nazo.ui.onboarding.OnboardingPrefs
 import quiz.thaton3app.nazo.ui.onboarding.OnboardingScreen
 import quiz.thaton3app.nazo.ui.screens.*
@@ -2211,6 +2212,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         question = questions[currentQuestionIndex],
                         currentQuestionIndex = currentQuestionIndex,
                         totalQuestions = questions.size,
+                        currentScore = score,
                         difficulty = quizDifficulty,
                         isAiGenerated = aiGenerated,
                         endless = quizMode == "survival",

@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.ImageSearch
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.EmojiEvents
@@ -182,6 +183,14 @@ fun GuessingResultsScreen(
                 ) {
                     Column {
                         Text(
+                            text = "MYSTERY ARCHIVE",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NazoPrimary,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.2.sp,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
                             text = heading,
                             style = MaterialTheme.typography.headlineMedium,
                             color = headingColor,
@@ -248,7 +257,7 @@ fun GuessingResultsScreen(
                 ) {
                     Column {
                         Text(
-                            text = "ROUNDS",
+                            text = "REVEALED ARCHIVE",
                             style = MaterialTheme.typography.labelSmall,
                             color = NazoTextSecondary,
                             fontWeight = FontWeight.Bold,
@@ -529,7 +538,7 @@ private fun ScoreCard(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = if (allMissed) Icons.Outlined.FitnessCenter else Icons.Outlined.EmojiEvents,
+                    imageVector = if (allMissed) Icons.Outlined.FitnessCenter else Icons.Filled.ImageSearch,
                     contentDescription = null,
                     tint = NazoOnPrimary,
                     modifier = Modifier.size(38.dp)

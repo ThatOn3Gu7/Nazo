@@ -46,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -98,21 +99,21 @@ fun VersusHandoffScreen(
             .padding(horizontal = 28.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(
-                modifier = Modifier
-                    .size(88.dp)
-                    .clip(CircleShape)
-                    .background(NazoPrimary.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.SwapHoriz,
-                    contentDescription = null,
-                    tint = NazoPrimary,
-                    modifier = Modifier.size(44.dp),
-                )
-            }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = "HEAD-TO-HEAD • TURN 2",
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoPrimary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.2.sp,
+            )
+            Spacer(Modifier.height(12.dp))
+            VersusHandoffRail()
             Spacer(Modifier.height(24.dp))
             Text(
                 text = "Player 1 is done!",
@@ -148,6 +149,82 @@ fun VersusHandoffScreen(
                 Text("I'm Player 2 — Let's go!", color = NazoOnPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
         }
+    }
+}
+
+@Composable
+private fun VersusHandoffRail() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(NazoSurface)
+            .border(1.dp, NazoPrimary.copy(alpha = 0.24f), RoundedCornerShape(24.dp))
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        HandoffPlayerCard(
+            label = "P1",
+            status = "LOCKED IN",
+            active = false,
+            modifier = Modifier.weight(1f),
+        )
+        Box(
+            modifier = Modifier
+                .padding(horizontal = 10.dp)
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(NazoPrimary.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.SwapHoriz,
+                contentDescription = null,
+                tint = NazoPrimary,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+        HandoffPlayerCard(
+            label = "P2",
+            status = "UP NEXT",
+            active = true,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun HandoffPlayerCard(
+    label: String,
+    status: String,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (active) NazoPrimary.copy(alpha = 0.14f) else NazoBackground)
+            .border(
+                1.dp,
+                if (active) NazoPrimary.copy(alpha = 0.5f) else Color.Transparent,
+                RoundedCornerShape(16.dp),
+            )
+            .padding(vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleLarge,
+            color = if (active) NazoPrimary else NazoTextSecondary,
+            fontWeight = FontWeight.Black,
+        )
+        Text(
+            text = status,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (active) NazoPrimary else NazoTextSecondary,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.6.sp,
+        )
     }
 }
 
@@ -198,6 +275,14 @@ fun VersusResultsScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
+            Text(
+                text = "HEAD-TO-HEAD • FINAL",
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoPrimary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.2.sp,
+            )
+            Spacer(Modifier.height(12.dp))
             // Screen identity: a trophy emblem crowning the match result.
             Box(
                 contentAlignment = Alignment.Center,
