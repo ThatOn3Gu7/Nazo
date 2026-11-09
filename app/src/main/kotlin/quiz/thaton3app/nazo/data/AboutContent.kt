@@ -46,7 +46,7 @@ val NAZO_CHANGELOG: List<ChangelogEntry> = listOf(
             "Custom profile covers: use your own photo, one of 14 included artworks, or one of five animated gradients in the redesigned profile header.",
             "Video and automatic covers: use a muted MP4 loop or let Nazo create a soft matching image or blurred video from the current avatar.",
             "Cover changes now crossfade smoothly, rapid choices settle on the latest selection, and animated media keeps stable playback without extra players.",
-            "Quiz play feels more responsive with restrained question hand-offs, a music-player-style wavy progress line, rewarding correct-answer glow, clear wrong-answer motion, polished explanations and subtle consecutive-answer combos.",
+            "Quiz play feels more responsive with restrained question hand-offs, an always-wobbling music-player-style progress line, rewarding correct-answer glow, clear wrong-answer motion, polished explanations and subtle consecutive-answer combos.",
         ),
     ),
     ChangelogEntry(

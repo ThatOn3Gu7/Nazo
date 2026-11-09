@@ -9,8 +9,13 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
@@ -92,6 +97,7 @@ private data class QuestionSlot(val index: Int, val question: Question)
 private const val QuestionTransitionDurationMs = 300
 private const val QuestionTransitionSlideFraction = 0.08f
 private const val AnswerFeedbackDurationMs = 420
+private const val QuizProgressWavePeriodMs = 1_200
 
 /** Pure gameplay-polish policies, kept deterministic and covered by JVM tests. */
 internal fun nextQuizComboStreak(currentStreak: Int, correct: Boolean): Int =
@@ -482,9 +488,9 @@ fun ActiveQuizScreen(
 
             Spacer(Modifier.height(chromeGap))
             // Endless runs have no meaningful fraction — skip the bar. The
-            // custom bar is one Canvas: a Material-Expressive wave advances
-            // through the completed portion on updates, then settles with no
-            // infinite clock or extra layers.
+            // custom bar is one Canvas: a Material-Expressive wave keeps
+            // travelling inside the completed portion while its endpoint stays
+            // fixed, and only the fill length advances with question progress.
             if (!endless && !isBlitz) {
                 PremiumQuizProgress(
                     progress = quizProgressFraction(currentQuestionIndex, totalQuestions),
@@ -994,17 +1000,34 @@ private fun PremiumQuizProgress(
         ),
         label = "premiumQuizProgress",
     )
-    // One wavelength travels through the active line whenever progress changes.
-    // It ends at phase 1, which is visually identical to phase 0, so the snake
-    // settles without a snap and owns no infinite animation clock.
-    val waveTravel = remember { Animatable(0f) }
+    // The waveform travels forever while this small gameplay composable is on
+    // screen, but its endpoint does not move: only [displayed] can advance quiz
+    // progress. Restart is seamless because phase 1 is identical to phase 0.
+    // Do not even create the infinite transition under Remove animations.
+    val wavePhase = if (motionAllowed) {
+        val transition = rememberInfiniteTransition(label = "quizProgressWave")
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(QuizProgressWavePeriodMs, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "quizProgressWavePhase",
+        )
+    } else {
+        null
+    }
+    // Keep the existing bounded cap bloom as separate update feedback. It runs
+    // once per progress target while the wave itself continues underneath.
+    val progressPulse = remember { Animatable(0f) }
     LaunchedEffect(target, motionAllowed) {
         if (!motionAllowed || target <= 0f) {
-            waveTravel.snapTo(0f)
+            progressPulse.snapTo(0f)
             return@LaunchedEffect
         }
-        waveTravel.snapTo(0f)
-        waveTravel.animateTo(
+        progressPulse.snapTo(0f)
+        progressPulse.animateTo(
             1f,
             animationSpec = tween(520, easing = FastOutSlowInEasing),
         )
@@ -1018,6 +1041,7 @@ private fun PremiumQuizProgress(
         val startX = strokeWidth / 2f
         val usableWidth = (size.width - strokeWidth).coerceAtLeast(0f)
         val endX = startX + usableWidth * displayed.coerceIn(0f, 1f)
+        val phaseFraction = wavePhase?.value ?: 0f
 
         // Material Expressive's inactive rail stays calm while the completed
         // portion carries the waveform, like a music-player progress indicator.
@@ -1047,7 +1071,7 @@ private fun PremiumQuizProgress(
                 val y = centerY + amplitude * quizProgressWaveOffset(
                     position = x - startX,
                     wavelength = wavelength,
-                    phaseFraction = waveTravel.value,
+                    phaseFraction = phaseFraction,
                 )
                 if (x == startX) path.moveTo(x, y) else path.lineTo(x, y)
                 endY = y
@@ -1058,17 +1082,17 @@ private fun PremiumQuizProgress(
             endY = centerY + amplitude * quizProgressWaveOffset(
                 position = endX - startX,
                 wavelength = wavelength,
-                phaseFraction = waveTravel.value,
+                phaseFraction = phaseFraction,
             )
             path.lineTo(endX, endY)
 
-            val travelEnvelope = sin(
-                waveTravel.value.coerceIn(0f, 1f) * PI.toFloat()
+            val pulseEnvelope = sin(
+                progressPulse.value.coerceIn(0f, 1f) * PI.toFloat()
             ).coerceAtLeast(0f)
-            if (travelEnvelope > 0f) {
+            if (pulseEnvelope > 0f) {
                 drawCircle(
-                    color = color.copy(alpha = 0.14f * travelEnvelope),
-                    radius = strokeWidth * (1.2f + 0.5f * travelEnvelope),
+                    color = color.copy(alpha = 0.14f * pulseEnvelope),
+                    radius = strokeWidth * (1.2f + 0.5f * pulseEnvelope),
                     center = Offset(endX, endY),
                 )
             }
