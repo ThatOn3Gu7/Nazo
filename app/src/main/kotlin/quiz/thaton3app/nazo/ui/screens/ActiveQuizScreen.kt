@@ -6,7 +6,9 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -23,6 +25,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -40,7 +43,6 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -48,12 +50,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CornerRadius
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.PI
+import kotlin.math.roundToInt
+import kotlin.math.sin
 import kotlinx.coroutines.delay
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.QuizEngine
@@ -63,6 +72,7 @@ import quiz.thaton3app.nazo.hints.HintRevealPill
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.isLandscape
+import quiz.thaton3app.nazo.ui.components.rememberSystemReduceMotion
 import quiz.thaton3app.nazo.ui.theme.*
 
 /** A question's graded state, frozen the moment it is revealed. */
@@ -74,6 +84,36 @@ private data class GradedAnswer(val selected: String?, val timeUp: Boolean)
  * place); only advancing to the next question does.
  */
 private data class QuestionSlot(val index: Int, val question: Question)
+
+private const val QuestionTransitionDurationMs = 300
+private const val QuestionTransitionSlideFraction = 0.08f
+private const val AnswerFeedbackDurationMs = 420
+
+/** Pure gameplay-polish policies, kept deterministic and covered by JVM tests. */
+internal fun nextQuizComboStreak(currentStreak: Int, correct: Boolean): Int =
+    if (correct) currentStreak.coerceAtLeast(0) + 1 else 0
+
+internal fun quizComboLabel(streak: Int): String? =
+    streak.takeIf { it >= 2 }?.let { "$it× COMBO" }
+
+internal fun quizProgressFraction(questionIndex: Int, totalQuestions: Int): Float =
+    if (totalQuestions <= 0) 0f
+    else ((questionIndex + 1).toFloat() / totalQuestions).coerceIn(0f, 1f)
+
+internal fun questionTransitionOffset(width: Int, direction: Int): Int =
+    (width * QuestionTransitionSlideFraction * direction.coerceIn(-1, 1)).roundToInt()
+
+/** Damped horizontal motion in normalized units; exactly at rest at both ends. */
+internal fun wrongAnswerShakeOffset(progress: Float): Float {
+    val p = progress.coerceIn(0f, 1f)
+    return (sin(p * PI.toFloat() * 6f) * (1f - p))
+}
+
+/** Gentle selected-correct settle: peaks at 1.8%, returns exactly to 1f. */
+internal fun correctAnswerPulseScale(progress: Float): Float {
+    val p = progress.coerceIn(0f, 1f)
+    return 1f + (sin(p * PI.toFloat()).coerceAtLeast(0f) * 0.018f)
+}
 
 @Composable
 fun ActiveQuizScreen(
@@ -109,10 +149,22 @@ fun ActiveQuizScreen(
     // still-sliding card flipped a correct answer to "Not quite" (and
     // un-highlighted the picked option) for the length of the transition.
     val gradedByIndex = remember { mutableStateMapOf<Int, GradedAnswer>() }
+    // Visual-only combo state. It never participates in score/evaluation and is
+    // frozen per question for the same reason as GradedAnswer: the outgoing
+    // question must keep its own badge while the next one enters.
+    var comboStreak by remember { mutableIntStateOf(0) }
+    val comboByIndex = remember { mutableStateMapOf<Int, Int>() }
+    fun recordVisualGrade(index: Int, correct: Boolean) {
+        if (comboByIndex.containsKey(index)) return
+        comboStreak = nextQuizComboStreak(comboStreak, correct)
+        comboByIndex[index] = comboStreak
+    }
+
     val isBlitz = blitzDeadlineMs != null
     val secondsPerQuestion = QuizEngine.specFor(difficulty).secondsPerQuestion
     var remainingSeconds by remember { mutableIntStateOf(secondsPerQuestion) }
     val context = LocalContext.current
+    val reduceMotion = rememberSystemReduceMotion()
     var showQuitDialog by remember { mutableStateOf(false) }
 
     // Lifelines (Phase 4): a small supply shared across the whole quiz (this
@@ -144,6 +196,9 @@ fun ActiveQuizScreen(
         gradedByIndex.keys
             .filter { it < currentQuestionIndex - 1 }
             .forEach { gradedByIndex.remove(it) }
+        comboByIndex.keys
+            .filter { it < currentQuestionIndex - 1 }
+            .forEach { comboByIndex.remove(it) }
         if (isBlitz) return@LaunchedEffect
         remainingSeconds = secondsPerQuestion
         while (remainingSeconds > 0 && selectedAnswer == null) {
@@ -169,6 +224,7 @@ fun ActiveQuizScreen(
             // once (not at the Next tap) and freezes the "Time's up!" outcome
             // for the exit transition.
             gradedByIndex[currentQuestionIndex] = GradedAnswer(selected = null, timeUp = true)
+            recordVisualGrade(currentQuestionIndex, correct = false)
             onLifeLost()
         }
     }
@@ -410,21 +466,16 @@ fun ActiveQuizScreen(
             }
 
             Spacer(Modifier.height(chromeGap))
-            // Endless runs have no meaningful fraction — skip the bar.
+            // Endless runs have no meaningful fraction — skip the bar. The
+            // custom bar is one Canvas and one bounded pulse: it gives progress
+            // a living leading edge without an infinite clock or extra layers.
             if (!endless && !isBlitz) {
-                val progressAnim = animateFloatAsState(
-                    targetValue = (currentQuestionIndex + 1) / totalQuestions.toFloat(),
-                    animationSpec = tween(durationMillis = 400),
-                    label = "quizProgress"
-                ).value
-                LinearProgressIndicator(
-                    progress = { progressAnim },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(50)),
+                PremiumQuizProgress(
+                    progress = quizProgressFraction(currentQuestionIndex, totalQuestions),
                     color = NazoPrimary,
-                    trackColor = NazoSurface
+                    trackColor = NazoSurface,
+                    motionAllowed = !reduceMotion,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             } else if (isBlitz) {
                 // Blitz has no question fraction but it does have one global
@@ -433,19 +484,13 @@ fun ActiveQuizScreen(
                 val blitzTotalMs = remember(blitzDeadlineMs) {
                     ((blitzDeadlineMs ?: 0L) - SystemClock.elapsedRealtime()).coerceAtLeast(1_000L)
                 }
-                val timeAnim = animateFloatAsState(
-                    targetValue = (remainingSeconds * 1000f / blitzTotalMs).coerceIn(0f, 1f),
-                    animationSpec = tween(durationMillis = 200),
-                    label = "blitzProgress"
-                ).value
-                LinearProgressIndicator(
-                    progress = { timeAnim },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(50)),
+                PremiumQuizProgress(
+                    progress = (remainingSeconds * 1000f / blitzTotalMs).coerceIn(0f, 1f),
                     color = if (remainingSeconds <= 10) NazoError else NazoPrimary,
-                    trackColor = NazoSurface
+                    trackColor = NazoSurface,
+                    motionAllowed = !reduceMotion,
+                    animationDurationMs = 200,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
 
@@ -486,18 +531,33 @@ fun ActiveQuizScreen(
 
             Spacer(Modifier.height(if (landscape) 10.dp else 24.dp))
 
-            // Smooth sliding transition between questions. The slot is the
-            // question's identity only — grading does not change it, so the
-            // answer tint and the explanation card's expand still animate in
-            // place — while the body's GRADE comes from the frozen per-index
-            // record: the outgoing slide keeps showing its own result instead
-            // of re-deriving it from the already-reset live state (which is
-            // what flashed "Not quite" over a correct answer).
+            // One restrained content hand-off: the old question yields by 8%
+            // while the next settles into the same stable layout. Full-width
+            // sweeps and AnimatedContent size morphing made long/short questions
+            // feel like different pages; this keeps the player's eye anchored.
+            // The slot is question identity only — grading stays in place — and
+            // the body's grade remains frozen per index to prevent result flashes.
             AnimatedContent(
                 targetState = QuestionSlot(currentQuestionIndex, question),
-                transitionSpec = { 
-                    (slideInHorizontally(tween(350)) { width -> width } + fadeIn(tween(350))) togetherWith 
-                    (slideOutHorizontally(tween(350)) { width -> -width } + fadeOut(tween(350)))
+                transitionSpec = {
+                    val direction = if (targetState.index >= initialState.index) 1 else -1
+                    val enter = slideInHorizontally(
+                        animationSpec = tween(
+                            QuestionTransitionDurationMs,
+                            easing = FastOutSlowInEasing,
+                        ),
+                    ) { width -> questionTransitionOffset(width, direction) } +
+                        fadeIn(tween(220))
+                    val exit = slideOutHorizontally(
+                        animationSpec = tween(
+                            QuestionTransitionDurationMs,
+                            easing = FastOutSlowInEasing,
+                        ),
+                    ) { width -> questionTransitionOffset(width, -direction) } +
+                        fadeOut(tween(180))
+                    (enter togetherWith exit).using(null).apply {
+                        targetContentZIndex = 1f
+                    }
                 },
                 label = "questionTransition"
             ) { slot ->
@@ -508,6 +568,7 @@ fun ActiveQuizScreen(
                 val isTimeUp = graded?.timeUp == true
                 val reveal = graded != null
                 val isCorrect = shownAnswer == q.correctAnswer
+                val shownCombo = comboByIndex[slot.index] ?: 0
                 TwoPaneQuizBody(
                     landscape = landscape,
                     question = {
@@ -527,6 +588,24 @@ fun ActiveQuizScreen(
                         color = NazoTextPrimary,
                         fontWeight = FontWeight.Bold
                     )
+                    val comboLabel = quizComboLabel(shownCombo)
+                    AnimatedVisibility(
+                        visible = isCorrect && comboLabel != null,
+                        enter = fadeIn(tween(180)) + scaleIn(
+                            initialScale = if (reduceMotion) 1f else 0.88f,
+                            animationSpec = tween(260, easing = FastOutSlowInEasing),
+                        ),
+                        exit = fadeOut(tween(120)),
+                    ) {
+                        Column {
+                            Spacer(Modifier.height(14.dp))
+                            ComboPill(
+                                label = comboLabel.orEmpty(),
+                                streak = shownCombo,
+                                motionAllowed = !reduceMotion,
+                            )
+                        }
+                    }
                 }
 
                     },
@@ -568,23 +647,23 @@ fun ActiveQuizScreen(
                         label = "optionBorder"
                     )
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp)
-                            .alpha(hintAlpha)
-                            .clip(RoundedCornerShape(50))
-                            .background(bgColor)
-                            .border(1.dp, borderColor, RoundedCornerShape(50))
-                            .clickable(enabled = !reveal && !isHiddenByHint) {
-                                // Idempotence guard: `reveal` only flips on the
-                                // next recomposition, so two taps landing in the
-                                // same frame both pass `enabled`. Without this
-                                // the second tap re-fires feedback and (in Blitz)
-                                // can queue a second onNextQuestion. `graded`
-                                // also closes the timeout race (a time-up freezes
-                                // the grade before the rows disable).
-                                if (selectedAnswer != null || graded != null) return@clickable
+                    PremiumAnswerOption(
+                        reveal = reveal,
+                        isThisCorrectAnswer = isThisCorrectAnswer,
+                        isThisSelected = isThisSelected,
+                        isHiddenByHint = isHiddenByHint,
+                        hintAlpha = hintAlpha,
+                        backgroundColor = bgColor,
+                        borderColor = borderColor,
+                        label = labels[index],
+                        text = optionText,
+                        motionAllowed = !reduceMotion,
+                        onClick = {
+                            // Idempotence guard: `reveal` only flips on the
+                            // next recomposition, so two taps landing in the
+                            // same frame both pass `enabled`. `graded` also
+                            // closes the timeout race.
+                            if (selectedAnswer == null && graded == null) {
                                 val wasCorrect = optionText == q.correctAnswer
                                 if (wasCorrect) {
                                     Haptics.light(context)
@@ -593,33 +672,18 @@ fun ActiveQuizScreen(
                                     Haptics.doubleLight(context)
                                     Sounds.wrong(context)
                                     // Grading time — not Next-tap time: the
-                                    // survival heart is redacted the moment the
-                                    // wrong answer lands.
+                                    // survival heart is redacted immediately.
                                     onLifeLost()
                                 }
                                 selectedAnswer = optionText
-                                // Freeze this question's outcome for the exit
-                                // transition (see gradedByIndex).
+                                // Freeze result + visual streak for this outgoing
+                                // slot. Neither participates in answer evaluation.
                                 gradedByIndex[slot.index] =
                                     GradedAnswer(selected = optionText, timeUp = false)
+                                recordVisualGrade(slot.index, wasCorrect)
                             }
-                            .padding(horizontal = 20.dp, vertical = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        OptionCircle(
-                            reveal = reveal,
-                            isThisCorrectAnswer = isThisCorrectAnswer,
-                            isThisSelected = isThisSelected,
-                            label = labels[index]
-                        )
-                        Spacer(Modifier.width(16.dp))
-                        Text(
-                            text = optionText,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = if (reveal && (isThisCorrectAnswer || isThisSelected)) borderColor else NazoTextPrimary,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                        },
+                    )
                 }
 
                     },
@@ -628,33 +692,46 @@ fun ActiveQuizScreen(
                 // Hidden in blitz: answers auto-advance on a 650ms beat instead.
                 AnimatedVisibility(
                     visible = reveal && !isBlitz,
-                    // Replaced simple fade with a beautiful expanding drop-down animation
-                    enter = expandVertically(tween(350)) + fadeIn(tween(350)),
-                    exit = shrinkVertically(tween(250)) + fadeOut(tween(250))
+                    enter = if (reduceMotion) {
+                        fadeIn(tween(100))
+                    } else {
+                        expandVertically(
+                            animationSpec = tween(320, easing = FastOutSlowInEasing),
+                            expandFrom = Alignment.Top,
+                        ) + slideInVertically(
+                            animationSpec = tween(320, easing = FastOutSlowInEasing),
+                        ) { height -> height / 12 } + fadeIn(tween(220))
+                    },
+                    exit = shrinkVertically(tween(180)) + fadeOut(tween(140)),
                 ) {
+                    // The outcome IS the news; the explanation follows it.
+                    val outcomeTitle = when {
+                        isTimeUp -> "Time's up!"
+                        isCorrect -> "Correct!"
+                        else -> "Not quite"
+                    }
+                    val outcomeColor = if (isCorrect && !isTimeUp) NazoSuccess else NazoError
                     Column {
                         Spacer(Modifier.height(12.dp))
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(24.dp))
-                                .background(NazoSurface)
+                                .background(
+                                    Brush.horizontalGradient(
+                                        0f to outcomeColor.copy(alpha = 0.12f),
+                                        0.45f to NazoSurface,
+                                        1f to NazoSurface,
+                                    )
+                                )
+                                .border(
+                                    1.dp,
+                                    outcomeColor.copy(alpha = 0.28f),
+                                    RoundedCornerShape(24.dp),
+                                )
                                 .padding(20.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                // The outcome IS the news; the explanation is the
-                                // follow-up. "Time's up!" names the timed-out
-                                // state explicitly — previously only the red
-                                // timer digit implied it.
-                                val outcomeTitle = when {
-                                    isTimeUp -> "Time's up!"
-                                    isCorrect -> "Correct!"
-                                    else -> "Not quite"
-                                }
-                                val outcomeColor = when {
-                                    isCorrect && !isTimeUp -> NazoSuccess
-                                    else -> NazoError
-                                }
                                 Icon(
                                     imageVector = when {
                                         isTimeUp -> Icons.Filled.Schedule
@@ -879,6 +956,216 @@ private fun TwoPaneQuizBody(
         ) {
             options()
             Spacer(Modifier.height(12.dp))
+        }
+    }
+}
+
+@Composable
+private fun PremiumQuizProgress(
+    progress: Float,
+    color: Color,
+    trackColor: Color,
+    motionAllowed: Boolean,
+    modifier: Modifier = Modifier,
+    animationDurationMs: Int = 420,
+) {
+    val target = progress.coerceIn(0f, 1f)
+    val displayed by animateFloatAsState(
+        targetValue = target,
+        animationSpec = tween(
+            durationMillis = if (motionAllowed) animationDurationMs else 0,
+            easing = FastOutSlowInEasing,
+        ),
+        label = "premiumQuizProgress",
+    )
+    val leadingPulse = remember { Animatable(0f) }
+    LaunchedEffect(target, motionAllowed) {
+        if (!motionAllowed || target <= 0f) {
+            leadingPulse.snapTo(0f)
+            return@LaunchedEffect
+        }
+        leadingPulse.snapTo(1f)
+        leadingPulse.animateTo(
+            0f,
+            animationSpec = tween(480, easing = FastOutSlowInEasing),
+        )
+    }
+
+    Canvas(modifier = modifier.height(8.dp)) {
+        val radius = CornerRadius(size.height / 2f, size.height / 2f)
+        drawRoundRect(color = trackColor, cornerRadius = radius)
+        val filledWidth = size.width * displayed.coerceIn(0f, 1f)
+        if (filledWidth > 0f) {
+            // A soft cap bloom fires only when progress changes; unlike a
+            // shimmer it owns no infinite transition or always-running clock.
+            if (leadingPulse.value > 0f) {
+                drawCircle(
+                    color = color.copy(alpha = 0.16f * leadingPulse.value),
+                    radius = size.height * (0.8f + 0.7f * leadingPulse.value),
+                    center = androidx.compose.ui.geometry.Offset(filledWidth, size.height / 2f),
+                )
+            }
+            drawRoundRect(
+                color = color,
+                size = androidx.compose.ui.geometry.Size(filledWidth, size.height),
+                cornerRadius = radius,
+            )
+            drawCircle(
+                color = Color.White.copy(alpha = 0.28f),
+                radius = size.height * 0.22f,
+                center = androidx.compose.ui.geometry.Offset(
+                    x = filledWidth.coerceAtLeast(size.height / 2f) - size.height * 0.28f,
+                    y = size.height / 2f,
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ComboPill(
+    label: String,
+    streak: Int,
+    motionAllowed: Boolean,
+) {
+    val intensity = ((streak - 2).coerceIn(0, 4) / 4f)
+    val flash = remember(label) { Animatable(0f) }
+    LaunchedEffect(label, motionAllowed) {
+        if (!motionAllowed) return@LaunchedEffect
+        flash.snapTo(1f)
+        flash.animateTo(0f, tween(440, easing = FastOutSlowInEasing))
+    }
+    Box(
+        modifier = Modifier
+            .graphicsLayer {
+                val lift = flash.value * 0.015f
+                scaleX = 1f + lift
+                scaleY = 1f + lift
+            }
+            .clip(RoundedCornerShape(50))
+            .background(NazoPrimary.copy(alpha = 0.12f + intensity * 0.08f))
+            .border(
+                1.dp,
+                NazoPrimary.copy(alpha = 0.42f + intensity * 0.22f),
+                RoundedCornerShape(50),
+            )
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "✦  $label",
+            style = MaterialTheme.typography.labelMedium,
+            color = NazoPrimary,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.8.sp,
+        )
+    }
+}
+
+@Composable
+private fun PremiumAnswerOption(
+    reveal: Boolean,
+    isThisCorrectAnswer: Boolean,
+    isThisSelected: Boolean,
+    isHiddenByHint: Boolean,
+    hintAlpha: Float,
+    backgroundColor: Color,
+    borderColor: Color,
+    label: String,
+    text: String,
+    motionAllowed: Boolean,
+    onClick: () -> Unit,
+) {
+    val feedback = remember { Animatable(1f) }
+    LaunchedEffect(reveal, isThisSelected, isThisCorrectAnswer, motionAllowed) {
+        if (!reveal || !isThisSelected) {
+            feedback.snapTo(1f)
+            return@LaunchedEffect
+        }
+        if (!motionAllowed) {
+            feedback.snapTo(1f)
+            return@LaunchedEffect
+        }
+        feedback.snapTo(0f)
+        feedback.animateTo(
+            1f,
+            animationSpec = tween(AnswerFeedbackDurationMs, easing = FastOutSlowInEasing),
+        )
+    }
+
+    val density = LocalDensity.current
+    val progress = feedback.value
+    val correctSelected = reveal && isThisSelected && isThisCorrectAnswer
+    val wrongSelected = reveal && isThisSelected && !isThisCorrectAnswer
+    val shakePx = with(density) { 8.dp.toPx() } *
+        if (wrongSelected) wrongAnswerShakeOffset(progress) else 0f
+    val pulseScale = if (correctSelected) correctAnswerPulseScale(progress) else 1f
+    val halo = if (correctSelected) {
+        sin(progress.coerceIn(0f, 1f) * PI.toFloat()).coerceAtLeast(0f)
+    } else {
+        0f
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp)
+            .alpha(hintAlpha)
+            .graphicsLayer {
+                translationX = shakePx
+                scaleX = pulseScale
+                scaleY = pulseScale
+            },
+    ) {
+        if (correctSelected) {
+            Canvas(
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer {
+                        alpha = halo * 0.34f
+                        val expansion = 1f + halo * 0.055f
+                        scaleX = expansion
+                        scaleY = expansion
+                    }
+            ) {
+                drawRoundRect(
+                    color = NazoSuccess,
+                    cornerRadius = CornerRadius(size.height / 2f, size.height / 2f),
+                )
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(50))
+                .background(backgroundColor)
+                .border(
+                    if (reveal && isThisSelected) 1.5.dp else 1.dp,
+                    borderColor,
+                    RoundedCornerShape(50),
+                )
+                .clickable(enabled = !reveal && !isHiddenByHint, onClick = onClick)
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OptionCircle(
+                reveal = reveal,
+                isThisCorrectAnswer = isThisCorrectAnswer,
+                isThisSelected = isThisSelected,
+                label = label,
+            )
+            Spacer(Modifier.width(16.dp))
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (reveal && (isThisCorrectAnswer || isThisSelected)) {
+                    borderColor
+                } else {
+                    NazoTextPrimary
+                },
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
