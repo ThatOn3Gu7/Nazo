@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import quiz.thaton3app.nazo.daily.DailyBonusChip
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
+import quiz.thaton3app.nazo.progression.ProgressionReward
 import quiz.thaton3app.nazo.records.NewRecordBadge
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
@@ -41,6 +42,7 @@ import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoButtonShape
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
+import quiz.thaton3app.nazo.ui.components.ProgressionRewardBanner
 import quiz.thaton3app.nazo.ui.components.ShareResultCard
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
@@ -54,6 +56,7 @@ fun QuizCompleteScreen(
     bestPercent: Int = -1,
     isNewRecord: Boolean = false,
     dailyBonusXp: Int = 0,
+    progressionReward: ProgressionReward? = null,
     // "Survival" | "Blitz" | null (normal quiz). Adjusts the heading and the
     // personal-best caption: those modes track a COUNT (longest run / most
     // correct in 60s) in bestPercent's slot, not a percentage.
@@ -228,6 +231,14 @@ fun QuizCompleteScreen(
                             animateEntrance = runEntranceSequence,
                         )
                     }
+                }
+
+                progressionReward?.let { reward ->
+                    Spacer(Modifier.height(12.dp))
+                    ProgressionRewardBanner(
+                        reward = reward,
+                        animateEntrance = runEntranceSequence,
+                    )
                 }
 
                     },

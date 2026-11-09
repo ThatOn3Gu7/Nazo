@@ -90,6 +90,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import quiz.thaton3app.nazo.R
 import quiz.thaton3app.nazo.data.QuizStats
+import quiz.thaton3app.nazo.progression.PlayerProgress
+import quiz.thaton3app.nazo.progression.PlayerProgression
 import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
@@ -369,6 +371,9 @@ fun ProfileScreen(
      */
     coverVideoPlaybackAllowed: Boolean = screenActive,
     quizStats: QuizStats = QuizStats(),
+    progression: PlayerProgress = PlayerProgression.from(quizStats),
+    achievementsUnlocked: Int = 0,
+    achievementCount: Int = 0,
     /** When true, never hit the network: use the local generator directly. */
     offline: Boolean = false,
     onBack: () -> Unit = {},
@@ -692,10 +697,14 @@ fun ProfileScreen(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.Top
                 ) {
-                    if (quizStats.totalQuizzes > 0) {
-                        ProfileStatsCard(stats = quizStats)
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
+                    ProfileProgressCard(
+                        stats = quizStats,
+                        progression = progression,
+                        achievementsUnlocked = achievementsUnlocked,
+                        achievementCount = achievementCount,
+                        onClick = onNavigateToStatistics,
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -819,10 +828,14 @@ fun ProfileScreen(
 
                     Spacer(modifier = Modifier.height(32.dp))
 
-                    if (quizStats.totalQuizzes > 0) {
-                        ProfileStatsCard(stats = quizStats)
-                        Spacer(modifier = Modifier.height(24.dp))
-                    }
+                    ProfileProgressCard(
+                        stats = quizStats,
+                        progression = progression,
+                        achievementsUnlocked = achievementsUnlocked,
+                        achievementCount = achievementCount,
+                        onClick = onNavigateToStatistics,
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
 
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -2003,44 +2016,142 @@ private fun ProfileStatCell(
 }
 
 @Composable
-private fun ProfileStatsCard(stats: QuizStats) {
+private fun ProfileProgressCard(
+    stats: QuizStats,
+    progression: PlayerProgress,
+    achievementsUnlocked: Int,
+    achievementCount: Int,
+    onClick: () -> Unit,
+) {
+    val accuracy = if (stats.totalQuestionsAnswered > 0) {
+        stats.totalCorrect * 100 / stats.totalQuestionsAnswered
+    } else {
+        0
+    }
+
     Card(
+        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
             .border(1.dp, NazoPrimary.copy(alpha = 0.30f), RoundedCornerShape(24.dp)),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
-            containerColor = NazoSurfaceVariant.copy(alpha = 0.45f)
-        )
+            containerColor = NazoSurfaceVariant.copy(alpha = 0.45f),
+        ),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(NazoPrimary.copy(alpha = 0.14f))
+                        .border(1.dp, NazoPrimary.copy(alpha = 0.28f), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "LV",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NazoTextSecondary,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            progression.level.toString(),
+                            style = MaterialTheme.typography.titleLarge,
+                            color = NazoPrimary,
+                            fontWeight = FontWeight.ExtraBold,
+                        )
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Level ${progression.level} Otaku",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = NazoTextPrimary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "${progression.totalXp} lifetime XP · $achievementsUnlocked/$achievementCount badges",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NazoTextSecondary,
+                    )
+                }
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = "View progression and insights",
+                    tint = NazoPrimary,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(9.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(NazoPrimary.copy(alpha = 0.10f)),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progression.progressFraction.coerceAtLeast(0.001f))
+                        .height(9.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(NazoPrimary.copy(alpha = 0.72f), NazoPrimary),
+                            ),
+                        ),
+                )
+            }
+            Spacer(Modifier.height(7.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    "${progression.currentLevelXp} / ${progression.xpPerLevel} XP",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = NazoTextSecondary,
+                )
+                Text(
+                    "${progression.xpToNextLevel} XP to Level ${progression.level + 1}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = NazoPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 16.dp),
+                color = NazoTextSecondary.copy(alpha = 0.10f),
+            )
             Row(modifier = Modifier.fillMaxWidth()) {
                 ProfileStatCell(
                     icon = Icons.Filled.Quiz,
                     value = stats.totalQuizzes.toString(),
-                    label = "Quizzes",
-                    modifier = Modifier.weight(1f)
+                    label = "Games",
+                    modifier = Modifier.weight(1f),
                 )
                 ProfileStatCell(
-                    icon = Icons.Filled.QuestionAnswer,
-                    value = stats.totalQuestionsAnswered.toString(),
-                    label = "Answered",
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(modifier = Modifier.fillMaxWidth()) {
-                ProfileStatCell(
-                    icon = Icons.Filled.CheckCircle,
-                    value = stats.totalCorrect.toString(),
-                    label = "Correct",
-                    modifier = Modifier.weight(1f)
+                    icon = Icons.Filled.TrackChanges,
+                    value = "$accuracy%",
+                    label = "Accuracy",
+                    modifier = Modifier.weight(1f),
                 )
                 ProfileStatCell(
                     icon = Icons.Filled.LocalFireDepartment,
                     value = stats.currentStreakDays.toString(),
                     label = "Streak",
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                )
+                ProfileStatCell(
+                    icon = Icons.Filled.EmojiEvents,
+                    value = achievementsUnlocked.toString(),
+                    label = "Badges",
+                    modifier = Modifier.weight(1f),
                 )
             }
         }

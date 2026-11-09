@@ -64,10 +64,13 @@ import quiz.thaton3app.nazo.IntroStyle
 import quiz.thaton3app.nazo.LauncherIconSwitcher
 import quiz.thaton3app.nazo.R
 import quiz.thaton3app.nazo.achievements.AchievementEngine
+import quiz.thaton3app.nazo.progression.PlayerProgression
+import quiz.thaton3app.nazo.progression.ProgressionReward
 import quiz.thaton3app.nazo.daily.DailyChallenge
 import quiz.thaton3app.nazo.daily.DailyStore
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.data.Question
+import quiz.thaton3app.nazo.data.QuizStats
 import quiz.thaton3app.nazo.data.backup.BackupScheduler
 import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.data.remote.Connectivity
@@ -912,6 +915,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // Lives above AnimatedContent so reconstructing Results as Review's back
     // target cannot replay completion sounds, confetti, haptics, or entrances.
     val quizCompleteEntranceGate = remember { QuizCompleteEntranceGate() }
+    // Transient summary for the game that just ended. It is derived from the
+    // same stores as Statistics/Profile and deliberately never persisted.
+    var lastProgressionReward by remember { mutableStateOf<ProgressionReward?>(null) }
 
     // ---- Question-based game modes (share the quiz screen/flow) ----
     // "normal" (incl. daily & practice) | "survival" | "blitz" | "versus".
@@ -1022,6 +1028,27 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     suspend fun awaitMinimumPreparing() {
         val elapsed = SystemClock.elapsedRealtime() - guessPreparingAt
         if (elapsed < MIN_LOADING_MS) delay(MIN_LOADING_MS - elapsed)
+    }
+
+    fun achievementsFor(stats: QuizStats) = AchievementEngine.compute(
+        stats = stats,
+        hasPerfectQuiz = listOf("Easy", "Medium", "Hard", "Otaku Master", "Daily")
+            .any { recordsStore.quizBestPercent(it) >= 100 },
+        dailiesCompleted = dailyStore.completedCount(),
+    )
+
+    fun captureProgressionReward(
+        beforeStats: QuizStats,
+        afterStats: QuizStats,
+        beforeBonusXp: Int,
+        beforeAchievements: List<quiz.thaton3app.nazo.achievements.Achievement>,
+    ) {
+        lastProgressionReward = PlayerProgression.rewardBetween(
+            before = PlayerProgression.from(beforeStats, beforeBonusXp),
+            after = PlayerProgression.from(afterStats, dailyStore.totalBonusXp()),
+            beforeAchievements = beforeAchievements,
+            afterAchievements = achievementsFor(afterStats),
+        )
     }
 
     fun runLocal(topic: String, difficulty: String, count: Int) {
@@ -1270,6 +1297,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         val answered = questions.take(userAnswers.size)
         val finishedAnswers = userAnswers
         val finishedDifficulty = quizDifficulty
+        val beforeStats = quizStats
+        val beforeBonusXp = dailyStore.totalBonusXp()
+        val beforeAchievements = achievementsFor(beforeStats)
+        val afterStats = beforeStats.record(finishedDifficulty, answered, finishedAnswers)
         // The quiz screen may still render one exit-transition frame — keep the
         // index inside the truncated list.
         currentQuestionIndex = (userAnswers.size - 1).coerceAtLeast(0)
@@ -1281,6 +1312,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         }
         quizPrevBest = recordsStore.survivalBest()
         quizNewRecord = recordsStore.submitSurvival(score)
+        lastDailyBonus = 0
+        captureProgressionReward(beforeStats, afterStats, beforeBonusXp, beforeAchievements)
         quizCompleteEntranceGate.armForCompletedQuiz()
         replace(Screen.Results)
     }
@@ -1321,6 +1354,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         quizMode = "blitz-done"
         val answered = questions.take(userAnswers.size)
         val finishedAnswers = userAnswers
+        val beforeStats = quizStats
+        val beforeBonusXp = dailyStore.totalBonusXp()
+        val beforeAchievements = achievementsFor(beforeStats)
+        val afterStats = beforeStats.record("Blitz", answered, finishedAnswers)
         // Time-up can land mid-question: clamp the index and never leave the
         // list empty, since the quiz screen may render one more exit frame.
         currentQuestionIndex = (userAnswers.size - 1).coerceAtLeast(0)
@@ -1332,6 +1369,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         }
         quizPrevBest = recordsStore.blitzBest()
         quizNewRecord = recordsStore.submitBlitz(score)
+        lastDailyBonus = 0
+        captureProgressionReward(beforeStats, afterStats, beforeBonusXp, beforeAchievements)
         quizCompleteEntranceGate.armForCompletedQuiz()
         replace(Screen.Results)
     }
@@ -1494,6 +1533,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             val finishedQuestions = questions
             val finishedAnswers = userAnswers
             val finishedDifficulty = quizDifficulty
+            val beforeStats = quizStats
+            val beforeBonusXp = dailyStore.totalBonusXp()
+            val beforeAchievements = achievementsFor(beforeStats)
+            val afterStats = beforeStats.record(
+                finishedDifficulty,
+                finishedQuestions,
+                finishedAnswers,
+            )
             scope.launch {
                 statsStore.record(finishedDifficulty, finishedQuestions, finishedAnswers)
                 quizStats = statsStore.get()
@@ -1509,6 +1556,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             } else {
                 0
             }
+            captureProgressionReward(beforeStats, afterStats, beforeBonusXp, beforeAchievements)
             // REPLACE the quiz screen (don't push on top of it): the finished
             // quiz must not stay on the back-stack, otherwise the system back
             // gesture from the results screen returns to the last question.
@@ -1771,6 +1819,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             val finishedTopic = guessTopic
             val finishedAnswered = guessResults.size
             val finishedCorrect = guessResults.count { it.correct }
+            val beforeStats = quizStats
+            val beforeBonusXp = dailyStore.totalBonusXp()
+            val beforeAchievements = achievementsFor(beforeStats)
+            val afterStats = beforeStats.recordGuessing(
+                finishedDifficulty,
+                finishedTopic,
+                finishedAnswered,
+                finishedCorrect,
+            )
             scope.launch {
                 statsStore.recordGuessing(finishedDifficulty, finishedTopic, finishedAnswered, finishedCorrect)
                 quizStats = statsStore.get()
@@ -1780,6 +1837,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // Personal best check (previous best captured first for the caption).
             guessPrevBest = recordsStore.guessBestPoints(finishedDifficulty, guessTotalRounds)
             guessNewRecord = recordsStore.submitGuess(finishedDifficulty, guessTotalRounds, guessScore)
+            captureProgressionReward(beforeStats, afterStats, beforeBonusXp, beforeAchievements)
             guessPhase = GuessPhase.Idle
             replace(Screen.GuessingResults)
         } else {
@@ -1941,48 +1999,61 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     },
                 )
 
-                    Screen.Profile -> ProfileScreen(
-                        username = profileName,
-                        profilePictureUri = profilePictureUri,
-                        coverPictureUri = coverPictureUri,
-                        coverPresetId = coverPresetId,
-                        automaticCoverEnabled = automaticCoverEnabled,
-                        automaticCoverState = automaticCoverState,
-                        screenActive = profilePolicy.activeVisualWork,
-                        coverVideoSurfaceAllowed = profilePolicy.liveCoverSurfaceAllowed,
-                        coverVideoPlaybackAllowed = profilePolicy.coverVideoPlaybackAllowed,
-                        quizStats = quizStats,
-                        offline = offlineMode,
-                        onBack = { goBack() },
-                        onUsernameChange = { name ->
-                            profileName = name
-                            profilePrefs.username = name
-                        },
-                        onProfilePictureChange = { uri ->
-                            profilePictureUri = uri
-                            profilePrefs.profilePictureUri = uri
-                        },
-                        onCoverPictureChange = { uri ->
-                            coverPictureUri = uri
-                            profilePrefs.coverPictureUri = uri
-                        },
-                        onCoverPresetChange = { id ->
-                            coverPresetId = id
-                            profilePrefs.coverPresetId = id
-                        },
-                        onAutomaticCoverChange = { enabled ->
-                            automaticCoverEnabled = enabled
-                            profilePrefs.automaticCoverEnabled = enabled
-                        },
-                        onPrepareAutomaticCover = {
-                            automaticCoverPreviewActive = true
-                        },
-                        onStopPreparingAutomaticCover = {
-                            automaticCoverPreviewActive = false
-                        },
-                        onNavigateToStatistics = { navigate(Screen.Statistics) },
-                        onNavigateToSettings = { navigate(Screen.Settings) },
-                    )
+                    Screen.Profile -> {
+                        val dailiesCompleted = dailyStore.completedCount()
+                        val bonusXp = dailyStore.totalBonusXp()
+                        val achievements = remember(quizStats, dailiesCompleted) {
+                            achievementsFor(quizStats)
+                        }
+                        val progression = remember(quizStats, bonusXp) {
+                            PlayerProgression.from(quizStats, bonusXp)
+                        }
+                        ProfileScreen(
+                            username = profileName,
+                            profilePictureUri = profilePictureUri,
+                            coverPictureUri = coverPictureUri,
+                            coverPresetId = coverPresetId,
+                            automaticCoverEnabled = automaticCoverEnabled,
+                            automaticCoverState = automaticCoverState,
+                            screenActive = profilePolicy.activeVisualWork,
+                            coverVideoSurfaceAllowed = profilePolicy.liveCoverSurfaceAllowed,
+                            coverVideoPlaybackAllowed = profilePolicy.coverVideoPlaybackAllowed,
+                            quizStats = quizStats,
+                            progression = progression,
+                            achievementsUnlocked = achievements.count { it.unlocked },
+                            achievementCount = achievements.size,
+                            offline = offlineMode,
+                            onBack = { goBack() },
+                            onUsernameChange = { name ->
+                                profileName = name
+                                profilePrefs.username = name
+                            },
+                            onProfilePictureChange = { uri ->
+                                profilePictureUri = uri
+                                profilePrefs.profilePictureUri = uri
+                            },
+                            onCoverPictureChange = { uri ->
+                                coverPictureUri = uri
+                                profilePrefs.coverPictureUri = uri
+                            },
+                            onCoverPresetChange = { id ->
+                                coverPresetId = id
+                                profilePrefs.coverPresetId = id
+                            },
+                            onAutomaticCoverChange = { enabled ->
+                                automaticCoverEnabled = enabled
+                                profilePrefs.automaticCoverEnabled = enabled
+                            },
+                            onPrepareAutomaticCover = {
+                                automaticCoverPreviewActive = true
+                            },
+                            onStopPreparingAutomaticCover = {
+                                automaticCoverPreviewActive = false
+                            },
+                            onNavigateToStatistics = { navigate(Screen.Statistics) },
+                            onNavigateToSettings = { navigate(Screen.Settings) },
+                        )
+                    }
 
                     Screen.AiProvider -> AiProviderScreen(
                         apiKeyStore = apiKeyStore,
@@ -2000,16 +2071,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         val dailiesCompleted = dailyStore.completedCount()
                         val bonusXp = dailyStore.totalBonusXp()
                         val achievements = remember(quizStats, dailiesCompleted) {
-                            AchievementEngine.compute(
-                                stats = quizStats,
-                                hasPerfectQuiz = listOf("Easy", "Medium", "Hard", "Otaku Master", "Daily")
-                                    .any { recordsStore.quizBestPercent(it) >= 100 },
-                                dailiesCompleted = dailiesCompleted,
-                            )
+                            achievementsFor(quizStats)
+                        }
+                        val progression = remember(quizStats, bonusXp) {
+                            PlayerProgression.from(quizStats, bonusXp)
                         }
                         StatisticsScreen(
                             stats = quizStats,
                             bonusXp = bonusXp,
+                            progression = progression,
                             achievements = achievements,
                             onBackClick = { goBack() },
                             onHomeClick = { goHome() },
@@ -2165,6 +2235,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         bestPercent = quizPrevBest,
                         isNewRecord = quizNewRecord,
                         dailyBonusXp = lastDailyBonus,
+                        progressionReward = lastProgressionReward,
                         modeLabel = when (quizMode) {
                             "survival", "survival-done" -> "Survival"
                             "blitz", "blitz-done" -> "Blitz"
@@ -2280,6 +2351,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         difficulty = guessDifficulty,
                         bestPoints = guessPrevBest,
                         isNewRecord = guessNewRecord,
+                        progressionReward = lastProgressionReward,
                         onPlayAgain = {
                             goBack()
                             startGuessing(guessTopic, guessDifficulty, guessTotalRounds)
