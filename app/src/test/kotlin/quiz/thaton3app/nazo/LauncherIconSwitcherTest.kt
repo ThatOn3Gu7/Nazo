@@ -1,7 +1,11 @@
 package quiz.thaton3app.nazo
 
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
-import javax.imageio.ImageIO
+import java.nio.ByteBuffer
+import java.nio.charset.StandardCharsets
+import java.util.zip.InflaterInputStream
 import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
@@ -10,6 +14,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LauncherIconSwitcherTest {
+
+    private val PNG_SIGNATURE = byteArrayOf(
+        0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+    )
 
     private data class AlphaBounds(
         val left: Int,
@@ -31,24 +39,107 @@ class LauncherIconSwitcherTest {
         ?: error("Missing app/src/main/$relativePath")
 
     private fun alphaBounds(relativePath: String): AlphaBounds {
-        val image = requireNotNull(ImageIO.read(mainFile(relativePath)))
-        var left = image.width
-        var top = image.height
+        // Android unit-test compilation does not expose java.desktop/ImageIO.
+        // Decode the tiny subset these source assets deliberately use instead:
+        // non-interlaced, 8-bit RGBA PNG with standard scanline filters.
+        val png = mainFile(relativePath).readBytes()
+        check(png.size >= 8 && png.copyOfRange(0, 8).contentEquals(PNG_SIGNATURE)) {
+            "$relativePath is not a PNG"
+        }
+        var offset = 8
+        var width = 0
+        var height = 0
+        val compressed = ByteArrayOutputStream()
+        while (offset + 12 <= png.size) {
+            val length = ByteBuffer.wrap(png, offset, 4).int
+            val type = String(png, offset + 4, 4, StandardCharsets.US_ASCII)
+            val dataStart = offset + 8
+            val dataEnd = dataStart + length
+            check(dataEnd + 4 <= png.size) { "$relativePath has a truncated $type chunk" }
+            when (type) {
+                "IHDR" -> {
+                    width = ByteBuffer.wrap(png, dataStart, 4).int
+                    height = ByteBuffer.wrap(png, dataStart + 4, 4).int
+                    check((png[dataStart + 8].toInt() and 0xFF) == 8) {
+                        "$relativePath must remain 8-bit"
+                    }
+                    check((png[dataStart + 9].toInt() and 0xFF) == 6) {
+                        "$relativePath must remain RGBA"
+                    }
+                    check((png[dataStart + 12].toInt() and 0xFF) == 0) {
+                        "$relativePath must remain non-interlaced"
+                    }
+                }
+                "IDAT" -> compressed.write(png, dataStart, length)
+                "IEND" -> break
+            }
+            offset = dataEnd + 4 // skip CRC
+        }
+        check(width > 0 && height > 0) { "$relativePath has no valid IHDR" }
+
+        val raw = InflaterInputStream(
+            ByteArrayInputStream(compressed.toByteArray())
+        ).use { it.readBytes() }
+        val bytesPerPixel = 4
+        val stride = width * bytesPerPixel
+        check(raw.size == height * (stride + 1)) { "$relativePath has unexpected scanline data" }
+
+        var left = width
+        var top = height
         var right = -1
         var bottom = -1
-        for (y in 0 until image.height) {
-            for (x in 0 until image.width) {
-                val alpha = image.getRGB(x, y).ushr(24) and 0xFF
-                if (alpha != 0) {
+        var rawOffset = 0
+        var previous = ByteArray(stride)
+        repeat(height) { y ->
+            val filter = raw[rawOffset++].toInt() and 0xFF
+            val row = ByteArray(stride)
+            for (index in 0 until stride) {
+                val source = raw[rawOffset++].toInt() and 0xFF
+                val before = if (index >= bytesPerPixel) {
+                    row[index - bytesPerPixel].toInt() and 0xFF
+                } else {
+                    0
+                }
+                val above = previous[index].toInt() and 0xFF
+                val aboveBefore = if (index >= bytesPerPixel) {
+                    previous[index - bytesPerPixel].toInt() and 0xFF
+                } else {
+                    0
+                }
+                val prediction = when (filter) {
+                    0 -> 0
+                    1 -> before
+                    2 -> above
+                    3 -> (before + above) / 2
+                    4 -> paeth(before, above, aboveBefore)
+                    else -> error("$relativePath uses unknown PNG filter $filter")
+                }
+                row[index] = ((source + prediction) and 0xFF).toByte()
+            }
+            for (x in 0 until width) {
+                if ((row[x * bytesPerPixel + 3].toInt() and 0xFF) != 0) {
                     left = minOf(left, x)
                     top = minOf(top, y)
                     right = maxOf(right, x)
                     bottom = maxOf(bottom, y)
                 }
             }
+            previous = row
         }
         check(right >= left && bottom >= top) { "$relativePath has no visible pixels" }
         return AlphaBounds(left, top, right + 1, bottom + 1)
+    }
+
+    private fun paeth(left: Int, above: Int, aboveLeft: Int): Int {
+        val estimate = left + above - aboveLeft
+        val leftDistance = abs(estimate - left)
+        val aboveDistance = abs(estimate - above)
+        val aboveLeftDistance = abs(estimate - aboveLeft)
+        return when {
+            leftDistance <= aboveDistance && leftDistance <= aboveLeftDistance -> left
+            aboveDistance <= aboveLeftDistance -> above
+            else -> aboveLeft
+        }
     }
 
     @Test
