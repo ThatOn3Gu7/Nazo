@@ -18,6 +18,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -56,6 +57,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -1027,10 +1029,23 @@ private fun LayoutToggleRow(
         Haptics.soft(context)
         onCheckedChange(value)
     }
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 0.dp,
+        pressedCorner = 12.dp,
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { trigger(!isChecked) }
+            .clip(shape)
+            .toggleable(
+                value = isChecked,
+                role = Role.Switch,
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onValueChange = trigger,
+            )
             .padding(horizontal = 20.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1052,9 +1067,11 @@ private fun LayoutToggleRow(
         // Default theme-accent switch — the same toggle the Settings rows use.
         // (The old dark-card track was 1.41:1 against its unchecked state in
         // the dark theme: on and off looked identical.)
+        // The row owns the switch role and interaction so the nested visual
+        // switch cannot toggle twice or compete for press feedback.
         Switch(
             checked = isChecked,
-            onCheckedChange = trigger,
+            onCheckedChange = null,
         )
     }
 }
