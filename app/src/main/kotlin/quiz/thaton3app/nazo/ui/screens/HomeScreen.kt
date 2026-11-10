@@ -37,6 +37,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -54,7 +56,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -68,7 +69,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -120,6 +123,24 @@ internal fun homeCountControls(mode: NazoMode): HomeCountControls = when (mode) 
 
 internal fun homePracticeVisible(mode: NazoMode, practiceCount: Int): Boolean =
     mode == NazoMode.QUIZ && practiceCount > 0
+
+internal fun challengeSummary(
+    mode: NazoMode,
+    difficulty: Difficulty,
+    questionCount: Int,
+    guessingRounds: Int,
+): String {
+    val formatCount: (Int, String) -> String = { count, noun ->
+        "$count $noun${if (count == 1) "" else "s"}"
+    }
+    val detail = when (mode) {
+        NazoMode.QUIZ, NazoMode.VERSUS -> formatCount(questionCount, "question")
+        NazoMode.GUESSING -> formatCount(guessingRounds, "round")
+        NazoMode.SURVIVAL -> "endless run"
+        NazoMode.BLITZ -> "60-second run"
+    }
+    return "${difficulty.label} • $detail"
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -279,105 +300,25 @@ fun HomeScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        SectionLabel("DIFFICULTY")
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            listOf(Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD).forEach { level ->
-                PillButton(
-                    text = level.label,
-                    selected = difficulty == level,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        if (difficulty != level) Haptics.light(context)
-                        onDifficultyChange(level.name)
-                    },
-                )
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        PillButton(
-            text = Difficulty.OTAKU_MASTER.label,
-            selected = difficulty == Difficulty.OTAKU_MASTER,
-            icon = Icons.Filled.WorkspacePremium,
-            onClick = {
-                if (difficulty != Difficulty.OTAKU_MASTER) Haptics.light(context)
-                onDifficultyChange(Difficulty.OTAKU_MASTER.name)
+        ChallengeSetupCard(
+            mode = nazoMode,
+            difficulty = difficulty,
+            questionCount = questionCount,
+            guessingRounds = guessingRounds,
+            reduceMotion = reduceMotion,
+            onDifficultySelected = { level ->
+                if (difficulty != level) Haptics.light(context)
+                onDifficultyChange(level.name)
+            },
+            onQuestionCountSelected = { count ->
+                if (questionCount != count) Haptics.light(context)
+                onQuestionCountChange(count)
+            },
+            onGuessingRoundsSelected = { count ->
+                if (guessingRounds != count) Haptics.light(context)
+                onGuessingRoundsChange(count)
             },
         )
-
-        Spacer(Modifier.height(16.dp))
-
-        // Mode-dependent controls used to be removed in one composition, which
-        // made the Generate button jump when Questions/Practice disappeared.
-        // Animate both the content and the container height so every sibling
-        // follows the change instead of teleporting to its new position.
-        AnimatedContent(
-            targetState = homeCountControls(nazoMode),
-            modifier = Modifier.fillMaxWidth(),
-            transitionSpec = {
-                val transform = if (reduceMotion) {
-                    fadeIn(tween(90)) togetherWith fadeOut(tween(70))
-                } else {
-                    (fadeIn(tween(180, easing = FastOutSlowInEasing)) +
-                        slideInVertically(tween(220, easing = FastOutSlowInEasing)) { it / 10 })
-                        .togetherWith(
-                            fadeOut(tween(140, easing = FastOutSlowInEasing)) +
-                                slideOutVertically(
-                                    tween(180, easing = FastOutSlowInEasing),
-                                ) { -it / 10 },
-                        )
-                }
-                transform.using(
-                    SizeTransform(clip = false) { _, _ ->
-                        if (reduceMotion) snap() else tween(
-                            durationMillis = 240,
-                            easing = FastOutSlowInEasing,
-                        )
-                    },
-                )
-            },
-            label = "homeModeCountControls",
-        ) { controls ->
-            when (controls) {
-                HomeCountControls.Rounds -> Column(Modifier.fillMaxWidth()) {
-                    SectionLabel("ROUNDS")
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        listOf(1, 3, 5).forEach { count ->
-                            PillButton(
-                                text = if (count == 1) "1 Round" else "$count Rounds",
-                                selected = guessingRounds == count,
-                                modifier = Modifier.weight(1f),
-                                onClick = {
-                                    if (guessingRounds != count) Haptics.light(context)
-                                    onGuessingRoundsChange(count)
-                                },
-                            )
-                        }
-                    }
-                }
-
-                HomeCountControls.Questions -> Column(Modifier.fillMaxWidth()) {
-                    SectionLabel("QUESTIONS")
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        listOf(5, 10, 15).forEach { count ->
-                            PillButton(
-                                text = "$count Questions",
-                                selected = questionCount == count,
-                                modifier = Modifier.weight(1f),
-                                onClick = {
-                                    if (questionCount != count) Haptics.light(context)
-                                    onQuestionCountChange(count)
-                                },
-                            )
-                        }
-                    }
-                }
-
-                HomeCountControls.None -> Spacer(Modifier.fillMaxWidth())
-            }
-        }
 
         AnimatedVisibility(
             visible = homePracticeVisible(nazoMode, practiceCount),
@@ -1658,70 +1599,364 @@ private fun TopicInputCard(topic: String, onTopicChange: (String) -> Unit) {
 }
 
 @Composable
-private fun PillButton(
-    text: String,
+private fun ChallengeSetupCard(
+    mode: NazoMode,
+    difficulty: Difficulty,
+    questionCount: Int,
+    guessingRounds: Int,
+    reduceMotion: Boolean,
+    onDifficultySelected: (Difficulty) -> Unit,
+    onQuestionCountSelected: (Int) -> Unit,
+    onGuessingRoundsSelected: (Int) -> Unit,
+) {
+    val cardShape = RoundedCornerShape(22.dp)
+    val summary = challengeSummary(mode, difficulty, questionCount, guessingRounds)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(NazoSurface, cardShape)
+            .border(1.dp, NazoPrimary.copy(alpha = 0.20f), cardShape)
+            .padding(14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(NazoPrimary.copy(alpha = 0.13f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Tune,
+                    contentDescription = null,
+                    tint = NazoPrimary,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "CHALLENGE SETUP",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoPrimary,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.2.sp,
+                )
+                Spacer(Modifier.height(2.dp))
+                AnimatedContent(
+                    targetState = summary,
+                    transitionSpec = {
+                        if (reduceMotion) {
+                            fadeIn(tween(90)) togetherWith fadeOut(tween(70))
+                        } else {
+                            (fadeIn(tween(160, easing = FastOutSlowInEasing)) +
+                                slideInVertically(
+                                    tween(180, easing = FastOutSlowInEasing),
+                                ) { it / 3 })
+                                .togetherWith(
+                                    fadeOut(tween(120, easing = FastOutSlowInEasing)) +
+                                        slideOutVertically(
+                                            tween(150, easing = FastOutSlowInEasing),
+                                        ) { -it / 3 },
+                                )
+                        }
+                    },
+                    label = "challengeSummary",
+                ) { value ->
+                    Text(
+                        text = value,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = NazoTextSecondary,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+        ChallengeGroupLabel(
+            title = "DIFFICULTY",
+            supporting = "Choose your pace",
+        )
+        Spacer(Modifier.height(8.dp))
+        ChallengeDifficultyRail(
+            selected = difficulty,
+            onSelected = onDifficultySelected,
+        )
+
+        // Count controls are part of this one setup surface rather than a
+        // disconnected pill row. Its animated height keeps the card and every
+        // sibling below it moving as one unit when a mode has no count choice.
+        AnimatedContent(
+            targetState = homeCountControls(mode),
+            modifier = Modifier.fillMaxWidth(),
+            transitionSpec = {
+                val transform = if (reduceMotion) {
+                    fadeIn(tween(90)) togetherWith fadeOut(tween(70))
+                } else {
+                    (fadeIn(tween(180, easing = FastOutSlowInEasing)) +
+                        slideInVertically(tween(220, easing = FastOutSlowInEasing)) { it / 10 })
+                        .togetherWith(
+                            fadeOut(tween(140, easing = FastOutSlowInEasing)) +
+                                slideOutVertically(
+                                    tween(180, easing = FastOutSlowInEasing),
+                                ) { -it / 10 },
+                        )
+                }
+                transform.using(
+                    SizeTransform(clip = false) { _, _ ->
+                        if (reduceMotion) snap() else tween(
+                            durationMillis = 240,
+                            easing = FastOutSlowInEasing,
+                        )
+                    },
+                )
+            },
+            label = "challengeCountControls",
+        ) { controls ->
+            when (controls) {
+                HomeCountControls.Questions -> ChallengeCountGroup(
+                    title = "QUESTIONS",
+                    supporting = "Pick a run length",
+                    values = listOf(5, 10, 15),
+                    selected = questionCount,
+                    captions = listOf("Quick", "Standard", "Long"),
+                    onSelected = onQuestionCountSelected,
+                )
+
+                HomeCountControls.Rounds -> ChallengeCountGroup(
+                    title = "ROUNDS",
+                    supporting = "Choose your session",
+                    values = listOf(1, 3, 5),
+                    selected = guessingRounds,
+                    captions = listOf("Quick", "Standard", "Marathon"),
+                    onSelected = onGuessingRoundsSelected,
+                )
+
+                HomeCountControls.None -> Spacer(Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChallengeGroupLabel(title: String, supporting: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelSmall,
+            color = NazoTextPrimary,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+        )
+        Spacer(Modifier.weight(1f))
+        Text(
+            text = supporting,
+            style = MaterialTheme.typography.labelSmall,
+            color = NazoTextSecondary,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+@Composable
+private fun ChallengeDifficultyRail(
+    selected: Difficulty,
+    onSelected: (Difficulty) -> Unit,
+) {
+    val railShape = RoundedCornerShape(18.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(railShape)
+            .background(NazoPillUnselected.copy(alpha = 0.58f), railShape)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.10f), railShape)
+            .padding(4.dp)
+            .selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Difficulty.entries.forEach { level ->
+            ChallengeDifficultyOption(
+                difficulty = level,
+                selected = selected == level,
+                modifier = Modifier.weight(1f),
+                onClick = { onSelected(level) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChallengeDifficultyOption(
+    difficulty: Difficulty,
     selected: Boolean,
     modifier: Modifier = Modifier,
-    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     onClick: () -> Unit,
 ) {
-    val reduceMotion = rememberSystemReduceMotion()
-    val scale by animateFloatAsState(
-        targetValue = if (selected && !reduceMotion) 1.02f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label = "pillScale"
-    )
-    val pillBg by animateColorAsState(
-        targetValue = if (selected) NazoPrimary else NazoPillUnselected,
-        animationSpec = tween(durationMillis = 180),
-        label = "pillBg",
-    )
-    val pillFg by animateColorAsState(
-        targetValue = if (selected) NazoOnPrimary else NazoTextPrimary,
-        animationSpec = tween(durationMillis = 180),
-        label = "pillFg",
-    )
     val interactionSource = remember { MutableInteractionSource() }
-    val shape = rememberNazoPillCornerMorphShape(interactionSource)
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 14.dp,
+        pressedCorner = 7.dp,
+    )
+    val container by animateColorAsState(
+        targetValue = if (selected) NazoPrimary else Color.Transparent,
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "challengeDifficultyContainer_${difficulty.name}",
+    )
+    val foreground by animateColorAsState(
+        targetValue = if (selected) NazoOnPrimary else NazoTextPrimary,
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "challengeDifficultyForeground_${difficulty.name}",
+    )
+    val iconTint by animateColorAsState(
+        targetValue = if (selected) NazoOnPrimary else NazoPrimary,
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "challengeDifficultyIcon_${difficulty.name}",
+    )
+    val icon = when (difficulty) {
+        Difficulty.EASY -> Icons.Filled.Lightbulb
+        Difficulty.MEDIUM -> Icons.Filled.TrackChanges
+        Difficulty.HARD -> Icons.Filled.LocalFireDepartment
+        Difficulty.OTAKU_MASTER -> Icons.Filled.WorkspacePremium
+    }
 
-    Box(
+    Column(
         modifier = modifier
-            // Keep the existing selection-state emphasis; this is not tied to
-            // pointer-down and remains distinct from press feedback.
-            .scale(scale)
+            .defaultMinSize(minHeight = 70.dp)
             .clip(shape)
-            .background(pillBg, shape)
-            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), shape)
-            .clickable(
+            .background(container, shape)
+            .selectable(
+                selected = selected,
+                role = Role.RadioButton,
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
                 onClick = onClick,
             )
-            .padding(horizontal = 10.dp, vertical = 12.dp),
-        contentAlignment = Alignment.Center,
+            .padding(horizontal = 3.dp, vertical = 9.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = iconTint,
+            modifier = Modifier.size(19.dp),
+        )
+        Spacer(Modifier.height(5.dp))
+        Text(
+            text = difficulty.label,
+            style = MaterialTheme.typography.labelMedium,
+            color = foreground,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            lineHeight = 13.sp,
+            maxLines = 2,
+        )
+    }
+}
+
+@Composable
+private fun ChallengeCountGroup(
+    title: String,
+    supporting: String,
+    values: List<Int>,
+    selected: Int,
+    captions: List<String>,
+    onSelected: (Int) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Spacer(Modifier.height(16.dp))
+        ChallengeGroupLabel(title = title, supporting = supporting)
+        Spacer(Modifier.height(8.dp))
+        val railShape = RoundedCornerShape(18.dp)
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(railShape)
+                .background(NazoPillUnselected.copy(alpha = 0.58f), railShape)
+                .border(1.dp, NazoTextSecondary.copy(alpha = 0.10f), railShape)
+                .padding(4.dp)
+                .selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            if (icon != null) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = pillFg,
-                    modifier = Modifier.size(18.dp)
+            values.forEachIndexed { index, value ->
+                ChallengeCountOption(
+                    value = value,
+                    caption = captions.getOrElse(index) { "" },
+                    selected = selected == value,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onSelected(value) },
                 )
-                Spacer(Modifier.width(6.dp))
             }
-            Text(
-                text = text,
-                style = MaterialTheme.typography.bodyMedium,
-                color = pillFg,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                maxLines = 1,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            )
         }
+    }
+}
+
+@Composable
+private fun ChallengeCountOption(
+    value: Int,
+    caption: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 14.dp,
+        pressedCorner = 7.dp,
+    )
+    val container by animateColorAsState(
+        targetValue = if (selected) NazoPrimary else Color.Transparent,
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "challengeCountContainer_$value",
+    )
+    val foreground by animateColorAsState(
+        targetValue = if (selected) NazoOnPrimary else NazoTextPrimary,
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "challengeCountForeground_$value",
+    )
+    val secondary by animateColorAsState(
+        targetValue = if (selected) NazoOnPrimary.copy(alpha = 0.76f) else NazoTextSecondary,
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "challengeCountSecondary_$value",
+    )
+
+    Column(
+        modifier = modifier
+            .defaultMinSize(minHeight = 62.dp)
+            .clip(shape)
+            .background(container, shape)
+            .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
+            .padding(horizontal = 6.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = value.toString(),
+            style = MaterialTheme.typography.titleMedium,
+            color = foreground,
+            fontWeight = FontWeight.Black,
+        )
+        Text(
+            text = caption,
+            style = MaterialTheme.typography.labelSmall,
+            color = secondary,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
     }
 }
 
