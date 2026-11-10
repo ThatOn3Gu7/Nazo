@@ -116,4 +116,18 @@ class NazoNavigationTransitionTest {
         gate.armForCompletedQuiz()
         assertTrue(gate.shouldPlayEntrance())
     }
+
+    @Test
+    fun quizElapsedLabelUsesTheFrozenCompletionSnapshot() {
+        val startedAt = 10_000L
+        val finishedAt = 75_999L
+
+        assertEquals("1m 5s", formatQuizElapsed(startedAt, finishedAt))
+        // Predictive-back progress may recompose Results long after this point,
+        // but there is deliberately no current-clock input to advance the label.
+        assertEquals("1m 5s", formatQuizElapsed(startedAt, finishedAt))
+        assertEquals("0m 0s", formatQuizElapsed(0L, finishedAt))
+        assertEquals("0m 0s", formatQuizElapsed(startedAt, 0L))
+        assertEquals("0m 0s", formatQuizElapsed(finishedAt, startedAt))
+    }
 }
