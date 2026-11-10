@@ -83,7 +83,6 @@ import quiz.thaton3app.nazo.ui.components.NazoModalSheet
 import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
 import quiz.thaton3app.nazo.ui.components.NazoSheetHeader
 import quiz.thaton3app.nazo.ui.components.nazoExpressiveCornerPercent
-import quiz.thaton3app.nazo.ui.components.nazoPressFeedback
 import quiz.thaton3app.nazo.ui.components.rememberNazoExpressivePressState
 import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
@@ -526,14 +525,21 @@ fun HomeScreen(
                             val isSel = id == activeProvider
                             val interactionSource = remember(id) { MutableInteractionSource() }
                             val indication = LocalIndication.current
+                            val shape = rememberNazoRoundedCornerMorphShape(
+                                interactionSource = interactionSource,
+                                restingCorner = 14.dp,
+                                pressedCorner = 7.dp,
+                            )
 
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .nazoPressFeedback(interactionSource, pressedScale = 0.99f)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(if (isSel) NazoPrimary.copy(alpha = 0.08f) else Color.Transparent)
+                                    .clip(shape)
+                                    .background(
+                                        if (isSel) NazoPrimary.copy(alpha = 0.08f) else Color.Transparent,
+                                        shape,
+                                    )
                                     .clickable(
                                         interactionSource = interactionSource,
                                         indication = indication,
@@ -1105,13 +1111,17 @@ private fun ModeIdentityCard(
     val identity = modeIdentitySpec(mode)
     val interactionSource = remember { MutableInteractionSource() }
     val indication = LocalIndication.current
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 20.dp,
+        pressedCorner = 10.dp,
+    )
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .nazoPressFeedback(interactionSource)
-            .clip(RoundedCornerShape(20.dp))
-            .background(NazoSurface.copy(alpha = 0.72f))
-            .border(1.dp, NazoPrimary.copy(alpha = 0.22f), RoundedCornerShape(20.dp))
+            .clip(shape)
+            .background(NazoSurface.copy(alpha = 0.72f), shape)
+            .border(1.dp, NazoPrimary.copy(alpha = 0.22f), shape)
             .clickable(
                 interactionSource = interactionSource,
                 indication = indication,
@@ -1189,13 +1199,20 @@ private fun ModePickerCard(
         animationSpec = tween(220),
         label = "modePickerBorder",
     )
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 22.dp,
+        pressedCorner = 11.dp,
+    )
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .nazoPressFeedback(interactionSource)
-            .clip(RoundedCornerShape(22.dp))
-            .background(if (selected) NazoPrimary.copy(alpha = 0.08f) else NazoBackground.copy(alpha = 0.58f))
-            .border(if (selected) 1.5.dp else 1.dp, borderColor, RoundedCornerShape(22.dp))
+            .clip(shape)
+            .background(
+                if (selected) NazoPrimary.copy(alpha = 0.08f) else NazoBackground.copy(alpha = 0.58f),
+                shape,
+            )
+            .border(if (selected) 1.5.dp else 1.dp, borderColor, shape)
             .clickable(
                 interactionSource = interactionSource,
                 indication = indication,
@@ -1588,14 +1605,22 @@ private fun PillButton(
         animationSpec = tween(durationMillis = 180),
         label = "pillFg",
     )
-    
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoPillCornerMorphShape(interactionSource)
+
     Box(
         modifier = modifier
-        .scale(scale)
-        .clip(RoundedCornerShape(50))
-        .background(pillBg)
-        .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(50))
-        .clickable(onClick = onClick)
+            // Keep the existing selection-state emphasis; this is not tied to
+            // pointer-down and remains distinct from press feedback.
+            .scale(scale)
+            .clip(shape)
+            .background(pillBg, shape)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
             .padding(horizontal = 10.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {

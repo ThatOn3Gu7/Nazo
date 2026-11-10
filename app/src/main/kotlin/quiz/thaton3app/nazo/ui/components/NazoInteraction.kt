@@ -3,93 +3,31 @@ package quiz.thaton3app.nazo.ui.components
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-/**
- * Nazo's shared physical response for buttons, navigation items and selectable
- * cards. It is deliberately small: the ripple still communicates the exact
- * touch location while this scale makes the whole control feel connected to
- * the finger. The transform is a graphics layer, so it never triggers layout.
- */
-internal const val NazoPressedScale = 0.98f
-internal const val NazoPressInDurationMs = 70
-internal const val NazoPressOutDurationMs = 140
-
-/** Pure policy kept separate so reduced-motion and disabled behaviour stay testable. */
-internal fun nazoPressTargetScale(
-    pressed: Boolean,
-    enabled: Boolean,
-    reduceMotion: Boolean,
-    pressedScale: Float = NazoPressedScale,
-): Float = if (pressed && enabled && !reduceMotion) {
-    pressedScale.coerceIn(0.9f, 1f)
-} else {
-    1f
-}
-
-/**
- * Applies the shared press transform while leaving click semantics, indication
- * and haptics to the control itself. Callers pass the same interaction source
- * to their Button/clickable/toggleable modifier.
- */
-@Composable
-fun Modifier.nazoPressFeedback(
-    interactionSource: MutableInteractionSource,
-    enabled: Boolean = true,
-    pressedScale: Float = NazoPressedScale,
-): Modifier {
-    val pressed by interactionSource.collectIsPressedAsState()
-    val reduceMotion = rememberSystemReduceMotion()
-    val target = nazoPressTargetScale(
-        pressed = pressed,
-        enabled = enabled,
-        reduceMotion = reduceMotion,
-        pressedScale = pressedScale,
-    )
-    val scale by animateFloatAsState(
-        targetValue = target,
-        animationSpec = if (reduceMotion) {
-            snap()
-        } else {
-            tween(
-                durationMillis = if (pressed) NazoPressInDurationMs else NazoPressOutDurationMs,
-                easing = FastOutSlowInEasing,
-            )
-        },
-        label = "nazoPressScale",
-    )
-    return graphicsLayer {
-        scaleX = scale
-        scaleY = scale
-    }
-}
-
 // ---------------------------------------------------------------------------
-// Expressive press prototype
+// Shared corner-morph press language
 // ---------------------------------------------------------------------------
 
 internal const val NazoExpressivePressInDurationMs = 90
 internal const val NazoExpressiveQuickTapCompletionMs = 45
+internal const val NazoExpressiveReleaseDurationMs = 180
+internal const val NazoExpressiveCancelDurationMs = 120
+internal const val NazoExpressiveQuickTapPeak = 0.72f
 
 internal const val NazoPillRestCornerPercent = 50f
 internal const val NazoPillPressedCornerPercent = 24f
@@ -116,16 +54,24 @@ internal fun nazoExpressiveCornerPercent(progress: Float): Float = nazoCornerMor
 )
 
 /**
- * A very short tap may release before the press-in tween reaches its end. Give
- * only the missing portion of the morph a tiny completion beat so the response
- * stays visible, without delaying the click callback itself.
+ * A very short tap should become visible without being forced all the way to
+ * the held endpoint. The partial peak avoids the old one-frame-looking jump to
+ * a fully rectangular shape immediately before release.
  */
+internal fun nazoQuickTapCompletionTarget(progress: Float): Float {
+    val current = progress.coerceIn(0f, 1f)
+    return maxOf(current, NazoExpressiveQuickTapPeak)
+}
+
+/** Completes only the missing fraction up to the restrained quick-tap peak. */
 internal fun nazoQuickTapCompletionDurationMs(progress: Float): Int {
-    val remaining = 1f - progress.coerceIn(0f, 1f)
+    val current = progress.coerceIn(0f, 1f)
+    val remaining = nazoQuickTapCompletionTarget(current) - current
     if (remaining <= 0f) return 0
-    return (NazoExpressiveQuickTapCompletionMs * remaining)
+    return (NazoExpressiveQuickTapCompletionMs *
+        (remaining / NazoExpressiveQuickTapPeak))
         .roundToInt()
-        .coerceAtLeast(1)
+        .coerceIn(1, NazoExpressiveQuickTapCompletionMs)
 }
 
 /**
@@ -144,8 +90,8 @@ class NazoExpressivePressState internal constructor(
 /**
  * Reuses the Practice timing for a control whose resting geometry is expressed
  * in dp. Callers use the returned shape for clip, background and border, and
- * pass the same [interactionSource] to their existing clickable. Recomposition
- * only updates the shape object; measurement, padding and content stay fixed.
+ * pass the same [interactionSource] to their existing clickable. The shape only
+ * changes drawing and clipping; measurement, padding and content stay fixed.
  */
 @Composable
 fun rememberNazoRoundedCornerMorphShape(
@@ -183,9 +129,11 @@ fun rememberNazoPillCornerMorphShape(
 /**
  * Observes the same interaction source already owned by clickable/Button.
  *
- * Press holds at the fully morphed shape until release. A real release completes
- * a too-fast tap before springing home; cancellation (for example when a parent
- * scroll takes the gesture) returns immediately instead, so this observer never
+ * Press holds at the fully morphed shape until release. A too-fast tap completes
+ * only to a restrained visible peak, then every real release eases home over a
+ * fixed, gradual curve instead of handing a tiny distance to an aggressive
+ * spring. Cancellation (for example when a parent scroll takes the gesture)
+ * skips the completion beat and eases directly to rest, so this observer never
  * steals or changes gesture ownership. Reduced motion and disabled controls stay
  * at rest and create no decorative response.
  */
@@ -205,55 +153,79 @@ fun rememberNazoExpressivePressState(
         }
 
         val activePresses = mutableSetOf<PressInteraction.Press>()
-        interactionSource.interactions.collectLatest { interaction ->
+        var animationJob: Job? = null
+        interactionSource.interactions.collect { interaction ->
             when (interaction) {
                 is PressInteraction.Press -> {
                     activePresses += interaction
-                    animation.animateTo(
-                        targetValue = 1f,
-                        animationSpec = tween(
-                            durationMillis = NazoExpressivePressInDurationMs,
-                            easing = FastOutSlowInEasing,
-                        ),
-                    )
-                }
-
-                is PressInteraction.Release -> {
-                    activePresses -= interaction.press
-                    if (activePresses.isNotEmpty()) {
-                        animation.animateTo(1f)
-                    } else {
-                        val completionMs = nazoQuickTapCompletionDurationMs(animation.value)
-                        if (completionMs > 0) {
-                            animation.animateTo(
-                                targetValue = 1f,
-                                animationSpec = tween(
-                                    durationMillis = completionMs,
-                                    easing = FastOutSlowInEasing,
-                                ),
-                            )
-                        }
+                    animationJob?.cancel()
+                    animationJob = launch {
                         animation.animateTo(
-                            targetValue = 0f,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                stiffness = Spring.StiffnessMedium,
+                            targetValue = 1f,
+                            animationSpec = tween(
+                                durationMillis = NazoExpressivePressInDurationMs,
+                                easing = FastOutSlowInEasing,
                             ),
                         )
                     }
                 }
 
-                is PressInteraction.Cancel -> {
+                is PressInteraction.Release -> {
                     activePresses -= interaction.press
-                    animation.animateTo(
-                        targetValue = if (activePresses.isEmpty()) 0f else 1f,
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = Spring.StiffnessMedium,
-                        ),
-                    )
+                    animationJob?.cancel()
+                    animationJob = launch {
+                        if (activePresses.isNotEmpty()) {
+                            animation.animateTo(
+                                targetValue = 1f,
+                                animationSpec = tween(
+                                    durationMillis = NazoExpressivePressInDurationMs,
+                                    easing = FastOutSlowInEasing,
+                                ),
+                            )
+                        } else {
+                            val completionStart = animation.value
+                            val completionTarget = nazoQuickTapCompletionTarget(completionStart)
+                            val completionMs = nazoQuickTapCompletionDurationMs(completionStart)
+                            if (completionMs > 0) {
+                                animation.animateTo(
+                                    targetValue = completionTarget,
+                                    animationSpec = tween(
+                                        durationMillis = completionMs,
+                                        easing = FastOutSlowInEasing,
+                                    ),
+                                )
+                            }
+                            animation.animateTo(
+                                targetValue = 0f,
+                                animationSpec = tween(
+                                    durationMillis = NazoExpressiveReleaseDurationMs,
+                                    easing = FastOutSlowInEasing,
+                                ),
+                            )
+                        }
+                    }
                 }
 
+                is PressInteraction.Cancel -> {
+                    activePresses -= interaction.press
+                    animationJob?.cancel()
+                    animationJob = launch {
+                        animation.animateTo(
+                            targetValue = if (activePresses.isEmpty()) 0f else 1f,
+                            animationSpec = tween(
+                                durationMillis = if (activePresses.isEmpty()) {
+                                    NazoExpressiveCancelDurationMs
+                                } else {
+                                    NazoExpressivePressInDurationMs
+                                },
+                                easing = FastOutSlowInEasing,
+                            ),
+                        )
+                    }
+                }
+
+                // Focus, hover and drag interactions share some Material
+                // sources; they must not interrupt an in-flight release.
                 else -> Unit
             }
         }

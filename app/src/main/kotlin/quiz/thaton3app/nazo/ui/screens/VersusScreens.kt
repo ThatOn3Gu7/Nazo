@@ -61,7 +61,6 @@ import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
 import quiz.thaton3app.nazo.ui.components.Haptics
-import quiz.thaton3app.nazo.ui.components.NazoButtonShape
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
@@ -380,10 +379,11 @@ fun VersusResultsScreen(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
-                    // Solid bed: a control is an island the celebration can
-                    // never show through.
-                    .background(NazoBackground, NazoButtonShape),
+                    .height(56.dp),
+                // Solid bed: a control is an island the celebration can never
+                // show through. It belongs to the animated button surface so
+                // the fill and edge morph together.
+                containerColor = NazoBackground,
                 muted = true,
             ) {
                 Icon(Icons.Filled.FactCheck, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
@@ -398,8 +398,8 @@ fun VersusResultsScreen(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
-                    .background(NazoBackground, NazoButtonShape),
+                    .height(56.dp),
+                containerColor = NazoBackground,
                 muted = true,
             ) {
                 Icon(Icons.Filled.Home, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))

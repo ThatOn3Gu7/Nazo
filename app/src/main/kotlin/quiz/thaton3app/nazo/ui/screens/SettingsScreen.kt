@@ -7,8 +7,8 @@ import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoModalSheet
 import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
 import quiz.thaton3app.nazo.ui.components.NazoSheetHeader
-import quiz.thaton3app.nazo.ui.components.nazoPressFeedback
 import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
+import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.rememberRetained
 import quiz.thaton3app.nazo.sound.SoundTheme
 import quiz.thaton3app.nazo.sound.Sounds
@@ -274,16 +274,20 @@ private fun SoundStyleOptionCard(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val indication = LocalIndication.current
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 18.dp,
+        pressedCorner = 9.dp,
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .nazoPressFeedback(interactionSource)
-            .clip(RoundedCornerShape(18.dp))
-            .background(NazoSurfaceVariant)
+            .clip(shape)
+            .background(NazoSurfaceVariant, shape)
             .border(
                 width = if (selected) 2.dp else 1.dp,
                 color = if (selected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.12f),
-                shape = RoundedCornerShape(18.dp),
+                shape = shape,
             )
             .clickable(
                 interactionSource = interactionSource,
@@ -416,11 +420,16 @@ private fun SettingsRow(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val indication = LocalIndication.current
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 0.dp,
+        pressedCorner = 12.dp,
+    )
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .nazoPressFeedback(interactionSource, pressedScale = 0.99f)
+            .clip(shape)
             .clickable(
                 interactionSource = interactionSource,
                 indication = indication,
@@ -483,11 +492,16 @@ private fun SettingsSwitchRow(
     }
     val interactionSource = remember { MutableInteractionSource() }
     val indication = LocalIndication.current
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 0.dp,
+        pressedCorner = 12.dp,
+    )
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .nazoPressFeedback(interactionSource, pressedScale = 0.99f)
+            .clip(shape)
             .toggleable(
                 value = checked,
                 role = Role.Switch,
