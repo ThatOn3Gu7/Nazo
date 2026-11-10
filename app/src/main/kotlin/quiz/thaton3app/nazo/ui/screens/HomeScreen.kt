@@ -31,6 +31,7 @@ import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
@@ -57,11 +58,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -70,9 +73,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -140,6 +146,24 @@ internal fun challengeSummary(
         NazoMode.BLITZ -> "60-second run"
     }
     return "${difficulty.label} • $detail"
+}
+
+private val HOME_TOPIC_STARTERS = listOf(
+    "Naruto",
+    "One Piece",
+    "Jujutsu Kaisen",
+    "Characters",
+)
+
+/** Curated empty-state starters, then a bounded autocomplete tray while typing. */
+internal fun homeTopicSuggestions(topic: String, available: List<String>): List<String> {
+    val query = topic.trim()
+    if (query.isEmpty()) {
+        return HOME_TOPIC_STARTERS.mapNotNull { starter ->
+            available.firstOrNull { it.equals(starter, ignoreCase = true) }
+        }
+    }
+    return available.filter { it.contains(query, ignoreCase = true) }.take(8)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1472,129 +1496,337 @@ private fun SectionLabel(text: String) {
 @Composable
 private fun TopicInputCard(topic: String, onTopicChange: (String) -> Unit) {
     val focusManager = LocalFocusManager.current
-    val suggestions = remember(topic) {
-        if (topic.isBlank()) emptyList()
-        else LocalQuestionBank.suggestions().filter { it.contains(topic, ignoreCase = true) }.take(8)
+    val reduceMotion = rememberSystemReduceMotion()
+    val allSuggestions = remember { LocalQuestionBank.suggestions() }
+    var focused by remember { mutableStateOf(false) }
+    val suggestions = remember(topic, allSuggestions) {
+        homeTopicSuggestions(topic, allSuggestions)
     }
+    val showSuggestions = focused && suggestions.isNotEmpty()
+    val cardShape = RoundedCornerShape(24.dp)
+    val fieldShape = RoundedCornerShape(18.dp)
+    val fieldBorder by animateColorAsState(
+        targetValue = if (focused) {
+            NazoOnDarkCard.copy(alpha = 0.62f)
+        } else {
+            NazoOnDarkCard.copy(alpha = 0.18f)
+        },
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "topicFieldBorder",
+    )
+    val fieldBackground by animateColorAsState(
+        targetValue = if (focused) {
+            NazoOnDarkCard.copy(alpha = 0.13f)
+        } else {
+            NazoOnDarkCard.copy(alpha = 0.08f)
+        },
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "topicFieldBackground",
+    )
 
-    // Label + control, the same rhythm as DIFFICULTY and QUESTIONS below.
-    // The old wrapper card put a surface around a field that already has its
-    // own surface — one input wore more chrome than the mode selector, which
-    // muddled both the hierarchy and the page's card rhythm.
     Column(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        SectionLabel("TOPIC")
-        Spacer(Modifier.height(8.dp))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(NazoSurfaceVariant)
-                .padding(horizontal = 14.dp, vertical = 12.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Search,
-                contentDescription = null,
-                tint = NazoTextSecondary,
-                modifier = Modifier.size(20.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(cardShape)
+            .background(
+                brush = Brush.linearGradient(
+                    listOf(
+                        NazoDarkCard,
+                        NazoDarkCardAccent.copy(alpha = 0.96f),
+                    ),
+                ),
+                shape = cardShape,
             )
-            Spacer(Modifier.width(10.dp))
-            Box(modifier = Modifier.weight(1f)) {
-                if (topic.isEmpty()) {
-                    Text(
-                        text = "Anime or theme (e.g., Jujutsu Kaisen)",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = NazoTextPlaceholder,
-                    )
-                }
-                BasicTextField(
-                    value = topic,
-                    onValueChange = onTopicChange,
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Text,
-                        imeAction = ImeAction.Done,
+            .border(1.dp, NazoOnDarkCard.copy(alpha = 0.14f), cardShape)
+            .padding(14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(NazoOnDarkCard.copy(alpha = 0.10f))
+                    .border(
+                        1.dp,
+                        NazoOnDarkCard.copy(alpha = 0.16f),
+                        RoundedCornerShape(14.dp),
                     ),
-                    keyboardActions = KeyboardActions(
-                        onDone = { focusManager.clearFocus() },
-                    ),
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(
-                        color = NazoTextPrimary,
-                        fontWeight = FontWeight.Medium
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.AutoAwesome,
+                    contentDescription = null,
+                    tint = NazoOnDarkCard,
+                    modifier = Modifier.size(21.dp),
                 )
             }
-            if (topic.isNotEmpty()) {
-                val clearInteraction = remember { MutableInteractionSource() }
-                val clearShape = rememberNazoPillCornerMorphShape(
-                    interactionSource = clearInteraction,
-                    pressedCornerPercent = 28f,
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "CHALLENGE FOCUS",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoOnDarkCardMuted,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.2.sp,
                 )
-                Box(
-                    modifier = Modifier
-                        .size(22.dp)
-                        .clip(clearShape)
-                        .background(NazoTextSecondary.copy(alpha = 0.2f), clearShape)
-                        .clickable(
-                            interactionSource = clearInteraction,
-                            indication = LocalIndication.current,
-                        ) { onTopicChange("") },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = "Clear",
-                        tint = NazoTextPrimary,
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "Choose an anime or theme",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = NazoOnDarkCard,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                )
             }
+            Spacer(Modifier.width(8.dp))
+            TopicStatusBadge(ready = topic.isNotBlank())
         }
 
-        if (suggestions.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            HorizontalDivider(color = NazoSurfaceVariant, thickness = 1.dp)
-            Spacer(Modifier.height(6.dp))
-            suggestions.forEach { suggestion ->
-                val suggestionInteraction = remember(suggestion) { MutableInteractionSource() }
-                val suggestionShape = rememberNazoRoundedCornerMorphShape(
-                    interactionSource = suggestionInteraction,
-                    restingCorner = 10.dp,
-                    pressedCorner = 4.dp,
-                )
+        Spacer(Modifier.height(13.dp))
+
+        BasicTextField(
+            value = topic,
+            onValueChange = onTopicChange,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Words,
+                keyboardType = KeyboardType.Text,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = { focusManager.clearFocus() },
+            ),
+            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                color = NazoOnDarkCard,
+                fontWeight = FontWeight.SemiBold,
+            ),
+            cursorBrush = SolidColor(NazoOnDarkCard),
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics { contentDescription = "Challenge topic, optional" }
+                .onFocusChanged { focused = it.isFocused },
+            decorationBox = { innerTextField ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(suggestionShape)
-                        .clickable(
-                            interactionSource = suggestionInteraction,
-                            indication = LocalIndication.current,
-                        ) {
-                            onTopicChange(suggestion)
-                            focusManager.clearFocus()
-                        }
-                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                        .clip(fieldShape)
+                        .background(fieldBackground, fieldShape)
+                        .border(1.dp, fieldBorder, fieldShape)
+                        .defaultMinSize(minHeight = 58.dp)
+                        .padding(start = 14.dp, end = 9.dp, top = 8.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.AutoAwesome,
+                        imageVector = Icons.Filled.Search,
                         contentDescription = null,
-                        tint = NazoPrimary,
-                        modifier = Modifier.size(16.dp),
+                        tint = if (focused) NazoOnDarkCard else NazoOnDarkCardMuted,
+                        modifier = Modifier.size(21.dp),
                     )
                     Spacer(Modifier.width(10.dp))
-                    Text(
-                        text = suggestion,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NazoTextPrimary,
-                        fontWeight = FontWeight.Medium
+                    Box(modifier = Modifier.weight(1f)) {
+                        if (topic.isEmpty()) {
+                            Text(
+                                text = "Anime, character, arc, or theme",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = NazoOnDarkCardMuted,
+                                maxLines = 1,
+                            )
+                        }
+                        innerTextField()
+                    }
+                    if (topic.isNotEmpty()) {
+                        Spacer(Modifier.width(6.dp))
+                        val clearInteraction = remember { MutableInteractionSource() }
+                        val clearShape = rememberNazoPillCornerMorphShape(
+                            interactionSource = clearInteraction,
+                            pressedCornerPercent = 28f,
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(clearShape)
+                                .background(NazoOnDarkCard.copy(alpha = 0.12f), clearShape)
+                                .clickable(
+                                    interactionSource = clearInteraction,
+                                    indication = LocalIndication.current,
+                                    role = Role.Button,
+                                ) { onTopicChange("") },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Clear topic",
+                                tint = NazoOnDarkCard,
+                                modifier = Modifier.size(17.dp),
+                            )
+                        }
+                    }
+                }
+            },
+        )
+
+        Spacer(Modifier.height(9.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = if (topic.isBlank()) Icons.Filled.Shuffle else Icons.Filled.CheckCircle,
+                contentDescription = null,
+                tint = NazoOnDarkCardMuted,
+                modifier = Modifier.size(15.dp),
+            )
+            Spacer(Modifier.width(7.dp))
+            Text(
+                text = if (topic.isBlank()) {
+                    "Leave blank for a mixed challenge"
+                } else {
+                    "Your challenge will center on this focus"
+                },
+                style = MaterialTheme.typography.labelMedium,
+                color = NazoOnDarkCardMuted,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+
+        AnimatedVisibility(
+            visible = showSuggestions,
+            enter = if (reduceMotion) {
+                fadeIn(tween(90))
+            } else {
+                fadeIn(tween(160, easing = FastOutSlowInEasing)) +
+                    expandVertically(
+                        expandFrom = Alignment.Top,
+                        animationSpec = tween(200, easing = FastOutSlowInEasing),
                     )
+            },
+            exit = if (reduceMotion) {
+                fadeOut(tween(70))
+            } else {
+                fadeOut(tween(120, easing = FastOutSlowInEasing)) +
+                    shrinkVertically(
+                        shrinkTowards = Alignment.Top,
+                        animationSpec = tween(180, easing = FastOutSlowInEasing),
+                    )
+            },
+            label = "topicSuggestionsVisibility",
+        ) {
+            Column(Modifier.fillMaxWidth()) {
+                Spacer(Modifier.height(13.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = if (topic.isBlank()) "START WITH" else "MATCHES",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NazoOnDarkCardMuted,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = "TAP TO USE",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NazoOnDarkCardMuted.copy(alpha = 0.78f),
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.6.sp,
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    suggestions.forEach { suggestion ->
+                        TopicSuggestionChip(
+                            suggestion = suggestion,
+                            onClick = {
+                                onTopicChange(suggestion)
+                                focusManager.clearFocus()
+                            },
+                        )
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun TopicStatusBadge(ready: Boolean) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(
+                if (ready) NazoOnDarkCard.copy(alpha = 0.14f)
+                else NazoOnDarkCard.copy(alpha = 0.08f),
+            )
+            .border(
+                1.dp,
+                NazoOnDarkCard.copy(alpha = if (ready) 0.24f else 0.12f),
+                RoundedCornerShape(50),
+            )
+            .padding(horizontal = 9.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = if (ready) Icons.Filled.Check else Icons.Filled.Edit,
+            contentDescription = null,
+            tint = if (ready) NazoOnDarkCard else NazoOnDarkCardMuted,
+            modifier = Modifier.size(13.dp),
+        )
+        Spacer(Modifier.width(5.dp))
+        Text(
+            text = if (ready) "READY" else "OPTIONAL",
+            style = MaterialTheme.typography.labelSmall,
+            color = if (ready) NazoOnDarkCard else NazoOnDarkCardMuted,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.7.sp,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun TopicSuggestionChip(
+    suggestion: String,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember(suggestion) { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 14.dp,
+        pressedCorner = 7.dp,
+    )
+    Row(
+        modifier = Modifier
+            .defaultMinSize(minHeight = 48.dp)
+            .clip(shape)
+            .background(NazoOnDarkCard.copy(alpha = 0.10f), shape)
+            .border(1.dp, NazoOnDarkCard.copy(alpha = 0.16f), shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.AutoAwesome,
+            contentDescription = null,
+            tint = NazoOnDarkCardMuted,
+            modifier = Modifier.size(15.dp),
+        )
+        Spacer(Modifier.width(7.dp))
+        Text(
+            text = suggestion,
+            style = MaterialTheme.typography.labelLarge,
+            color = NazoOnDarkCard,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
     }
 }
 
