@@ -347,13 +347,21 @@ private fun NazoNavRailItem(
     val context = LocalContext.current
     val interactionSource = remember { MutableInteractionSource() }
     val indication = LocalIndication.current
+    val shape = if (isFloating) {
+        rememberNazoPillCornerMorphShape(interactionSource)
+    } else {
+        rememberNazoRoundedCornerMorphShape(
+            interactionSource = interactionSource,
+            restingCorner = 18.dp,
+            pressedCorner = 9.dp,
+        )
+    }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
         modifier = modifier
-            .nazoPressFeedback(interactionSource)
-            .clip(if (isFloating) RoundedCornerShape(50) else RoundedCornerShape(18.dp))
-            .background(currentBg)
+            .clip(shape)
+            .background(currentBg, shape)
             .clickable(
                 interactionSource = interactionSource,
                 indication = indication,
@@ -448,12 +456,12 @@ private fun NazoNavItem(
     val context = LocalContext.current
     val interactionSource = remember { MutableInteractionSource() }
     val indication = LocalIndication.current
+    val shape = rememberNazoPillCornerMorphShape(interactionSource)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .nazoPressFeedback(interactionSource)
-            .clip(RoundedCornerShape(50))
-            .background(currentBg)
+            .clip(shape)
+            .background(currentBg, shape)
             .clickable(
                 interactionSource = interactionSource,
                 indication = indication,

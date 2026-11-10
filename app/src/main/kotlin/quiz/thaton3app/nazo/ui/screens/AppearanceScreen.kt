@@ -79,7 +79,6 @@ import quiz.thaton3app.nazo.ui.components.NazoModalSheet
 import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
 import quiz.thaton3app.nazo.ui.components.NazoSheetHeader
 import quiz.thaton3app.nazo.ui.components.NazoTab
-import quiz.thaton3app.nazo.ui.components.nazoPressFeedback
 import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.SPARKLE_METEORS
@@ -860,6 +859,11 @@ private fun ThemeModeRow(
     val subtitleColor = if (isSelected) Color.White.copy(alpha = 0.7f) else NazoTextSecondary
     val interactionSource = remember { MutableInteractionSource() }
     val indication = LocalIndication.current
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 24.dp,
+        pressedCorner = 12.dp,
+    )
 
     // One-shot celestial transit: when this row BECOMES the selected theme,
     // a sun ("sun"), a moon ("moon"), or a full sun-then-moon day/night
@@ -893,9 +897,8 @@ private fun ThemeModeRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .nazoPressFeedback(interactionSource)
-            .clip(RoundedCornerShape(24.dp))
-            .background(backgroundColor)
+            .clip(shape)
+            .background(backgroundColor, shape)
             .drawBehind {
                 val p = transit.value
                 if (p > 0f && p < 1f) drawCelestialTransit(celestial, p, backgroundColor)
@@ -906,7 +909,7 @@ private fun ThemeModeRow(
             .border(
                 width = if (isSelected) 2.dp else 1.dp,
                 color = if (isSelected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.08f),
-                shape = RoundedCornerShape(24.dp),
+                shape = shape,
             )
             .clickable(
                 interactionSource = interactionSource,
@@ -971,18 +974,18 @@ private fun ColorAccentCircle(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val indication = LocalIndication.current
+    val shape = rememberNazoPillCornerMorphShape(interactionSource)
     Box(
         modifier = Modifier
             .size(48.dp)
-            .nazoPressFeedback(interactionSource, pressedScale = 0.94f)
-            .clip(CircleShape)
+            .clip(shape)
             .clickable(
                 interactionSource = interactionSource,
                 indication = indication,
                 onClick = onClick,
             )
             .then(
-                if (isSelected) Modifier.border(2.dp, NazoTextPrimary, CircleShape)
+                if (isSelected) Modifier.border(2.dp, NazoTextPrimary, shape)
                 else Modifier
             ),
         contentAlignment = Alignment.Center
@@ -1075,17 +1078,21 @@ private fun EffectOptionCard(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val indication = LocalIndication.current
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 18.dp,
+        pressedCorner = 9.dp,
+    )
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(78.dp)
-            .nazoPressFeedback(interactionSource)
-            .clip(RoundedCornerShape(18.dp))
-            .background(NazoSurfaceVariant)
+            .clip(shape)
+            .background(NazoSurfaceVariant, shape)
             .border(
                 width = if (selected) 2.dp else 1.dp,
                 color = if (selected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.12f),
-                shape = RoundedCornerShape(18.dp),
+                shape = shape,
             )
             .clickable(
                 interactionSource = interactionSource,
@@ -1159,17 +1166,21 @@ private fun CelebrationOptionCard(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val indication = LocalIndication.current
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 18.dp,
+        pressedCorner = 9.dp,
+    )
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(78.dp)
-            .nazoPressFeedback(interactionSource)
-            .clip(RoundedCornerShape(18.dp))
-            .background(NazoSurfaceVariant)
+            .clip(shape)
+            .background(NazoSurfaceVariant, shape)
             .border(
                 width = if (selected) 2.dp else 1.dp,
                 color = if (selected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.12f),
-                shape = RoundedCornerShape(18.dp),
+                shape = shape,
             )
             .clickable(
                 interactionSource = interactionSource,
@@ -1241,16 +1252,20 @@ private fun SparkleOptionCard(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val indication = LocalIndication.current
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 18.dp,
+        pressedCorner = 9.dp,
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .nazoPressFeedback(interactionSource)
-            .clip(RoundedCornerShape(18.dp))
-            .background(NazoSurfaceVariant)
+            .clip(shape)
+            .background(NazoSurfaceVariant, shape)
             .border(
                 width = if (selected) 2.dp else 1.dp,
                 color = if (selected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.12f),
-                shape = RoundedCornerShape(18.dp),
+                shape = shape,
             )
             .clickable(
                 interactionSource = interactionSource,
@@ -1618,16 +1633,20 @@ private fun AppIconOptionCard(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val indication = LocalIndication.current
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 18.dp,
+        pressedCorner = 9.dp,
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .nazoPressFeedback(interactionSource)
-            .clip(RoundedCornerShape(18.dp))
-            .background(NazoSurfaceVariant)
+            .clip(shape)
+            .background(NazoSurfaceVariant, shape)
             .border(
                 width = if (selected) 2.dp else 1.dp,
                 color = if (selected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.12f),
-                shape = RoundedCornerShape(18.dp),
+                shape = shape,
             )
             .clickable(
                 interactionSource = interactionSource,

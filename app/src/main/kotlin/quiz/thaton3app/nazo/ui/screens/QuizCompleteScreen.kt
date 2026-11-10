@@ -39,7 +39,6 @@ import quiz.thaton3app.nazo.records.NewRecordBadge
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
 import quiz.thaton3app.nazo.ui.components.Haptics
-import quiz.thaton3app.nazo.ui.components.NazoButtonShape
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.components.ProgressionRewardBanner
@@ -320,10 +319,11 @@ fun QuizCompleteScreen(
                             onClick = onReviewAnswers,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(56.dp)
-                                // Solid bed: a control is an island the
-                                // celebration can never show through.
-                                .background(NazoBackground, NazoButtonShape),
+                                .height(56.dp),
+                            // Solid bed: a control is an island the celebration
+                            // can never show through. Keep it on the animated
+                            // surface so fill and edge morph together.
+                            containerColor = NazoBackground,
                             muted = true,
                         ) {
                             Icon(Icons.AutoMirrored.Filled.FactCheck, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
@@ -361,8 +361,8 @@ fun QuizCompleteScreen(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(56.dp)
-                                .background(NazoBackground, NazoButtonShape),
+                                .height(56.dp),
+                            containerColor = NazoBackground,
                             muted = true,
                         ) {
                             Icon(Icons.Outlined.Share, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
