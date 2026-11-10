@@ -87,44 +87,18 @@ fun Modifier.nazoPressFeedback(
 internal const val NazoExpressivePressInDurationMs = 90
 internal const val NazoExpressiveQuickTapCompletionMs = 45
 
-private const val GenerateRestScale = 1f
-private const val GeneratePressedHorizontalScale = 0.985f
-private const val GeneratePressedVerticalScale = 0.90f
-private const val GenerateRestCornerRadiusDp = 18f
-private const val GeneratePressedCornerRadiusDp = 24f
-private const val GenerateRestElevationDp = 8f
-private const val GeneratePressedElevationDp = 1f
-private const val GeneratePressedOverlayAlpha = 0.14f
+internal const val NazoPillRestCornerPercent = 50f
+internal const val NazoPillPressedCornerPercent = 24f
 
 /**
- * Draw/layer values for the Generate-button prototype. The non-uniform
- * compression and changing corner radius make the silhouette genuinely morph;
- * this is intentionally not the uniform scale used by [nazoPressFeedback].
+ * Pure corner policy for the Practice-button prototype. Fifty percent is its
+ * original pill silhouette; the held state becomes noticeably more rectangular
+ * without changing layout, scale, content, elevation, or colour.
  */
-internal data class NazoExpressivePressVisuals(
-    val horizontalScale: Float,
-    val verticalScale: Float,
-    val cornerRadiusDp: Float,
-    val elevationDp: Float,
-    val overlayAlpha: Float,
-)
-
-/** Pure geometry policy so the prototype can be tuned and tested deterministically. */
-internal fun nazoExpressivePressVisuals(progress: Float): NazoExpressivePressVisuals {
+internal fun nazoExpressiveCornerPercent(progress: Float): Float {
     val fraction = progress.coerceIn(0f, 1f)
-    fun between(rest: Float, pressed: Float): Float =
-        rest + (pressed - rest) * fraction
-
-    return NazoExpressivePressVisuals(
-        horizontalScale = between(GenerateRestScale, GeneratePressedHorizontalScale),
-        verticalScale = between(GenerateRestScale, GeneratePressedVerticalScale),
-        cornerRadiusDp = between(
-            GenerateRestCornerRadiusDp,
-            GeneratePressedCornerRadiusDp,
-        ),
-        elevationDp = between(GenerateRestElevationDp, GeneratePressedElevationDp),
-        overlayAlpha = between(0f, GeneratePressedOverlayAlpha),
-    )
+    return NazoPillRestCornerPercent +
+        (NazoPillPressedCornerPercent - NazoPillRestCornerPercent) * fraction
 }
 
 /**
