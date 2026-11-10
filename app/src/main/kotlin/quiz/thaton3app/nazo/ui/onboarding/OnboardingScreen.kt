@@ -55,6 +55,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -98,6 +99,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -1498,12 +1500,24 @@ private fun SetupToggleRow(
         Haptics.soft(context)
         onCheckedChange(value)
     }
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 14.dp,
+        pressedCorner = 7.dp,
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(NazoTextSecondary.copy(alpha = 0.08f))
-            .clickable { trigger(!checked) }
+            .clip(shape)
+            .background(NazoTextSecondary.copy(alpha = 0.08f), shape)
+            .toggleable(
+                value = checked,
+                role = Role.Switch,
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onValueChange = trigger,
+            )
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1521,9 +1535,11 @@ private fun SetupToggleRow(
             )
         }
         Spacer(modifier = Modifier.width(10.dp))
+        // The row owns the switch role and interaction so the nested visual
+        // switch cannot toggle twice or compete for press feedback.
         Switch(
             checked = checked,
-            onCheckedChange = trigger,
+            onCheckedChange = null,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = NazoOnPrimary,
                 checkedTrackColor = NazoPrimary,
