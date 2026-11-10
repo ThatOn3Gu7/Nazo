@@ -183,21 +183,6 @@ below is how you reach it.
 
 A run takes roughly **2 minutes**. Budget for it; don't poll in a tight loop.
 
-## ⚠️ Never let the owner merge your open PR
-
-**Remind the owner, in the report where you open the PR and again whenever
-merging comes up, that they must NOT merge or close it while the session is
-live.**
-
-Merging or closing the PR ends the session's access to the branch. Once that
-happens the agent can no longer push, no longer trigger CI, and no more changes
-can be made in that session — the work is frozen wherever it stopped. The PR
-should stay open until the owner is completely finished with the session and
-has no further changes to request.
-
-Phrase it plainly, e.g.: *"Please don't merge this PR yet — merging ends my
-access to the branch and I won't be able to push any further changes."*
-
 ## Only spend CI on real code changes
 
 Every push to `arena/**` can start a full `assembleDebug`. Compiling unchanged
@@ -251,11 +236,6 @@ The gate removes the *cost* of a stray docs push, not the reason to be tidy:
 
 ## Other sandbox gotchas
 
-- **You cannot push workflow files.** The Arena GitHub token lacks the
-  `workflow` scope, so any commit touching `.github/workflows/**` is rejected
-  on push. If a workflow needs changing, write the new file as a `*.yml.draft`
-  at the repo root with a header explaining what the owner must copy where, and
-  flag it in your report.
 - **A green build means "it compiles" — not "it works."** CI never runs the
   app. This is exactly why the Part 1 live-test guide is mandatory: the owner
   is the only one who can actually run this thing.
