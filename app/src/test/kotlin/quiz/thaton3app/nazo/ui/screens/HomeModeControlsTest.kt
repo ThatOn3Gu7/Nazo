@@ -26,4 +26,28 @@ class HomeModeControlsTest {
             assertFalse(homePracticeVisible(mode, practiceCount = 12))
         }
     }
+
+    @Test
+    fun challengeSummaryAlwaysReflectsTheVisibleModeSpecificChoice() {
+        assertEquals(
+            "Medium • 10 questions",
+            challengeSummary(NazoMode.QUIZ, Difficulty.MEDIUM, 10, 3),
+        )
+        assertEquals(
+            "Hard • 1 round",
+            challengeSummary(NazoMode.GUESSING, Difficulty.HARD, 15, 1),
+        )
+        assertEquals(
+            "Easy • 5 questions",
+            challengeSummary(NazoMode.VERSUS, Difficulty.EASY, 5, 3),
+        )
+        assertEquals(
+            "Otaku Master • endless run",
+            challengeSummary(NazoMode.SURVIVAL, Difficulty.OTAKU_MASTER, 5, 3),
+        )
+        assertEquals(
+            "Easy • 60-second run",
+            challengeSummary(NazoMode.BLITZ, Difficulty.EASY, 5, 3),
+        )
+    }
 }
