@@ -12,9 +12,11 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,6 +68,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import quiz.thaton3app.nazo.data.QuizStats
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoStatsCardBg
 import quiz.thaton3app.nazo.ui.theme.NazoSuccess
@@ -398,7 +401,13 @@ private fun AchievementBadge(
         animationSpec = tween(200),
         label = "badgeHighlight",
     )
-    val shape = RoundedCornerShape(17.dp)
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 17.dp,
+        pressedCorner = 8.dp,
+    )
 
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Box(
@@ -419,8 +428,9 @@ private fun AchievementBadge(
                     .size(52.dp)
                     .clip(shape)
                     .background(
-                        if (achievement.unlocked) NazoPrimary.copy(alpha = 0.18f)
+                        color = if (achievement.unlocked) NazoPrimary.copy(alpha = 0.18f)
                         else NazoSurface.copy(alpha = 0.82f),
+                        shape = shape,
                     )
                     .border(
                         1.dp,
@@ -429,7 +439,11 @@ private fun AchievementBadge(
                         shape,
                     )
                     .border(2.dp, highlight, shape)
-                    .clickable { onClick() },
+                    .clickable(
+                        interactionSource = interactionSource,
+                        indication = indication,
+                        onClick = onClick,
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(

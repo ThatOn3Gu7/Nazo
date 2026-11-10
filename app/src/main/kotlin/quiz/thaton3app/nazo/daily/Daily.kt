@@ -14,9 +14,11 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -53,6 +55,7 @@ import kotlinx.coroutines.delay
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.QuizStats
+import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoSuccess
@@ -166,18 +169,31 @@ fun DailyChallengeCard(
     onPlay: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(20.dp)
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 20.dp,
+        pressedCorner = 10.dp,
+        enabled = !completed,
+    )
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
             .background(
-                Brush.horizontalGradient(
+                brush = Brush.horizontalGradient(
                     listOf(NazoPrimary.copy(alpha = 0.16f), NazoPrimary.copy(alpha = 0.05f))
-                )
+                ),
+                shape = shape,
             )
             .border(1.dp, NazoPrimary.copy(alpha = if (completed) 0.15f else 0.35f), shape)
-            .clickable(enabled = !completed) { onPlay() }
+            .clickable(
+                enabled = !completed,
+                interactionSource = interactionSource,
+                indication = indication,
+                onClick = onPlay,
+            )
             .padding(16.dp)
             .animateContentSize(tween(260)),
         verticalAlignment = Alignment.CenterVertically,

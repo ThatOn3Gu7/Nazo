@@ -85,6 +85,8 @@ import quiz.thaton3app.nazo.ui.components.NazoSheetHeader
 import quiz.thaton3app.nazo.ui.components.nazoExpressiveCornerPercent
 import quiz.thaton3app.nazo.ui.components.nazoPressFeedback
 import quiz.thaton3app.nazo.ui.components.rememberNazoExpressivePressState
+import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
+import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.rememberSystemReduceMotion
 import quiz.thaton3app.nazo.ui.components.AvatarAnchorId
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
@@ -443,12 +445,21 @@ fun HomeScreen(
                         )
                         Spacer(Modifier.height(10.dp))
                     }
+                    val cancelInteraction = remember { MutableInteractionSource() }
+                    val cancelShape = rememberNazoRoundedCornerMorphShape(
+                        interactionSource = cancelInteraction,
+                        restingCorner = 12.dp,
+                        pressedCorner = 6.dp,
+                    )
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(44.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { dismissModeSheet() },
+                            .clip(cancelShape)
+                            .clickable(
+                                interactionSource = cancelInteraction,
+                                indication = LocalIndication.current,
+                            ) { dismissModeSheet() },
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
@@ -482,13 +493,22 @@ fun HomeScreen(
                             color = NazoTextSecondary,
                         )
                         Spacer(Modifier.height(14.dp))
+                        val setupInteraction = remember { MutableInteractionSource() }
+                        val setupShape = rememberNazoRoundedCornerMorphShape(
+                            interactionSource = setupInteraction,
+                            restingCorner = 14.dp,
+                            pressedCorner = 7.dp,
+                        )
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(50.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(NazoPrimary)
-                                .clickable {
+                                .clip(setupShape)
+                                .background(NazoPrimary, setupShape)
+                                .clickable(
+                                    interactionSource = setupInteraction,
+                                    indication = LocalIndication.current,
+                                ) {
                                     dismissSheet { onManageClick() }
                                 },
                             contentAlignment = Alignment.Center,
@@ -556,13 +576,22 @@ fun HomeScreen(
                             HorizontalDivider(color = NazoTextSecondary.copy(alpha = 0.08f))
                         }
                         Spacer(Modifier.height(16.dp))
+                        val manageInteraction = remember { MutableInteractionSource() }
+                        val manageShape = rememberNazoRoundedCornerMorphShape(
+                            interactionSource = manageInteraction,
+                            restingCorner = 14.dp,
+                            pressedCorner = 7.dp,
+                        )
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(50.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(NazoPillUnselected)
-                                .clickable {
+                                .clip(manageShape)
+                                .background(NazoPillUnselected, manageShape)
+                                .clickable(
+                                    interactionSource = manageInteraction,
+                                    indication = LocalIndication.current,
+                                ) {
                                     dismissSheet { onManageClick() }
                                 },
                             contentAlignment = Alignment.Center,
@@ -575,12 +604,21 @@ fun HomeScreen(
                         }
                     }
                     Spacer(Modifier.height(10.dp))
+                    val cancelInteraction = remember { MutableInteractionSource() }
+                    val cancelShape = rememberNazoRoundedCornerMorphShape(
+                        interactionSource = cancelInteraction,
+                        restingCorner = 12.dp,
+                        pressedCorner = 6.dp,
+                    )
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(44.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
+                            .clip(cancelShape)
+                            .clickable(
+                                interactionSource = cancelInteraction,
+                                indication = LocalIndication.current,
+                            ) {
                                 dismissSheet()
                             },
                         contentAlignment = Alignment.Center,
@@ -682,13 +720,24 @@ private fun ApiKeyBadge(
         keyWithoutModel -> "Choose a model"
         else -> "API Key inactive"
     }
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoPillCornerMorphShape(
+        interactionSource = interactionSource,
+        enabled = onClick != null,
+    )
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .then(if (onClick != null) Modifier.clickable { onClick.invoke() } else Modifier)
-            .background(bg)
-            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(50))
+            .clip(shape)
+            .background(bg, shape)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), shape)
+            .then(
+                if (onClick != null) Modifier.clickable(
+                    interactionSource = interactionSource,
+                    indication = LocalIndication.current,
+                    onClick = onClick,
+                ) else Modifier
+            )
             .padding(horizontal = 14.dp, vertical = 7.dp),
     ) {
         Box(
@@ -755,12 +804,17 @@ private fun StreakFlameChip(
         streakDays >= 3 -> 21.dp
         else -> 18.dp
     }
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoPillCornerMorphShape(interactionSource)
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(flameColor.copy(alpha = 0.12f))
-            .border(1.dp, flameColor.copy(alpha = 0.35f), RoundedCornerShape(50))
-            .clickable {
+            .clip(shape)
+            .background(flameColor.copy(alpha = 0.12f), shape)
+            .border(1.dp, flameColor.copy(alpha = 0.35f), shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+            ) {
                 Haptics.soft(context)
                 expanded = true
             }
@@ -1440,12 +1494,20 @@ private fun TopicInputCard(topic: String, onTopicChange: (String) -> Unit) {
                 )
             }
             if (topic.isNotEmpty()) {
+                val clearInteraction = remember { MutableInteractionSource() }
+                val clearShape = rememberNazoPillCornerMorphShape(
+                    interactionSource = clearInteraction,
+                    pressedCornerPercent = 28f,
+                )
                 Box(
                     modifier = Modifier
                         .size(22.dp)
-                        .clip(CircleShape)
-                        .background(NazoTextSecondary.copy(alpha = 0.2f))
-                        .clickable { onTopicChange("") },
+                        .clip(clearShape)
+                        .background(NazoTextSecondary.copy(alpha = 0.2f), clearShape)
+                        .clickable(
+                            interactionSource = clearInteraction,
+                            indication = LocalIndication.current,
+                        ) { onTopicChange("") },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -1463,11 +1525,20 @@ private fun TopicInputCard(topic: String, onTopicChange: (String) -> Unit) {
             HorizontalDivider(color = NazoSurfaceVariant, thickness = 1.dp)
             Spacer(Modifier.height(6.dp))
             suggestions.forEach { suggestion ->
+                val suggestionInteraction = remember(suggestion) { MutableInteractionSource() }
+                val suggestionShape = rememberNazoRoundedCornerMorphShape(
+                    interactionSource = suggestionInteraction,
+                    restingCorner = 10.dp,
+                    pressedCorner = 4.dp,
+                )
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable {
+                        .clip(suggestionShape)
+                        .clickable(
+                            interactionSource = suggestionInteraction,
+                            indication = LocalIndication.current,
+                        ) {
                             onTopicChange(suggestion)
                             focusManager.clearFocus()
                         }

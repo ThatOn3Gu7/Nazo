@@ -26,6 +26,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import quiz.thaton3app.nazo.ui.components.NazoConfirmButton
 import quiz.thaton3app.nazo.ui.components.NazoDangerButton
@@ -40,6 +41,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -102,6 +104,8 @@ import quiz.thaton3app.nazo.ui.components.AvatarAnchorId
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
 import quiz.thaton3app.nazo.ui.components.SafeRemoteImage
 import quiz.thaton3app.nazo.ui.components.rememberAvatarPlayback
+import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
+import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.ui.theme.*
 
 val ProfileHeaderFont = FontFamily(
@@ -327,13 +331,22 @@ private fun ProfileCoverBanner(
  */
 @Composable
 private fun CoverEditButton(onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoPillCornerMorphShape(
+        interactionSource = interactionSource,
+        pressedCornerPercent = 28f,
+    )
     Box(
         modifier = Modifier
             .padding(8.dp)
             .size(44.dp)
-            .clip(CircleShape)
-            .background(Color.Black.copy(alpha = 0.35f))
-            .clickable { onClick() },
+            .clip(shape)
+            .background(Color.Black.copy(alpha = 0.35f), shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -506,12 +519,14 @@ fun ProfileScreen(
                 // inset slightly so it sits comfortably inside the artwork.
                 title = {},
                 navigationIcon = {
+                    val backInteraction = remember { MutableInteractionSource() }
+                    val backShape = rememberNazoPillCornerMorphShape(backInteraction)
                     Surface(
                         // Match the pill's 8.dp top breathing room: portrait
                         // cover starts at 12.dp; landscape's left column at
                         // 24.dp. Add the same 8.dp inset in either orientation.
                         modifier = Modifier.padding(start = if (isLandscape) 32.dp else 20.dp),
-                        shape = CircleShape,
+                        shape = backShape,
                         color = NazoSurface.copy(alpha = 0.94f),
                         contentColor = NazoTextPrimary,
                         border = BorderStroke(1.dp, NazoPrimary.copy(alpha = 0.18f)),
@@ -521,7 +536,10 @@ fun ProfileScreen(
                             modifier = Modifier.padding(end = 18.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            IconButton(onClick = onBack) {
+                            IconButton(
+                                onClick = onBack,
+                                interactionSource = backInteraction,
+                            ) {
                                 Icon(
                                     Icons.AutoMirrored.Filled.ArrowBack,
                                     contentDescription = "Back",
@@ -639,11 +657,18 @@ fun ProfileScreen(
                     // Keep the avatar's overhang clear of the row content.
                     Spacer(Modifier.height(coverContentGap(CoverAvatarSize)))
 
+                    val usernameInteraction = remember { MutableInteractionSource() }
+                    val usernameShape = rememberNazoRoundedCornerMorphShape(
+                        interactionSource = usernameInteraction,
+                        restingCorner = 28.dp,
+                        pressedCorner = 14.dp,
+                    )
                     Surface(
                         onClick = { showUsernameDialog = true },
-                        shape = MaterialTheme.shapes.extraLarge,
+                        interactionSource = usernameInteraction,
+                        shape = usernameShape,
                         color = Color.Transparent,
-                        modifier = Modifier.clip(MaterialTheme.shapes.extraLarge)
+                        modifier = Modifier.clip(usernameShape)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -782,11 +807,18 @@ fun ProfileScreen(
                     modifier = Modifier.padding(horizontal = 24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    val usernameInteraction = remember { MutableInteractionSource() }
+                    val usernameShape = rememberNazoRoundedCornerMorphShape(
+                        interactionSource = usernameInteraction,
+                        restingCorner = 28.dp,
+                        pressedCorner = 14.dp,
+                    )
                     Surface(
                         onClick = { showUsernameDialog = true },
-                        shape = MaterialTheme.shapes.extraLarge,
+                        interactionSource = usernameInteraction,
+                        shape = usernameShape,
                         color = Color.Transparent,
-                        modifier = Modifier.clip(MaterialTheme.shapes.extraLarge)
+                        modifier = Modifier.clip(usernameShape)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -987,8 +1019,16 @@ fun ProfileScreen(
                         // provider it asks the model; without one it falls back
                         // to the local generator silently — no API error for a
                         // user who never configured a key.
+                        val generateInteraction = remember { MutableInteractionSource() }
+                        val generateShape = rememberNazoPillCornerMorphShape(
+                            interactionSource = generateInteraction,
+                            pressedCornerPercent = 28f,
+                            enabled = !generatingName,
+                        )
                         IconButton(
                             enabled = !generatingName,
+                            interactionSource = generateInteraction,
+                            modifier = Modifier.clip(generateShape),
                             onClick = {
                                 val provider = apiKeyStore.getGenerationProvider()
                                 val key = provider?.let { apiKeyStore.getKey(it) }
@@ -1125,14 +1165,22 @@ fun ProfileScreen(
                 ) {
                     // Visible way out — the viewer previously closed only by
                     // tapping outside or Back, which nothing advertised.
+                    val closeInteraction = remember { MutableInteractionSource() }
+                    val closeShape = rememberNazoPillCornerMorphShape(
+                        interactionSource = closeInteraction,
+                        pressedCornerPercent = 28f,
+                    )
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(8.dp)
                             .size(32.dp)
-                            .clip(CircleShape)
-                            .background(NazoSurfaceVariant)
-                            .clickable { showAvatarPreview = false },
+                            .clip(closeShape)
+                            .background(NazoSurfaceVariant, closeShape)
+                            .clickable(
+                                interactionSource = closeInteraction,
+                                indication = LocalIndication.current,
+                            ) { showAvatarPreview = false },
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
@@ -1260,7 +1308,16 @@ fun ProfileScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("Change profile picture", modifier = Modifier.weight(1f))
-                    IconButton(onClick = { refreshAvatars() }) {
+                    val refreshInteraction = remember { MutableInteractionSource() }
+                    val refreshShape = rememberNazoPillCornerMorphShape(
+                        interactionSource = refreshInteraction,
+                        pressedCornerPercent = 28f,
+                    )
+                    IconButton(
+                        onClick = { refreshAvatars() },
+                        interactionSource = refreshInteraction,
+                        modifier = Modifier.clip(refreshShape),
+                    ) {
                         if (loadingDynamic) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(20.dp),
@@ -1330,12 +1387,20 @@ fun ProfileScreen(
                                 is AvatarPreset.Generated -> preset.url
                             }
                             key(presetKey) {
+                                val presetInteraction = remember { MutableInteractionSource() }
+                                val presetShape = rememberNazoPillCornerMorphShape(
+                                    interactionSource = presetInteraction,
+                                    pressedCornerPercent = 28f,
+                                )
                                 Surface(
                                     modifier = Modifier
                                         .padding(horizontal = 8.dp)
                                         .size(64.dp)
-                                        .clip(CircleShape)
-                                        .clickable {
+                                        .clip(presetShape)
+                                        .clickable(
+                                            interactionSource = presetInteraction,
+                                            indication = LocalIndication.current,
+                                        ) {
                                             val value = when (preset) {
                                                 is AvatarPreset.Emoji -> "emoji:${preset.symbol}"
                                                 is AvatarPreset.Generated -> preset.url
@@ -1344,7 +1409,7 @@ fun ProfileScreen(
                                             showPictureDialog = false
                                         },
                                     color = NazoSurfaceVariant,
-                                    shape = CircleShape
+                                    shape = presetShape
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         when (preset) {
@@ -1400,12 +1465,19 @@ fun ProfileScreen(
                         Spacer(Modifier.height(12.dp))
                         // The full-size viewer used to be reachable only by an
                         // undisclosed press-and-hold; this is its visible route.
+                        val viewInteraction = remember { MutableInteractionSource() }
+                        val viewShape = rememberNazoRoundedCornerMorphShape(
+                            interactionSource = viewInteraction,
+                            restingCorner = 16.dp,
+                            pressedCorner = 8.dp,
+                        )
                         TextButton(
                             onClick = {
                                 showPictureDialog = false
                                 showAvatarPreview = true
                             },
-                            modifier = Modifier.fillMaxWidth(),
+                            interactionSource = viewInteraction,
+                            modifier = Modifier.fillMaxWidth().clip(viewShape),
                         ) {
                             Text("View current picture full size", color = NazoPrimary)
                         }
@@ -1664,9 +1736,17 @@ fun ProfileScreen(
                                     color = NazoPrimary,
                                 )
                             } else {
+                                val fetchInteraction = remember { MutableInteractionSource() }
+                                val fetchShape = rememberNazoPillCornerMorphShape(
+                                    interactionSource = fetchInteraction,
+                                    pressedCornerPercent = 28f,
+                                    enabled = url.isNotBlank(),
+                                )
                                 IconButton(
                                     onClick = { fetch() },
                                     enabled = url.isNotBlank(),
+                                    interactionSource = fetchInteraction,
+                                    modifier = Modifier.clip(fetchShape),
                                 ) {
                                     Icon(
                                         imageVector = if (previewBitmap != null) {
@@ -1724,6 +1804,13 @@ fun ProfileScreen(
                     }
                     if (previewBitmap != null) {
                         Spacer(Modifier.width(4.dp))
+                        val cropInteraction = remember { MutableInteractionSource() }
+                        val cropShape = rememberNazoRoundedCornerMorphShape(
+                            interactionSource = cropInteraction,
+                            restingCorner = 16.dp,
+                            pressedCorner = 8.dp,
+                            enabled = !fetching,
+                        )
                         TextButton(
                             onClick = {
                                 // Hand the downloaded draft to the shared crop
@@ -1738,6 +1825,8 @@ fun ProfileScreen(
                                 }
                             },
                             enabled = !fetching,
+                            interactionSource = cropInteraction,
+                            modifier = Modifier.clip(cropShape),
                         ) {
                             Icon(
                                 Icons.Filled.Crop,
@@ -1937,12 +2026,19 @@ private fun ProfileMenuItem(
     subtitle: String,
     onClick: () -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 16.dp,
+        pressedCorner = 8.dp,
+    )
     Card(
         onClick = onClick,
+        interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, NazoPrimary.copy(alpha = 0.30f), RoundedCornerShape(16.dp)),
-        shape = RoundedCornerShape(16.dp),
+            .border(1.dp, NazoPrimary.copy(alpha = 0.30f), shape),
+        shape = shape,
         colors = CardDefaults.cardColors(containerColor = NazoSurfaceVariant.copy(alpha = 0.5f)),
     ) {
         ListItem(
@@ -2028,13 +2124,20 @@ private fun ProfileProgressCard(
     } else {
         0
     }
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 24.dp,
+        pressedCorner = 12.dp,
+    )
 
     Card(
         onClick = onClick,
+        interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, NazoPrimary.copy(alpha = 0.30f), RoundedCornerShape(24.dp)),
-        shape = RoundedCornerShape(24.dp),
+            .border(1.dp, NazoPrimary.copy(alpha = 0.30f), shape),
+        shape = shape,
         colors = CardDefaults.cardColors(
             containerColor = NazoSurfaceVariant.copy(alpha = 0.45f),
         ),

@@ -4,9 +4,11 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,6 +55,7 @@ import quiz.thaton3app.nazo.data.NAZO_LIBRARIES
 import quiz.thaton3app.nazo.data.NAZO_LICENSE_ID
 import quiz.thaton3app.nazo.data.NAZO_LICENSE_SUMMARY
 import quiz.thaton3app.nazo.data.ThirdPartyLibrary
+import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoSurface
@@ -280,11 +283,21 @@ private fun AppLicenseCard(onOpenUrl: (String) -> Unit) {
 
 @Composable
 private fun LicenseLink(label: String, onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 10.dp,
+        pressedCorner = 4.dp,
+    )
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick)
+            .clip(shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
             .padding(vertical = 4.dp, horizontal = 2.dp),
     ) {
         Icon(
@@ -312,14 +325,23 @@ private fun LibraryRow(library: ThirdPartyLibrary, onOpenUrl: (String) -> Unit) 
         animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy),
         label = "library_chevron",
     )
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 18.dp,
+        pressedCorner = 9.dp,
+    )
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(NazoSurface)
-            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(18.dp))
-            .clickable { expanded = !expanded }
+            .clip(shape)
+            .background(NazoSurface, shape)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+            ) { expanded = !expanded }
             .animateContentSize(
                 animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy),
             )

@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -324,7 +325,19 @@ fun ProfileImagePreviewDialog(
 
                 if (!cropping && current != null) {
                     Spacer(Modifier.width(4.dp))
-                    TextButton(onClick = { croppingSource = sourceKey }, enabled = !saving) {
+                    val cropInteraction = remember { MutableInteractionSource() }
+                    val cropShape = rememberNazoRoundedCornerMorphShape(
+                        interactionSource = cropInteraction,
+                        restingCorner = 16.dp,
+                        pressedCorner = 8.dp,
+                        enabled = !saving,
+                    )
+                    TextButton(
+                        onClick = { croppingSource = sourceKey },
+                        enabled = !saving,
+                        interactionSource = cropInteraction,
+                        modifier = Modifier.clip(cropShape),
+                    ) {
                         Icon(
                             Icons.Filled.Crop,
                             contentDescription = null,

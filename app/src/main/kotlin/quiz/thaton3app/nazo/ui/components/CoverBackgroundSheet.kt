@@ -2,9 +2,11 @@ package quiz.thaton3app.nazo.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -161,12 +163,18 @@ internal fun CoverBackgroundSheet(
             // even while a preset is active. Replacement actions are explicit
             // so Android's system picker opens with the right media filter.
             val customIsVideo = galleryUri?.let(CoverVideoMedia::isVideoUri) == true
+            val customInteraction = remember { MutableInteractionSource() }
+            val customShape = rememberNazoRoundedCornerMorphShape(
+                interactionSource = customInteraction,
+                restingCorner = 16.dp,
+                pressedCorner = 8.dp,
+            )
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(bannerRatio)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(NazoSurfaceVariant)
+                    .clip(customShape)
+                    .background(NazoSurfaceVariant, customShape)
                     .border(
                         width = if (customSelected) 2.dp else 1.dp,
                         color = if (customSelected) {
@@ -174,9 +182,12 @@ internal fun CoverBackgroundSheet(
                         } else {
                             NazoTextSecondary.copy(alpha = 0.12f)
                         },
-                        shape = RoundedCornerShape(16.dp),
+                        shape = customShape,
                     )
-                    .clickable {
+                    .clickable(
+                        interactionSource = customInteraction,
+                        indication = LocalIndication.current,
+                    ) {
                         Haptics.soft(context)
                         if (hasCustom) onUseCustomMedia() else onPickPhoto()
                     },
@@ -325,11 +336,20 @@ internal fun CoverBackgroundSheet(
             // --- REMOVE (same destructive step as before) --------------------
             if (automaticEnabled || hasCustom || presetId != null) {
                 Spacer(Modifier.height(6.dp))
+                val removeInteraction = remember { MutableInteractionSource() }
+                val removeShape = rememberNazoRoundedCornerMorphShape(
+                    interactionSource = removeInteraction,
+                    restingCorner = 14.dp,
+                    pressedCorner = 7.dp,
+                )
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .clickable {
+                        .clip(removeShape)
+                        .clickable(
+                            interactionSource = removeInteraction,
+                            indication = LocalIndication.current,
+                        ) {
                             Haptics.soft(context)
                             onRemove()
                         }
@@ -364,19 +384,31 @@ private fun AutomaticCoverTile(
     onClick: () -> Unit,
 ) {
     val ready = state as? AutomaticCoverState.Ready
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 16.dp,
+        pressedCorner = 8.dp,
+        enabled = ready != null,
+    )
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(bannerRatio)
-            .clip(RoundedCornerShape(16.dp))
-            .background(NazoSurfaceVariant)
+            .clip(shape)
+            .background(NazoSurfaceVariant, shape)
             .border(
                 width = if (selected) 2.dp else 1.dp,
                 color = if (selected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.12f),
-                shape = RoundedCornerShape(16.dp),
+                shape = shape,
             )
             .semantics { contentDescription = "Automatically match profile picture" }
-            .clickable(enabled = ready != null, onClick = onClick),
+            .clickable(
+                enabled = ready != null,
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            ),
     ) {
         val previewVisual = ready?.artifact?.let { artifact ->
             when (artifact.kind) {
@@ -467,11 +499,21 @@ private fun CoverPickerAction(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 12.dp,
+        pressedCorner = 6.dp,
+    )
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(NazoSurfaceVariant)
-            .clickable(onClick = onClick)
+            .clip(shape)
+            .background(NazoSurfaceVariant, shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
             .padding(horizontal = 12.dp, vertical = 11.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
@@ -550,18 +592,28 @@ private fun CoverPresetTile(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 16.dp,
+        pressedCorner = 8.dp,
+    )
     Box(
         modifier = modifier
             .aspectRatio(bannerRatio)
-            .clip(RoundedCornerShape(16.dp))
-            .background(NazoSurfaceVariant)
+            .clip(shape)
+            .background(NazoSurfaceVariant, shape)
             .border(
                 width = if (selected) 2.dp else 1.dp,
                 color = if (selected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.12f),
-                shape = RoundedCornerShape(16.dp),
+                shape = shape,
             )
             .semantics { contentDescription = preset.label }
-            .clickable(onClick = onClick),
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            ),
     ) {
         when (preset.kind) {
             CoverPresetKind.IMAGE -> Image(

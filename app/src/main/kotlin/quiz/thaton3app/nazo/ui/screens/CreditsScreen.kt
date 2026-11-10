@@ -1,8 +1,10 @@
 package quiz.thaton3app.nazo.ui.screens
 
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +35,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,6 +47,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import quiz.thaton3app.nazo.ui.components.SafeRemoteImage
 import quiz.thaton3app.nazo.ui.components.rememberHapticBack
+import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
+import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.data.Contributor
 import quiz.thaton3app.nazo.data.GITHUB_AVATAR_OWNER
 import quiz.thaton3app.nazo.data.NAZO_CONTRIBUTORS
@@ -344,9 +349,20 @@ private fun DevLinkTile(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 0.dp,
+        pressedCorner = 10.dp,
+    )
     Column(
         modifier = modifier
-            .clickable(onClick = onClick)
+            .clip(shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
             .padding(vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -368,13 +384,24 @@ private fun DevLinkTile(
 
 @Composable
 private fun ContributorRow(contributor: Contributor, onOpenUrl: (String) -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 0.dp,
+        pressedCorner = 12.dp,
+        enabled = contributor.url != null,
+    )
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
+            .clip(shape)
             .then(
                 if (contributor.url != null) {
-                    Modifier.clickable { onOpenUrl(contributor.url) }
+                    Modifier.clickable(
+                        interactionSource = interactionSource,
+                        indication = LocalIndication.current,
+                    ) { onOpenUrl(contributor.url) }
                 } else {
                     Modifier
                 },
@@ -452,14 +479,20 @@ internal fun SubSectionLabel(text: String) {
  */
 @Composable
 internal fun AboutSubScreenHeader(title: String, onBackClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoPillCornerMorphShape(
+        interactionSource = interactionSource,
+        pressedCornerPercent = 28f,
+    )
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(
             onClick = rememberHapticBack(onBackClick),
+            interactionSource = interactionSource,
             modifier = Modifier
                 .size(44.dp)
-                .clip(CircleShape)
-                .background(NazoSurface)
-                .border(1.dp, NazoTextSecondary.copy(alpha = 0.1f), CircleShape),
+                .clip(shape)
+                .background(NazoSurface, shape)
+                .border(1.dp, NazoTextSecondary.copy(alpha = 0.1f), shape),
         ) {
             Icon(
                 Icons.AutoMirrored.Filled.ArrowBack,

@@ -80,6 +80,8 @@ import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
 import quiz.thaton3app.nazo.ui.components.NazoSheetHeader
 import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.ui.components.nazoPressFeedback
+import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
+import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.SPARKLE_METEORS
 import quiz.thaton3app.nazo.ui.components.SPARKLE_STYLES
 import quiz.thaton3app.nazo.ui.components.SPARKLE_TWINKLE
@@ -181,12 +183,18 @@ fun AppearanceScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val backInteraction = remember { MutableInteractionSource() }
+                val backShape = rememberNazoPillCornerMorphShape(
+                    interactionSource = backInteraction,
+                    pressedCornerPercent = 28f,
+                )
                 IconButton(
                     onClick = rememberHapticBack(onBackClick),
+                    interactionSource = backInteraction,
                     modifier = Modifier
                         .size(40.dp)
-                        .clip(CircleShape)
-                        .background(NazoSurface),
+                        .clip(backShape)
+                        .background(NazoSurface, backShape),
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -320,14 +328,24 @@ fun AppearanceScreen(
             // the OS theme, so the row dims and stops responding while that's on.
             val pickerEnabled = !iconFollowsOsThemeChecked
             val selectedIcon = LauncherIconSwitcher.option(appIcon)
+            val iconPickerInteraction = remember { MutableInteractionSource() }
+            val iconPickerShape = rememberNazoRoundedCornerMorphShape(
+                interactionSource = iconPickerInteraction,
+                restingCorner = 24.dp,
+                pressedCorner = 12.dp,
+                enabled = pickerEnabled,
+            )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(NazoSurface)
-                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
+                    .clip(iconPickerShape)
+                    .background(NazoSurface, iconPickerShape)
+                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), iconPickerShape)
                     .then(
-                        if (pickerEnabled) Modifier.clickable {
+                        if (pickerEnabled) Modifier.clickable(
+                            interactionSource = iconPickerInteraction,
+                            indication = LocalIndication.current,
+                        ) {
                             Haptics.soft(context)
                             showIconSheet = true
                         } else Modifier
@@ -371,13 +389,22 @@ fun AppearanceScreen(
 
             // Single entry point — the effect list (with live previews and a
             // "None" option) lives in a bottom sheet that slides up.
+            val effectsInteraction = remember { MutableInteractionSource() }
+            val effectsShape = rememberNazoRoundedCornerMorphShape(
+                interactionSource = effectsInteraction,
+                restingCorner = 24.dp,
+                pressedCorner = 12.dp,
+            )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(NazoSurface)
-                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
-                    .clickable {
+                    .clip(effectsShape)
+                    .background(NazoSurface, effectsShape)
+                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), effectsShape)
+                    .clickable(
+                        interactionSource = effectsInteraction,
+                        indication = LocalIndication.current,
+                    ) {
                         Haptics.soft(context)
                         showEffectsSheet = true
                     }
@@ -419,13 +446,22 @@ fun AppearanceScreen(
             // Single entry point — the confetti variants (with live previews
             // and a "None" option) live in a bottom sheet, mirroring the
             // ambient-background pattern above.
+            val celebrationInteraction = remember { MutableInteractionSource() }
+            val celebrationShape = rememberNazoRoundedCornerMorphShape(
+                interactionSource = celebrationInteraction,
+                restingCorner = 24.dp,
+                pressedCorner = 12.dp,
+            )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(NazoSurface)
-                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
-                    .clickable {
+                    .clip(celebrationShape)
+                    .background(NazoSurface, celebrationShape)
+                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), celebrationShape)
+                    .clickable(
+                        interactionSource = celebrationInteraction,
+                        indication = LocalIndication.current,
+                    ) {
                         Haptics.soft(context)
                         showCelebrationSheet = true
                     }
@@ -462,13 +498,22 @@ fun AppearanceScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             // --- GENERATE BUTTON SPARK ---
+            val sparkleInteraction = remember { MutableInteractionSource() }
+            val sparkleShape = rememberNazoRoundedCornerMorphShape(
+                interactionSource = sparkleInteraction,
+                restingCorner = 24.dp,
+                pressedCorner = 12.dp,
+            )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(NazoSurface)
-                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
-                    .clickable {
+                    .clip(sparkleShape)
+                    .background(NazoSurface, sparkleShape)
+                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), sparkleShape)
+                    .clickable(
+                        interactionSource = sparkleInteraction,
+                        indication = LocalIndication.current,
+                    ) {
                         Haptics.soft(context)
                         showSparkleSheet = true
                     }

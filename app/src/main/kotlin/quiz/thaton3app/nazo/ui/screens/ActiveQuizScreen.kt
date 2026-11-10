@@ -29,9 +29,11 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -83,6 +85,7 @@ import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoQuitDialog
 import quiz.thaton3app.nazo.ui.components.isLandscape
+import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.rememberSystemReduceMotion
 import quiz.thaton3app.nazo.ui.mode.BlitzUrgency
 import quiz.thaton3app.nazo.ui.mode.GameplayPresentation
@@ -364,12 +367,18 @@ fun ActiveQuizScreen(
 
             // Header with Progress
             Row(verticalAlignment = Alignment.CenterVertically) {
+                val closeInteraction = remember { MutableInteractionSource() }
+                val closeShape = rememberNazoPillCornerMorphShape(
+                    interactionSource = closeInteraction,
+                    pressedCornerPercent = 28f,
+                )
                 IconButton(
                     onClick = { Haptics.light(context); showQuitDialog = true },
+                    interactionSource = closeInteraction,
                     modifier = Modifier
                         .size(40.dp)
-                        .clip(CircleShape)
-                        .background(NazoSurface)
+                        .clip(closeShape)
+                        .background(NazoSurface, closeShape)
                 ) {
                     Icon(Icons.Filled.Close, contentDescription = "Close", tint = NazoTextSecondary)
                 }
@@ -800,12 +809,17 @@ fun ActiveQuizScreen(
                             Spacer(Modifier.height(20.dp))
 
                             // Next Question Button
+                            val nextInteraction = remember { MutableInteractionSource() }
+                            val nextShape = rememberNazoPillCornerMorphShape(nextInteraction)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(50))
-                                    .background(NazoPrimary)
-                                    .clickable {
+                                    .clip(nextShape)
+                                    .background(NazoPrimary, nextShape)
+                                    .clickable(
+                                        interactionSource = nextInteraction,
+                                        indication = LocalIndication.current,
+                                    ) {
                                         Haptics.light(context)
                                         onNextQuestion(isCorrect, shownAnswer)
                                         selectedAnswer = null // Reset for next question

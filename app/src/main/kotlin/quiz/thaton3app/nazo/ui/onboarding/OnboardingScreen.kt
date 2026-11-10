@@ -29,6 +29,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -115,6 +116,8 @@ import quiz.thaton3app.nazo.data.remote.preferredDefaultModel
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.isLandscape
+import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
+import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.ui.theme.Accents
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoError
@@ -341,11 +344,19 @@ fun OnboardingScreen(
                     enter = fadeIn(tween(250, easing = FastOutSlowInEasing)),
                     exit = fadeOut(tween(200, easing = FastOutSlowInEasing)),
                 ) {
+                    val skipInteraction = remember { MutableInteractionSource() }
+                    val skipShape = rememberNazoRoundedCornerMorphShape(
+                        interactionSource = skipInteraction,
+                        restingCorner = 16.dp,
+                        pressedCorner = 8.dp,
+                    )
                     TextButton(
                         onClick = {
                             Haptics.soft(context)
                             onFinish()
                         },
+                        interactionSource = skipInteraction,
+                        modifier = Modifier.clip(skipShape),
                     ) {
                         Text(
                             text = "Skip",
@@ -464,16 +475,22 @@ fun OnboardingScreen(
                     exit = shrinkHorizontally(spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut(tween(200)),
                 ) {
                     Row {
+                        val previousInteraction = remember { MutableInteractionSource() }
+                        val previousShape = rememberNazoPillCornerMorphShape(
+                            interactionSource = previousInteraction,
+                            pressedCornerPercent = 28f,
+                        )
                         IconButton(
                             onClick = {
                                 Haptics.soft(context)
                                 scope.launch { pagerState.animateScrollToPage(page - 1) }
                             },
+                            interactionSource = previousInteraction,
                             modifier = Modifier
                                 .size(58.dp)
-                                .clip(CircleShape)
-                                .background(NazoSurface)
-                                .border(1.dp, NazoTextSecondary.copy(alpha = 0.25f), CircleShape),
+                                .clip(previousShape)
+                                .background(NazoSurface, previousShape)
+                                .border(1.dp, NazoTextSecondary.copy(alpha = 0.25f), previousShape),
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.ArrowBack,
@@ -1356,18 +1373,28 @@ private fun ExpandableSection(
         animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
         label = "chevron",
     )
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 20.dp,
+        pressedCorner = 10.dp,
+    )
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(NazoSurface)
-            .border(1.dp, NazoTextSecondary.copy(alpha = 0.18f), RoundedCornerShape(20.dp))
+            .clip(shape)
+            .background(NazoSurface, shape)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.18f), shape)
             .animateContentSize(animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onToggle() }
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = LocalIndication.current,
+                    onClick = onToggle,
+                )
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -1421,11 +1448,17 @@ private fun SelectPill(
         animationSpec = tween(250, easing = FastOutSlowInEasing),
         label = "pillFg",
     )
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoPillCornerMorphShape(interactionSource)
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(50))
-            .background(bg)
-            .clickable { onClick() }
+            .clip(shape)
+            .background(bg, shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
             .padding(horizontal = 16.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {

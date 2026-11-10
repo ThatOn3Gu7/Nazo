@@ -45,6 +45,18 @@ class NazoInteractionTest {
     }
 
     @Test
+    fun reusableCornerPolicySupportsRoundedCardsAndFlatRows() {
+        assertEquals(20f, nazoCornerMorphValue(20f, 10f, 0f), 0f)
+        assertEquals(15f, nazoCornerMorphValue(20f, 10f, 0.5f), 0f)
+        assertEquals(10f, nazoCornerMorphValue(20f, 10f, 1f), 0f)
+
+        // A flat list row can move in the opposite direction without changing
+        // the shared timing or introducing scale/layout policy.
+        assertEquals(0f, nazoCornerMorphValue(0f, 12f, -1f), 0f)
+        assertEquals(12f, nazoCornerMorphValue(0f, 12f, 2f), 0f)
+    }
+
+    @Test
     fun expressiveCornerGeometryAndQuickTapTimingStayBounded() {
         assertEquals(
             nazoExpressiveCornerPercent(0f),
