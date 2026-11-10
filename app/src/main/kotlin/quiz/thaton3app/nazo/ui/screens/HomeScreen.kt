@@ -1,6 +1,8 @@
 package quiz.thaton3app.nazo.ui.screens
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -13,10 +15,13 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
@@ -105,6 +110,17 @@ enum class Difficulty(val label: String) {
     OTAKU_MASTER("Otaku Master"),
 }
 
+internal enum class HomeCountControls { Questions, Rounds, None }
+
+internal fun homeCountControls(mode: NazoMode): HomeCountControls = when (mode) {
+    NazoMode.QUIZ, NazoMode.VERSUS -> HomeCountControls.Questions
+    NazoMode.GUESSING -> HomeCountControls.Rounds
+    NazoMode.SURVIVAL, NazoMode.BLITZ -> HomeCountControls.None
+}
+
+internal fun homePracticeVisible(mode: NazoMode, practiceCount: Int): Boolean =
+    mode == NazoMode.QUIZ && practiceCount > 0
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -150,7 +166,6 @@ fun HomeScreen(
 ) {
     val difficulty = Difficulty.valueOf(difficultyName)
     val nazoMode = NazoMode.entries.firstOrNull { it.name == mode } ?: NazoMode.QUIZ
-    val isGuessing = nazoMode == NazoMode.GUESSING
     val context = LocalContext.current
     val reduceMotion = rememberSystemReduceMotion()
     var showProviderSheet by remember { mutableStateOf(false) }
@@ -292,40 +307,101 @@ fun HomeScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        if (isGuessing) {
-            SectionLabel("ROUNDS")
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf(1, 3, 5).forEach { count ->
-                    PillButton(
-                        text = if (count == 1) "1 Round" else "$count Rounds",
-                        selected = guessingRounds == count,
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            if (guessingRounds != count) Haptics.light(context)
-                            onGuessingRoundsChange(count)
-                        },
-                    )
+        // Mode-dependent controls used to be removed in one composition, which
+        // made the Generate button jump when Questions/Practice disappeared.
+        // Animate both the content and the container height so every sibling
+        // follows the change instead of teleporting to its new position.
+        AnimatedContent(
+            targetState = homeCountControls(nazoMode),
+            modifier = Modifier.fillMaxWidth(),
+            transitionSpec = {
+                val transform = if (reduceMotion) {
+                    fadeIn(tween(90)) togetherWith fadeOut(tween(70))
+                } else {
+                    (fadeIn(tween(180, easing = FastOutSlowInEasing)) +
+                        slideInVertically(tween(220, easing = FastOutSlowInEasing)) { it / 10 })
+                        .togetherWith(
+                            fadeOut(tween(140, easing = FastOutSlowInEasing)) +
+                                slideOutVertically(
+                                    tween(180, easing = FastOutSlowInEasing),
+                                ) { -it / 10 },
+                        )
                 }
-            }
-        } else if (nazoMode == NazoMode.QUIZ || nazoMode == NazoMode.VERSUS) {
-            SectionLabel("QUESTIONS")
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf(5, 10, 15).forEach { count ->
-                    PillButton(
-                        text = "$count Questions",
-                        selected = questionCount == count,
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            if (questionCount != count) Haptics.light(context)
-                            onQuestionCountChange(count)
-                        },
-                    )
+                transform.using(
+                    SizeTransform(clip = false) { _, _ ->
+                        if (reduceMotion) snap() else tween(
+                            durationMillis = 240,
+                            easing = FastOutSlowInEasing,
+                        )
+                    },
+                )
+            },
+            label = "homeModeCountControls",
+        ) { controls ->
+            when (controls) {
+                HomeCountControls.Rounds -> Column(Modifier.fillMaxWidth()) {
+                    SectionLabel("ROUNDS")
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        listOf(1, 3, 5).forEach { count ->
+                            PillButton(
+                                text = if (count == 1) "1 Round" else "$count Rounds",
+                                selected = guessingRounds == count,
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    if (guessingRounds != count) Haptics.light(context)
+                                    onGuessingRoundsChange(count)
+                                },
+                            )
+                        }
+                    }
                 }
-            }
 
-            if (nazoMode == NazoMode.QUIZ && practiceCount > 0) {
+                HomeCountControls.Questions -> Column(Modifier.fillMaxWidth()) {
+                    SectionLabel("QUESTIONS")
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        listOf(5, 10, 15).forEach { count ->
+                            PillButton(
+                                text = "$count Questions",
+                                selected = questionCount == count,
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    if (questionCount != count) Haptics.light(context)
+                                    onQuestionCountChange(count)
+                                },
+                            )
+                        }
+                    }
+                }
+
+                HomeCountControls.None -> Spacer(Modifier.fillMaxWidth())
+            }
+        }
+
+        AnimatedVisibility(
+            visible = homePracticeVisible(nazoMode, practiceCount),
+            enter = if (reduceMotion) {
+                fadeIn(tween(90))
+            } else {
+                fadeIn(tween(180, easing = FastOutSlowInEasing)) +
+                    expandVertically(
+                        expandFrom = Alignment.Top,
+                        animationSpec = tween(240, easing = FastOutSlowInEasing),
+                    )
+            },
+            exit = if (reduceMotion) {
+                fadeOut(tween(70))
+            } else {
+                fadeOut(tween(140, easing = FastOutSlowInEasing)) +
+                    shrinkVertically(
+                        shrinkTowards = Alignment.Top,
+                        animationSpec = tween(220, easing = FastOutSlowInEasing),
+                    )
+            },
+            label = "homePracticeVisibility",
+        ) {
+            Column(Modifier.fillMaxWidth()) {
                 Spacer(Modifier.height(14.dp))
                 PracticeMissesButton(
                     practiceCount = practiceCount,

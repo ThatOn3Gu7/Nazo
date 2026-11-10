@@ -926,7 +926,22 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var currentQuestionIndex by remember { mutableIntStateOf(0) }
     var score by remember { mutableIntStateOf(0) }
     var quizDifficulty by remember { mutableStateOf("Medium") }
-    var quizStartedAt by remember { mutableStateOf(0L) }
+    var quizStartedAt by remember { mutableLongStateOf(0L) }
+    // Completion time is a result snapshot, not a value recalculated from the
+    // current clock. Predictive-back seeking recomposes both screens on every
+    // progress frame, so deriving elapsed time in Results made a cancelled
+    // preview visibly restart the finished quiz's timer.
+    var quizFinishedAt by remember { mutableLongStateOf(0L) }
+
+    fun restartQuizClock() {
+        quizStartedAt = SystemClock.elapsedRealtime()
+        quizFinishedAt = 0L
+    }
+
+    fun freezeQuizClock() {
+        if (quizFinishedAt == 0L) quizFinishedAt = SystemClock.elapsedRealtime()
+    }
+
     // Lives above AnimatedContent so reconstructing Results as Review's back
     // target cannot replay completion sounds, confetti, haptics, or entrances.
     val quizCompleteEntranceGate = remember { QuizCompleteEntranceGate() }
@@ -1180,7 +1195,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         // assignments, so offline quizzes inherited the PREVIOUS game's
         // difficulty (wrong timer/hints/stats/records) and a stale start time.
         quizDifficulty = difficulty
-        quizStartedAt = SystemClock.elapsedRealtime()
+        restartQuizClock()
         // Offline mode: skip any API attempt and go straight to the local bank
         // (stats still record normally in `answer`).
         if (isOfflineMode) {
@@ -1226,7 +1241,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         quizDifficulty = "Daily"
         isDailyQuiz = true
         quizMode = "normal"
-        quizStartedAt = SystemClock.elapsedRealtime()
+        restartQuizClock()
         navigate(Screen.Quiz)
     }
 
@@ -1248,7 +1263,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         quizDifficulty = "Practice"
         isDailyQuiz = false
         quizMode = "normal"
-        quizStartedAt = SystemClock.elapsedRealtime()
+        restartQuizClock()
         navigate(Screen.Quiz)
     }
 
@@ -1329,6 +1344,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         quizNewRecord = recordsStore.submitSurvival(score)
         lastDailyBonus = 0
         captureProgressionReward(beforeStats, afterStats, beforeBonusXp, beforeAchievements)
+        freezeQuizClock()
         quizCompleteEntranceGate.armForCompletedQuiz()
         replace(Screen.Results)
     }
@@ -1340,7 +1356,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         survivalWrongs = 0
         survivalFetching = false
         quizDifficulty = difficulty
-        quizStartedAt = SystemClock.elapsedRealtime()
+        restartQuizClock()
         if (isOfflineMode) {
             runLocal(topic, difficulty, 5)
             return
@@ -1386,6 +1402,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         quizNewRecord = recordsStore.submitBlitz(score)
         lastDailyBonus = 0
         captureProgressionReward(beforeStats, afterStats, beforeBonusXp, beforeAchievements)
+        freezeQuizClock()
         quizCompleteEntranceGate.armForCompletedQuiz()
         replace(Screen.Results)
     }
@@ -1395,7 +1412,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         isDailyQuiz = false
         quizMode = "blitz"
         quizDifficulty = "Blitz"
-        quizStartedAt = SystemClock.elapsedRealtime()
+        restartQuizClock()
         // Blitz is instant + offline by design: a big local-bank pool, unseen
         // questions first. The chosen difficulty picks the pool.
         val pool = LocalQuestionBank.getQuestions(80, topic, difficulty)
@@ -1420,7 +1437,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         versusP1Score = 0
         versusP1Answers = emptyList()
         quizDifficulty = difficulty
-        quizStartedAt = SystemClock.elapsedRealtime()
+        restartQuizClock()
         if (isOfflineMode) {
             runLocal(topic, difficulty, count)
             return
@@ -1572,6 +1589,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 0
             }
             captureProgressionReward(beforeStats, afterStats, beforeBonusXp, beforeAchievements)
+            freezeQuizClock()
             // REPLACE the quiz screen (don't push on top of it): the finished
             // quiz must not stay on the back-stack, otherwise the system back
             // gesture from the results screen returns to the last question.
@@ -2246,7 +2264,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     Screen.Results -> QuizCompleteScreen(
                         score = score,
                         totalQuestions = questions.size,
-                        timeSpent = formatElapsed(quizStartedAt),
+                        timeSpent = formatQuizElapsed(quizStartedAt, quizFinishedAt),
                         difficulty = quizDifficulty,
                         bestPercent = quizPrevBest,
                         isNewRecord = quizNewRecord,
@@ -2784,12 +2802,12 @@ private fun AvatarOverlayLayer(
     )
 }
 
-private fun formatElapsed(startedAt: Long): String {
-    if (startedAt == 0L) return "0m 0s"
-    // elapsedRealtime(), not currentTimeMillis(): a monotonic clock that can't
-    // jump. Wall time moves when the OS does an NTP sync or the user edits the
-    // date mid-quiz, which produced absurd or negative durations.
-    val secs = ((SystemClock.elapsedRealtime() - startedAt) / 1000).toInt().coerceAtLeast(0)
+internal fun formatQuizElapsed(startedAt: Long, finishedAt: Long): String {
+    if (startedAt <= 0L || finishedAt <= 0L) return "0m 0s"
+    // Both values come from elapsedRealtime(), not currentTimeMillis(): this
+    // stays monotonic across wall-clock edits. Crucially, finishedAt is captured
+    // once when the run ends, so navigation recomposition can never advance it.
+    val secs = ((finishedAt - startedAt).coerceAtLeast(0L) / 1000L).toInt()
     return "${secs / 60}m ${secs % 60}s"
 }
 
