@@ -2,8 +2,10 @@ package quiz.thaton3app.nazo.ui.screens
 
 import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -85,6 +87,8 @@ import androidx.compose.ui.window.PopupPositionProvider
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoTab
+import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
+import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.data.remote.ModelInfo
@@ -265,13 +269,19 @@ fun AiProviderScreen(
 
 @Composable
 private fun ScreenHeader(title: String, onBackClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoPillCornerMorphShape(
+        interactionSource = interactionSource,
+        pressedCornerPercent = 28f,
+    )
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(
             onClick = rememberHapticBack(onBackClick),
+            interactionSource = interactionSource,
             modifier = Modifier
                 .size(40.dp)
-                .clip(CircleShape)
-                .background(NazoSurface),
+                .clip(shape)
+                .background(NazoSurface, shape),
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NazoTextSecondary, modifier = Modifier.size(20.dp))
         }
@@ -306,6 +316,12 @@ private fun ProviderCard(
     }
     
     val density = LocalDensity.current
+    val headerInteraction = remember { MutableInteractionSource() }
+    val cardShape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = headerInteraction,
+        restingCorner = 20.dp,
+        pressedCorner = 10.dp,
+    )
     
     Box(
         modifier = Modifier
@@ -314,16 +330,20 @@ private fun ProviderCard(
         Column(
             modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(NazoSurface)
-            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(20.dp)),
+            .clip(cardShape)
+            .background(NazoSurface, cardShape)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), cardShape),
         ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                // Moved clickable here so the ripple fills the whole header and is clipped by the parent's RoundedCornerShape
-                .clickable(onClick = onToggleExpand)
+                // Moved clickable here so the ripple fills the whole header and is clipped by the parent's current shape.
+                .clickable(
+                    interactionSource = headerInteraction,
+                    indication = LocalIndication.current,
+                    onClick = onToggleExpand,
+                )
                 .padding(16.dp),
         ) {
             Row(
@@ -356,9 +376,15 @@ private fun ProviderCard(
                     StatusBadge(provider.status)
                 }
             }
+            val helpInteraction = remember { MutableInteractionSource() }
+            val helpShape = rememberNazoPillCornerMorphShape(
+                interactionSource = helpInteraction,
+                pressedCornerPercent = 28f,
+            )
             IconButton(
                 onClick = { showHelp = !showHelp },
-                modifier = Modifier.size(36.dp),
+                interactionSource = helpInteraction,
+                modifier = Modifier.size(36.dp).clip(helpShape),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Info,
@@ -369,9 +395,15 @@ private fun ProviderCard(
             }
             Spacer(Modifier.width(4.dp))
             val arrowRotation by animateFloatAsState(targetValue = if (expanded) 180f else 0f, label = "arrowRotation")
+            val expandInteraction = remember { MutableInteractionSource() }
+            val expandShape = rememberNazoPillCornerMorphShape(
+                interactionSource = expandInteraction,
+                pressedCornerPercent = 28f,
+            )
             IconButton(
                 onClick = onToggleExpand,
-                modifier = Modifier.size(36.dp),
+                interactionSource = expandInteraction,
+                modifier = Modifier.size(36.dp).clip(expandShape),
             ) {
                 Icon(
                     imageVector = Icons.Filled.KeyboardArrowDown,
@@ -478,6 +510,12 @@ private fun ProviderCard(
         }
 
         if (popupMounted) {
+            val popupInteraction = remember { MutableInteractionSource() }
+            val popupShape = rememberNazoRoundedCornerMorphShape(
+                interactionSource = popupInteraction,
+                restingCorner = 12.dp,
+                pressedCorner = 6.dp,
+            )
             Popup(
                 popupPositionProvider = remember(density) {
                     object : PopupPositionProvider {
@@ -502,10 +540,13 @@ private fun ProviderCard(
                     modifier = Modifier
                         .alpha(alphaAnim.value)
                         .width(250.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(NazoSurface)
-                        .border(1.dp, NazoPrimary.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
-                        .clickable { showHelp = false }
+                        .clip(popupShape)
+                        .background(NazoSurface, popupShape)
+                        .border(1.dp, NazoPrimary.copy(alpha = 0.4f), popupShape)
+                        .clickable(
+                            interactionSource = popupInteraction,
+                            indication = LocalIndication.current,
+                        ) { showHelp = false }
                         .padding(14.dp),
                 ) {
                     Column {
@@ -578,6 +619,12 @@ private fun ModelDropdown(models: List<ModelInfo>, selected: String, onSelect: (
     var query by remember { mutableStateOf("") }
     
     val focusRequester = remember { FocusRequester() }
+    val triggerInteraction = remember { MutableInteractionSource() }
+    val triggerShape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = triggerInteraction,
+        restingCorner = 14.dp,
+        pressedCorner = 7.dp,
+    )
 
     // Auto-focus the search field when search mode opens
     LaunchedEffect(searching) {
@@ -617,10 +664,13 @@ private fun ModelDropdown(models: List<ModelInfo>, selected: String, onSelect: (
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .weight(1f)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(NazoSurfaceVariant)
-                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
-                    .clickable { if (!searching) expanded = !expanded }
+                    .clip(triggerShape)
+                    .background(NazoSurfaceVariant, triggerShape)
+                    .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), triggerShape)
+                    .clickable(
+                        interactionSource = triggerInteraction,
+                        indication = LocalIndication.current,
+                    ) { if (!searching) expanded = !expanded }
                     .padding(horizontal = 14.dp, vertical = 14.dp),
             ) {
                 if (searching) {
@@ -664,6 +714,11 @@ private fun ModelDropdown(models: List<ModelInfo>, selected: String, onSelect: (
             }
             Spacer(Modifier.width(8.dp))
             // Filter icon on the RIGHT — toggles an inline keyword search (e.g. "free" -> free models).
+            val searchInteraction = remember { MutableInteractionSource() }
+            val searchShape = rememberNazoPillCornerMorphShape(
+                interactionSource = searchInteraction,
+                pressedCornerPercent = 28f,
+            )
             IconButton(
                 onClick = {
                     searching = !searching
@@ -674,7 +729,8 @@ private fun ModelDropdown(models: List<ModelInfo>, selected: String, onSelect: (
                         expanded = false
                     }
                 },
-                modifier = Modifier.size(36.dp),
+                interactionSource = searchInteraction,
+                modifier = Modifier.size(36.dp).clip(searchShape),
             ) {
                 Icon(
                     if (searching) Icons.Filled.Close else Icons.Filled.Search,
@@ -710,11 +766,21 @@ private fun ModelDropdown(models: List<ModelInfo>, selected: String, onSelect: (
                 } else {
                     itemsIndexed(filtered, key = { _, m -> m.id }) { i, m ->
                         val isSel = m.id == selected
+                        val itemInteraction = remember(m.id) { MutableInteractionSource() }
+                        val itemShape = rememberNazoRoundedCornerMorphShape(
+                            interactionSource = itemInteraction,
+                            restingCorner = 0.dp,
+                            pressedCorner = 8.dp,
+                        )
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
+                                .clip(itemShape)
+                                .clickable(
+                                    interactionSource = itemInteraction,
+                                    indication = LocalIndication.current,
+                                ) {
                                     onSelect(m.id)
                                     expanded = false
                                     searching = false
@@ -778,6 +844,11 @@ private fun ModelDropdown(models: List<ModelInfo>, selected: String, onSelect: (
 @Composable
 private fun ApiKeyField(value: String, onValueChange: (String) -> Unit) {
     var visible by remember { mutableStateOf(false) }
+    val visibilityInteraction = remember { MutableInteractionSource() }
+    val visibilityShape = rememberNazoPillCornerMorphShape(
+        interactionSource = visibilityInteraction,
+        pressedCornerPercent = 28f,
+    )
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -797,7 +868,11 @@ private fun ApiKeyField(value: String, onValueChange: (String) -> Unit) {
             singleLine = true,
             modifier = Modifier.weight(1f),
         )
-        IconButton(onClick = { visible = !visible }, modifier = Modifier.size(28.dp)) {
+        IconButton(
+            onClick = { visible = !visible },
+            interactionSource = visibilityInteraction,
+            modifier = Modifier.size(28.dp).clip(visibilityShape),
+        ) {
             Icon(
                 imageVector = if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
                 contentDescription = if (visible) "Hide API key" else "Show API key",

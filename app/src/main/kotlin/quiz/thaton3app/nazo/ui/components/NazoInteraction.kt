@@ -11,13 +11,17 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.collectLatest
 import kotlin.math.roundToInt
 
@@ -90,16 +94,26 @@ internal const val NazoExpressiveQuickTapCompletionMs = 45
 internal const val NazoPillRestCornerPercent = 50f
 internal const val NazoPillPressedCornerPercent = 24f
 
+/** Interpolates one corner value without ever allowing animation overshoot. */
+internal fun nazoCornerMorphValue(
+    restingCorner: Float,
+    pressedCorner: Float,
+    progress: Float,
+): Float {
+    val fraction = progress.coerceIn(0f, 1f)
+    return restingCorner + (pressedCorner - restingCorner) * fraction
+}
+
 /**
- * Pure corner policy for the Practice-button prototype. Fifty percent is its
+ * Pure corner policy for the Practice-button reference. Fifty percent is its
  * original pill silhouette; the held state becomes noticeably more rectangular
  * without changing layout, scale, content, elevation, or colour.
  */
-internal fun nazoExpressiveCornerPercent(progress: Float): Float {
-    val fraction = progress.coerceIn(0f, 1f)
-    return NazoPillRestCornerPercent +
-        (NazoPillPressedCornerPercent - NazoPillRestCornerPercent) * fraction
-}
+internal fun nazoExpressiveCornerPercent(progress: Float): Float = nazoCornerMorphValue(
+    restingCorner = NazoPillRestCornerPercent,
+    pressedCorner = NazoPillPressedCornerPercent,
+    progress = progress,
+)
 
 /**
  * A very short tap may release before the press-in tween reaches its end. Give
@@ -125,6 +139,45 @@ class NazoExpressivePressState internal constructor(
 ) {
     val progress: Float
         get() = animation.value
+}
+
+/**
+ * Reuses the Practice timing for a control whose resting geometry is expressed
+ * in dp. Callers use the returned shape for clip, background and border, and
+ * pass the same [interactionSource] to their existing clickable. Recomposition
+ * only updates the shape object; measurement, padding and content stay fixed.
+ */
+@Composable
+fun rememberNazoRoundedCornerMorphShape(
+    interactionSource: MutableInteractionSource,
+    restingCorner: Dp,
+    pressedCorner: Dp = restingCorner * 0.5f,
+    enabled: Boolean = true,
+): Shape {
+    val press = rememberNazoExpressivePressState(interactionSource, enabled)
+    val corner = nazoCornerMorphValue(
+        restingCorner = restingCorner.value,
+        pressedCorner = pressedCorner.value,
+        progress = press.progress,
+    ).dp
+    return RoundedCornerShape(corner)
+}
+
+/** The same reusable policy for pills and circles whose corners are percentages. */
+@Composable
+fun rememberNazoPillCornerMorphShape(
+    interactionSource: MutableInteractionSource,
+    restingCornerPercent: Float = NazoPillRestCornerPercent,
+    pressedCornerPercent: Float = NazoPillPressedCornerPercent,
+    enabled: Boolean = true,
+): Shape {
+    val press = rememberNazoExpressivePressState(interactionSource, enabled)
+    val corner = nazoCornerMorphValue(
+        restingCorner = restingCornerPercent,
+        pressedCorner = pressedCornerPercent,
+        progress = press.progress,
+    ).roundToInt()
+    return RoundedCornerShape(corner)
 }
 
 /**

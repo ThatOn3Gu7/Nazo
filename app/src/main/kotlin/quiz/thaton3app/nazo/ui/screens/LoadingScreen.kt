@@ -18,9 +18,11 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -54,6 +56,8 @@ import quiz.thaton3app.nazo.data.remote.ModelInfo
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.components.WavySpinner
+import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
+import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoErrorBg
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
@@ -110,12 +114,18 @@ fun LoadingScreen(
                     .padding(top = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                val backInteraction = remember { MutableInteractionSource() }
+                val backShape = rememberNazoPillCornerMorphShape(
+                    interactionSource = backInteraction,
+                    pressedCornerPercent = 28f,
+                )
                 IconButton(
                     onClick = onCancel,
+                    interactionSource = backInteraction,
                     modifier = Modifier
                         .size(40.dp)
-                        .clip(CircleShape)
-                        .background(NazoSurface),
+                        .clip(backShape)
+                        .background(NazoSurface, backShape),
                 ) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
@@ -125,12 +135,18 @@ fun LoadingScreen(
                     )
                 }
                 Spacer(Modifier.weight(1f))
+                val settingsInteraction = remember { MutableInteractionSource() }
+                val settingsShape = rememberNazoPillCornerMorphShape(
+                    interactionSource = settingsInteraction,
+                    pressedCornerPercent = 28f,
+                )
                 IconButton(
                     onClick = onSettingsClick,
+                    interactionSource = settingsInteraction,
                     modifier = Modifier
                         .size(40.dp)
-                        .clip(CircleShape)
-                        .background(NazoSurface),
+                        .clip(settingsShape)
+                        .background(NazoSurface, settingsShape),
                 ) {
                     Icon(
                         Icons.Filled.Settings,
@@ -432,15 +448,24 @@ private fun ErrorContent(
 @Composable
 private fun ModelPicker(models: List<ModelInfo>, selected: String, onSelect: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
+    val triggerInteraction = remember { MutableInteractionSource() }
+    val triggerShape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = triggerInteraction,
+        restingCorner = 14.dp,
+        pressedCorner = 7.dp,
+    )
     Column {
         // Trigger "pill" — tapping it expands the list inline (no system/menu overlay).
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(NazoSurfaceVariant)
-                .clickable { expanded = !expanded }
+                .clip(triggerShape)
+                .background(NazoSurfaceVariant, triggerShape)
+                .clickable(
+                    interactionSource = triggerInteraction,
+                    indication = LocalIndication.current,
+                ) { expanded = !expanded }
                 .padding(horizontal = 14.dp, vertical = 14.dp),
         ) {
             Text(
@@ -476,11 +501,21 @@ private fun ModelPicker(models: List<ModelInfo>, selected: String, onSelect: (St
             ) {
                 models.forEachIndexed { i, m ->
                     val isSel = m.id == selected
+                    val itemInteraction = remember(m.id) { MutableInteractionSource() }
+                    val itemShape = rememberNazoRoundedCornerMorphShape(
+                        interactionSource = itemInteraction,
+                        restingCorner = 0.dp,
+                        pressedCorner = 8.dp,
+                    )
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onSelect(m.id); expanded = false }
+                            .clip(itemShape)
+                            .clickable(
+                                interactionSource = itemInteraction,
+                                indication = LocalIndication.current,
+                            ) { onSelect(m.id); expanded = false }
                             .padding(horizontal = 14.dp, vertical = 13.dp),
                     ) {
                         Text(

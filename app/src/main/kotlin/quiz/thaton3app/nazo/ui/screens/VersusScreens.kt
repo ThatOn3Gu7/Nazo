@@ -1,8 +1,10 @@
 package quiz.thaton3app.nazo.ui.screens
 
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,6 +64,7 @@ import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoButtonShape
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
+import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
@@ -131,15 +134,20 @@ fun VersusHandoffScreen(
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(36.dp))
+            val readyInteraction = remember { MutableInteractionSource() }
+            val readyShape = rememberNazoPillCornerMorphShape(readyInteraction)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(NazoPrimary)
-                    .clickable {
+                    .clip(readyShape)
+                    .background(NazoPrimary, readyShape)
+                    .clickable(
+                        interactionSource = readyInteraction,
+                        indication = LocalIndication.current,
+                    ) {
                         Haptics.light(context)
                         onPlayer2Ready()
                     },
@@ -484,13 +492,21 @@ fun VersusReviewScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 12.dp),
         ) {
+            val backInteraction = remember { MutableInteractionSource() }
+            val backShape = rememberNazoPillCornerMorphShape(
+                interactionSource = backInteraction,
+                pressedCornerPercent = 28f,
+            )
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .size(40.dp)
-                    .clip(CircleShape)
-                    .background(NazoSurface)
-                    .clickable {
+                    .clip(backShape)
+                    .background(NazoSurface, backShape)
+                    .clickable(
+                        interactionSource = backInteraction,
+                        indication = LocalIndication.current,
+                    ) {
                         Haptics.light(context)
                         onBackClick()
                     },
