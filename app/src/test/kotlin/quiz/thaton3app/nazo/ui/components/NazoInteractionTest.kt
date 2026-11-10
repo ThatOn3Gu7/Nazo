@@ -34,28 +34,27 @@ class NazoInteractionTest {
     }
 
     @Test
-    fun expressivePrototypeMorphsInsteadOfUniformlyScaling() {
-        val rest = nazoExpressivePressVisuals(0f)
-        val held = nazoExpressivePressVisuals(1f)
+    fun expressivePracticePrototypeMorphsOnlyItsCornerGeometry() {
+        val rest = nazoExpressiveCornerPercent(0f)
+        val held = nazoExpressiveCornerPercent(1f)
 
-        assertEquals(1f, rest.horizontalScale, 0f)
-        assertEquals(1f, rest.verticalScale, 0f)
-        assertTrue(held.horizontalScale < rest.horizontalScale)
-        assertTrue(held.verticalScale < held.horizontalScale)
-        assertTrue(held.cornerRadiusDp > rest.cornerRadiusDp)
-        assertTrue(held.elevationDp < rest.elevationDp)
-        assertTrue(held.overlayAlpha > rest.overlayAlpha)
+        assertEquals(NazoPillRestCornerPercent, rest, 0f)
+        assertEquals(NazoPillPressedCornerPercent, held, 0f)
+        assertEquals(50f, rest, 0f)
+        assertTrue(held < rest)
     }
 
     @Test
-    fun expressiveGeometryAndQuickTapTimingStayBounded() {
+    fun expressiveCornerGeometryAndQuickTapTimingStayBounded() {
         assertEquals(
-            nazoExpressivePressVisuals(0f),
-            nazoExpressivePressVisuals(-1f),
+            nazoExpressiveCornerPercent(0f),
+            nazoExpressiveCornerPercent(-1f),
+            0f,
         )
         assertEquals(
-            nazoExpressivePressVisuals(1f),
-            nazoExpressivePressVisuals(2f),
+            nazoExpressiveCornerPercent(1f),
+            nazoExpressiveCornerPercent(2f),
+            0f,
         )
         assertEquals(0, nazoQuickTapCompletionDurationMs(1f))
         assertTrue(

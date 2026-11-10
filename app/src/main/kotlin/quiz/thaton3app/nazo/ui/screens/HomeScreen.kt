@@ -3,9 +3,11 @@ package quiz.thaton3app.nazo.ui.screens
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -25,6 +27,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.widthIn
@@ -47,8 +50,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -61,6 +69,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.PI
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -73,7 +82,7 @@ import quiz.thaton3app.nazo.data.QuizStats
 import quiz.thaton3app.nazo.ui.components.NazoModalSheet
 import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
 import quiz.thaton3app.nazo.ui.components.NazoSheetHeader
-import quiz.thaton3app.nazo.ui.components.nazoExpressivePressVisuals
+import quiz.thaton3app.nazo.ui.components.nazoExpressiveCornerPercent
 import quiz.thaton3app.nazo.ui.components.nazoPressFeedback
 import quiz.thaton3app.nazo.ui.components.rememberNazoExpressivePressState
 import quiz.thaton3app.nazo.ui.components.rememberSystemReduceMotion
@@ -317,34 +326,10 @@ fun HomeScreen(
 
             if (nazoMode == NazoMode.QUIZ && practiceCount > 0) {
                 Spacer(Modifier.height(14.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(50))
-                        .background(NazoSurface)
-                        .border(1.dp, NazoPrimary.copy(alpha = 0.35f), RoundedCornerShape(50))
-                        .clickable {
-                            Haptics.light(context)
-                            onStartPractice()
-                        }
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.School,
-                        contentDescription = null,
-                        tint = NazoPrimary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "Practice your misses ($practiceCount)",
-                        color = NazoPrimary,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
+                PracticeMissesButton(
+                    practiceCount = practiceCount,
+                    onClick = onStartPractice,
+                )
             }
         }
 
@@ -1568,6 +1553,78 @@ private fun PillButton(
     }
 }
 
+/**
+ * Corner-only expressive prototype. The Row keeps its original measurement and
+ * full touch target; only the clipping outline and matching border interpolate.
+ */
+@Composable
+private fun PracticeMissesButton(
+    practiceCount: Int,
+    onClick: () -> Unit,
+) {
+    val context = LocalContext.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
+    val expressivePress = rememberNazoExpressivePressState(interactionSource)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                val cornerPercent = nazoExpressiveCornerPercent(expressivePress.progress)
+                shape = RoundedCornerShape(cornerPercent.roundToInt())
+                clip = true
+            }
+            .drawWithContent {
+                val cornerPercent = nazoExpressiveCornerPercent(expressivePress.progress)
+                val radius = size.minDimension * cornerPercent / 100f
+                drawRoundRect(
+                    color = NazoSurface,
+                    cornerRadius = CornerRadius(radius, radius),
+                )
+                drawContent()
+
+                val strokeWidth = 1.dp.toPx()
+                val inset = strokeWidth / 2f
+                val borderRadius = (radius - inset).coerceAtLeast(0f)
+                drawRoundRect(
+                    color = NazoPrimary.copy(alpha = 0.35f),
+                    topLeft = Offset(inset, inset),
+                    size = Size(
+                        width = size.width - strokeWidth,
+                        height = size.height - strokeWidth,
+                    ),
+                    cornerRadius = CornerRadius(borderRadius, borderRadius),
+                    style = Stroke(width = strokeWidth),
+                )
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = indication,
+            ) {
+                Haptics.light(context)
+                onClick()
+            }
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.School,
+            contentDescription = null,
+            tint = NazoPrimary,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = "Practice your misses ($practiceCount)",
+            color = NazoPrimary,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
 @Composable
 private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> Unit) {
     val context = LocalContext.current
@@ -1580,12 +1637,33 @@ private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> U
     var launching by remember { mutableStateOf(false) }
     val twinkle = remember { Animatable(0f) }
 
-    // Prototype for Nazo's expressive touch language. It observes the existing
-    // clickable interaction source, so semantics and gesture ownership stay
-    // untouched: held presses remain morphed, quick releases finish one short
-    // compression beat, and scroll cancellation springs straight back.
+    // The button used to give no visual feedback at all — only haptics — so a
+    // press was invisible. Three layers now respond to touch:
+    //   1. a spring scale-down while held (the "physical" press),
+    //   2. a brightening overlay + lifted elevation that track the press,
+    //   3. a slow sheen that sweeps across the face, hinting it is tappable.
     val interactionSource = remember { MutableInteractionSource() }
-    val expressivePress = rememberNazoExpressivePressState(interactionSource)
+    val pressed by interactionSource.collectIsPressedAsState()
+
+    val scale by animateFloatAsState(
+        targetValue = if (pressed && !reduceMotion) 0.97f else 1f,
+        // Springy on release so it feels responsive rather than sluggish.
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "generate_press_scale",
+    )
+    val pressOverlay by animateFloatAsState(
+        targetValue = if (pressed && !reduceMotion) 0.16f else 0f,
+        animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
+        label = "generate_press_overlay",
+    )
+    val elevation by animateDpAsState(
+        targetValue = if (pressed && !reduceMotion) 1.dp else 8.dp,
+        animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
+        label = "generate_press_elevation",
+    )
 
     // Idle sheen: a soft highlight that travels left-to-right on a long loop,
     // with a pause between sweeps so it reads as a gentle shine, not a spinner.
@@ -1619,22 +1697,22 @@ private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> U
             .fillMaxWidth()
             .height(58.dp)
             .graphicsLayer {
-                val visuals = nazoExpressivePressVisuals(expressivePress.progress)
-                scaleX = visuals.horizontalScale
-                scaleY = visuals.verticalScale
-                shape = RoundedCornerShape(visuals.cornerRadiusDp.dp)
-                clip = true
-                shadowElevation = visuals.elevationDp.dp.toPx()
-                ambientShadowColor = NazoPrimary
-                spotShadowColor = NazoPrimary
+                scaleX = scale
+                scaleY = scale
             }
+            .shadow(
+                elevation = elevation,
+                shape = RoundedCornerShape(18.dp),
+                ambientColor = NazoPrimary,
+                spotColor = NazoPrimary,
+            )
+            .clip(RoundedCornerShape(18.dp))
             .background(NazoPrimary)
+            // Sheen sits above the fill but below the label, and is skipped
+            // while pressed so the two effects never overlap.
             .drawWithContent {
-                val visuals = nazoExpressivePressVisuals(expressivePress.progress)
                 drawContent()
-                // Sheen sits above the fill but below the press wash. Holding
-                // the button stills it so the physical response stays legible.
-                if (visuals.overlayAlpha == 0f && !reduceMotion) {
+                if (!pressed && !reduceMotion) {
                     val bandWidth = size.width * 0.38f
                     val center = size.width * sheenX
                     drawRect(
@@ -1649,12 +1727,15 @@ private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> U
                         ),
                     )
                 }
-                if (visuals.overlayAlpha > 0f) {
-                    drawRect(color = NazoOnPrimary.copy(alpha = visuals.overlayAlpha))
+            }
+            // Press brightening, drawn over everything.
+            .drawWithContent {
+                drawContent()
+                if (pressOverlay > 0f) {
+                    drawRect(color = NazoOnPrimary.copy(alpha = pressOverlay))
                 }
                 // The shower sweeps the full button, so it is drawn here rather
-                // than on the icon. The animated graphics layer clips it to the
-                // current morphed silhouette.
+                // than on the icon. Clipped by the button's rounded shape.
                 if (sparkleStyle == SPARKLE_METEORS && twinkle.value > 0f) {
                     drawMeteorShower(
                         progress = twinkle.value,
@@ -1665,8 +1746,8 @@ private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> U
             }
             .clickable(
                 interactionSource = interactionSource,
-                // The morph + press wash are the feedback; a ripple on top
-                // would clash with the sheen.
+                // The scale + brighten IS the feedback; a ripple on top would
+                // clash with the sheen.
                 indication = null,
             ) {
                 if (launching) return@clickable
