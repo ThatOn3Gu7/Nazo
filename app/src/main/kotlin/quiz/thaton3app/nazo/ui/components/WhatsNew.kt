@@ -36,35 +36,51 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 /**
  * Bump this whenever CHANGELOG below gains entries the user should see.
  * NOTE: the id is a unique gate, not the release version; it only has to be
- * unique per set of entries. This is the final 12.0 gate.
+ * unique per set of entries. This is the final 13.0 gate.
  */
-const val CHANGELOG_ID = "2026-11-06-v12.0"
+const val CHANGELOG_ID = "2026-11-11-v13.0"
 
 data class ChangeEntry(val title: String, val points: List<String>)
 
 val CHANGELOG: List<ChangeEntry> = listOf(
     ChangeEntry(
-        "Back gestures show where they'll take you",
+        "Meet Sumi Ember",
         listOf(
-            "Swipe from either edge to reveal the real destination screen beneath the current one",
-            "Release to go back or slide home to cancel",
-            "Available with gesture navigation on Android 13 and newer",
+            "Nazo now opens with a hand-painted 謎 mark built for launchers, splash screens and themed icons",
+            "Sakura, Midnight and Ocean share the same balanced kanji footprint while keeping their own pigments",
+            "Existing Brush N and Pixel N shortcuts migrate safely to the new default identity",
         ),
     ),
     ChangeEntry(
-        "Profile pictures can move",
+        "Five modes, five distinct experiences",
         listOf(
-            "Choose a GIF, animated WebP or short MP4 and preview it before saving",
-            "Animated avatars loop smoothly across Home, Profile and the full-size viewer",
-            "Your animated avatar travels with profile backups",
+            "Quiz stays focused while Survival, Blitz, Versus and Guessing each gain clearer live identity and results",
+            "Answers now resolve with restrained glow or shake, explanations reveal cleanly and correct streaks build a combo seal",
+            "A travelling wavy progress line keeps question and Blitz timing readable without moving its endpoint",
         ),
     ),
     ChangeEntry(
-        "Make the profile cover your own",
+        "Progress that connects",
         listOf(
-            "Use your own photo, 14 included artworks or five animated gradients",
-            "Choose a muted MP4 loop or automatically match the current avatar",
-            "Every cover change now crossfades smoothly and rapid taps always settle on the latest choice",
+            "Results, Profile and Statistics now agree on your level, lifetime XP and distance to the next level",
+            "The collection expands to 20 achievement badges with clearer collected and locked states",
+            "Level-ups and newly earned badges appear once at completion without replaying after Review",
+        ),
+    ),
+    ChangeEntry(
+        "A sharper Home setup",
+        listOf(
+            "Challenge Focus gives topics a prominent home with starters and compact autocomplete",
+            "Difficulty and run length now live together in one Challenge Setup card with a live summary",
+            "Mode changes smoothly adapt Questions, Rounds and Practice without making the rest of Home jump",
+        ),
+    ),
+    ChangeEntry(
+        "Polished from press to transition",
+        listOf(
+            "Interactive surfaces now respond through their corners instead of generic shrinking or movement",
+            "Navigation, onboarding dismissal and profile media hand-offs feel connected while respecting Remove animations",
+            "Settings scrolling, transient messages, frozen result timing and rotation behavior received final stability fixes",
         ),
     ),
 )
