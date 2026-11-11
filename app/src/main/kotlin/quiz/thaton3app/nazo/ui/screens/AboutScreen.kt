@@ -115,6 +115,7 @@ import quiz.thaton3app.nazo.data.GITHUB_REPO
 import quiz.thaton3app.nazo.ui.components.NazoQuietButton
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
+import quiz.thaton3app.nazo.ui.components.NazoTransientMessage
 import quiz.thaton3app.nazo.ui.components.NazoDangerButton
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.components.sheetContentMaxHeight
@@ -618,238 +619,235 @@ private fun UpdateMenuContent(
                         )
                     }
                 }
-                // Animated expand/collapse for release notes section
-                AnimatedVisibility(
-                    visible = state is UpdateState.Available,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically(),
-                ) {
-                    val availableState = state as? UpdateState.Available
-                    if (availableState != null) {
-                        Column {
-                            Spacer(Modifier.height(16.dp))
+                // Keep release data mounted through the collapse; otherwise
+                // leaving Available clears the panel before its exit can draw.
+                NazoTransientMessage(
+                    value = state as? UpdateState.Available,
+                    label = "availableUpdateDetails",
+                ) { availableState ->
+                    Column {
+                        Spacer(Modifier.height(16.dp))
 
-                            // Current → New version comparison.
-                            Surface(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = MaterialTheme.shapes.medium,
-                                color = NazoSurfaceVariant.copy(alpha = 0.5f),
+                        // Current → New version comparison.
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.medium,
+                            color = NazoSurfaceVariant.copy(alpha = 0.5f),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(vertical = 14.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.weight(1f),
                                 ) {
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.weight(1f),
-                                    ) {
-                                        Text(
-                                            text = "Current",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = NazoTextSecondary,
-                                        )
-                                        Spacer(Modifier.height(6.dp))
-                                        Surface(
-                                            shape = MaterialTheme.shapes.small,
-                                            color = NazoBackground,
-                                        ) {
-                                            Text(
-                                                text = "v${currentVersion.removePrefix("v")}",
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = NazoTextPrimary,
-                                            )
-                                        }
-                                    }
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                        contentDescription = null,
-                                        tint = NazoPrimary,
-                                        modifier = Modifier.size(20.dp),
+                                    Text(
+                                        text = "Current",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = NazoTextSecondary,
                                     )
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.weight(1f),
+                                    Spacer(Modifier.height(6.dp))
+                                    Surface(
+                                        shape = MaterialTheme.shapes.small,
+                                        color = NazoBackground,
                                     ) {
                                         Text(
-                                            text = "New",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = NazoTextSecondary,
+                                            text = "v${currentVersion.removePrefix("v")}",
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = NazoTextPrimary,
                                         )
-                                        Spacer(Modifier.height(6.dp))
-                                        Surface(
-                                            shape = MaterialTheme.shapes.small,
-                                            color = NazoPrimary,
-                                        ) {
-                                            Text(
-                                                text = "v${availableState.tag.removePrefix("v")}",
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = NazoOnPrimary,
-                                            )
-                                        }
+                                    }
+                                }
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = null,
+                                    tint = NazoPrimary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Text(
+                                        text = "New",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = NazoTextSecondary,
+                                    )
+                                    Spacer(Modifier.height(6.dp))
+                                    Surface(
+                                        shape = MaterialTheme.shapes.small,
+                                        color = NazoPrimary,
+                                    ) {
+                                        Text(
+                                            text = "v${availableState.tag.removePrefix("v")}",
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = NazoOnPrimary,
+                                        )
                                     }
                                 }
                             }
+                        }
 
-                            Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(16.dp))
 
+                        Text(
+                            "What's New:",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = NazoTextSecondary,
+                        )
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 150.dp)
+                                .padding(top = 8.dp),
+                            shape = MaterialTheme.shapes.small,
+                            color = NazoSurfaceVariant.copy(alpha = 0.5f),
+                        ) {
                             Text(
-                                "What's New:",
-                                style = MaterialTheme.typography.labelLarge,
+                                text = availableState.releaseNotes.ifBlank { "No release notes provided." },
+                                modifier = Modifier
+                                    .padding(12.dp)
+                                    .verticalScroll(rememberScrollState()),
+                                style = MaterialTheme.typography.bodySmall,
                                 color = NazoTextSecondary,
                             )
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 150.dp)
-                                    .padding(top = 8.dp),
-                                shape = MaterialTheme.shapes.small,
-                                color = NazoSurfaceVariant.copy(alpha = 0.5f),
-                            ) {
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        when (downloadState) {
+                            is ApkDownloadState.Running -> {
+                                // Live in-sheet progress: bar + MB counter + percent.
+                                val total = downloadState.total
+                                val fraction = if (total > 0) {
+                                    (downloadState.downloaded.toFloat() / total).coerceIn(0f, 1f)
+                                } else null
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.5.dp,
+                                        color = NazoPrimary,
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(
+                                        text = "Downloading…",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = NazoTextPrimary,
+                                    )
+                                }
+                                Spacer(Modifier.height(10.dp))
+                                if (fraction != null) {
+                                    LinearProgressIndicator(
+                                        progress = { fraction },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = NazoPrimary,
+                                        trackColor = NazoSurfaceVariant,
+                                    )
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "${formatMb(downloadState.downloaded)} / ${formatMb(total)} MB",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = NazoTextSecondary,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        Text(
+                                            text = "${(fraction * 100).toInt()}%",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = NazoPrimary,
+                                        )
+                                    }
+                                } else {
+                                    LinearProgressIndicator(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = NazoPrimary,
+                                        trackColor = NazoSurfaceVariant,
+                                    )
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        text = "${formatMb(downloadState.downloaded)} MB so far",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = NazoTextSecondary,
+                                    )
+                                }
+                                Spacer(Modifier.height(12.dp))
+                                NazoSecondaryButton(
+                                    onClick = onCancelDownload,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text("Cancel")
+                                }
+                            }
+
+                            is ApkDownloadState.Done -> {
+                                NazoPrimaryButton(
+                                    onClick = onInstall,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Icon(
+                                        Icons.Filled.InstallMobile,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Install Update")
+                                }
+                                Spacer(Modifier.height(6.dp))
                                 Text(
-                                    text = availableState.releaseNotes.ifBlank { "No release notes provided." },
-                                    modifier = Modifier
-                                        .padding(12.dp)
-                                        .verticalScroll(rememberScrollState()),
+                                    text = "Download complete — the installer should have opened. Tap again if you dismissed it.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = NazoTextSecondary,
                                 )
                             }
 
-                            Spacer(Modifier.height(16.dp))
-
-                            when (downloadState) {
-                                is ApkDownloadState.Running -> {
-                                    // Live in-sheet progress: bar + MB counter + percent.
-                                    val total = downloadState.total
-                                    val fraction = if (total > 0) {
-                                        (downloadState.downloaded.toFloat() / total).coerceIn(0f, 1f)
-                                    } else null
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(18.dp),
-                                            strokeWidth = 2.5.dp,
-                                            color = NazoPrimary,
-                                        )
-                                        Spacer(Modifier.width(10.dp))
-                                        Text(
-                                            text = "Downloading…",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = NazoTextPrimary,
-                                        )
-                                    }
-                                    Spacer(Modifier.height(10.dp))
-                                    if (fraction != null) {
-                                        LinearProgressIndicator(
-                                            progress = { fraction },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            color = NazoPrimary,
-                                            trackColor = NazoSurfaceVariant,
-                                        )
-                                        Spacer(Modifier.height(6.dp))
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                text = "${formatMb(downloadState.downloaded)} / ${formatMb(total)} MB",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = NazoTextSecondary,
-                                                modifier = Modifier.weight(1f),
-                                            )
-                                            Text(
-                                                text = "${(fraction * 100).toInt()}%",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                fontWeight = FontWeight.Bold,
-                                                color = NazoPrimary,
-                                            )
-                                        }
-                                    } else {
-                                        LinearProgressIndicator(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            color = NazoPrimary,
-                                            trackColor = NazoSurfaceVariant,
-                                        )
-                                        Spacer(Modifier.height(6.dp))
-                                        Text(
-                                            text = "${formatMb(downloadState.downloaded)} MB so far",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = NazoTextSecondary,
-                                        )
-                                    }
-                                    Spacer(Modifier.height(12.dp))
-                                    NazoSecondaryButton(
-                                        onClick = onCancelDownload,
-                                        modifier = Modifier.fillMaxWidth(),
-                                    ) {
-                                        Text("Cancel")
-                                    }
+                            else -> {
+                                if (downloadState is ApkDownloadState.Failed) {
+                                    Text(
+                                        text = "Download failed: ${downloadState.message}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = NazoError,
+                                    )
+                                    Spacer(Modifier.height(8.dp))
                                 }
-
-                                is ApkDownloadState.Done -> {
+                                if (availableState.directApkUrl != null) {
                                     NazoPrimaryButton(
-                                        onClick = onInstall,
+                                        onClick = {
+                                            onStartDownload(
+                                                availableState.directApkUrl,
+                                                availableState.apkSizeBytes,
+                                            )
+                                        },
                                         modifier = Modifier.fillMaxWidth(),
                                     ) {
                                         Icon(
-                                            Icons.Filled.InstallMobile,
+                                            Icons.Filled.Download,
                                             contentDescription = null,
                                             modifier = Modifier.size(18.dp),
                                         )
                                         Spacer(Modifier.width(8.dp))
-                                        Text("Install Update")
+                                        Text(if (downloadState is ApkDownloadState.Failed) "Retry Download" else "Download & Install")
                                     }
-                                    Spacer(Modifier.height(6.dp))
-                                    Text(
-                                        text = "Download complete — the installer should have opened. Tap again if you dismissed it.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = NazoTextSecondary,
-                                    )
-                                }
-
-                                else -> {
-                                    if (downloadState is ApkDownloadState.Failed) {
-                                        Text(
-                                            text = "Download failed: ${downloadState.message}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = NazoError,
-                                        )
-                                        Spacer(Modifier.height(8.dp))
-                                    }
-                                    if (availableState.directApkUrl != null) {
-                                        NazoPrimaryButton(
-                                            onClick = {
-                                                onStartDownload(
-                                                    availableState.directApkUrl,
-                                                    availableState.apkSizeBytes,
-                                                )
-                                            },
-                                            modifier = Modifier.fillMaxWidth(),
-                                        ) {
-                                            Icon(
-                                                Icons.Filled.Download,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(18.dp),
-                                            )
-                                            Spacer(Modifier.width(8.dp))
-                                            Text(if (downloadState is ApkDownloadState.Failed) "Retry Download" else "Download & Install")
-                                        }
-                                    } else {
-                                        NazoPrimaryButton(
-                                            onClick = { onOpenBrowser(availableState.htmlUrl) },
-                                            modifier = Modifier.fillMaxWidth(),
-                                        ) {
-                                            Text("Download Manually")
-                                        }
-                                    }
-                                    Row(
+                                } else {
+                                    NazoPrimaryButton(
+                                        onClick = { onOpenBrowser(availableState.htmlUrl) },
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.End,
                                     ) {
-                                        NazoSecondaryButton(onClick = { onOpenBrowser(availableState.htmlUrl) }) {
-                                            Text("View on GitHub")
-                                        }
+                                        Text("Download Manually")
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                ) {
+                                    NazoSecondaryButton(onClick = { onOpenBrowser(availableState.htmlUrl) }) {
+                                        Text("View on GitHub")
                                     }
                                 }
                             }

@@ -20,18 +20,13 @@ import androidx.activity.result.PickVisualMediaRequest
 import android.content.res.Configuration
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import quiz.thaton3app.nazo.ui.components.NazoConfirmButton
 import quiz.thaton3app.nazo.ui.components.NazoDangerButton
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
+import quiz.thaton3app.nazo.ui.components.NazoTransientMessage
 import quiz.thaton3app.nazo.ui.components.Haptics
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -1103,16 +1098,15 @@ fun ProfileScreen(
                         }
                     },
                     // Always present, so the field does not jump as the error
-                    // appears and disappears; AnimatedVisibility fades and
-                    // expands the text instead of snapping it in.
+                    // appears and disappears; the retained message host fades
+                    // and resizes without clearing the text before its exit.
                     supportingText = {
-                        AnimatedVisibility(
-                            visible = nameError != null,
-                            enter = fadeIn(tween(180)) + expandVertically(tween(180)),
-                            exit = fadeOut(tween(140)) + shrinkVertically(tween(140)),
-                        ) {
+                        NazoTransientMessage(
+                            value = nameError,
+                            label = "profileUsernameError",
+                        ) { visibleError ->
                             Text(
-                                text = nameError.orEmpty(),
+                                text = visibleError,
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -1764,15 +1758,14 @@ fun ProfileScreen(
                     )
 
                     // Fades/expands rather than snapping the dialog taller.
-                    AnimatedVisibility(
-                        visible = fetchError != null,
-                        enter = fadeIn(tween(180)) + expandVertically(tween(180)),
-                        exit = fadeOut(tween(140)) + shrinkVertically(tween(140)),
-                    ) {
+                    NazoTransientMessage(
+                        value = fetchError,
+                        label = "profileCoverFetchError",
+                    ) { visibleError ->
                         Column {
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                text = fetchError.orEmpty(),
+                                text = visibleError,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = NazoError,
                                 textAlign = TextAlign.Center,

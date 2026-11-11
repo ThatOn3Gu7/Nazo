@@ -85,8 +85,10 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
+import quiz.thaton3app.nazo.ui.components.NazoMessageAxis
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoTab
+import quiz.thaton3app.nazo.ui.components.NazoTransientMessage
 import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
@@ -481,14 +483,14 @@ private fun ProviderCard(
                                 }
                             }
                         }
-                        AnimatedVisibility(
-                            visible = fetchError != null,
-                            enter = fadeIn(animationSpec = tween(160)),
-                            exit = fadeOut(animationSpec = tween(160)),
+                        NazoTransientMessage(
+                            value = fetchError,
+                            axis = NazoMessageAxis.Horizontal,
                             modifier = Modifier
                                 .weight(1f, fill = false)
                                 .padding(start = 12.dp),
-                        ) {
+                            label = "providerFetchError",
+                        ) { visibleError ->
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(12.dp))
@@ -497,7 +499,7 @@ private fun ProviderCard(
                                     .padding(horizontal = 14.dp, vertical = 10.dp),
                             ) {
                                 Text(
-                                    text = fetchError ?: "",
+                                    text = visibleError,
                                     color = NazoError,
                                     style = MaterialTheme.typography.bodySmall,
                                 )
