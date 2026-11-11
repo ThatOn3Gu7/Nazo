@@ -12,12 +12,15 @@ import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.SeekableTransitionState
+import androidx.compose.animation.core.animateDp
 import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
@@ -33,6 +36,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -45,6 +49,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -2677,94 +2683,126 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 exit = if (reduceMotion) {
                     fadeOut(tween(90))
                 } else {
-                    fadeOut(tween(220, easing = FastOutSlowInEasing)) +
-                        slideOutVertically(
-                            animationSpec = tween(260, easing = FastOutSlowInEasing),
-                            targetOffsetY = { -it / 12 },
-                        )
+                    // Let the tour become a rounded foreground card before it
+                    // clears Home. Delaying the fade makes the hand-off readable
+                    // without turning it into a full-screen theatrical sweep.
+                    scaleOut(
+                        targetScale = 0.94f,
+                        transformOrigin = TransformOrigin(0.5f, 0.42f),
+                        animationSpec = tween(340, easing = FastOutSlowInEasing),
+                    ) + slideOutVertically(
+                        animationSpec = tween(340, easing = FastOutSlowInEasing),
+                        targetOffsetY = { -it / 18 },
+                    ) + fadeOut(
+                        animationSpec = tween(
+                            durationMillis = 260,
+                            delayMillis = 70,
+                            easing = FastOutSlowInEasing,
+                        ),
+                    )
                 },
                 label = "onboardingOverlayVisibility",
             ) {
-                OnboardingScreen(
-                    isDark = isDark,
-                    themeMode = themeMode,
-                    onThemeModeChange = { themeMode = it; themePrefs.mode = it },
-                    accentId = accentName,
-                    onAccentChange = { accentName = it; themePrefs.accent = it },
-                    revealStyle = guessRevealStyle,
-                    onRevealStyleChange = {
-                        guessRevealStyle = it
-                        themePrefs.guessRevealStyle = it
+                val exitCorner by transition.animateDp(
+                    transitionSpec = {
+                        tween(
+                            durationMillis = if (reduceMotion) 90 else 300,
+                            easing = FastOutSlowInEasing,
+                        )
                     },
-                    backgroundStyle = backgroundStyle,
-                    onBackgroundStyleChange = {
-                        backgroundStyle = it
-                        themePrefs.backgroundStyle = it
-                    },
-                    celebrationStyle = celebrationStyle,
-                    onCelebrationStyleChange = {
-                        celebrationStyle = it
-                        themePrefs.celebrationStyle = it
-                    },
-                    floatingNavBar = navBarFloating,
-                    onFloatingNavBarChange = {
-                        navBarFloating = it
-                        themePrefs.floatingNavBar = it
-                    },
-                    iconFollowsOsTheme = themePrefs.iconFollowsOsTheme,
-                    onIconFollowsOsThemeChange = { enabled ->
-                        // Just persist the preference; the actual swap happens silently
-                        // when the app is backgrounded (MainActivity.onStop).
-                        themePrefs.iconFollowsOsTheme = enabled
-                    },
-                    soundEnabled = soundEnabled,
-                    onSoundEnabledChange = { v ->
-                        soundEnabled = v
-                        Sounds.setEnabled(context, v)
-                    },
-                    remindersEnabled = remindersEnabled,
-                    onRemindersEnabledChange = { v ->
-                        remindersEnabled = v
-                        ReminderScheduler.setEnabled(context.applicationContext, v)
-                    },
-                    forceOffline = offlineMode,
-                    onForceOfflineChange = { v ->
-                        // The user's choice always wins, even with no network.
-                        // Going online while disconnected is allowed on
-                        // purpose: the app simply explains itself when an
-                        // online action is actually attempted.
-                        offlineMode = v
-                        if (!v) connectivityProbe++
-                    },
-                    onProvidersChanged = {
-                        selectedProvider = apiKeyStore.getSelectedProvider()
-                    },
-                    onPlayNow = { mode, topic ->
-                        onboardingPrefs.completed = true
-                        showOnboarding = false
-                        homeTopic = topic
-                        if (mode == "GUESSING") {
-                            homeMode = NazoMode.GUESSING.name
-                            startGuessing(topic, "Medium", 3)
-                        } else if (mode == "SURVIVAL") {
-                            homeMode = NazoMode.SURVIVAL.name
-                            startSurvival(topic, "Medium")
-                        } else if (mode == "BLITZ") {
-                            homeMode = NazoMode.BLITZ.name
-                            startBlitz(topic, "Medium")
-                        } else if (mode == "VERSUS") {
-                            homeMode = NazoMode.VERSUS.name
-                            startVersus(topic, "Medium", 5)
-                        } else {
-                            homeMode = NazoMode.QUIZ.name
-                            startQuiz(topic, "Medium", 5)
-                        }
-                    },
-                    onFinish = {
-                        onboardingPrefs.completed = true
-                        showOnboarding = false
-                    },
-                )
+                    label = "onboardingExitCorner",
+                ) { state ->
+                    if (state == EnterExitState.Visible || reduceMotion) 0.dp else 30.dp
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            shape = RoundedCornerShape(exitCorner)
+                            clip = exitCorner > 0.dp
+                        },
+                ) {
+                    OnboardingScreen(
+                        isDark = isDark,
+                        themeMode = themeMode,
+                        onThemeModeChange = { themeMode = it; themePrefs.mode = it },
+                        accentId = accentName,
+                        onAccentChange = { accentName = it; themePrefs.accent = it },
+                        revealStyle = guessRevealStyle,
+                        onRevealStyleChange = {
+                            guessRevealStyle = it
+                            themePrefs.guessRevealStyle = it
+                        },
+                        backgroundStyle = backgroundStyle,
+                        onBackgroundStyleChange = {
+                            backgroundStyle = it
+                            themePrefs.backgroundStyle = it
+                        },
+                        celebrationStyle = celebrationStyle,
+                        onCelebrationStyleChange = {
+                            celebrationStyle = it
+                            themePrefs.celebrationStyle = it
+                        },
+                        floatingNavBar = navBarFloating,
+                        onFloatingNavBarChange = {
+                            navBarFloating = it
+                            themePrefs.floatingNavBar = it
+                        },
+                        iconFollowsOsTheme = themePrefs.iconFollowsOsTheme,
+                        onIconFollowsOsThemeChange = { enabled ->
+                            // Just persist the preference; the actual swap happens silently
+                            // when the app is backgrounded (MainActivity.onStop).
+                            themePrefs.iconFollowsOsTheme = enabled
+                        },
+                        soundEnabled = soundEnabled,
+                        onSoundEnabledChange = { v ->
+                            soundEnabled = v
+                            Sounds.setEnabled(context, v)
+                        },
+                        remindersEnabled = remindersEnabled,
+                        onRemindersEnabledChange = { v ->
+                            remindersEnabled = v
+                            ReminderScheduler.setEnabled(context.applicationContext, v)
+                        },
+                        forceOffline = offlineMode,
+                        onForceOfflineChange = { v ->
+                            // The user's choice always wins, even with no network.
+                            // Going online while disconnected is allowed on
+                            // purpose: the app simply explains itself when an
+                            // online action is actually attempted.
+                            offlineMode = v
+                            if (!v) connectivityProbe++
+                        },
+                        onProvidersChanged = {
+                            selectedProvider = apiKeyStore.getSelectedProvider()
+                        },
+                        onPlayNow = { mode, topic ->
+                            onboardingPrefs.completed = true
+                            showOnboarding = false
+                            homeTopic = topic
+                            if (mode == "GUESSING") {
+                                homeMode = NazoMode.GUESSING.name
+                                startGuessing(topic, "Medium", 3)
+                            } else if (mode == "SURVIVAL") {
+                                homeMode = NazoMode.SURVIVAL.name
+                                startSurvival(topic, "Medium")
+                            } else if (mode == "BLITZ") {
+                                homeMode = NazoMode.BLITZ.name
+                                startBlitz(topic, "Medium")
+                            } else if (mode == "VERSUS") {
+                                homeMode = NazoMode.VERSUS.name
+                                startVersus(topic, "Medium", 5)
+                            } else {
+                                homeMode = NazoMode.QUIZ.name
+                                startQuiz(topic, "Medium", 5)
+                            }
+                        },
+                        onFinish = {
+                            onboardingPrefs.completed = true
+                            showOnboarding = false
+                        },
+                    )
+                }
             }
 
             // KEEP LAST: the cold-start intro must be the final child of this
