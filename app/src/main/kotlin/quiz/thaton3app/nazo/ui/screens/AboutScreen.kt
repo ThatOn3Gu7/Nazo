@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -816,38 +817,61 @@ private fun UpdateMenuContent(
                                     )
                                     Spacer(Modifier.height(8.dp))
                                 }
-                                if (availableState.directApkUrl != null) {
-                                    NazoPrimaryButton(
-                                        onClick = {
-                                            onStartDownload(
-                                                availableState.directApkUrl,
-                                                availableState.apkSizeBytes,
-                                            )
-                                        },
-                                        modifier = Modifier.fillMaxWidth(),
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.Download,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp),
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(if (downloadState is ApkDownloadState.Failed) "Retry Download" else "Download & Install")
-                                    }
-                                } else {
-                                    NazoPrimaryButton(
-                                        onClick = { onOpenBrowser(availableState.htmlUrl) },
-                                        modifier = Modifier.fillMaxWidth(),
-                                    ) {
-                                        Text("Download Manually")
-                                    }
-                                }
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.End,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    NazoSecondaryButton(onClick = { onOpenBrowser(availableState.htmlUrl) }) {
-                                        Text("View on GitHub")
+                                    if (availableState.directApkUrl != null) {
+                                        NazoPrimaryButton(
+                                            onClick = {
+                                                onStartDownload(
+                                                    availableState.directApkUrl,
+                                                    availableState.apkSizeBytes,
+                                                )
+                                            },
+                                            modifier = Modifier.weight(1.35f),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.Download,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                text = if (downloadState is ApkDownloadState.Failed) {
+                                                    "Retry Download"
+                                                } else {
+                                                    "Download & Install"
+                                                },
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                    } else {
+                                        NazoPrimaryButton(
+                                            onClick = { onOpenBrowser(availableState.htmlUrl) },
+                                            modifier = Modifier.weight(1.35f),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                                        ) {
+                                            Text(
+                                                text = "Download Manually",
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                    }
+                                    NazoSecondaryButton(
+                                        onClick = { onOpenBrowser(availableState.htmlUrl) },
+                                        modifier = Modifier.weight(1f),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                                    ) {
+                                        Text(
+                                            text = "View on GitHub",
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
                                     }
                                 }
                             }
