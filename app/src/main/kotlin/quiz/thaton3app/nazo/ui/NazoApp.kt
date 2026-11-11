@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.activity.BackEventCompat
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.SeekableTransitionState
@@ -19,6 +20,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -29,6 +31,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -141,6 +144,18 @@ import quiz.thaton3app.nazo.widget.NazoWidgetProvider
  * Error -> Loading -> Error transition instead of jerking in place.
  */
 private const val MIN_LOADING_MS = 900L
+
+/**
+ * Kept separate per structural Settings layout. During rotation AnimatedContent
+ * briefly composes both layouts; sharing one ScrollState lets their different
+ * max ranges overwrite each other and can leave the landscape list clamped.
+ */
+private val LocalSettingsScrollState = staticCompositionLocalOf<ScrollState> {
+    error("Settings scroll state was not provided")
+}
+
+internal fun settingsScrollTransferOffset(outgoingValue: Int, incomingMaxValue: Int): Int =
+    outgoingValue.coerceIn(0, incomingMaxValue.coerceAtLeast(0))
 
 sealed interface Screen {
     data object Home : Screen
@@ -509,7 +524,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         prepareCoverArtwork(context, activeCoverVisual)
     }
     val backupPrefs = remember { BackupPrefs(context) }
-    val settingsScrollState = rememberScrollState()
+    val settingsPortraitScrollState = rememberScrollState()
+    val settingsLandscapeScrollState = rememberScrollState()
 
     // First-launch onboarding tour (ui/onboarding). Shown as an overlay above
     // the app until completed/skipped, then never again (persisted flag).
@@ -1919,6 +1935,17 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // Landscape moves the nav bar to a right-edge rail; screens that show it
     // must inset their content so nothing sits underneath.
     val landscape = isLandscape()
+    LaunchedEffect(landscape) {
+        val outgoing = if (landscape) settingsPortraitScrollState else settingsLandscapeScrollState
+        val incoming = if (landscape) settingsLandscapeScrollState else settingsPortraitScrollState
+
+        // End any fling owned by the layout being replaced. More importantly,
+        // the incoming list owns a different MutatorMutex/max range, so an old
+        // portrait fling can never block landscape input (or vice versa).
+        outgoing.scroll { }
+        withFrameNanos { }
+        incoming.scrollTo(settingsScrollTransferOffset(outgoing.value, incoming.maxValue))
+    }
     NazoTheme(darkTheme = isDark, accentId = accentName) {
         Box(
             modifier = Modifier
@@ -1998,7 +2025,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     )
 
                     Screen.Settings -> SettingsScreen(
-                        scrollState = settingsScrollState,
+                        scrollState = LocalSettingsScrollState.current,
                         onBackClick = { goBack() },
                         onHomeClick = { goHome() },
                         onOpenAiProvider = { navigate(Screen.AiProvider) },
@@ -2408,6 +2435,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             CompositionLocalProvider(
                 LocalRetainedStateStore provides retainedState,
                 LocalAvatarAnchorRegistry provides avatarAnchorRegistry,
+                LocalSettingsScrollState provides settingsPortraitScrollState,
             ) {
 
             // The Home <-> landscape-Settings switch is a STRUCTURAL change:
@@ -2442,9 +2470,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                                 else Modifier
                             ),
                     ) {
-                        // Master: always the settings list.
+                        // Master: always the settings list. It intentionally
+                        // owns a different ScrollState from the full-width
+                        // branch because both branches overlap during rotation.
                         Box(modifier = Modifier.weight(0.42f)) {
-                            renderScreen(Screen.Settings)
+                            CompositionLocalProvider(
+                                LocalSettingsScrollState provides settingsLandscapeScrollState,
+                            ) {
+                                renderScreen(Screen.Settings)
+                            }
                         }
                         // Detail: the selected sub-screen, or a hint when none is.
                         Box(modifier = Modifier.weight(0.58f)) {
@@ -2637,7 +2671,20 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // state + persistence as AppearanceScreen), a verified provider
             // key refreshes `selectedProvider`, and "Play Now" launches the
             // user's very first game straight from the tour.
-            if (showOnboarding) {
+            AnimatedVisibility(
+                visible = showOnboarding,
+                enter = fadeIn(tween(if (reduceMotion) 90 else 180)),
+                exit = if (reduceMotion) {
+                    fadeOut(tween(90))
+                } else {
+                    fadeOut(tween(220, easing = FastOutSlowInEasing)) +
+                        slideOutVertically(
+                            animationSpec = tween(260, easing = FastOutSlowInEasing),
+                            targetOffsetY = { -it / 12 },
+                        )
+                },
+                label = "onboardingOverlayVisibility",
+            ) {
                 OnboardingScreen(
                     isDark = isDark,
                     themeMode = themeMode,

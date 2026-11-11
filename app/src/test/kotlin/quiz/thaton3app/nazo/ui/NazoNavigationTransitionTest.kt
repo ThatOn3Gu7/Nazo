@@ -100,6 +100,13 @@ class NazoNavigationTransitionTest {
     }
 
     @Test
+    fun settingsRotationTransfersOnlyAReachableScrollOffset() {
+        assertEquals(640, settingsScrollTransferOffset(outgoingValue = 640, incomingMaxValue = 900))
+        assertEquals(420, settingsScrollTransferOffset(outgoingValue = 640, incomingMaxValue = 420))
+        assertEquals(0, settingsScrollTransferOffset(outgoingValue = 640, incomingMaxValue = -1))
+    }
+
+    @Test
     fun quizCompleteEntranceGateIsConsumedForReviewBackPreviews() {
         val gate = QuizCompleteEntranceGate()
 

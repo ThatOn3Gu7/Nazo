@@ -117,6 +117,7 @@ import quiz.thaton3app.nazo.data.remote.ModelInfo
 import quiz.thaton3app.nazo.data.remote.preferredDefaultModel
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.NazoTransientMessage
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
@@ -836,26 +837,22 @@ private fun SetupSlide(
                             }
                         }
 
-                        AnimatedVisibility(
-                            visible = verifyState is VerifyState.Ready,
-                            enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(tween(250)),
-                            exit = shrinkVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut(tween(200)),
-                        ) {
-                            val ready = verifyState as? VerifyState.Ready
+                        NazoTransientMessage(
+                            value = verifyState as? VerifyState.Ready,
+                            label = "onboardingProviderReady",
+                        ) { ready ->
                             Text(
-                                text = "Using ${ready?.modelName ?: ""} · ${ready?.count ?: 0} models available — change anytime in Settings.",
+                                text = "Using ${ready.modelName} · ${ready.count} models available — change anytime in Settings.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = NazoSuccess,
                                 fontWeight = FontWeight.SemiBold,
                             )
                         }
 
-                        AnimatedVisibility(
-                            visible = verifyState is VerifyState.Failed,
-                            enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(tween(250)),
-                            exit = shrinkVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut(tween(200)),
-                        ) {
-                            val failed = verifyState as? VerifyState.Failed
+                        NazoTransientMessage(
+                            value = verifyState as? VerifyState.Failed,
+                            label = "onboardingProviderFailure",
+                        ) { failed ->
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(12.dp))
@@ -864,7 +861,7 @@ private fun SetupSlide(
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                             ) {
                                 Text(
-                                    text = failed?.message ?: "",
+                                    text = failed.message,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = NazoError,
                                 )
@@ -1152,13 +1149,13 @@ private fun FirstGameSlide(
                         onClick = { onGameModeChange("VERSUS") },
                     )
                 }
-                AnimatedVisibility(
-                    visible = showProviderHint,
-                    enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(tween(250)),
-                    exit = shrinkVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut(tween(200)),
-                ) {
+                NazoTransientMessage(
+                    value = "The Guessing Game needs an AI provider — set one up on the previous step."
+                        .takeIf { showProviderHint },
+                    label = "onboardingProviderHint",
+                ) { hint ->
                     Text(
-                        text = "The Guessing Game needs an AI provider — set one up on the previous step.",
+                        text = hint,
                         style = MaterialTheme.typography.bodySmall,
                         color = NazoError,
                         fontWeight = FontWeight.SemiBold,
@@ -1210,9 +1207,9 @@ private fun FirstGameSlide(
                                 },
                             )
                         }
-                        // Room for the trailing fade so the last pill is never
-                        // sat under it. The leading side gets the same below.
-                        Spacer(Modifier.width(20.dp))
+                        // Room for the trailing pill-shaped affordance so the
+                        // final topic never finishes underneath it.
+                        Spacer(Modifier.width(36.dp))
                     }
                     // Both edges, driven by the real scroll state: left when
                     // there is content behind, right when there is content
@@ -1257,17 +1254,12 @@ private fun FirstGameSlide(
 }
 
 /**
- * Edge affordance for a horizontally scrollable row: a short fade into the
- * slide background with a chevron pointing the way the user can scroll.
+ * Pill-shaped edge affordance for the horizontally scrollable topic rail.
  *
- * [trailing] picks the side — true for the right edge (more content ahead),
- * false for the left (content behind). Callers drive [visible] from the
- * ScrollState's own `canScrollForward` / `canScrollBackward`, so the hints
- * always describe the real scroll range: one at each extreme, both in the
- * middle, neither when the row fits.
- *
- * Kept deliberately light — a narrow gradient and a small chevron, no opaque
- * panel — so the topic pills underneath stay readable.
+ * The old hint painted a square 34dp gradient behind a bare chevron. That made
+ * it read like an unrelated overlay next to a row made entirely of pills. The
+ * gradient now only softens the edge; the visible affordance is a compact
+ * capsule using the same corner, tint and border language as the topics.
  */
 @Composable
 private fun ScrollEdgeHint(
@@ -1281,30 +1273,46 @@ private fun ScrollEdgeHint(
         exit = fadeOut(tween(180)),
         modifier = modifier,
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = if (trailing) Arrangement.End else Arrangement.Start,
+        val hintShape = RoundedCornerShape(50)
+        Box(
             modifier = Modifier
-                .height(34.dp)
-                .width(34.dp)
+                .height(48.dp)
+                .width(50.dp)
                 .background(
-                    // Fade runs from transparent toward the surface on the
-                    // OUTER side, so the gradient always points off-screen.
                     Brush.horizontalGradient(
                         if (trailing) {
-                            listOf(Color.Transparent, NazoSurface.copy(alpha = 0.92f))
+                            listOf(Color.Transparent, NazoSurface)
                         } else {
-                            listOf(NazoSurface.copy(alpha = 0.92f), Color.Transparent)
-                        }
-                    )
+                            listOf(NazoSurface, Color.Transparent)
+                        },
+                    ),
                 ),
+            contentAlignment = if (trailing) Alignment.CenterEnd else Alignment.CenterStart,
         ) {
-            Icon(
-                imageVector = if (trailing) Icons.Filled.ChevronRight else Icons.Filled.ChevronLeft,
-                contentDescription = if (trailing) "More topics to the right" else "More topics to the left",
-                tint = NazoTextSecondary,
-                modifier = Modifier.size(18.dp),
-            )
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 3.dp)
+                    .size(width = 32.dp, height = 40.dp)
+                    .clip(hintShape)
+                    .background(NazoTextSecondary.copy(alpha = 0.10f), hintShape)
+                    .border(1.dp, NazoPrimary.copy(alpha = 0.26f), hintShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (trailing) {
+                        Icons.Filled.ChevronRight
+                    } else {
+                        Icons.Filled.ChevronLeft
+                    },
+                    contentDescription = if (trailing) {
+                        "More topics to the right"
+                    } else {
+                        "More topics to the left"
+                    },
+                    tint = NazoPrimary,
+                    modifier = Modifier.size(19.dp),
+                )
+            }
         }
     }
 }

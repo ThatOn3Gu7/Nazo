@@ -4,12 +4,7 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.LocalIndication
@@ -25,6 +20,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.verticalScroll
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
+import quiz.thaton3app.nazo.ui.components.NazoTransientMessage
 import quiz.thaton3app.nazo.ui.components.NazoDangerButton
 import quiz.thaton3app.nazo.ui.components.NazoAdaptiveDialog
 import quiz.thaton3app.nazo.ui.components.isLandscape
@@ -238,13 +234,12 @@ fun BackupRestoreScreen(
 
             // Live operation status: progress while it runs, then a success or
             // failure note in place of the old transient Toasts.
-            AnimatedVisibility(
-                visible = opStatus != null,
-                enter = expandVertically(animationSpec = tween(200)) + fadeIn(tween(200)),
-                exit = shrinkVertically(animationSpec = tween(160)) + fadeOut(tween(140)),
-            ) {
+            NazoTransientMessage(
+                value = opStatus,
+                label = "backupOperationStatus",
+            ) { visibleStatus ->
                 StatusBanner(
-                    status = opStatus,
+                    status = visibleStatus,
                     onDismiss = { opStatus = null },
                 )
             }
@@ -1149,8 +1144,7 @@ private fun RowDivider() {
  * in every orientation.
  */
 @Composable
-private fun StatusBanner(status: OpStatus?, onDismiss: () -> Unit) {
-    if (status == null) return
+private fun StatusBanner(status: OpStatus, onDismiss: () -> Unit) {
     val container = when (status) {
         is OpStatus.Busy -> NazoPrimary.copy(alpha = 0.16f)
         is OpStatus.Done -> NazoSuccessBg
