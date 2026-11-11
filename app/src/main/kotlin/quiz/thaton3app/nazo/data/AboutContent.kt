@@ -38,6 +38,20 @@ data class ChangelogEntry(
  */
 val NAZO_CHANGELOG: List<ChangelogEntry> = listOf(
     ChangelogEntry(
+        version = "13.0",
+        date = "11 Nov 2026",
+        changes = listOf(
+            "Sumi Ember becomes Nazo's new hand-painted identity across launchers, themed icons, splash screens, Home and Appearance; Sakura, Midnight and Ocean now share its balanced kanji footprint.",
+            "Quiz, Survival, Blitz, Versus and Guessing now carry distinct setup, live-play and results identities while preserving their original rules, scoring and timers.",
+            "Quiz play gains restrained answer feedback, polished explanations, consecutive-correct combo seals and a travelling wavy progress line that Blitz also uses for its global clock.",
+            "Progression connects Results, Profile and Statistics through one level and XP model, clearer completion rewards and an expanded collection of 20 achievement badges.",
+            "Home's new Challenge Focus and Challenge Setup surfaces bring topic suggestions, difficulty, Questions or Rounds and a live selection summary into one responsive flow.",
+            "App-wide corner-only press feedback replaces generic shrinking on interactive surfaces while preserving ripples, haptics, accessibility, scrolling and Android Remove animations.",
+            "Navigation, predictive back and profile media hand-offs are more stable; completed Results no longer replay, and awarded quiz time stays frozen through Review and cancelled back gestures.",
+            "Final fixes keep About reachable in landscape Settings, smooth transient-message exits, preserve rotation state, and give onboarding a deliberate hand-off to Home.",
+        ),
+    ),
+    ChangelogEntry(
         version = "12.0",
         date = "6 Nov 2026",
         changes = listOf(
