@@ -64,8 +64,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import androidx.compose.material3.CircularProgressIndicator
@@ -1185,47 +1183,25 @@ private fun FirstGameSlide(
                     ),
                 )
 
-                // There are eight suggestions but only ~three fit on screen, and
-                // nothing said the row scrolled — players assumed those three
-                // were the only choices. The fade + chevron on the trailing edge
-                // is the affordance; it disappears once the row is scrolled to
-                // the end.
                 val suggestionScroll = rememberScrollState()
-                Box {
-                    Row(
-                        modifier = Modifier.horizontalScroll(suggestionScroll),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Spacer(Modifier.width(4.dp))
-                        suggestions.forEach { suggestion ->
-                            SelectPill(
-                                text = suggestion,
-                                selected = topicInput.equals(suggestion, ignoreCase = true),
-                                onClick = {
-                                    Haptics.soft(context)
-                                    onTopicChange(suggestion)
-                                },
-                            )
-                        }
-                        // Room for the trailing pill-shaped affordance so the
-                        // final topic never finishes underneath it.
-                        Spacer(Modifier.width(36.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(suggestionScroll),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Spacer(Modifier.width(4.dp))
+                    suggestions.forEach { suggestion ->
+                        SelectPill(
+                            text = suggestion,
+                            selected = topicInput.equals(suggestion, ignoreCase = true),
+                            onClick = {
+                                Haptics.soft(context)
+                                onTopicChange(suggestion)
+                            },
+                        )
                     }
-                    // Both edges, driven by the real scroll state: left when
-                    // there is content behind, right when there is content
-                    // ahead, both together in the middle, neither when the row
-                    // fits. canScrollBackward/Forward are already derived from
-                    // the ScrollState, so no item counting is involved.
-                    ScrollEdgeHint(
-                        visible = suggestionScroll.canScrollBackward,
-                        trailing = false,
-                        modifier = Modifier.align(Alignment.CenterStart),
-                    )
-                    ScrollEdgeHint(
-                        visible = suggestionScroll.canScrollForward,
-                        trailing = true,
-                        modifier = Modifier.align(Alignment.CenterEnd),
-                    )
+                    Spacer(Modifier.width(4.dp))
                 }
 
                 AnimatedContent(
@@ -1248,70 +1224,6 @@ private fun FirstGameSlide(
                         color = NazoTextSecondary,
                     )
                 }
-            }
-        }
-    }
-}
-
-/**
- * Pill-shaped edge affordance for the horizontally scrollable topic rail.
- *
- * The old hint painted a square 34dp gradient behind a bare chevron. That made
- * it read like an unrelated overlay next to a row made entirely of pills. The
- * gradient now only softens the edge; the visible affordance is a compact
- * capsule using the same corner, tint and border language as the topics.
- */
-@Composable
-private fun ScrollEdgeHint(
-    visible: Boolean,
-    trailing: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(tween(180)),
-        exit = fadeOut(tween(180)),
-        modifier = modifier,
-    ) {
-        val hintShape = RoundedCornerShape(50)
-        Box(
-            modifier = Modifier
-                .height(48.dp)
-                .width(50.dp)
-                .background(
-                    Brush.horizontalGradient(
-                        if (trailing) {
-                            listOf(Color.Transparent, NazoSurface)
-                        } else {
-                            listOf(NazoSurface, Color.Transparent)
-                        },
-                    ),
-                ),
-            contentAlignment = if (trailing) Alignment.CenterEnd else Alignment.CenterStart,
-        ) {
-            Box(
-                modifier = Modifier
-                    .padding(horizontal = 3.dp)
-                    .size(width = 32.dp, height = 40.dp)
-                    .clip(hintShape)
-                    .background(NazoTextSecondary.copy(alpha = 0.10f), hintShape)
-                    .border(1.dp, NazoPrimary.copy(alpha = 0.26f), hintShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = if (trailing) {
-                        Icons.Filled.ChevronRight
-                    } else {
-                        Icons.Filled.ChevronLeft
-                    },
-                    contentDescription = if (trailing) {
-                        "More topics to the right"
-                    } else {
-                        "More topics to the left"
-                    },
-                    tint = NazoPrimary,
-                    modifier = Modifier.size(19.dp),
-                )
             }
         }
     }
