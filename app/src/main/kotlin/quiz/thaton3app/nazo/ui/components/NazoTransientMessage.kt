@@ -84,6 +84,6 @@ fun <T : Any> NazoTransientMessage(
         exit = exit,
         label = label,
     ) {
-        visibleValue?.let(content)
+        if (visibleValue != null) content(visibleValue)
     }
 }
