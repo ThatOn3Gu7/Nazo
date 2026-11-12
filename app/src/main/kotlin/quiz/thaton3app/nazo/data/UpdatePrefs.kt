@@ -18,6 +18,10 @@ class UpdatePrefs(context: Context) {
         }
         set(value) = prefs.edit().putString("update_frequency", value.name).apply()
 
+    var includePrereleases: Boolean
+        get() = prefs.getBoolean("include_prereleases", false)
+        set(value) = prefs.edit().putBoolean("include_prereleases", value).apply()
+
     val lastNotifiedVersion: String?
         get() = prefs.getString("last_notified_version", null)
 

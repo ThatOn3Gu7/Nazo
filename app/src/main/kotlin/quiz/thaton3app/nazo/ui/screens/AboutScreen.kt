@@ -25,6 +25,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -64,6 +65,7 @@ import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material3.AlertDialog
@@ -77,6 +79,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -109,6 +112,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.data.GITHUB_REPO
+import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoQuietButton
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
@@ -159,6 +163,7 @@ private sealed interface UpdateState {
         val releaseNotes: String,
         val directApkUrl: String?,
         val apkSizeBytes: Long = -1L,
+        val prerelease: Boolean = false,
     ) : UpdateState
 }
 
@@ -212,7 +217,9 @@ fun AboutScreen(
     var showUpdate by rememberRetained("About.showUpdate") { false }
     var updateState by rememberRetained<UpdateState>("About.updateState") { UpdateState.Idle }
     var checkLabel by rememberRetained("About.checkLabel") { "Check Now" }
-    var frequency by remember { mutableStateOf(UpdatePrefs(context).updateFrequency) }
+    val updatePrefs = remember(context) { UpdatePrefs(context) }
+    var frequency by remember { mutableStateOf(updatePrefs.updateFrequency) }
+    var includePrereleases by remember { mutableStateOf(updatePrefs.includePrereleases) }
     var showFrequencyChooser by rememberRetained("About.showFrequencyChooser") { false }
     val frequencyChooserSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var downloadState by remember { mutableStateOf<ApkDownloadState>(ApkDownloadState.Idle) }
@@ -273,7 +280,7 @@ fun AboutScreen(
     fun chooseUpdateFrequency(value: UpdateFrequency) {
         if (value != frequency) {
             frequency = value
-            UpdatePrefs(context).updateFrequency = value
+            updatePrefs.updateFrequency = value
             UpdateScheduler.apply(context, value)
         }
         // Let the chooser settle out before removing it from composition, just
@@ -300,7 +307,10 @@ fun AboutScreen(
         scope.launch {
             updateState = UpdateState.Checking
             delay(1200) // brief delay so the "Checking" state is visible
-            val latest = fetchLatestRelease(GITHUB_REPO)
+            val latest = fetchLatestRelease(
+                repo = GITHUB_REPO,
+                includePrereleases = includePrereleases,
+            )
             if (latest == null) {
                 updateState = UpdateState.Error
                 checkLabel = "Retry"
@@ -313,7 +323,14 @@ fun AboutScreen(
                 return@launch
             }
             updateState = if (isNewerVersion(latest.tag, current)) {
-                UpdateState.Available(latest.tag, latest.htmlUrl, latest.body, latest.apkUrl, latest.apkSizeBytes)
+                UpdateState.Available(
+                    tag = latest.tag,
+                    htmlUrl = latest.htmlUrl,
+                    releaseNotes = latest.body,
+                    directApkUrl = latest.apkUrl,
+                    apkSizeBytes = latest.apkSizeBytes,
+                    prerelease = latest.prerelease,
+                )
             } else {
                 checkLabel = "Check Again"
                 UpdateState.UpToDate
@@ -504,6 +521,18 @@ fun AboutScreen(
                 onOpenBrowser = { url -> onOpenBrowser(url) },
                 frequency = frequency,
                 onOpenFrequencyChooser = { showFrequencyChooser = true },
+                includePrereleases = includePrereleases,
+                prereleaseToggleEnabled =
+                    downloadState !is ApkDownloadState.Running && updateState !is UpdateState.Checking,
+                onIncludePrereleasesChange = { include ->
+                    if (include != includePrereleases) {
+                        includePrereleases = include
+                        updatePrefs.includePrereleases = include
+                        downloadState = ApkDownloadState.Idle
+                        checkLabel = "Check Again"
+                        checkForUpdates()
+                    }
+                },
             )
         }
     }
@@ -548,6 +577,9 @@ private fun UpdateMenuContent(
     onOpenBrowser: (String) -> Unit,
     frequency: UpdateFrequency,
     onOpenFrequencyChooser: () -> Unit,
+    includePrereleases: Boolean,
+    prereleaseToggleEnabled: Boolean,
+    onIncludePrereleasesChange: (Boolean) -> Unit,
 ) {
     val appContext = LocalContext.current.applicationContext
     // Retained with its file list for the same reason as the sheet around it:
@@ -632,8 +664,16 @@ private fun UpdateMenuContent(
                         Text(
                             text = when (targetState) {
                                 is UpdateState.Checking -> "Checking GitHub..."
-                                is UpdateState.Available -> "Version ${targetState.tag} is available!"
-                                is UpdateState.UpToDate -> "Nazo is up to date."
+                                is UpdateState.Available -> if (targetState.prerelease) {
+                                    "Pre-release ${targetState.tag} is available!"
+                                } else {
+                                    "Version ${targetState.tag} is available!"
+                                }
+                                is UpdateState.UpToDate -> if (includePrereleases) {
+                                    "No newer release or pre-release is available."
+                                } else {
+                                    "Nazo is up to date."
+                                }
                                 is UpdateState.Error -> "Failed to check for updates."
                                 is UpdateState.Idle -> "Ready to check."
                             },
@@ -643,6 +683,7 @@ private fun UpdateMenuContent(
                             } else {
                                 NazoTextPrimary
                             },
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 }
@@ -699,7 +740,7 @@ private fun UpdateMenuContent(
                                     modifier = Modifier.weight(1f),
                                 ) {
                                     Text(
-                                        text = "New",
+                                        text = if (availableState.prerelease) "Pre-release" else "New",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = NazoTextSecondary,
                                     )
@@ -716,6 +757,33 @@ private fun UpdateMenuContent(
                                             color = NazoOnPrimary,
                                         )
                                     }
+                                }
+                            }
+                        }
+
+                        if (availableState.prerelease) {
+                            Spacer(Modifier.height(12.dp))
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = MaterialTheme.shapes.medium,
+                                color = NazoPrimary.copy(alpha = 0.10f),
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Science,
+                                        contentDescription = null,
+                                        tint = NazoPrimary,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(
+                                        text = "Pre-release builds may be less stable than public releases.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = NazoTextPrimary,
+                                    )
                                 }
                             }
                         }
@@ -958,6 +1026,15 @@ private fun UpdateMenuContent(
                 subtitle = "${freqLabel(frequency)} · ${frequencyDescription(frequency)}",
                 onClick = onOpenFrequencyChooser,
             )
+            RowDivider()
+            UpdatePreferenceSwitchRow(
+                icon = Icons.Filled.Science,
+                title = "Include pre-release updates",
+                subtitle = "Receive beta and release-candidate builds. These may be less stable.",
+                checked = includePrereleases,
+                enabled = prereleaseToggleEnabled,
+                onCheckedChange = onIncludePrereleasesChange,
+            )
         }
     }
 
@@ -997,6 +1074,81 @@ private fun UpdateMenuContent(
             dismissButton = {
                 NazoSecondaryButton(onClick = { showCleanupConfirm = false }, muted = true) { Text("Cancel") }
             },
+        )
+    }
+}
+
+@Composable
+private fun UpdatePreferenceSwitchRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    val context = LocalContext.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 0.dp,
+        pressedCorner = 12.dp,
+        enabled = enabled,
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .toggleable(
+                value = checked,
+                enabled = enabled,
+                role = Role.Switch,
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onValueChange = { value ->
+                    Haptics.soft(context)
+                    onCheckedChange(value)
+                },
+            )
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(NazoBackground),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (enabled) NazoTextPrimary else NazoTextSecondary.copy(alpha = 0.5f),
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Spacer(Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (enabled) NazoTextPrimary else NazoTextSecondary.copy(alpha = 0.5f),
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = NazoTextSecondary.copy(alpha = if (enabled) 1f else 0.5f),
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        // The full row owns the switch semantics and callback; the visual
+        // Switch stays passive so tapping it cannot fire twice.
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+            enabled = enabled,
         )
     }
 }

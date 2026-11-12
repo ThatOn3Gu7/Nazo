@@ -92,6 +92,9 @@ Co-authored by Arena Agent
   batch is wrong — this happened once and had to be reverted (v8.0 → v7.0).
 - Bump **only** when the owner explicitly asks to prepare or ship a version. In
   that case the bump is the **last** commit, after all feature and doc commits.
+- Every published APK—including alpha, beta, and release-candidate builds—gets
+  a unique, monotonically increasing `versionCode`. A final release must use a
+  higher code than all of its pre-releases, while `versionName` matches the tag.
 
 ## Living release ledger (`RELEASE_NOTES.md`)
 
