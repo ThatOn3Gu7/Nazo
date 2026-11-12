@@ -7,9 +7,9 @@ package quiz.thaton3app.nazo.data
  * These are deliberately hand-maintained constants rather than anything
  * generated at runtime:
  *
- *  - The **changelog** is written for players, in the same voice as
- *    `RELEASE_NOTES_<version>.md`. The raw commit log is not a changelog — most
- *    of the commits between 8.0 and 9.0, for instance, were failed attempts at
+ *  - The **changelog** is written for players, in the same voice as the
+ *    canonical `RELEASE_NOTES.md` ledger. The raw commit log is not a changelog —
+ *    most of the commits between 8.0 and 9.0, for instance, were failed attempts at
  *    one bug that cancelled each other out. Entries here describe what actually
  *    changed for someone using the app.
  *  - The **licence list** mirrors `gradle/libs.versions.toml`. Nazo does not use
@@ -18,8 +18,9 @@ package quiz.thaton3app.nazo.data
  *    dependency is added. It is short enough that this is honest work, and it
  *    lets us state real versions instead of a vague list.
  *
- * When cutting a release: add a [ChangelogEntry] here as well as the
- * `RELEASE_NOTES_<version>.md` file.
+ * When cutting a release: promote the accumulated section in
+ * `RELEASE_NOTES.md`, then add its player-facing summary as a [ChangelogEntry]
+ * here.
  */
 
 /** One shipped version, newest first in [NAZO_CHANGELOG]. */
