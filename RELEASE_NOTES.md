@@ -7,7 +7,7 @@ then archived below; there should be no per-version release-note files.
 
 ## Next release
 
-_No completed player-visible changes yet._
+- 2026-11-04 — Fixed the post-update What's New sheet for beta and RC builds by deriving its gate and content from the newest in-app changelog entry, with regression coverage for pre-release entries.
 
 ## Release archive
 
