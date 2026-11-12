@@ -162,6 +162,7 @@ Local release builds can be signed by configuring a `signingConfig` in
 
 ```
 Nazo/
+├── RELEASE_NOTES.md              # living next-release ledger + release archive
 ├── app/                          # Gradle application module
 │   ├── build.gradle.kts
 │   └── src/main/
@@ -187,7 +188,7 @@ Nazo/
 │       └── res/                  # resources, launcher icons, themes
 └── .github/
     ├── workflows/build-release.yml   # tag-triggered release pipeline
-    └── scripts/gen_release_notes.py  # changelog from commit range
+    └── scripts/gen_release_notes.py  # extracts hand-written ledger notes
 ```
 
 ### Tech stack
@@ -205,6 +206,9 @@ Nazo/
 
 Signed `release` and `debug` APKs are attached to **GitHub Releases**, generated
 automatically whenever a `v*` tag is pushed (see the CI section above).
+Handwritten notes for the next release and the complete release archive live in
+the single [`RELEASE_NOTES.md`](RELEASE_NOTES.md) ledger; tagged builds extract
+the matching marked version block from that file.
 
 ## License
 

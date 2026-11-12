@@ -93,6 +93,26 @@ Co-authored by Arena Agent
 - Bump **only** when the owner explicitly asks to prepare or ship a version. In
   that case the bump is the **last** commit, after all feature and doc commits.
 
+## Living release ledger (`RELEASE_NOTES.md`)
+
+`RELEASE_NOTES.md` is the single canonical release-history and next-release
+ledger. Do not create per-version release-note files, separate roadmap notes,
+or session changelog documents.
+
+- After a user-visible bug fix, feature, or visual/logical improvement is
+  completed, add one short player-facing entry under **Next release** before
+  closing the task. Group entries beneath their UTC completion timestamp and
+  mark each one as **Added**, **Fixed**, or **Improved**.
+- Record the result players receive, not implementation details, attempts that
+  were reverted, raw commit subjects, or internal maintenance with no release
+  impact. Keep each entry useful as source material for public notes.
+- When preparing a release, turn the accumulated entries into handwritten
+  GitHub notes and the in-app changelog, then move them into that version's
+  archive section with the GitHub release timestamp. Leave a fresh **Next
+  release** section at the top for subsequent work.
+- Keep every shipped version in this same file. The release workflow extracts
+  a version's marked block from this ledger; do not duplicate it elsewhere.
+
 ## Every change ships with a "How to test it live" guide
 
 Non-negotiable, **no matter how small the change** — a one-line colour tweak
