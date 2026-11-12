@@ -19,9 +19,10 @@ class UpdateCheckWorker(context: Context, params: WorkerParameters) : CoroutineW
 
     override suspend fun doWork(): Result {
         val current = currentVersionName(applicationContext) ?: return Result.success()
-        val latest = fetchLatestRelease() ?: return Result.failure()
-        if (!isNewerVersion(latest.tag, current)) return Result.success()
         val prefs = UpdatePrefs(applicationContext)
+        val latest = fetchLatestRelease(includePrereleases = prefs.includePrereleases)
+            ?: return Result.failure()
+        if (!isNewerVersion(latest.tag, current)) return Result.success()
         if (latest.tag == prefs.lastNotifiedVersion) return Result.success()
         if (!canNotify()) return Result.success()
         notifyUpdateAvailable(latest)
@@ -59,8 +60,16 @@ class UpdateCheckWorker(context: Context, params: WorkerParameters) : CoroutineW
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_update_notification)
-            .setContentTitle("Nazo ${release.tag} is available")
-            .setContentText("Tap to view the release")
+            .setContentTitle(
+                if (release.prerelease) {
+                    "Nazo ${release.tag} pre-release is available"
+                } else {
+                    "Nazo ${release.tag} is available"
+                }
+            )
+            .setContentText(
+                if (release.prerelease) "Tap to view this test build" else "Tap to view the release"
+            )
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .build()

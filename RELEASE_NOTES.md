@@ -15,6 +15,10 @@ then archived below; there should be no per-version release-note files.
 
 - **Improved — Auto-check frequency:** The update sheet now uses Nazo's standard settings-row and bottom-sheet option cards for frequency selection. The old drop-up menu is gone, and holding the current value no longer exposes text-selection handles like a web form.
 
+### 2026-11-12 17:32 UTC
+
+- **Added — Optional pre-release updates:** A default-off switch now lets willing testers receive beta and release-candidate builds through both manual and scheduled checks. Pre-releases are clearly identified and warned as potentially less stable, while everyone else remains on the stable channel.
+
 ## Release archive
 
 ### Nazo 13.0 — 2026-11-11 18:39 UTC

@@ -3,6 +3,7 @@ package quiz.thaton3app.nazo.data
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -32,93 +33,115 @@ data class GitHubRelease(
     val body: String,
     val apkUrl: String?,
     val apkSizeBytes: Long = -1L,
+    val prerelease: Boolean = false,
 )
 
-suspend fun fetchLatestRelease(repo: String = GITHUB_REPO): GitHubRelease? =
-    withContext(Dispatchers.IO) {
+/**
+ * Fetches the newest release in the selected channel.
+ *
+ * GitHub's `/releases/latest` endpoint intentionally hides pre-releases, so the
+ * default path remains a single stable-only request. Opted-in users use the
+ * release list instead; drafts are discarded and semantic version ordering,
+ * rather than GitHub's creation order, chooses between stable, beta and RC
+ * builds.
+ */
+suspend fun fetchLatestRelease(
+    repo: String = GITHUB_REPO,
+    includePrereleases: Boolean = false,
+): GitHubRelease? = withContext(Dispatchers.IO) {
+    try {
+        val endpoint = if (includePrereleases) {
+            "https://api.github.com/repos/$repo/releases?per_page=30"
+        } else {
+            "https://api.github.com/repos/$repo/releases/latest"
+        }
+        val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            setRequestProperty("Accept", "application/vnd.github+json")
+            connectTimeout = 10000
+            readTimeout = 10000
+        }
         try {
-            val conn = (URL("https://api.github.com/repos/$repo/releases/latest")
-                .openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                setRequestProperty("Accept", "application/vnd.github+json")
-                connectTimeout = 10000
-                readTimeout = 10000
+            if (conn.responseCode != 200) return@withContext null
+            val text = conn.inputStream.bufferedReader().use { it.readText() }
+            if (includePrereleases) {
+                parseReleaseList(text, includePrereleases = true)
+            } else {
+                parseGitHubRelease(text)?.takeUnless { it.prerelease }
             }
-            if (conn.responseCode != 200) {
-                conn.disconnect()
-                return@withContext null
-            }
-            val text = conn.inputStream.bufferedReader().readText()
+        } finally {
             conn.disconnect()
+        }
+    } catch (_: Exception) {
+        null
+    }
+}
 
-            val json = JSONObject(text)
-            val tag = json.optString("tag_name")
-            val html = json.optString("html_url")
-            val body = playerFacingNotes(json.optString("body"))
+/** Parses one GitHub release response. Drafts and malformed tags are ignored. */
+internal fun parseGitHubRelease(rawJson: String): GitHubRelease? =
+    parseGitHubRelease(JSONObject(rawJson))
 
-            // Pick the RELEASE apk, not merely the first one.
-            //
-            // Each release ships two APKs and the API lists them
-            // alphabetically, so "Nazo-debug-<v>.apk" comes before
-            // "Nazo-release-<v>.apk". Taking the first match therefore handed
-            // users the ~21 MB debug build instead of the ~2.5 MB release
-            // build: far larger, slower to download, and signed with the debug
-            // key, so it cannot upgrade an installed release build.
-            //
-            // Preference order: an explicit "release" asset, then any apk that
-            // is not a debug build, and only then anything else -- so a release
-            // whose assets are named differently still updates rather than
-            // offering nothing.
-            var apkUrl: String? = null
-            var apkSize = -1L
-            val assets = json.optJSONArray("assets")
-            if (assets != null) {
-                var fallbackUrl: String? = null
-                var fallbackSize = -1L
-                var lastResortUrl: String? = null
-                var lastResortSize = -1L
-
-                for (i in 0 until assets.length()) {
-                    val asset = assets.getJSONObject(i)
-                    val name = asset.optString("name")
-                    if (!name.endsWith(".apk", ignoreCase = true)) continue
-
-                    val url = asset.optString("browser_download_url")
-                    val size = asset.optLong("size", -1L)
-                    val lower = name.lowercase()
-
-                    when {
-                        lower.contains("release") -> {
-                            apkUrl = url
-                            apkSize = size
-                        }
-                        !lower.contains("debug") -> {
-                            if (fallbackUrl == null) {
-                                fallbackUrl = url
-                                fallbackSize = size
-                            }
-                        }
-                        else -> {
-                            if (lastResortUrl == null) {
-                                lastResortUrl = url
-                                lastResortSize = size
-                            }
-                        }
-                    }
-                    if (apkUrl != null) break
-                }
-
-                if (apkUrl == null) {
-                    apkUrl = fallbackUrl ?: lastResortUrl
-                    apkSize = if (fallbackUrl != null) fallbackSize else lastResortSize
-                }
-            }
-
-            if (tag.isBlank()) null else GitHubRelease(tag, html, body, apkUrl, apkSize)
-        } catch (_: Exception) {
-            null
+/** Parses a GitHub release-list response and selects its highest allowed tag. */
+internal fun parseReleaseList(
+    rawJson: String,
+    includePrereleases: Boolean,
+): GitHubRelease? {
+    val array = JSONArray(rawJson)
+    val releases = buildList {
+        for (index in 0 until array.length()) {
+            parseGitHubRelease(array.getJSONObject(index))?.let(::add)
         }
     }
+    return selectHighestRelease(releases, includePrereleases)
+}
+
+private fun parseGitHubRelease(json: JSONObject): GitHubRelease? {
+    if (json.optBoolean("draft", false)) return null
+
+    val tag = json.optString("tag_name").trim()
+    val parsedVersion = parseVersion(tag) ?: return null
+
+    val (apkUrl, apkSize) = preferredApk(json.optJSONArray("assets"))
+    return GitHubRelease(
+        tag = tag,
+        htmlUrl = json.optString("html_url"),
+        body = playerFacingNotes(json.optString("body")),
+        apkUrl = apkUrl,
+        apkSizeBytes = apkSize,
+        // A suffixed tag is never allowed onto the stable channel, even if a
+        // manually created GitHub release forgot to set its prerelease flag.
+        prerelease = json.optBoolean("prerelease", false) || parsedVersion.prerelease != null,
+    )
+}
+
+/**
+ * Picks the installable release APK rather than the alphabetically first APK.
+ * Debug assets sort before release assets and are signed with the wrong key for
+ * upgrading a normal installation, so an explicit release build always wins.
+ */
+private fun preferredApk(assets: JSONArray?): Pair<String?, Long> {
+    if (assets == null) return null to -1L
+
+    var releaseAsset: Pair<String, Long>? = null
+    var nonDebugAsset: Pair<String, Long>? = null
+    var lastResortAsset: Pair<String, Long>? = null
+
+    for (index in 0 until assets.length()) {
+        val asset = assets.getJSONObject(index)
+        val name = asset.optString("name")
+        if (!name.endsWith(".apk", ignoreCase = true)) continue
+
+        val candidate = asset.optString("browser_download_url") to asset.optLong("size", -1L)
+        val lowerName = name.lowercase()
+        when {
+            lowerName.contains("release") -> releaseAsset = candidate
+            !lowerName.contains("debug") && nonDebugAsset == null -> nonDebugAsset = candidate
+            lastResortAsset == null -> lastResortAsset = candidate
+        }
+    }
+
+    return releaseAsset ?: nonDebugAsset ?: lastResortAsset ?: (null to -1L)
+}
 
 /**
  * Extracts the player-facing part of a GitHub release body.
@@ -183,29 +206,110 @@ fun playerFacingNotes(rawBody: String): String {
         .trim()
 }
 
-fun isNewerVersion(latest: String, current: String): Boolean {
-    fun split(v: String): Pair<List<Int>, String?> {
-        val cleaned = v.trim().trimStart('v', 'V')
-        val dash = cleaned.indexOf('-')
-        val base = if (dash >= 0) cleaned.substring(0, dash) else cleaned
-        val suffix = if (dash >= 0) cleaned.substring(dash + 1) else null
-        return base.split('.').mapNotNull { it.toIntOrNull() } to suffix
-    }
-    val (a, aSuffix) = split(latest)
-    val (b, bSuffix) = split(current)
-    if (a.isEmpty() || b.isEmpty()) return false
-    val n = maxOf(a.size, b.size)
-    for (i in 0 until n) {
-        val x = a.getOrElse(i) { 0 }
-        val y = b.getOrElse(i) { 0 }
-        if (x != y) return x > y
-    }
-    return when {
-        aSuffix == null && bSuffix == null -> false
-        aSuffix == null -> true
-        else -> false
-    }
+private sealed interface VersionPart {
+    data class Number(val value: Int) : VersionPart
+    data class Text(val value: String) : VersionPart
 }
+
+private data class ParsedVersion(
+    val core: List<Int>,
+    val prerelease: List<VersionPart>?,
+)
+
+private val VERSION_PART_RE = Regex("[A-Za-z]+|\\d+")
+private val PRE_RELEASE_RANK = mapOf(
+    "dev" to 0,
+    "snapshot" to 0,
+    "alpha" to 1,
+    "a" to 1,
+    "beta" to 2,
+    "b" to 2,
+    "preview" to 2,
+    "rc" to 3,
+)
+
+private fun parseVersion(raw: String): ParsedVersion? {
+    val cleaned = raw.trim().trimStart('v', 'V').substringBefore('+')
+    if (cleaned.isBlank()) return null
+
+    val dash = cleaned.indexOf('-')
+    val coreText = if (dash >= 0) cleaned.substring(0, dash) else cleaned
+    val suffixText = if (dash >= 0) cleaned.substring(dash + 1) else null
+    val coreParts = coreText.split('.')
+    if (coreParts.isEmpty() || coreParts.any { it.isBlank() || it.toIntOrNull() == null }) return null
+
+    val prerelease = suffixText?.let { suffix ->
+        if (suffix.isBlank()) return null
+        VERSION_PART_RE.findAll(suffix).map { match ->
+            match.value.toIntOrNull()?.let(VersionPart::Number)
+                ?: VersionPart.Text(match.value.lowercase())
+        }.toList().takeIf { it.isNotEmpty() } ?: return null
+    }
+    return ParsedVersion(coreParts.map { it.toInt() }, prerelease)
+}
+
+private fun compareParsedVersions(left: ParsedVersion, right: ParsedVersion): Int {
+    val coreSize = maxOf(left.core.size, right.core.size)
+    for (index in 0 until coreSize) {
+        val comparison = left.core.getOrElse(index) { 0 }
+            .compareTo(right.core.getOrElse(index) { 0 })
+        if (comparison != 0) return comparison
+    }
+
+    val leftPre = left.prerelease
+    val rightPre = right.prerelease
+    if (leftPre == null || rightPre == null) {
+        return when {
+            leftPre == null && rightPre == null -> 0
+            leftPre == null -> 1
+            else -> -1
+        }
+    }
+
+    val partCount = minOf(leftPre.size, rightPre.size)
+    for (index in 0 until partCount) {
+        val leftPart = leftPre[index]
+        val rightPart = rightPre[index]
+        val comparison = when {
+            leftPart is VersionPart.Number && rightPart is VersionPart.Number ->
+                leftPart.value.compareTo(rightPart.value)
+            leftPart is VersionPart.Text && rightPart is VersionPart.Text -> {
+                val leftRank = PRE_RELEASE_RANK[leftPart.value]
+                val rightRank = PRE_RELEASE_RANK[rightPart.value]
+                when {
+                    leftRank != null && rightRank != null -> leftRank.compareTo(rightRank)
+                    leftRank != null -> -1
+                    rightRank != null -> 1
+                    else -> leftPart.value.compareTo(rightPart.value)
+                }
+            }
+            leftPart is VersionPart.Number -> -1
+            else -> 1
+        }
+        if (comparison != 0) return comparison
+    }
+    return leftPre.size.compareTo(rightPre.size)
+}
+
+/** Returns null when either tag is not a version. */
+internal fun compareVersionTags(left: String, right: String): Int? {
+    val parsedLeft = parseVersion(left) ?: return null
+    val parsedRight = parseVersion(right) ?: return null
+    return compareParsedVersions(parsedLeft, parsedRight)
+}
+
+internal fun selectHighestRelease(
+    releases: List<GitHubRelease>,
+    includePrereleases: Boolean,
+): GitHubRelease? = releases
+    .asSequence()
+    .filter { includePrereleases || !it.prerelease }
+    .mapNotNull { release -> parseVersion(release.tag)?.let { release to it } }
+    .maxWithOrNull(Comparator { left, right -> compareParsedVersions(left.second, right.second) })
+    ?.first
+
+fun isNewerVersion(latest: String, current: String): Boolean =
+    compareVersionTags(latest, current)?.let { it > 0 } ?: false
 
 fun currentVersionName(context: Context): String? =
     runCatching {
