@@ -39,6 +39,15 @@ data class ChangelogEntry(
  */
 val NAZO_CHANGELOG: List<ChangelogEntry> = listOf(
     ChangelogEntry(
+        version = "14.0-beta01",
+        date = "12 Nov 2026",
+        changes = listOf(
+            "Update actions now share one clean row, with Download & Install on the left and View on GitHub on the right.",
+            "Auto-check frequency now opens a Nazo-style option sheet instead of a drop-up field, and its selected text no longer exposes selection handles.",
+            "A default-off pre-release switch lets willing testers include beta and release-candidate builds in manual and scheduled checks, with clear warnings and reliable alpha, beta, RC and final version ordering.",
+        ),
+    ),
+    ChangelogEntry(
         version = "13.0",
         date = "11 Nov 2026",
         changes = listOf(

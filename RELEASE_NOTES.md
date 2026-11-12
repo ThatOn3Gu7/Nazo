@@ -7,19 +7,34 @@ then archived below; there should be no per-version release-note files.
 
 ## Next release
 
-### 2026-11-11 18:46 UTC
-
-- **Fixed — App update actions:** When an update is available, **Download & Install** now sits at the lower left and **View on GitHub** sits to its right in one clean row with a small gap instead of stacking vertically.
-
-### 2026-11-12 09:51 UTC
-
-- **Improved — Auto-check frequency:** The update sheet now uses Nazo's standard settings-row and bottom-sheet option cards for frequency selection. The old drop-up menu is gone, and holding the current value no longer exposes text-selection handles like a web form.
-
-### 2026-11-12 17:32 UTC
-
-- **Added — Optional pre-release updates:** A default-off switch now lets willing testers receive beta and release-candidate builds through both manual and scheduled checks. Pre-releases are clearly identified and warned as potentially less stable, while everyone else remains on the stable channel.
+_No completed player-visible changes yet._
 
 ## Release archive
+
+### Nazo 14.0-beta01 — 2026-11-12
+
+<!--NAZO_RELEASE_14.0-beta01_START-->
+<!--NAZO_NOTES_START-->
+# Nazo 14.0-beta01 — Test the Channel
+
+This beta makes Nazo's updater itself ready for beta testing, while keeping every existing installation on stable releases unless its owner explicitly opts in.
+
+## A clearer update sheet
+
+- **Update actions now share one clean row.** Download & Install stays on the lower left, View on GitHub sits on the right, and a small gap keeps their containers visually separate.
+- **Auto-check frequency now speaks Nazo's design language.** The old drop-up field is replaced by the standard settings row and a dedicated option-card sheet.
+- Holding the selected frequency no longer exposes text-selection handles like a web form.
+
+## An optional pre-release channel
+
+- A new default-off **Include pre-release updates** switch adds beta and release-candidate builds to both manual and scheduled checks.
+- Stable releases remain part of the opted-in channel, and everyone who leaves the switch off continues using GitHub's stable-only feed.
+- Pre-release update cards and notifications identify test builds clearly and warn that they may be less stable.
+- Version ordering understands alpha, beta, RC and final builds, including numeric steps such as beta02 to beta10. Drafts and older pre-releases stay hidden.
+
+This is a pre-release build intended to validate the full opt-in, download and installation path before Nazo 14.0 is finalized.
+<!--NAZO_NOTES_END-->
+<!--NAZO_RELEASE_14.0-beta01_END-->
 
 ### Nazo 13.0 — 2026-11-11 18:39 UTC
 
