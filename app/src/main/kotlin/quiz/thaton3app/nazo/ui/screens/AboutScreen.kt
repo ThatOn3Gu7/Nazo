@@ -24,6 +24,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,25 +63,19 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.PersonOutline
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuAnchorType
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -97,6 +92,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -129,6 +125,7 @@ import quiz.thaton3app.nazo.data.fetchLatestRelease
 import quiz.thaton3app.nazo.data.isNewerVersion
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoModalSheet
+import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
 import quiz.thaton3app.nazo.ui.components.NazoSheetHeader
 import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.ui.components.rememberHapticBack
@@ -216,6 +213,8 @@ fun AboutScreen(
     var updateState by rememberRetained<UpdateState>("About.updateState") { UpdateState.Idle }
     var checkLabel by rememberRetained("About.checkLabel") { "Check Now" }
     var frequency by remember { mutableStateOf(UpdatePrefs(context).updateFrequency) }
+    var showFrequencyChooser by rememberRetained("About.showFrequencyChooser") { false }
+    val frequencyChooserSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var downloadState by remember { mutableStateOf<ApkDownloadState>(ApkDownloadState.Idle) }
     var downloadJob by remember { mutableStateOf<Job?>(null) }
 
@@ -268,6 +267,20 @@ fun AboutScreen(
     fun onOpenBrowser(url: String) {
         runCatching {
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }
+    }
+
+    fun chooseUpdateFrequency(value: UpdateFrequency) {
+        if (value != frequency) {
+            frequency = value
+            UpdatePrefs(context).updateFrequency = value
+            UpdateScheduler.apply(context, value)
+        }
+        // Let the chooser settle out before removing it from composition, just
+        // like the app's other selection sheets.
+        scope.launch {
+            frequencyChooserSheetState.hide()
+            showFrequencyChooser = false
         }
     }
 
@@ -490,12 +503,33 @@ fun AboutScreen(
                 onInstall = { UpdateDownloader.install(context) },
                 onOpenBrowser = { url -> onOpenBrowser(url) },
                 frequency = frequency,
-                onFrequencyChange = { freq ->
-                    frequency = freq
-                    UpdatePrefs(context).updateFrequency = freq
-                    UpdateScheduler.apply(context, freq)
-                }
+                onOpenFrequencyChooser = { showFrequencyChooser = true },
             )
+        }
+    }
+
+    if (showFrequencyChooser) {
+        NazoModalSheet(
+            onDismissRequest = { showFrequencyChooser = false },
+            sheetState = frequencyChooserSheetState,
+        ) {
+            NazoSheetColumn {
+                NazoSheetHeader(
+                    icon = Icons.Filled.Schedule,
+                    title = "Auto-check frequency",
+                    subtitle = "Choose how often Nazo looks for a new GitHub release.",
+                )
+                Spacer(Modifier.height(16.dp))
+                UpdateFrequency.entries.forEach { option ->
+                    UpdateFrequencyOptionCard(
+                        frequency = option,
+                        selected = option == frequency,
+                        onClick = { chooseUpdateFrequency(option) },
+                    )
+                    Spacer(Modifier.height(10.dp))
+                }
+                Spacer(Modifier.height(6.dp))
+            }
         }
     }
 }
@@ -513,16 +547,8 @@ private fun UpdateMenuContent(
     onInstall: () -> Unit,
     onOpenBrowser: (String) -> Unit,
     frequency: UpdateFrequency,
-    onFrequencyChange: (UpdateFrequency) -> Unit,
+    onOpenFrequencyChooser: () -> Unit,
 ) {
-    val frequencyLabels = mapOf(
-        UpdateFrequency.EVERY_LAUNCH to "Every Launch",
-        UpdateFrequency.WEEKLY to "Weekly",
-        UpdateFrequency.BI_WEEKLY to "Bi-weekly",
-        UpdateFrequency.NEVER to "Never",
-    )
-    var showFrequencyDropdown by remember { mutableStateOf(false) }
-
     val appContext = LocalContext.current.applicationContext
     // Retained with its file list for the same reason as the sheet around it:
     // a confirm dialog that came back without the files it is about to delete
@@ -922,42 +948,16 @@ private fun UpdateMenuContent(
 
         Spacer(Modifier.height(8.dp))
 
-        // Auto-check frequency dropdown
-        ExposedDropdownMenuBox(
-            expanded = showFrequencyDropdown,
-            onExpandedChange = { showFrequencyDropdown = !showFrequencyDropdown },
-        ) {
-            OutlinedTextField(
-                value = frequencyLabels[frequency] ?: "Weekly",
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Auto-check frequency") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showFrequencyDropdown) },
-                modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = NazoTextPrimary,
-                    unfocusedTextColor = NazoTextPrimary,
-                    focusedBorderColor = NazoPrimary,
-                    unfocusedBorderColor = NazoTextSecondary,
-                    focusedLabelColor = NazoTextSecondary,
-                    unfocusedLabelColor = NazoTextSecondary,
-                    cursorColor = NazoPrimary,
-                ),
+        // This is a normal Nazo settings row rather than a read-only text
+        // field. Besides matching every other chooser in the app, plain Text
+        // avoids the long-press selection handles exposed by TextField.
+        SettingsCard {
+            ActionRow(
+                icon = Icons.Filled.Schedule,
+                title = "Auto-check frequency",
+                subtitle = "${freqLabel(frequency)} · ${frequencyDescription(frequency)}",
+                onClick = onOpenFrequencyChooser,
             )
-            ExposedDropdownMenu(
-                expanded = showFrequencyDropdown,
-                onDismissRequest = { showFrequencyDropdown = false },
-            ) {
-                UpdateFrequency.entries.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(freqLabel(option), color = NazoTextPrimary) },
-                        onClick = {
-                            showFrequencyDropdown = false
-                            onFrequencyChange(option)
-                        },
-                    )
-                }
-            }
         }
     }
 
@@ -1001,6 +1001,85 @@ private fun UpdateMenuContent(
     }
 }
 
+@Composable
+private fun UpdateFrequencyOptionCard(
+    frequency: UpdateFrequency,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 18.dp,
+        pressedCorner = 9.dp,
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                color = if (selected) {
+                    NazoPrimary.copy(alpha = 0.10f)
+                } else {
+                    NazoSurfaceVariant
+                },
+                shape = shape,
+            )
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) {
+                    NazoPrimary
+                } else {
+                    NazoTextSecondary.copy(alpha = 0.12f)
+                },
+                shape = shape,
+            )
+            .selectable(
+                selected = selected,
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                role = Role.RadioButton,
+                onClick = onClick,
+            )
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = freqLabel(frequency),
+                style = MaterialTheme.typography.titleMedium,
+                color = NazoTextPrimary,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = frequencyDescription(frequency),
+                style = MaterialTheme.typography.bodySmall,
+                color = NazoTextSecondary,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        if (selected) {
+            Icon(
+                imageVector = Icons.Filled.CheckCircle,
+                contentDescription = null,
+                tint = NazoPrimary,
+                modifier = Modifier.size(24.dp),
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .border(
+                        width = 2.dp,
+                        color = NazoTextSecondary.copy(alpha = 0.4f),
+                        shape = CircleShape,
+                    ),
+            )
+        }
+    }
+}
+
 private fun formatBytes(bytes: Long): String = when {
     bytes >= 1024L * 1024L -> String.format("%.1f MB", bytes / (1024f * 1024f))
     bytes >= 1024L -> String.format("%.1f KB", bytes / 1024f)
@@ -1012,6 +1091,13 @@ private fun freqLabel(frequency: UpdateFrequency): String = when (frequency) {
     UpdateFrequency.WEEKLY -> "Weekly"
     UpdateFrequency.BI_WEEKLY -> "Bi-weekly"
     UpdateFrequency.NEVER -> "Never"
+}
+
+private fun frequencyDescription(frequency: UpdateFrequency): String = when (frequency) {
+    UpdateFrequency.EVERY_LAUNCH -> "Look for an update whenever Nazo opens"
+    UpdateFrequency.WEEKLY -> "Look for an update every 7 days"
+    UpdateFrequency.BI_WEEKLY -> "Look for an update every 14 days"
+    UpdateFrequency.NEVER -> "Only check when you ask Nazo to"
 }
 
 // region Helpers
