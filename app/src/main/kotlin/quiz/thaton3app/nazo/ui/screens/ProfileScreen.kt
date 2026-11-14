@@ -614,7 +614,14 @@ fun ProfileScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .verticalScroll(rememberScrollState()),
+                        // The live MP4 circle is a persistent app-level native
+                        // surface. Compose's draw-only stretch would move the
+                        // poster beneath it without moving that surface, making
+                        // the avatar appear doubled at the scroll boundary.
+                        .verticalScroll(
+                            rememberScrollState(),
+                            overscrollEffect = null,
+                        ),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Top
                 ) {
@@ -756,7 +763,13 @@ fun ProfileScreen(
                         bottom = padding.calculateBottomPadding(),
                     )
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    // Preserve normal scrolling while removing the visual
+                    // stretch that cannot also transform the root-level native
+                    // video surface positioned over the avatar poster.
+                    .verticalScroll(
+                        rememberScrollState(),
+                        overscrollEffect = null,
+                    )
                     .padding(bottom = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {

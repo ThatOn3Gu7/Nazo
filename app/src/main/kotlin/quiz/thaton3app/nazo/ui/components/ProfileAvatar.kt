@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.semantics.Role
@@ -234,6 +235,12 @@ fun ProfileAvatar(
                         val p = coords.positionInWindow()
                         val s = coords.size
                         state.restBounds = Rect(p.x, p.y, p.x + s.width, p.y + s.height)
+                        // Keep the root-level native surface clipped exactly
+                        // like this in-screen slot. boundsInWindow intersects
+                        // the circle with scroll and window clipping ancestors;
+                        // positionInWindow above intentionally remains the full
+                        // geometry so video crop/scale never changes at an edge.
+                        state.visibleBounds = coords.boundsInWindow()
                     }
                 }
                 state.refreshBounds = refreshBounds

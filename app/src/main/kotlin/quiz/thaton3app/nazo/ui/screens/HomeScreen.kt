@@ -427,7 +427,12 @@ fun HomeScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .verticalScroll(leftScroll)
+                        // The live MP4 avatar is an app-level native surface.
+                        // A Compose stretch-overscroll transform cannot be
+                        // inherited by that surface and would expose its poster
+                        // as a second moving layer. Keep scrolling/flinging,
+                        // but omit only that visual stretch in the avatar pane.
+                        .verticalScroll(leftScroll, overscrollEffect = null)
                         .padding(bottom = 20.dp)
                 ) {
                     leftContent()
@@ -448,7 +453,10 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(scrollState)
+                    // Avoid a draw-only stretch that the app-level native
+                    // video-avatar surface cannot share; normal scroll and
+                    // fling behavior are unchanged.
+                    .verticalScroll(scrollState, overscrollEffect = null)
                     .padding(horizontal = 20.dp)
                     .navigationBarsPadding()
                     .padding(bottom = 96.dp)
