@@ -84,7 +84,9 @@ import quiz.thaton3app.nazo.hints.HintRevealPill
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoQuitDialog
+import quiz.thaton3app.nazo.ui.components.elapsedGameplayMillis
 import quiz.thaton3app.nazo.ui.components.isLandscape
+import quiz.thaton3app.nazo.ui.components.rememberGameplayQuitPauseState
 import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.rememberSystemReduceMotion
 import quiz.thaton3app.nazo.ui.mode.BlitzUrgency
@@ -179,6 +181,8 @@ fun ActiveQuizScreen(
     // and the button can say "Finish Quiz" on the fatal question.
     onLifeLost: () -> Unit = {},
     onNextQuestion: (Boolean, String?) -> Unit,
+    /** Excludes a completed quit-dialog pause from the host's elapsed clock. */
+    onTimerResumed: (pausedMillis: Long) -> Unit = {},
     onCloseClick: () -> Unit,
 ) {
     var selectedAnswer by remember { mutableStateOf<String?>(null) }
@@ -215,7 +219,7 @@ fun ActiveQuizScreen(
     }
     val context = LocalContext.current
     val reduceMotion = rememberSystemReduceMotion()
-    var showQuitDialog by remember { mutableStateOf(false) }
+    val quitPauseState = rememberGameplayQuitPauseState()
 
     // Lifelines (Phase 4): a small supply shared across the whole quiz (this
     // composable stays alive for all questions), one use per question.
@@ -226,8 +230,8 @@ fun ActiveQuizScreen(
 
     // Intercept the system back gesture/button too, so leaving via gesture shows the same
     // "quit quiz?" confirmation as the X button (instead of silently going back).
-    BackHandler(enabled = !showQuitDialog) {
-        showQuitDialog = true
+    BackHandler(enabled = !quitPauseState.timerPaused) {
+        quitPauseState.requestQuit()
     }
 
     // Lifecycle-safe countdown: one timer per question (keyed on the index). The
@@ -251,22 +255,47 @@ fun ActiveQuizScreen(
             .forEach { comboByIndex.remove(it) }
         if (isBlitz) return@LaunchedEffect
         remainingSeconds = secondsPerQuestion
+
+        // Do not start a new question's clock underneath an already-open quit
+        // confirmation (for example, a transition settling on the same frame).
+        while (quitPauseState.timerPaused) delay(50)
+        val timerStartedAt = SystemClock.elapsedRealtime()
+        val pauseMillisAtStart = quitPauseState.accumulatedPauseMillis
+        var lastDisplayedSecond = secondsPerQuestion
+
         while (remainingSeconds > 0 && selectedAnswer == null) {
-            delay(1000)
-            remainingSeconds--
-            // Escalating buzz in the final 5 seconds: starts at 30% strength, ramps
-            // up each second, peaks with a 100% buzz the moment time hits zero.
-            when (remainingSeconds) {
-                5 -> Haptics.tick(context, 30)
-                4 -> Haptics.tick(context, 36)   // ~20% stronger than the previous
-                3 -> Haptics.tick(context, 47)   // ~30% stronger than the previous
-                2 -> Haptics.tick(context, 66)   // ~40% stronger than the previous
-                1 -> Haptics.tick(context, 85)   // last second before zero
-                0 -> {
-                    Haptics.timeUp(context)      // time's up — full-strength buzz
-                    Sounds.wrong(context)        // opt-in sound, no-op when disabled
+            if (quitPauseState.timerPaused) {
+                delay(50)
+                continue
+            }
+            val elapsed = elapsedGameplayMillis(
+                startedAtMillis = timerStartedAt,
+                nowMillis = SystemClock.elapsedRealtime(),
+                accumulatedPauseMillis = quitPauseState.accumulatedPauseMillis,
+                pauseMillisAtStart = pauseMillisAtStart,
+            )
+            val nextSecond = (
+                (secondsPerQuestion * 1_000L - elapsed + 999L) / 1_000L
+            ).coerceIn(0L, secondsPerQuestion.toLong()).toInt()
+            if (nextSecond != lastDisplayedSecond) {
+                remainingSeconds = nextSecond
+                lastDisplayedSecond = nextSecond
+                // Escalating buzz in the final 5 seconds: starts at 30%
+                // strength and peaks when time reaches zero.
+                when (nextSecond) {
+                    5 -> Haptics.tick(context, 30)
+                    4 -> Haptics.tick(context, 36)
+                    3 -> Haptics.tick(context, 47)
+                    2 -> Haptics.tick(context, 66)
+                    1 -> Haptics.tick(context, 85)
+                    0 -> {
+                        Haptics.timeUp(context)
+                        Sounds.wrong(context)
+                    }
                 }
             }
+            if (nextSecond <= 0) break
+            delay(50)
         }
         if (remainingSeconds == 0 && selectedAnswer == null) {
             isTimeUp = true
@@ -285,9 +314,16 @@ fun ActiveQuizScreen(
     if (blitzDeadlineMs != null) {
         LaunchedEffect(blitzDeadlineMs) {
             while (true) {
+                if (quitPauseState.timerPaused) {
+                    delay(50)
+                    continue
+                }
                 // Monotonic clock — matches how blitzDeadlineMs is produced
-                // in NazoApp, so an NTP sync mid-round cannot warp the timer.
-                val left = ((blitzDeadlineMs - SystemClock.elapsedRealtime() + 999) / 1000L)
+                // in NazoApp. Every completed confirmation pause extends the
+                // effective deadline by exactly that duration.
+                val effectiveDeadline =
+                    blitzDeadlineMs + quitPauseState.accumulatedPauseMillis
+                val left = ((effectiveDeadline - SystemClock.elapsedRealtime() + 999) / 1000L)
                     .coerceAtLeast(0L).toInt()
                 if (left != remainingSeconds) {
                     remainingSeconds = left
@@ -314,7 +350,16 @@ fun ActiveQuizScreen(
             if (selectedAnswer != null) {
                 val wasCorrect = selectedAnswer == question.correctAnswer
                 val picked = selectedAnswer
-                delay(650)
+                var feedbackMillisLeft = 650L
+                var lastSample = SystemClock.elapsedRealtime()
+                while (feedbackMillisLeft > 0L) {
+                    delay(minOf(50L, feedbackMillisLeft))
+                    val now = SystemClock.elapsedRealtime()
+                    if (!quitPauseState.timerPaused) {
+                        feedbackMillisLeft -= (now - lastSample).coerceAtLeast(0L)
+                    }
+                    lastSample = now
+                }
                 onNextQuestion(wasCorrect, picked)
                 selectedAnswer = null
             }
@@ -373,7 +418,10 @@ fun ActiveQuizScreen(
                     pressedCornerPercent = 28f,
                 )
                 IconButton(
-                    onClick = { Haptics.light(context); showQuitDialog = true },
+                    onClick = {
+                        Haptics.light(context)
+                        quitPauseState.requestQuit()
+                    },
                     interactionSource = closeInteraction,
                     modifier = Modifier
                         .size(40.dp)
@@ -854,10 +902,14 @@ fun ActiveQuizScreen(
         }
 
         NazoQuitDialog(
-            visible = showQuitDialog,
+            visible = quitPauseState.dialogVisible,
             title = "Quit quiz?",
             message = "Your progress in this quiz will be lost.",
-            onStay = { showQuitDialog = false },
+            onStay = {
+                val pausedMillis = quitPauseState.stay()
+                if (pausedMillis > 0L) onTimerResumed(pausedMillis)
+            },
+            onHideForQuit = { quitPauseState.hideForQuit() },
             onQuit = onCloseClick,
         )
     }

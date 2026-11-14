@@ -8,7 +8,8 @@ then archived below; there should be no per-version release-note files.
 ## Next release
 
 - 2026-11-04 — Fixed the post-update What's New sheet for beta and RC builds by deriving its gate and content from the newest in-app changelog entry, with regression coverage for pre-release entries.
-- 2026-11-04 — Fixed live MP4 avatars appearing as two layers on Home and Profile: the persistent video now obeys the avatar slot's scroll/system-bar clipping, and avatar panes no longer apply an unsynchronizable stretch at scroll boundaries.
+- 2026-11-04 — Fixed live MP4 avatars appearing as two layers on Home and Profile: the persistent video obeys the avatar slot's scroll/system-bar clipping and yields to its in-tree poster during stretch overscroll, preserving the responsive stretch without splitting the circle.
+- 2026-11-04 — Quit confirmations now pause and precisely resume per-question, Survival, Versus, Blitz and Guessing timers; confirmed exits stay paused through dialog dismissal, and quiz result time excludes canceled-exit pauses.
 
 ## Release archive
 

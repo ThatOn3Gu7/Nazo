@@ -2,6 +2,7 @@ package quiz.thaton3app.nazo.modes.guessing_game
 
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
+import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -97,6 +98,7 @@ import coil.request.SuccessResult
 import java.nio.ByteBuffer
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import quiz.thaton3app.nazo.hints.HintEngine
@@ -106,7 +108,9 @@ import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoQuitDialog
 import quiz.thaton3app.nazo.ui.components.WavySpinner
+import quiz.thaton3app.nazo.ui.components.elapsedGameplayMillis
 import quiz.thaton3app.nazo.ui.components.isLandscape
+import quiz.thaton3app.nazo.ui.components.rememberGameplayQuitPauseState
 import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.ui.mode.mysteryRevealStage
@@ -162,7 +166,7 @@ fun GuessingPlayScreen(
     var imageFetchFailed by remember { mutableStateOf(false) }
     // One software bitmap is the single source of truth for both reveal paths.
     var remainingMs by remember { mutableLongStateOf(durationMs) }
-    var showQuitDialog by remember { mutableStateOf(false) }
+    val quitPauseState = rememberGameplayQuitPauseState()
     var mysteryBitmap by remember { mutableStateOf<Bitmap?>(null) }
     val imageLoader = remember { ImageLoader(context) }
 
@@ -248,13 +252,27 @@ fun GuessingPlayScreen(
     // The loop stops as soon as the player answers or the timer reaches zero.
     LaunchedEffect(imageReady, payload) {
         if (!imageReady || payload == null) return@LaunchedEffect
-        val startNanos = withFrameNanos { it }
+        // If the image became ready behind an open confirmation, begin only
+        // after the player chooses Stay; time before the round was visible must
+        // not be charged to the reveal countdown.
+        while (quitPauseState.timerPaused) delay(50)
+        val timerStartedAt = SystemClock.elapsedRealtime()
+        val pauseMillisAtStart = quitPauseState.accumulatedPauseMillis
         var lastTickSecond = -1
         var done = false
         while (!done) {
             if (submitted != null || timedOut) break
-            withFrameNanos { nowNanos ->
-                val elapsedMs = (nowNanos - startNanos) / 1_000_000
+            if (quitPauseState.timerPaused) {
+                delay(50)
+                continue
+            }
+            withFrameNanos {
+                val elapsedMs = elapsedGameplayMillis(
+                    startedAtMillis = timerStartedAt,
+                    nowMillis = SystemClock.elapsedRealtime(),
+                    accumulatedPauseMillis = quitPauseState.accumulatedPauseMillis,
+                    pauseMillisAtStart = pauseMillisAtStart,
+                )
                 val remaining = (durationMs - elapsedMs).coerceAtLeast(0L)
                 remainingMs = remaining
                 val sec = ((remaining + 999) / 1000).toInt()
@@ -294,7 +312,9 @@ fun GuessingPlayScreen(
         onRoundComplete(correct, answer, remainingMs)
     }
 
-    BackHandler(enabled = !showQuitDialog) { showQuitDialog = true }
+    BackHandler(enabled = !quitPauseState.timerPaused) {
+        quitPauseState.requestQuit()
+    }
 
     Box(
         modifier = Modifier
@@ -321,7 +341,7 @@ fun GuessingPlayScreen(
                     IconButton(
                         onClick = {
                             Haptics.light(context)
-                            showQuitDialog = true
+                            quitPauseState.requestQuit()
                         },
                         interactionSource = closeInteraction,
                         modifier = Modifier
@@ -533,10 +553,11 @@ fun GuessingPlayScreen(
         }
 
         NazoQuitDialog(
-            visible = showQuitDialog,
+            visible = quitPauseState.dialogVisible,
             title = "Quit guessing game?",
             message = "Your score in this game will be lost.",
-            onStay = { showQuitDialog = false },
+            onStay = { quitPauseState.stay() },
+            onHideForQuit = { quitPauseState.hideForQuit() },
             onQuit = onQuit,
         )
     }

@@ -2291,6 +2291,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         // fatal question's button can say "Finish Quiz".
                         onLifeLost = { if (quizMode == "survival") survivalWrongs++ },
                         onNextQuestion = { isCorrect, selected -> answer(isCorrect, selected) },
+                        onTimerResumed = { pausedMillis ->
+                            // Results use this host-level monotonic span. Shift
+                            // its origin so time spent deciding in the quit
+                            // confirmation is excluded just like the visible
+                            // question/Blitz countdowns.
+                            if (quizStartedAt > 0L && quizFinishedAt == 0L) {
+                                quizStartedAt += pausedMillis
+                            }
+                        },
                         onCloseClick = { goHome() },
                     )
 

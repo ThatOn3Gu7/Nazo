@@ -37,6 +37,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberOverscrollEffect
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -240,6 +241,8 @@ fun HomeScreen(
     }
 
     val landscape = isLandscape()
+    val avatarOverscrollEffect = rememberOverscrollEffect()
+    val videoAvatarOverscrolling = avatarOverscrollEffect?.isInProgress == true
 
     // Group 1: Profile, Badges, Daily Challenge, and Mode Selection
     val leftContent: @Composable () -> Unit = {
@@ -250,6 +253,7 @@ fun HomeScreen(
             profileName = profileName,
             profilePictureUri = profilePictureUri,
             onProfileClick = onProfileClick,
+            videoAvatarOverscrolling = videoAvatarOverscrolling,
         )
 
         Spacer(Modifier.height(14.dp))
@@ -427,12 +431,10 @@ fun HomeScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        // The live MP4 avatar is an app-level native surface.
-                        // A Compose stretch-overscroll transform cannot be
-                        // inherited by that surface and would expose its poster
-                        // as a second moving layer. Keep scrolling/flinging,
-                        // but omit only that visual stretch in the avatar pane.
-                        .verticalScroll(leftScroll, overscrollEffect = null)
+                        // Keep the platform stretch. While it is active the
+                        // app-level MP4 layer yields to the in-tree poster, so
+                        // one circle stretches with the rest of the pane.
+                        .verticalScroll(leftScroll, overscrollEffect = avatarOverscrollEffect)
                         .padding(bottom = 20.dp)
                 ) {
                     leftContent()
@@ -453,10 +455,9 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    // Avoid a draw-only stretch that the app-level native
-                    // video-avatar surface cannot share; normal scroll and
-                    // fling behavior are unchanged.
-                    .verticalScroll(scrollState, overscrollEffect = null)
+                    // Preserve the platform stretch; its progress temporarily
+                    // swaps the native video layer for the transformed poster.
+                    .verticalScroll(scrollState, overscrollEffect = avatarOverscrollEffect)
                     .padding(horizontal = 20.dp)
                     .navigationBarsPadding()
                     .padding(bottom = 96.dp)
@@ -697,6 +698,7 @@ private fun HomeHeader(
     profileName: String,
     profilePictureUri: String?,
     onProfileClick: () -> Unit,
+    videoAvatarOverscrolling: Boolean,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -735,6 +737,7 @@ private fun HomeHeader(
             pictureUri = profilePictureUri,
             size = 42.dp,
             onClick = onProfileClick,
+            videoOverlaySuppressed = videoAvatarOverscrolling,
             anchorId = AvatarAnchorId.Home,
             modifier = Modifier.size(42.dp),
         )
