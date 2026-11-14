@@ -1047,11 +1047,12 @@ object GuessImageFetcher {
     /**
      * Last resort: DuckDuckGo's image endpoint. GET the image-search HTML
      * (browser UA) for the per-session `vqd` token, then the JSON i.js API.
+     * Both requests explicitly select strict Safe Search; [DuckDuckGoImagePolicy]
+     * additionally rejects marked-explicit metadata, malformed/non-HTTPS
+     * entries and results with no target evidence before any bytes are fetched.
      * The token format has changed over time, so several extraction shapes
-     * are tried (numeric, then any token). Every hit must be HTTPS, must
-     * mention the target, and must be a decodable format (Bing thumbnails
-     * have no extension, so they are exempt from the format check only).
-     * There is NO blind top-hit fallback: a miss beats a wrong face.
+     * are tried (numeric, then any token). There is no blind top-hit fallback:
+     * a miss is safer than displaying an unrelated image.
      */
     private fun fromDuckDuckGo(targetName: String, franchise: String, imageQuery: String): String? {
         val query = when {
@@ -1061,7 +1062,7 @@ object GuessImageFetcher {
             else -> targetName
         }
         val html = getText(
-            "https://duckduckgo.com/?q=${enc(query)}&iax=1&ia=images",
+            DuckDuckGoImagePolicy.tokenUrl(query),
             userAgent = BROWSER_USER_AGENT,
         ) ?: return null
         val vqd = listOf(
@@ -1072,18 +1073,10 @@ object GuessImageFetcher {
             Regex("""vqd=([\w-]+)"""),
         ).firstNotNullOfOrNull { it.find(html)?.groupValues?.get(1) } ?: return null
         val json = getJson(
-            "https://duckduckgo.com/i.js?q=${enc(query)}&vqd=$vqd&o=json&p=1&l=wt-wt",
+            DuckDuckGoImagePolicy.resultsUrl(query, vqd),
             userAgent = BROWSER_USER_AGENT,
         ) ?: return null
-        val results = json.optJSONArray("results") ?: return null
-        for (i in 0 until results.length()) {
-            val r = results.getJSONObject(i)
-            val url = r.optString("image", "").ifBlank { r.optString("thumbnail", "") }
-            if (!url.startsWith("https://")) continue
-            if (!urlMatchesTarget(url, targetName)) continue
-            if (isUsableImage(url) || url.contains("bing.net/th")) return url
-        }
-        return null
+        return DuckDuckGoImagePolicy.selectCandidate(json, targetName)
     }
 
     /**
@@ -1145,21 +1138,6 @@ object GuessImageFetcher {
 
     /** False for cosplay / fan-art / merchandise titles (see [JUNK_TITLE]). */
     private fun isCleanTitle(title: String): Boolean = !JUNK_TITLE.containsMatchIn(title)
-
-    /**
-     * DDG/Bing URLs are loose: Bing thumbnails (opaque, no slug to inspect)
-     * are trusted, anything with a readable path must mention the target.
-     * YouTube thumbnails are NOT trusted — they are usually video frames of
-     * real people.
-     */
-    private fun urlMatchesTarget(url: String, targetName: String): Boolean {
-        val words = targetWords(targetName)
-        if (words.isEmpty()) return true
-        val u = url.lowercase()
-        if (u.contains(words.joinToString(" "))) return true
-        if (u.contains("bing.net/th")) return true
-        return u.contains(words.maxByOrNull { it.length }!!) || words.count { u.contains(it) } * 2 > words.size
-    }
 
     /**
      * HTTPS only, and a format Coil can decode (no SVG — the svg module

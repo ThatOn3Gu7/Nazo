@@ -77,15 +77,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import java.net.HttpURLConnection
-import java.net.URL
-import kotlin.math.abs
 import kotlin.random.Random
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
 import quiz.thaton3app.nazo.R
 import quiz.thaton3app.nazo.data.QuizStats
 import quiz.thaton3app.nazo.progression.PlayerProgress
@@ -1270,27 +1263,40 @@ fun ProfileScreen(
     if (showPictureDialog) {
         var avatarTab by remember { mutableStateOf(0) }
         var nonce by remember { mutableStateOf("") }
-        var dynamicTabs by remember { mutableStateOf<List<Pair<String, List<AvatarPreset>>>>(emptyList()) }
-        var loadingDynamic by remember { mutableStateOf(true) }
-        val scope = rememberCoroutineScope()
-
-        val tabs = remember(nonce, dynamicTabs) {
-            buildStaticAvatarCategories(nonce) + dynamicTabs
+        var dynamicResults by remember {
+            mutableStateOf<Map<DynamicAvatarSource, AvatarSourceResult>>(emptyMap())
         }
-        val safeTab = avatarTab.coerceIn(0, tabs.size - 1)
+        var loadingSource by remember { mutableStateOf<DynamicAvatarSource?>(null) }
+
+        val staticTabs = remember(nonce) { AvatarPickerSources.staticCategories(nonce) }
+        val tabs = staticTabs + AvatarPickerSources.dynamicSources.map { source ->
+            source.tabTitle to (dynamicResults[source]?.items ?: emptyList())
+        }
+        val safeTab = avatarTab.coerceIn(0, tabs.lastIndex)
+        val selectedDynamicSource = AvatarPickerSources.sourceForTab(safeTab, staticTabs.size)
+        val selectedDynamicResult = selectedDynamicSource?.let(dynamicResults::get)
+        val loadingDynamic = loadingSource != null
 
         fun refreshAvatars() {
             nonce = Random.nextLong(100_000, 999_999).toString()
-            scope.launch {
-                loadingDynamic = true
-                dynamicTabs = fetchDynamicAvatarTabs()
-                loadingDynamic = false
+            selectedDynamicSource?.let { source ->
+                dynamicResults = dynamicResults - source
             }
         }
 
-        LaunchedEffect(Unit) {
-            dynamicTabs = fetchDynamicAvatarTabs()
-            loadingDynamic = false
+        // Privacy: opening the picker (Emoji is the default tab) performs no
+        // network requests. Each remote API is contacted only when the player
+        // deliberately opens that source's tab, and one unavailable source
+        // does not delay or remove any of the others.
+        LaunchedEffect(selectedDynamicSource, nonce) {
+            val source = selectedDynamicSource ?: return@LaunchedEffect
+            if (dynamicResults[source] != null) return@LaunchedEffect
+            loadingSource = source
+            try {
+                dynamicResults = dynamicResults + (source to AvatarPickerSources.fetch(source))
+            } finally {
+                if (loadingSource == source) loadingSource = null
+            }
         }
 
         // LANDSCAPE SPACING ONLY -- portrait is untouched.
@@ -1463,12 +1469,21 @@ fun ProfileScreen(
                             }
                         }
                     }
-                    if (loadingDynamic) {
+                    if (loadingDynamic && selectedDynamicSource == loadingSource) {
                         Spacer(Modifier.height(16.dp))
                         Text(
-                            "Loading extra styles…",
+                            "Loading ${selectedDynamicSource?.tabTitle?.lowercase() ?: "avatars"}…",
                             style = MaterialTheme.typography.labelMedium,
-                            color = NazoTextSecondary
+                            color = NazoTextSecondary,
+                        )
+                    } else if (selectedDynamicResult?.unavailable == true) {
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "This avatar source is unavailable right now. Try refresh or choose another tab.",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = NazoTextSecondary,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
                     if (!profilePictureUri.isNullOrBlank()) {
@@ -2270,145 +2285,8 @@ private fun ProfileProgressCard(
     }
 }
 
-// --- Avatar presets & sources ---
-//
-// "Anime Style" = DiceBear "adventurer" avatars. Extra open-source sources:
-// DiceBear pixel-art/shapes, RoboHash (robots/monsters/cats), Pravatar, RandomUser,
-// Jikan (MyAnimeList) and waifu.im.
-
-private sealed interface AvatarPreset {
-    data class Emoji(val symbol: String) : AvatarPreset
-    data class Generated(val id: String, val url: String) : AvatarPreset
-}
-
-private val ANIME_SEEDS = listOf(
-    "Aiko", "Botan", "Chiyo", "Daichi", "Emi", "Fuma",
-    "Haruto", "Ichika", "Jun", "Kaida", "Lin", "Mio",
-    "Noa", "Ren", "Suzu", "Tsumugi"
-)
-private val ROBO_SEEDS = listOf("Rex", "Volt", "Zed", "Kilo", "Nova", "Byte", "Gizmo", "Unit")
-
-private fun seeded(seed: String, nonce: String) = if (nonce.isBlank()) seed else "$seed-$nonce"
-
-private fun dicebearUrl(style: String, seed: String, nonce: String) =
-    "https://api.dicebear.com/10.x/$style/png?seed=${seeded(seed, nonce)}&size=256&backgroundType=gradientLinear"
-
-private fun robohashUrl(set: String, seed: String, nonce: String) =
-    "https://robohash.org/${seeded(seed, nonce)}?set=$set&size=256x256"
-
-private fun pravatarUrl(seed: String, nonce: String): String {
-    val n = abs(seeded(seed, nonce).hashCode() % 70) + 1
-    return "https://i.pravatar.cc/256?img=$n"
-}
-
-/**
- * Emoji avatars. The `emoji:` picture format has always been supported end to
- * end (avatar rendering, full-size preview, backup payloads) — this list is
- * its first visible entry point in the picker.
- */
-private val EMOJI_CHOICES = listOf(
-    "⚡", "🔥", "🌙", "⭐", "🌸", "🍀", "👻", "✨",
-    "🦊", "🐱", "🎮", "📚", "🎯", "🍜", "💤", "😎",
-)
-
-/** Static tabs — rebuilt instantly on every refresh (new nonce = new art). */
-private fun buildStaticAvatarCategories(nonce: String): List<Pair<String, List<AvatarPreset>>> = listOf(
-    "Emoji" to EMOJI_CHOICES.map { AvatarPreset.Emoji(it) },
-    "Anime Style" to ANIME_SEEDS.map {
-        AvatarPreset.Generated("adv-$it-$nonce", dicebearUrl("adventurer", it, nonce))
-    },
-    "Pixel Art" to ANIME_SEEDS.map {
-        AvatarPreset.Generated("pix-$it-$nonce", dicebearUrl("pixel-art", it, nonce))
-    },
-    "Abstract" to ANIME_SEEDS.take(8).map {
-        AvatarPreset.Generated("shp-$it-$nonce", dicebearUrl("shapes", it, nonce))
-    },
-    "Robots" to ROBO_SEEDS.map {
-        AvatarPreset.Generated("rob-$it-$nonce", robohashUrl("set1", it, nonce))
-    },
-    "Monsters" to ROBO_SEEDS.map {
-        AvatarPreset.Generated("mon-$it-$nonce", robohashUrl("set2", it, nonce))
-    },
-    "Cats" to ROBO_SEEDS.map {
-        AvatarPreset.Generated("cat-$it-$nonce", robohashUrl("set4", it, nonce))
-    },
-    "Portraits" to (1..8).map { i ->
-        AvatarPreset.Generated("prt-$i-$nonce", pravatarUrl("portrait$i", nonce))
-    }
-)
-
-// --- Dynamic open-source APIs (fetched async, appear as extra tabs) ---
-
-private fun httpGet(url: String): String? = try {
-    val conn = URL(url).openConnection() as HttpURLConnection
-    conn.connectTimeout = 15000
-    conn.readTimeout = 15000
-    conn.requestMethod = "GET"
-    val body = if (conn.responseCode in 200..299) {
-        conn.inputStream.bufferedReader().use { it.readText() }
-    } else {
-        conn.disconnect()
-        null
-    }
-    body
-} catch (_: Exception) {
-    null
-}
-
-/** Each call hits random pages/endpoints, so every refresh yields fresh faces. */
-private suspend fun fetchDynamicAvatarTabs(): List<Pair<String, List<AvatarPreset>>> =
-    withContext(Dispatchers.IO) {
-        val results = mutableListOf<Pair<String, List<AvatarPreset>>>()
-
-        // Jikan — open-source MyAnimeList REST API
-        runCatching {
-            val page = Random.nextInt(1, 40)
-            val body = httpGet("https://api.jikan.moe/v4/characters?page=$page&order_by=members&sort=desc")
-                ?: return@runCatching
-            val arr = JSONObject(body).optJSONArray("data") ?: return@runCatching
-            val items = mutableListOf<AvatarPreset>()
-            for (i in 0 until arr.length()) {
-                val url = arr.optJSONObject(i)
-                    ?.optJSONObject("images")
-                    ?.optJSONObject("jpg")
-                    ?.optString("image_url")
-                    ?.takeIf { it.isNotBlank() }
-                url?.let { items.add(AvatarPreset.Generated("jikan-$i-$page", it)) }
-            }
-            if (items.isNotEmpty()) results.add("Anime Faces" to items)
-        }
-
-        // waifu.im — open-source anime image archive
-        runCatching {
-            val body = httpGet("https://api.waifu.im/images/?is_nsfw=false")
-                ?: return@runCatching
-            val arr = JSONObject(body).optJSONArray("images") ?: return@runCatching
-            val items = mutableListOf<AvatarPreset>()
-            for (i in 0 until arr.length()) {
-                val url = arr.optJSONObject(i)?.optString("url")?.takeIf { it.isNotBlank() }
-                url?.let { items.add(AvatarPreset.Generated("waifu-$i", it)) }
-            }
-            if (items.isNotEmpty()) results.add("Anime Art" to items)
-        }
-
-        // RandomUser — free & open-source, real photos
-        runCatching {
-            val body = httpGet("https://randomuser.me/api/?results=10")
-                ?: return@runCatching
-            val arr = JSONObject(body).optJSONArray("results") ?: return@runCatching
-            val items = mutableListOf<AvatarPreset>()
-            for (i in 0 until arr.length()) {
-                val url = arr.optJSONObject(i)
-                    ?.optJSONObject("picture")
-                    ?.optString("medium")
-                    ?.takeIf { it.isNotBlank() }
-                url?.let { items.add(AvatarPreset.Generated("ruser-$i", it)) }
-            }
-            if (items.isNotEmpty()) results.add("Real Photos" to items)
-        }
-
-        results
-    }
+// Avatar catalogue/network policy lives in AvatarPickerSources.kt so its
+// lazy-request, host allowlist and malformed-response behavior stay unit-testable.
 
 private val USERNAME_ADJECTIVES = listOf(
     "Shadow", "Neon", "Crimson", "Silent", "Lunar",

@@ -7,6 +7,10 @@ then archived below; there should be no per-version release-note files.
 
 ## Next release
 
+- 2026-11-04 — Opening the avatar catalogue no longer calls every optional remote API; each source loads only when its tab is selected, rejects unexpected image hosts and leaves the other sources usable when one service fails.
+- 2026-11-04 — DuckDuckGo's last-resort image search now requests strict Safe Search throughout and locally rejects malformed, marked-explicit, non-HTTPS and unrelated results before downloading image bytes.
+- 2026-11-04 — Blur reveal now keeps mystery images obscured on Android 8–11 with a smooth downsampled compatibility effect while Android 12+ retains native blur and Pixel mode remains unchanged.
+- 2026-11-04 — Unknown local-quiz topics no longer silently draw from every franchise; Nazo now offers an explicit choice to change the topic or intentionally use the full bank.
 - 2026-11-04 — Active quizzes, Survival, Blitz, Versus handoff and Guessing games now recover essential progress after Android kills the app process, including exact AI content and adjusted timers; completed, explicitly quit, corrupt and sessions older than six hours are not resumed.
 - 2026-11-04 — AI authentication, billing, quota/rate-limit, network, request and provider failures no longer cause silent extra model calls; only unavailable models and unusable responses may make one clearly reported same-provider alternate-model attempt.
 - 2026-11-04 — Official tag builds now fail inside Gradle unless the tag matches the app version and every signing input is present, blocking unsigned release publication while retaining unsigned PR compile checks.

@@ -2,6 +2,7 @@ package quiz.thaton3app.nazo.modes.guessing_game
 
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
+import android.os.Build
 import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -667,7 +668,12 @@ private fun MysteryImageCard(
     startFraction: Float,
     mysteryBitmap: Bitmap?,
 ) {
-    val usePixels = revealStyle == "pixel" && mysteryBitmap != null
+    val renderer = remember(revealStyle) {
+        BlurRevealCompatibility.renderer(revealStyle, Build.VERSION.SDK_INT)
+    }
+    val usePixels = renderer == BlurRevealCompatibility.Renderer.PIXEL_STYLE && mysteryBitmap != null
+    val useNativeBlur = renderer == BlurRevealCompatibility.Renderer.NATIVE_BLUR
+    val useCompatibilityBlur = renderer == BlurRevealCompatibility.Renderer.COMPATIBILITY_BLUR
 
     // Blur reveal: full strength at the start of the timer, easing to sharp.
     // Skipped entirely in pixel mode and once the round is decided.
@@ -708,6 +714,10 @@ private fun MysteryImageCard(
         1f + 0.12f * blurRadiusDp / MAX_BLUR
     }
     val levelIndex = (pixelEffect * (PIXEL_LEVELS.size - 1)).roundToInt()
+    val compatibilityBlurCell = BlurRevealCompatibility.compatibilityCellSize(
+        blurRadius = blurRadiusDp,
+        maximumBlurRadius = MAX_BLUR.toInt(),
+    )
 
     val cardHeight = if (isLandscape()) {
         (LocalConfiguration.current.screenHeightDp * 0.62f).dp.coerceAtMost(300.dp)
@@ -727,28 +737,34 @@ private fun MysteryImageCard(
         } else if (imageFetchFailed || mysteryBitmap == null) {
             GuessImagePlaceholder(query = query.ifBlank { "Mystery image" })
         } else {
-            // The reveal is applied OVER the bitmap, never into it: blur is a
-            // draw modifier and the pixelation resamples at draw time. The
-            // decoded pixels are only ever read, which is the arrangement that
-            // finally produced correct colour.
+            // The reveal is applied OVER the bitmap, never into it. Android 12+
+            // uses the native blur draw effect; Android 8-11 smoothly upscale a
+            // downsampled copy because RenderEffect blur is unavailable there.
+            // Pixel mode keeps its hard nearest-neighbour blocks. The decoded
+            // source pixels are read-only in every path.
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .scale(revealScale)
                     .then(
-                        if (usePixels) {
-                            Modifier
-                        } else {
+                        if (useNativeBlur) {
                             Modifier.blur(
                                 radius = blurRadius,
                                 edgeTreatment = BlurredEdgeTreatment(RoundedCornerShape(28.dp)),
                             )
+                        } else {
+                            Modifier
                         }
                     )
             ) {
                 PixelatedImage(
                     bitmap = mysteryBitmap,
-                    cellSize = if (usePixels) PIXEL_LEVELS[levelIndex] else 1,
+                    cellSize = when {
+                        usePixels -> PIXEL_LEVELS[levelIndex]
+                        useCompatibilityBlur -> compatibilityBlurCell
+                        else -> 1
+                    },
+                    smoothUpscale = useCompatibilityBlur,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
