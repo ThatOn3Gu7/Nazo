@@ -34,13 +34,14 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import quiz.thaton3app.nazo.daily.DailyBonusChip
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
+import quiz.thaton3app.nazo.progression.ProgressionReward
 import quiz.thaton3app.nazo.records.NewRecordBadge
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
 import quiz.thaton3app.nazo.ui.components.Haptics
-import quiz.thaton3app.nazo.ui.components.NazoButtonShape
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
+import quiz.thaton3app.nazo.ui.components.ProgressionRewardBanner
 import quiz.thaton3app.nazo.ui.components.ShareResultCard
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
@@ -54,10 +55,15 @@ fun QuizCompleteScreen(
     bestPercent: Int = -1,
     isNewRecord: Boolean = false,
     dailyBonusXp: Int = 0,
+    progressionReward: ProgressionReward? = null,
     // "Survival" | "Blitz" | null (normal quiz). Adjusts the heading and the
     // personal-best caption: those modes track a COUNT (longest run / most
     // correct in 60s) in bestPercent's slot, not a percentage.
     modeLabel: String? = null,
+    /** True only for the first presentation immediately after gameplay ends. */
+    playEntranceSequence: Boolean = true,
+    /** Consumes the owner-level one-shot before any sound or delay can run. */
+    onEntranceSequenceStarted: () -> Unit = {},
     onPlayAnother: () -> Unit,
     onReviewAnswers: () -> Unit,
     onSettingsClick: () -> Unit
@@ -66,11 +72,18 @@ fun QuizCompleteScreen(
     val accuracy = if (totalQuestions > 0) ((score.toFloat() / totalQuestions) * 100).toInt() else 0
     val isSuccess = accuracy >= 50
 
-    // Staggered visibility states
-    var showHeader by remember { mutableStateOf(false) }
-    var showCard by remember { mutableStateOf(false) }
-    var showStats by remember { mutableStateOf(false) }
-    var showButtons by remember { mutableStateOf(false) }
+    // Capture this composition's role. The owner consumes the gate as soon as
+    // the first effect starts; later recompositions of this same screen must
+    // continue that choreography, while a reconstructed back target starts in
+    // its settled static state.
+    val runEntranceSequence = remember { playEntranceSequence }
+
+    // Staggered visibility states. Review -> Results reconstructs this screen,
+    // so a non-entrance presentation must be complete on its very first frame.
+    var showHeader by remember { mutableStateOf(!runEntranceSequence) }
+    var showCard by remember { mutableStateOf(!runEntranceSequence) }
+    var showStats by remember { mutableStateOf(!runEntranceSequence) }
+    var showButtons by remember { mutableStateOf(!runEntranceSequence) }
     var triggerConfetti by remember { mutableStateOf(false) }
 
     // Number roll states
@@ -97,6 +110,10 @@ fun QuizCompleteScreen(
     val context = LocalContext.current
     val celebrationStyle = remember { ThemePreferences(context).celebrationStyle }
     LaunchedEffect(Unit) {
+        if (!runEntranceSequence) return@LaunchedEffect
+        // Consume first: Results can now be rebuilt for an ordinary or
+        // predictive back preview without replaying any part of this sequence.
+        onEntranceSequenceStarted()
         Sounds.complete(context) // opt-in, no-op when sounds are disabled
         delay(100)
         showHeader = true
@@ -148,16 +165,30 @@ fun QuizCompleteScreen(
                     visible = showHeader,
                     enter = slideInVertically(spring(stiffness = Spring.StiffnessMediumLow)) { -40 } + fadeIn()
                 ) {
-                    Text(
-                        text = when (modeLabel) {
-                            "Survival" -> "Run over — you survived $score!"
-                            "Blitz" -> "Time's up!"
-                            else -> if (difficulty == "Practice") "Practice Complete" else "Quiz Complete"
-                        },
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = NazoTextPrimary,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Column {
+                        Text(
+                            text = when (modeLabel) {
+                                "Survival" -> "SURVIVAL REPORT"
+                                "Blitz" -> "60-SECOND REPORT"
+                                else -> "FOCUSED QUIZ"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NazoPrimary,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.2.sp,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = when (modeLabel) {
+                                "Survival" -> "Run over — you survived $score!"
+                                "Blitz" -> "Time's up!"
+                                else -> if (difficulty == "Practice") "Practice Complete" else "Quiz Complete"
+                            },
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = NazoTextPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
 
                 Spacer(Modifier.height(if (landscape) 12.dp else 24.dp))
@@ -174,6 +205,7 @@ fun QuizCompleteScreen(
                         animatedAccuracy = animatedAccuracy,
                         accuracy = accuracy,
                         animatedScore = animatedScore,
+                        score = score,
                         totalQuestions = totalQuestions,
                         progressAnim = progressAnim,
                         isSuccess = isSuccess,
@@ -188,7 +220,7 @@ fun QuizCompleteScreen(
                     Spacer(Modifier.height(14.dp))
                     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                         if (isNewRecord) {
-                            NewRecordBadge()
+                            NewRecordBadge(animateEntrance = runEntranceSequence)
                         } else {
                             Text(
                                 text = when (modeLabel) {
@@ -208,8 +240,19 @@ fun QuizCompleteScreen(
                 if (dailyBonusXp > 0) {
                     Spacer(Modifier.height(10.dp))
                     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        DailyBonusChip(bonusXp = dailyBonusXp)
+                        DailyBonusChip(
+                            bonusXp = dailyBonusXp,
+                            animateEntrance = runEntranceSequence,
+                        )
                     }
+                }
+
+                progressionReward?.let { reward ->
+                    Spacer(Modifier.height(12.dp))
+                    ProgressionRewardBanner(
+                        reward = reward,
+                        animateEntrance = runEntranceSequence,
+                    )
                 }
 
                     },
@@ -223,9 +266,23 @@ fun QuizCompleteScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.Timer, title = "Time", value = timeSpent)
-                        StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.TrackChanges, title = "Accuracy", value = "$accuracy%")
-                        StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.Speed, title = "Difficulty", value = difficulty)
+                        when (modeLabel) {
+                            "Blitz" -> {
+                                StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.Timer, title = "Window", value = "60 sec")
+                                StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.Bolt, title = "Correct", value = "$score")
+                                StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.Speed, title = "Answered", value = "$totalQuestions")
+                            }
+                            "Survival" -> {
+                                StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.Timer, title = "Run time", value = timeSpent)
+                                StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.LocalFireDepartment, title = "Survived", value = "$score")
+                                StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.TrackChanges, title = "Accuracy", value = "$accuracy%")
+                            }
+                            else -> {
+                                StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.Timer, title = "Time", value = timeSpent)
+                                StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.TrackChanges, title = "Accuracy", value = "$accuracy%")
+                                StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.Speed, title = "Difficulty", value = difficulty)
+                            }
+                        }
                     }
                 }
 
@@ -245,7 +302,15 @@ fun QuizCompleteScreen(
                         ) {
                             Icon(Icons.Filled.Replay, contentDescription = null, tint = NazoOnPrimary, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Play Another Quiz", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = when (modeLabel) {
+                                    "Survival" -> "Try Survival Again"
+                                    "Blitz" -> "Run Another Blitz"
+                                    else -> "Play Another Quiz"
+                                },
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
                         }
 
                         Spacer(Modifier.height(12.dp))
@@ -254,10 +319,11 @@ fun QuizCompleteScreen(
                             onClick = onReviewAnswers,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(56.dp)
-                                // Solid bed: a control is an island the
-                                // celebration can never show through.
-                                .background(NazoBackground, NazoButtonShape),
+                                .height(56.dp),
+                            // Solid bed: a control is an island the celebration
+                            // can never show through. Keep it on the animated
+                            // surface so fill and edge morph together.
+                            containerColor = NazoBackground,
                             muted = true,
                         ) {
                             Icon(Icons.AutoMirrored.Filled.FactCheck, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
@@ -295,8 +361,8 @@ fun QuizCompleteScreen(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(56.dp)
-                                .background(NazoBackground, NazoButtonShape),
+                                .height(56.dp),
+                            containerColor = NazoBackground,
                             muted = true,
                         ) {
                             Icon(Icons.Outlined.Share, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
@@ -365,6 +431,7 @@ private fun ScoreCardContent(
     animatedAccuracy: Int,
     accuracy: Int,
     animatedScore: Int,
+    score: Int,
     totalQuestions: Int,
     progressAnim: Float,
     isSuccess: Boolean,
@@ -382,14 +449,30 @@ private fun ScoreCardContent(
         label = "float"
     )
 
-    val message = when {
-        accuracy >= 90 -> "Impressive run — you're nearly an Otaku Master on this arc."
-        accuracy >= 70 -> "Great job! Your anime knowledge is sharp."
-        accuracy >= 50 -> "Good effort! A little more training and you'll be unstoppable."
-        else -> "Keep watching, keep learning. You'll get it next time!"
+    val message = when (modeLabel) {
+        "Survival" -> when {
+            score >= 15 -> "A formidable endurance run — you kept the pressure under control."
+            score >= 7 -> "You held the line. One more run could push the record further."
+            else -> "Three lives go quickly — steady reads will carry the next run farther."
+        }
+        "Blitz" -> when {
+            score >= 12 -> "Fast and accurate — you found a strong rhythm against the clock."
+            score >= 6 -> "Good pace. Quicker decisions will open up the next sprint."
+            else -> "The clock won this round. Trust the first read and keep moving."
+        }
+        else -> when {
+            accuracy >= 90 -> "Impressive run — you're nearly an Otaku Master on this arc."
+            accuracy >= 70 -> "Great job! Your anime knowledge is sharp."
+            accuracy >= 50 -> "Good effort! A little more training and you'll be unstoppable."
+            else -> "Keep watching, keep learning. You'll get it next time!"
+        }
     }
 
-    val icon = if (isSuccess) Icons.Outlined.EmojiEvents else Icons.Outlined.FitnessCenter
+    val icon = when (modeLabel) {
+        "Survival" -> Icons.Outlined.LocalFireDepartment
+        "Blitz" -> Icons.Outlined.Bolt
+        else -> if (isSuccess) Icons.Outlined.EmojiEvents else Icons.Outlined.FitnessCenter
+    }
 
     Column(
         modifier = Modifier
@@ -477,7 +560,11 @@ private fun ScoreCardContent(
             fontWeight = FontWeight.ExtraBold
         )
         Text(
-            text = if (modeLabel != null) "CORRECT" else "ACCURACY",
+            text = when (modeLabel) {
+                "Survival" -> "QUESTIONS SURVIVED"
+                "Blitz" -> "CORRECT IN 60 SECONDS"
+                else -> "ACCURACY"
+            },
             style = MaterialTheme.typography.labelSmall,
             color = NazoTextSecondary,
             fontWeight = FontWeight.Bold,
@@ -490,8 +577,11 @@ private fun ScoreCardContent(
             modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
         ) {
             Text(
-                text = if (modeLabel != null) "$animatedAccuracy% accuracy"
-                else "$animatedScore / $totalQuestions Correct",
+                text = when (modeLabel) {
+                    "Survival" -> "$animatedAccuracy% accuracy • $totalQuestions faced"
+                    "Blitz" -> "$totalQuestions answered • $animatedAccuracy% accuracy"
+                    else -> "$animatedScore / $totalQuestions Correct"
+                },
                 style = MaterialTheme.typography.titleMedium,
                 color = NazoPrimary,
                 fontWeight = FontWeight.Bold,

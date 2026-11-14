@@ -19,13 +19,18 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -59,26 +64,22 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.PersonOutline
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuAnchorType
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -94,6 +95,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -110,9 +112,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.data.GITHUB_REPO
+import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoQuietButton
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
+import quiz.thaton3app.nazo.ui.components.NazoTransientMessage
 import quiz.thaton3app.nazo.ui.components.NazoDangerButton
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.components.sheetContentMaxHeight
@@ -125,8 +129,12 @@ import quiz.thaton3app.nazo.data.fetchLatestRelease
 import quiz.thaton3app.nazo.data.isNewerVersion
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoModalSheet
+import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
+import quiz.thaton3app.nazo.ui.components.NazoSheetHeader
 import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.ui.components.rememberHapticBack
+import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
+import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
@@ -155,6 +163,7 @@ private sealed interface UpdateState {
         val releaseNotes: String,
         val directApkUrl: String?,
         val apkSizeBytes: Long = -1L,
+        val prerelease: Boolean = false,
     ) : UpdateState
 }
 
@@ -208,7 +217,11 @@ fun AboutScreen(
     var showUpdate by rememberRetained("About.showUpdate") { false }
     var updateState by rememberRetained<UpdateState>("About.updateState") { UpdateState.Idle }
     var checkLabel by rememberRetained("About.checkLabel") { "Check Now" }
-    var frequency by remember { mutableStateOf(UpdatePrefs(context).updateFrequency) }
+    val updatePrefs = remember(context) { UpdatePrefs(context) }
+    var frequency by remember { mutableStateOf(updatePrefs.updateFrequency) }
+    var includePrereleases by remember { mutableStateOf(updatePrefs.includePrereleases) }
+    var showFrequencyChooser by rememberRetained("About.showFrequencyChooser") { false }
+    val frequencyChooserSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var downloadState by remember { mutableStateOf<ApkDownloadState>(ApkDownloadState.Idle) }
     var downloadJob by remember { mutableStateOf<Job?>(null) }
 
@@ -264,6 +277,20 @@ fun AboutScreen(
         }
     }
 
+    fun chooseUpdateFrequency(value: UpdateFrequency) {
+        if (value != frequency) {
+            frequency = value
+            updatePrefs.updateFrequency = value
+            UpdateScheduler.apply(context, value)
+        }
+        // Let the chooser settle out before removing it from composition, just
+        // like the app's other selection sheets.
+        scope.launch {
+            frequencyChooserSheetState.hide()
+            showFrequencyChooser = false
+        }
+    }
+
     // A check runs in this screen's CoroutineScope, which the rotation layout
     // swap cancels. Checking therefore can NEVER still be in flight in a newly
     // created composition, so a retained one is stale -- clear it instead of
@@ -280,7 +307,10 @@ fun AboutScreen(
         scope.launch {
             updateState = UpdateState.Checking
             delay(1200) // brief delay so the "Checking" state is visible
-            val latest = fetchLatestRelease(GITHUB_REPO)
+            val latest = fetchLatestRelease(
+                repo = GITHUB_REPO,
+                includePrereleases = includePrereleases,
+            )
             if (latest == null) {
                 updateState = UpdateState.Error
                 checkLabel = "Retry"
@@ -293,7 +323,14 @@ fun AboutScreen(
                 return@launch
             }
             updateState = if (isNewerVersion(latest.tag, current)) {
-                UpdateState.Available(latest.tag, latest.htmlUrl, latest.body, latest.apkUrl, latest.apkSizeBytes)
+                UpdateState.Available(
+                    tag = latest.tag,
+                    htmlUrl = latest.htmlUrl,
+                    releaseNotes = latest.body,
+                    directApkUrl = latest.apkUrl,
+                    apkSizeBytes = latest.apkSizeBytes,
+                    prerelease = latest.prerelease,
+                )
             } else {
                 checkLabel = "Check Again"
                 UpdateState.UpToDate
@@ -483,12 +520,45 @@ fun AboutScreen(
                 onInstall = { UpdateDownloader.install(context) },
                 onOpenBrowser = { url -> onOpenBrowser(url) },
                 frequency = frequency,
-                onFrequencyChange = { freq ->
-                    frequency = freq
-                    UpdatePrefs(context).updateFrequency = freq
-                    UpdateScheduler.apply(context, freq)
-                }
+                onOpenFrequencyChooser = { showFrequencyChooser = true },
+                includePrereleases = includePrereleases,
+                prereleaseToggleEnabled =
+                    downloadState !is ApkDownloadState.Running && updateState !is UpdateState.Checking,
+                onIncludePrereleasesChange = { include ->
+                    if (include != includePrereleases) {
+                        includePrereleases = include
+                        updatePrefs.includePrereleases = include
+                        downloadState = ApkDownloadState.Idle
+                        checkLabel = "Check Again"
+                        checkForUpdates()
+                    }
+                },
             )
+        }
+    }
+
+    if (showFrequencyChooser) {
+        NazoModalSheet(
+            onDismissRequest = { showFrequencyChooser = false },
+            sheetState = frequencyChooserSheetState,
+        ) {
+            NazoSheetColumn {
+                NazoSheetHeader(
+                    icon = Icons.Filled.Schedule,
+                    title = "Auto-check frequency",
+                    subtitle = "Choose how often Nazo looks for a new GitHub release.",
+                )
+                Spacer(Modifier.height(16.dp))
+                UpdateFrequency.entries.forEach { option ->
+                    UpdateFrequencyOptionCard(
+                        frequency = option,
+                        selected = option == frequency,
+                        onClick = { chooseUpdateFrequency(option) },
+                    )
+                    Spacer(Modifier.height(10.dp))
+                }
+                Spacer(Modifier.height(6.dp))
+            }
         }
     }
 }
@@ -506,16 +576,11 @@ private fun UpdateMenuContent(
     onInstall: () -> Unit,
     onOpenBrowser: (String) -> Unit,
     frequency: UpdateFrequency,
-    onFrequencyChange: (UpdateFrequency) -> Unit,
+    onOpenFrequencyChooser: () -> Unit,
+    includePrereleases: Boolean,
+    prereleaseToggleEnabled: Boolean,
+    onIncludePrereleasesChange: (Boolean) -> Unit,
 ) {
-    val frequencyLabels = mapOf(
-        UpdateFrequency.EVERY_LAUNCH to "Every Launch",
-        UpdateFrequency.WEEKLY to "Weekly",
-        UpdateFrequency.BI_WEEKLY to "Bi-weekly",
-        UpdateFrequency.NEVER to "Never",
-    )
-    var showFrequencyDropdown by remember { mutableStateOf(false) }
-
     val appContext = LocalContext.current.applicationContext
     // Retained with its file list for the same reason as the sheet around it:
     // a confirm dialog that came back without the files it is about to delete
@@ -546,11 +611,10 @@ private fun UpdateMenuContent(
             .padding(horizontal = 24.dp, vertical = 16.dp)
             .padding(bottom = 32.dp)
     ) {
-        Text(
-            text = "App Updates",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = NazoTextPrimary,
+        NazoSheetHeader(
+            icon = Icons.Filled.NewReleases,
+            title = "App updates",
+            subtitle = "Installed version $currentVersion",
         )
 
         Spacer(Modifier.height(16.dp))
@@ -600,8 +664,16 @@ private fun UpdateMenuContent(
                         Text(
                             text = when (targetState) {
                                 is UpdateState.Checking -> "Checking GitHub..."
-                                is UpdateState.Available -> "Version ${targetState.tag} is available!"
-                                is UpdateState.UpToDate -> "Nazo is up to date."
+                                is UpdateState.Available -> if (targetState.prerelease) {
+                                    "Pre-release ${targetState.tag} is available!"
+                                } else {
+                                    "Version ${targetState.tag} is available!"
+                                }
+                                is UpdateState.UpToDate -> if (includePrereleases) {
+                                    "No newer release or pre-release is available."
+                                } else {
+                                    "Nazo is up to date."
+                                }
                                 is UpdateState.Error -> "Failed to check for updates."
                                 is UpdateState.Idle -> "Ready to check."
                             },
@@ -611,208 +683,239 @@ private fun UpdateMenuContent(
                             } else {
                                 NazoTextPrimary
                             },
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 }
-                // Animated expand/collapse for release notes section
-                AnimatedVisibility(
-                    visible = state is UpdateState.Available,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically(),
-                ) {
-                    val availableState = state as? UpdateState.Available
-                    if (availableState != null) {
-                        Column {
-                            Spacer(Modifier.height(16.dp))
+                // Keep release data mounted through the collapse; otherwise
+                // leaving Available clears the panel before its exit can draw.
+                NazoTransientMessage(
+                    value = state as? UpdateState.Available,
+                    label = "availableUpdateDetails",
+                ) { availableState ->
+                    Column {
+                        Spacer(Modifier.height(16.dp))
 
-                            // Current → New version comparison.
+                        // Current → New version comparison.
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.medium,
+                            color = NazoSurfaceVariant.copy(alpha = 0.5f),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Text(
+                                        text = "Current",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = NazoTextSecondary,
+                                    )
+                                    Spacer(Modifier.height(6.dp))
+                                    Surface(
+                                        shape = MaterialTheme.shapes.small,
+                                        color = NazoBackground,
+                                    ) {
+                                        Text(
+                                            text = "v${currentVersion.removePrefix("v")}",
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = NazoTextPrimary,
+                                        )
+                                    }
+                                }
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = null,
+                                    tint = NazoPrimary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Text(
+                                        text = if (availableState.prerelease) "Pre-release" else "New",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = NazoTextSecondary,
+                                    )
+                                    Spacer(Modifier.height(6.dp))
+                                    Surface(
+                                        shape = MaterialTheme.shapes.small,
+                                        color = NazoPrimary,
+                                    ) {
+                                        Text(
+                                            text = "v${availableState.tag.removePrefix("v")}",
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = NazoOnPrimary,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (availableState.prerelease) {
+                            Spacer(Modifier.height(12.dp))
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = MaterialTheme.shapes.medium,
-                                color = NazoSurfaceVariant.copy(alpha = 0.5f),
+                                color = NazoPrimary.copy(alpha = 0.10f),
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(vertical = 14.dp),
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.weight(1f),
-                                    ) {
-                                        Text(
-                                            text = "Current",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = NazoTextSecondary,
-                                        )
-                                        Spacer(Modifier.height(6.dp))
-                                        Surface(
-                                            shape = MaterialTheme.shapes.small,
-                                            color = NazoBackground,
-                                        ) {
-                                            Text(
-                                                text = "v${currentVersion.removePrefix("v")}",
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = NazoTextPrimary,
-                                            )
-                                        }
-                                    }
                                     Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                        imageVector = Icons.Filled.Science,
                                         contentDescription = null,
                                         tint = NazoPrimary,
                                         modifier = Modifier.size(20.dp),
                                     )
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.weight(1f),
-                                    ) {
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(
+                                        text = "Pre-release builds may be less stable than public releases.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = NazoTextPrimary,
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        Text(
+                            "What's New:",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = NazoTextSecondary,
+                        )
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 150.dp)
+                                .padding(top = 8.dp),
+                            shape = MaterialTheme.shapes.small,
+                            color = NazoSurfaceVariant.copy(alpha = 0.5f),
+                        ) {
+                            Text(
+                                text = availableState.releaseNotes.ifBlank { "No release notes provided." },
+                                modifier = Modifier
+                                    .padding(12.dp)
+                                    .verticalScroll(rememberScrollState()),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NazoTextSecondary,
+                            )
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        when (downloadState) {
+                            is ApkDownloadState.Running -> {
+                                // Live in-sheet progress: bar + MB counter + percent.
+                                val total = downloadState.total
+                                val fraction = if (total > 0) {
+                                    (downloadState.downloaded.toFloat() / total).coerceIn(0f, 1f)
+                                } else null
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.5.dp,
+                                        color = NazoPrimary,
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(
+                                        text = "Downloading…",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = NazoTextPrimary,
+                                    )
+                                }
+                                Spacer(Modifier.height(10.dp))
+                                if (fraction != null) {
+                                    LinearProgressIndicator(
+                                        progress = { fraction },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = NazoPrimary,
+                                        trackColor = NazoSurfaceVariant,
+                                    )
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
-                                            text = "New",
-                                            style = MaterialTheme.typography.labelSmall,
+                                            text = "${formatMb(downloadState.downloaded)} / ${formatMb(total)} MB",
+                                            style = MaterialTheme.typography.bodySmall,
                                             color = NazoTextSecondary,
+                                            modifier = Modifier.weight(1f),
                                         )
-                                        Spacer(Modifier.height(6.dp))
-                                        Surface(
-                                            shape = MaterialTheme.shapes.small,
+                                        Text(
+                                            text = "${(fraction * 100).toInt()}%",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
                                             color = NazoPrimary,
-                                        ) {
-                                            Text(
-                                                text = "v${availableState.tag.removePrefix("v")}",
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = NazoOnPrimary,
-                                            )
-                                        }
+                                        )
                                     }
+                                } else {
+                                    LinearProgressIndicator(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = NazoPrimary,
+                                        trackColor = NazoSurfaceVariant,
+                                    )
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        text = "${formatMb(downloadState.downloaded)} MB so far",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = NazoTextSecondary,
+                                    )
+                                }
+                                Spacer(Modifier.height(12.dp))
+                                NazoSecondaryButton(
+                                    onClick = onCancelDownload,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text("Cancel")
                                 }
                             }
 
-                            Spacer(Modifier.height(16.dp))
-
-                            Text(
-                                "What's New:",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = NazoTextSecondary,
-                            )
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 150.dp)
-                                    .padding(top = 8.dp),
-                                shape = MaterialTheme.shapes.small,
-                                color = NazoSurfaceVariant.copy(alpha = 0.5f),
-                            ) {
+                            is ApkDownloadState.Done -> {
+                                NazoPrimaryButton(
+                                    onClick = onInstall,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Icon(
+                                        Icons.Filled.InstallMobile,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Install Update")
+                                }
+                                Spacer(Modifier.height(6.dp))
                                 Text(
-                                    text = availableState.releaseNotes.ifBlank { "No release notes provided." },
-                                    modifier = Modifier
-                                        .padding(12.dp)
-                                        .verticalScroll(rememberScrollState()),
+                                    text = "Download complete — the installer should have opened. Tap again if you dismissed it.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = NazoTextSecondary,
                                 )
                             }
 
-                            Spacer(Modifier.height(16.dp))
-
-                            when (downloadState) {
-                                is ApkDownloadState.Running -> {
-                                    // Live in-sheet progress: bar + MB counter + percent.
-                                    val total = downloadState.total
-                                    val fraction = if (total > 0) {
-                                        (downloadState.downloaded.toFloat() / total).coerceIn(0f, 1f)
-                                    } else null
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(18.dp),
-                                            strokeWidth = 2.5.dp,
-                                            color = NazoPrimary,
-                                        )
-                                        Spacer(Modifier.width(10.dp))
-                                        Text(
-                                            text = "Downloading…",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = NazoTextPrimary,
-                                        )
-                                    }
-                                    Spacer(Modifier.height(10.dp))
-                                    if (fraction != null) {
-                                        LinearProgressIndicator(
-                                            progress = { fraction },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            color = NazoPrimary,
-                                            trackColor = NazoSurfaceVariant,
-                                        )
-                                        Spacer(Modifier.height(6.dp))
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                text = "${formatMb(downloadState.downloaded)} / ${formatMb(total)} MB",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = NazoTextSecondary,
-                                                modifier = Modifier.weight(1f),
-                                            )
-                                            Text(
-                                                text = "${(fraction * 100).toInt()}%",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                fontWeight = FontWeight.Bold,
-                                                color = NazoPrimary,
-                                            )
-                                        }
-                                    } else {
-                                        LinearProgressIndicator(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            color = NazoPrimary,
-                                            trackColor = NazoSurfaceVariant,
-                                        )
-                                        Spacer(Modifier.height(6.dp))
-                                        Text(
-                                            text = "${formatMb(downloadState.downloaded)} MB so far",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = NazoTextSecondary,
-                                        )
-                                    }
-                                    Spacer(Modifier.height(12.dp))
-                                    NazoSecondaryButton(
-                                        onClick = onCancelDownload,
-                                        modifier = Modifier.fillMaxWidth(),
-                                    ) {
-                                        Text("Cancel")
-                                    }
-                                }
-
-                                is ApkDownloadState.Done -> {
-                                    NazoPrimaryButton(
-                                        onClick = onInstall,
-                                        modifier = Modifier.fillMaxWidth(),
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.InstallMobile,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp),
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        Text("Install Update")
-                                    }
-                                    Spacer(Modifier.height(6.dp))
+                            else -> {
+                                if (downloadState is ApkDownloadState.Failed) {
                                     Text(
-                                        text = "Download complete — the installer should have opened. Tap again if you dismissed it.",
+                                        text = "Download failed: ${downloadState.message}",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = NazoTextSecondary,
+                                        color = NazoError,
                                     )
+                                    Spacer(Modifier.height(8.dp))
                                 }
-
-                                else -> {
-                                    if (downloadState is ApkDownloadState.Failed) {
-                                        Text(
-                                            text = "Download failed: ${downloadState.message}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = NazoError,
-                                        )
-                                        Spacer(Modifier.height(8.dp))
-                                    }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
                                     if (availableState.directApkUrl != null) {
                                         NazoPrimaryButton(
                                             onClick = {
@@ -821,31 +924,48 @@ private fun UpdateMenuContent(
                                                     availableState.apkSizeBytes,
                                                 )
                                             },
-                                            modifier = Modifier.fillMaxWidth(),
+                                            modifier = Modifier.weight(1.35f),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                                         ) {
                                             Icon(
                                                 Icons.Filled.Download,
                                                 contentDescription = null,
                                                 modifier = Modifier.size(18.dp),
                                             )
-                                            Spacer(Modifier.width(8.dp))
-                                            Text(if (downloadState is ApkDownloadState.Failed) "Retry Download" else "Download & Install")
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                text = if (downloadState is ApkDownloadState.Failed) {
+                                                    "Retry Download"
+                                                } else {
+                                                    "Download & Install"
+                                                },
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
                                         }
                                     } else {
                                         NazoPrimaryButton(
                                             onClick = { onOpenBrowser(availableState.htmlUrl) },
-                                            modifier = Modifier.fillMaxWidth(),
+                                            modifier = Modifier.weight(1.35f),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                                         ) {
-                                            Text("Download Manually")
+                                            Text(
+                                                text = "Download Manually",
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
                                         }
                                     }
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.End,
+                                    NazoSecondaryButton(
+                                        onClick = { onOpenBrowser(availableState.htmlUrl) },
+                                        modifier = Modifier.weight(1f),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                                     ) {
-                                        NazoSecondaryButton(onClick = { onOpenBrowser(availableState.htmlUrl) }) {
-                                            Text("View on GitHub")
-                                        }
+                                        Text(
+                                            text = "View on GitHub",
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
                                     }
                                 }
                             }
@@ -896,42 +1016,25 @@ private fun UpdateMenuContent(
 
         Spacer(Modifier.height(8.dp))
 
-        // Auto-check frequency dropdown
-        ExposedDropdownMenuBox(
-            expanded = showFrequencyDropdown,
-            onExpandedChange = { showFrequencyDropdown = !showFrequencyDropdown },
-        ) {
-            OutlinedTextField(
-                value = frequencyLabels[frequency] ?: "Weekly",
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Auto-check frequency") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showFrequencyDropdown) },
-                modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = NazoTextPrimary,
-                    unfocusedTextColor = NazoTextPrimary,
-                    focusedBorderColor = NazoPrimary,
-                    unfocusedBorderColor = NazoTextSecondary,
-                    focusedLabelColor = NazoTextSecondary,
-                    unfocusedLabelColor = NazoTextSecondary,
-                    cursorColor = NazoPrimary,
-                ),
+        // This is a normal Nazo settings row rather than a read-only text
+        // field. Besides matching every other chooser in the app, plain Text
+        // avoids the long-press selection handles exposed by TextField.
+        SettingsCard {
+            ActionRow(
+                icon = Icons.Filled.Schedule,
+                title = "Auto-check frequency",
+                subtitle = "${freqLabel(frequency)} · ${frequencyDescription(frequency)}",
+                onClick = onOpenFrequencyChooser,
             )
-            ExposedDropdownMenu(
-                expanded = showFrequencyDropdown,
-                onDismissRequest = { showFrequencyDropdown = false },
-            ) {
-                UpdateFrequency.entries.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(freqLabel(option), color = NazoTextPrimary) },
-                        onClick = {
-                            showFrequencyDropdown = false
-                            onFrequencyChange(option)
-                        },
-                    )
-                }
-            }
+            RowDivider()
+            UpdatePreferenceSwitchRow(
+                icon = Icons.Filled.Science,
+                title = "Include pre-release updates",
+                subtitle = "Receive beta and release-candidate builds. These may be less stable.",
+                checked = includePrereleases,
+                enabled = prereleaseToggleEnabled,
+                onCheckedChange = onIncludePrereleasesChange,
+            )
         }
     }
 
@@ -975,6 +1078,160 @@ private fun UpdateMenuContent(
     }
 }
 
+@Composable
+private fun UpdatePreferenceSwitchRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    val context = LocalContext.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 0.dp,
+        pressedCorner = 12.dp,
+        enabled = enabled,
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .toggleable(
+                value = checked,
+                enabled = enabled,
+                role = Role.Switch,
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onValueChange = { value ->
+                    Haptics.soft(context)
+                    onCheckedChange(value)
+                },
+            )
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(NazoBackground),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (enabled) NazoTextPrimary else NazoTextSecondary.copy(alpha = 0.5f),
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Spacer(Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (enabled) NazoTextPrimary else NazoTextSecondary.copy(alpha = 0.5f),
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = NazoTextSecondary.copy(alpha = if (enabled) 1f else 0.5f),
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        // The full row owns the switch semantics and callback; the visual
+        // Switch stays passive so tapping it cannot fire twice.
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+            enabled = enabled,
+        )
+    }
+}
+
+@Composable
+private fun UpdateFrequencyOptionCard(
+    frequency: UpdateFrequency,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 18.dp,
+        pressedCorner = 9.dp,
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                color = if (selected) {
+                    NazoPrimary.copy(alpha = 0.10f)
+                } else {
+                    NazoSurfaceVariant
+                },
+                shape = shape,
+            )
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) {
+                    NazoPrimary
+                } else {
+                    NazoTextSecondary.copy(alpha = 0.12f)
+                },
+                shape = shape,
+            )
+            .selectable(
+                selected = selected,
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                role = Role.RadioButton,
+                onClick = onClick,
+            )
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = freqLabel(frequency),
+                style = MaterialTheme.typography.titleMedium,
+                color = NazoTextPrimary,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = frequencyDescription(frequency),
+                style = MaterialTheme.typography.bodySmall,
+                color = NazoTextSecondary,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        if (selected) {
+            Icon(
+                imageVector = Icons.Filled.CheckCircle,
+                contentDescription = null,
+                tint = NazoPrimary,
+                modifier = Modifier.size(24.dp),
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .border(
+                        width = 2.dp,
+                        color = NazoTextSecondary.copy(alpha = 0.4f),
+                        shape = CircleShape,
+                    ),
+            )
+        }
+    }
+}
+
 private fun formatBytes(bytes: Long): String = when {
     bytes >= 1024L * 1024L -> String.format("%.1f MB", bytes / (1024f * 1024f))
     bytes >= 1024L -> String.format("%.1f KB", bytes / 1024f)
@@ -986,6 +1243,13 @@ private fun freqLabel(frequency: UpdateFrequency): String = when (frequency) {
     UpdateFrequency.WEEKLY -> "Weekly"
     UpdateFrequency.BI_WEEKLY -> "Bi-weekly"
     UpdateFrequency.NEVER -> "Never"
+}
+
+private fun frequencyDescription(frequency: UpdateFrequency): String = when (frequency) {
+    UpdateFrequency.EVERY_LAUNCH -> "Look for an update whenever Nazo opens"
+    UpdateFrequency.WEEKLY -> "Look for an update every 7 days"
+    UpdateFrequency.BI_WEEKLY -> "Look for an update every 14 days"
+    UpdateFrequency.NEVER -> "Only check when you ask Nazo to"
 }
 
 // region Helpers
@@ -1004,12 +1268,22 @@ private fun FeedbackChoice(
     subtitle: String,
     onClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 16.dp,
+        pressedCorner = 8.dp,
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(NazoSurfaceVariant)
-            .clickable(onClick = onClick)
+            .clip(shape)
+            .background(NazoSurfaceVariant, shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1093,14 +1367,20 @@ private fun sendFeedbackEmail(context: android.content.Context) {
 
 @Composable
 private fun ScreenHeader(title: String, onBackClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoPillCornerMorphShape(
+        interactionSource = interactionSource,
+        pressedCornerPercent = 28f,
+    )
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(
             onClick = rememberHapticBack(onBackClick),
+            interactionSource = interactionSource,
             modifier = Modifier
                 .size(44.dp)
-                .clip(CircleShape)
-                .background(NazoSurface)
-                .border(1.dp, NazoTextSecondary.copy(alpha = 0.1f), CircleShape),
+                .clip(shape)
+                .background(NazoSurface, shape)
+                .border(1.dp, NazoTextSecondary.copy(alpha = 0.1f), shape),
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NazoTextPrimary, modifier = Modifier.size(22.dp))
         }
@@ -1214,11 +1494,22 @@ private fun ActionRow(
     trailingText: String? = null,
     onClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 0.dp,
+        pressedCorner = 12.dp,
+    )
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clip(shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
             .padding(horizontal = 16.dp, vertical = 16.dp),
     ) {
         Box(

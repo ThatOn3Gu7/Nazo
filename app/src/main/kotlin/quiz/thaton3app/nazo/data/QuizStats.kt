@@ -11,11 +11,13 @@ package quiz.thaton3app.nazo.data
  *  - current / best daily streak (epoch-day based, no java.time needed)
  *  - per-difficulty play count + correct/answered (accuracy per difficulty)
  *  - per-anime answered/correct (drives "top mastered anime")
+ *  - best consecutive-correct combo completed within one recorded quiz run
  */
 data class QuizStats(
     val totalQuizzes: Int = 0,
     val totalQuestionsAnswered: Int = 0,
     val totalCorrect: Int = 0,
+    val bestCorrectCombo: Int = 0,
     val currentStreakDays: Int = 0,
     val bestStreakDays: Int = 0,
     val lastQuizEpochDay: Long? = null,
@@ -48,12 +50,20 @@ data class QuizStats(
 
         var answered = totalQuestionsAnswered
         var correct = totalCorrect
+        var currentCombo = 0
+        var runBestCombo = 0
 
         questions.forEachIndexed { i, q ->
             val ans = userAnswers.getOrNull(i)
             val isCorrect = ans != null && ans == q.correctAnswer
             answered++
-            if (isCorrect) correct++
+            if (isCorrect) {
+                correct++
+                currentCombo++
+                runBestCombo = maxOf(runBestCombo, currentCombo)
+            } else {
+                currentCombo = 0
+            }
             dAnswered[difficulty] = dAnswered.getOrDefault(difficulty, 0) + 1
             if (isCorrect) dCorrect[difficulty] = dCorrect.getOrDefault(difficulty, 0) + 1
             val anime = q.anime.ifBlank { "Unknown" }
@@ -65,6 +75,7 @@ data class QuizStats(
             totalQuizzes = totalQuizzes + 1,
             totalQuestionsAnswered = answered,
             totalCorrect = correct,
+            bestCorrectCombo = maxOf(bestCorrectCombo, runBestCombo),
             currentStreakDays = newStreak,
             bestStreakDays = maxOf(bestStreakDays, newStreak),
             lastQuizEpochDay = today,

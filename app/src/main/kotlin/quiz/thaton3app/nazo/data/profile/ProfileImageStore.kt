@@ -4,6 +4,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.media.MediaCodecList
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
@@ -12,8 +15,11 @@ import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 import kotlin.math.min
 import java.net.HttpURLConnection
+import java.net.URI as JavaUri
+import java.net.URISyntaxException
 import java.net.URL
 
 /**
@@ -40,8 +46,23 @@ object ProfileImageStore {
     private const val AVATAR_DIR = "profile"
     private const val DRAFT_DIR = "profile_drafts"
 
+    /**
+     * Cover (banner) images live in their OWN directory — never share
+     * [AVATAR_DIR]: the keep-newest prune deletes every other file in its
+     * directory, so a shared dir would let the next avatar save wipe the
+     * cover (and vice versa).
+     */
+    private const val COVER_DIR = "profile_covers"
+
     /** Long edge of a saved avatar. Plenty for a 96 dp circle on any density. */
     private const val OUTPUT_SIZE = 1024
+
+    /**
+     * Long edge of a saved cover. The banner's widest rendering is ~1504 px
+     * (tablet @2x); 2048 covers every device at 1:1 or better after the
+     * downsample the decode step already applies.
+     */
+    private const val COVER_OUTPUT_SIZE = 2048
 
     /** Refuse absurd downloads rather than OOM-ing on a hostile URL. */
     private const val MAX_DOWNLOAD_BYTES = 16L * 1024 * 1024
@@ -58,6 +79,9 @@ object ProfileImageStore {
 
     private fun avatarDir(context: Context): File =
         File(context.filesDir, AVATAR_DIR).apply { mkdirs() }
+
+    private fun coverDir(context: Context): File =
+        File(context.filesDir, COVER_DIR).apply { mkdirs() }
 
     private fun draftDir(context: Context): File =
         File(context.cacheDir, DRAFT_DIR).apply { mkdirs() }
@@ -456,6 +480,46 @@ object ProfileImageStore {
         }.getOrNull()
     }
 
+    /**
+     * Reads the pick's pixel dimensions WITHOUT decoding it (bounds only),
+     * corrected for EXIF rotation so the caller can size-check what the
+     * decode will actually produce — a photo stored as 3000×4000 with a 90°
+     * tag reports 4000×3000, not the raw buffer shape. Null when the stream
+     * can't be opened or the header can't be read.
+     */
+    suspend fun readOrientedDimensions(
+        context: Context,
+        source: ProfileImageSource,
+    ): Pair<Int, Int>? = withContext(Dispatchers.IO) {
+        runCatching {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            val boundsStream = openStream(context, source) ?: return@runCatching null
+            boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+
+            val orientation = runCatching {
+                openStream(context, source)?.use { stream ->
+                    ExifInterface(stream).getAttributeInt(
+                        ExifInterface.TAG_ORIENTATION,
+                        ExifInterface.ORIENTATION_NORMAL,
+                    )
+                } ?: ExifInterface.ORIENTATION_NORMAL
+            }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+
+            // Quarter-turn rotations swap the buffer's w/h — and only those
+            // are the orientations applyExifRotation puts on the pixels, so
+            // this mirrors exactly what decodeForEditing will hand back.
+            val quarterTurn =
+                orientation == ExifInterface.ORIENTATION_ROTATE_90 ||
+                    orientation == ExifInterface.ORIENTATION_ROTATE_270
+            if (quarterTurn) {
+                Pair(bounds.outHeight, bounds.outWidth)
+            } else {
+                Pair(bounds.outWidth, bounds.outHeight)
+            }
+        }.getOrNull()
+    }
+
     private fun openStream(context: Context, source: ProfileImageSource) = when (source) {
         is ProfileImageSource.LocalFile -> source.file.inputStream()
         is ProfileImageSource.ContentUri ->
@@ -624,11 +688,21 @@ object ProfileImageStore {
         return if (videoLike) AvatarMedia.unsupportedFormatError(isVideoLike = true) else null
     }
 
-    /** File length, or the content provider's SIZE (stream-counted as a fallback). */
-    private fun sizeOf(context: Context, source: ProfileImageSource): Long? = when (source) {
+    /**
+     * File length, or the content provider's SIZE (stream-counted as a
+     * fallback). [streamCap] keeps a provider with no SIZE column from making
+     * validation read an unbounded file; callers only need to know that their
+     * own cap was exceeded.
+     */
+    private fun sizeOf(
+        context: Context,
+        source: ProfileImageSource,
+        streamCap: Long = AvatarMedia.MAX_ANIMATED_BYTES,
+    ): Long? = when (source) {
         is ProfileImageSource.LocalFile -> source.file.length()
         is ProfileImageSource.ContentUri ->
-            queryContentSize(context, source.uri) ?: streamContentSize(context, source.uri)
+            queryContentSize(context, source.uri)
+                ?: streamContentSize(context, source.uri, streamCap)
     }
 
     private fun queryContentSize(context: Context, uri: Uri): Long? = runCatching {
@@ -645,7 +719,11 @@ object ProfileImageStore {
      * Counts bytes until the cap is exceeded (then stops), so an oversized
      * pick is reported as oversized without ever allocating its full size.
      */
-    private fun streamContentSize(context: Context, uri: Uri): Long? = runCatching {
+    private fun streamContentSize(
+        context: Context,
+        uri: Uri,
+        stopAfter: Long,
+    ): Long? = runCatching {
         val stream = context.contentResolver.openInputStream(uri) ?: return@runCatching null
         stream.use { input ->
             val buffer = ByteArray(64 * 1024)
@@ -654,7 +732,7 @@ object ProfileImageStore {
                 val read = input.read(buffer)
                 if (read == -1) break
                 total += read
-                if (total > AvatarMedia.MAX_ANIMATED_BYTES) break
+                if (total > stopAfter) break
             }
             total
         }
@@ -849,6 +927,299 @@ object ProfileImageStore {
                 if (file != keep) file.delete()
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Cover (banner) images
+    // -----------------------------------------------------------------------
+
+    /**
+     * Validates a custom cover-video pick without writing anything.
+     *
+     * Validation is deliberately stronger than the avatar's forced-frame
+     * probe because a cover can decode beside a video avatar: MP4 magic,
+     * file/duration/resolution/fps policy, an H.264 video track, an installed
+     * decoder for that exact track format, and a real decoded frame must all
+     * pass before the preview enables Accept.
+     */
+    internal suspend fun probeCoverVideo(
+        context: Context,
+        source: ProfileImageSource,
+    ): Result<CoverVideoInfo> = withContext(Dispatchers.IO) {
+        runCatching {
+            val head = readHead(context, source)
+                ?: error("That video couldn't be read. Check that it still exists and try again.")
+            if (AvatarMedia.sniff(head) != AvatarMedia.Format.Mp4) {
+                error(CoverVideoMedia.UNSUPPORTED_FORMAT_ERROR)
+            }
+
+            val size = sizeOf(context, source, CoverVideoMedia.MAX_BYTES)
+                ?: error("That video couldn't be read. Check that it still exists and try again.")
+            if (size <= 0L) error("That video file is empty.")
+            CoverVideoMedia.sizeError(size)?.let { error(it) }
+
+            val extractor = MediaExtractor()
+            val videoFormat = try {
+                setExtractorDataSource(extractor, context, source)
+                (0 until extractor.trackCount)
+                    .map { extractor.getTrackFormat(it) }
+                    .firstOrNull { format ->
+                        format.getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true
+                    }
+                    ?: error("That MP4 doesn't contain a readable video track.")
+            } finally {
+                runCatching { extractor.release() }
+            }
+
+            val codecMime = videoFormat.getString(MediaFormat.KEY_MIME)
+            CoverVideoMedia.codecError(codecMime)?.let { error(it) }
+            // Reject an excessive coded frame before forcing a bitmap decode;
+            // the second check against the decoded frame below remains the
+            // authority for rotation/cropping metadata and dishonest tracks.
+            val codedWidth = runCatching {
+                videoFormat.getInteger(MediaFormat.KEY_WIDTH)
+            }.getOrNull()
+            val codedHeight = runCatching {
+                videoFormat.getInteger(MediaFormat.KEY_HEIGHT)
+            }.getOrNull()
+            if (codedWidth != null && codedHeight != null) {
+                CoverVideoMedia.dimensionError(codedWidth, codedHeight)?.let { error(it) }
+            }
+            val decoder = runCatching {
+                MediaCodecList(MediaCodecList.REGULAR_CODECS)
+                    .findDecoderForFormat(videoFormat)
+            }.getOrNull()
+            if (decoder == null) error(CoverVideoMedia.UNPLAYABLE_ERROR)
+
+            val frameRate = if (videoFormat.containsKey(MediaFormat.KEY_FRAME_RATE)) {
+                runCatching { videoFormat.getFloat(MediaFormat.KEY_FRAME_RATE) }.getOrNull()
+                    ?: runCatching {
+                        videoFormat.getInteger(MediaFormat.KEY_FRAME_RATE).toFloat()
+                    }.getOrNull()
+            } else {
+                null
+            }
+            CoverVideoMedia.frameRateError(frameRate)?.let { error(it) }
+
+            val retriever = MediaMetadataRetriever()
+            try {
+                setRetrieverDataSource(retriever, context, source)
+                val duration = retriever.extractMetadata(
+                    MediaMetadataRetriever.METADATA_KEY_DURATION
+                )?.toLongOrNull()
+                    ?: error("That video couldn't be read. It may be corrupted or empty.")
+                if (duration <= 0L) {
+                    error("That video couldn't be read. It may be corrupted or empty.")
+                }
+                CoverVideoMedia.durationError(duration)?.let { error(it) }
+
+                // Force a real decode. Track metadata alone can look valid for
+                // a truncated file or a codec the platform cannot actually use.
+                val frame = runCatching {
+                    retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                }.getOrNull() ?: error(CoverVideoMedia.UNPLAYABLE_ERROR)
+                try {
+                    CoverVideoMedia.dimensionError(frame.width, frame.height)?.let { error(it) }
+                    CoverVideoInfo(
+                        width = frame.width,
+                        height = frame.height,
+                        durationMs = duration,
+                        frameRate = frameRate,
+                        codecMime = codecMime!!,
+                        sizeBytes = size,
+                    )
+                } finally {
+                    frame.recycle()
+                }
+            } finally {
+                runCatching { retriever.release() }
+            }
+        }.recoverCatching { throwable ->
+            throw IllegalStateException(coverVideoFriendlyMessage(throwable), throwable)
+        }
+    }
+
+    /**
+     * Copies a validated cover video into app-owned storage.
+     *
+     * The source is re-probed, streamed under the byte cap, then the completed
+     * INTERNAL copy is probed again before the previous custom cover is pruned.
+     * A corrupt provider read, a partial write or a failed second decode deletes
+     * only the new target — the currently selected photo/video stays intact.
+     */
+    suspend fun saveCoverVideo(
+        context: Context,
+        source: ProfileImageSource,
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            probeCoverVideo(context, source).getOrThrow()
+            val dir = coverDir(context)
+            val target = File(dir, "cover_${System.currentTimeMillis()}.mp4")
+            try {
+                val input = openStream(context, source)
+                    ?: error("That video couldn't be read. Check that it still exists and try again.")
+                input.use { ins ->
+                    target.outputStream().use { out ->
+                        val buffer = ByteArray(64 * 1024)
+                        var total = 0L
+                        while (true) {
+                            val read = ins.read(buffer)
+                            if (read == -1) break
+                            total += read
+                            CoverVideoMedia.sizeError(total)?.let { error(it) }
+                            out.write(buffer, 0, read)
+                        }
+                        if (total <= 0L) error("That video file is empty.")
+                    }
+                }
+
+                // Validate what WE persisted, not only what the provider said
+                // it would return, before the old cover can be removed.
+                probeCoverVideo(context, ProfileImageSource.LocalFile(target)).getOrThrow()
+                pruneOldAvatars(dir, keep = target)
+                Uri.fromFile(target).toString()
+            } catch (t: Throwable) {
+                runCatching { if (target.exists()) target.delete() }
+                throw t
+            }
+        }.recoverCatching { throwable ->
+            throw IllegalStateException(coverVideoFriendlyMessage(throwable), throwable)
+        }
+    }
+
+    private fun setExtractorDataSource(
+        extractor: MediaExtractor,
+        context: Context,
+        source: ProfileImageSource,
+    ) {
+        when (source) {
+            is ProfileImageSource.LocalFile -> extractor.setDataSource(source.file.absolutePath)
+            is ProfileImageSource.ContentUri ->
+                context.contentResolver.openFileDescriptor(source.uri, "r")?.use { descriptor ->
+                    extractor.setDataSource(descriptor.fileDescriptor)
+                } ?: error("That video couldn't be read. Check that it still exists and try again.")
+        }
+    }
+
+    private fun setRetrieverDataSource(
+        retriever: MediaMetadataRetriever,
+        context: Context,
+        source: ProfileImageSource,
+    ) {
+        when (source) {
+            is ProfileImageSource.LocalFile -> retriever.setDataSource(source.file.absolutePath)
+            is ProfileImageSource.ContentUri -> retriever.setDataSource(context, source.uri)
+        }
+    }
+
+    private fun coverVideoFriendlyMessage(throwable: Throwable): String {
+        val message = throwable.message
+        return when {
+            (throwable is IllegalArgumentException || throwable is IllegalStateException) &&
+                !message.isNullOrBlank() -> message
+            throwable is java.io.FileNotFoundException || throwable is SecurityException ->
+                "That video couldn't be read. Check that it still exists and try again."
+            throwable is java.io.IOException ->
+                "Couldn't read that video. Check the file and try again."
+            else -> "That video couldn't be used as a cover."
+        }
+    }
+
+    /**
+     * Saves the accepted cover image into [coverDir] and returns its
+     * `file://` URI. Same contract as [saveAvatar] — never modify the
+     * source, downscale to a sane edge, JPEG unless the pixels actually
+     * carry alpha (transparent PNGs saved as JPEG would go black) — but in
+     * the separate cover directory with its own keep-newest prune, so cover
+     * and avatar lifecycles can never delete each other's files.
+     */
+    suspend fun saveCover(context: Context, bitmap: Bitmap): Result<String> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val scaled = scaleToFit(bitmap, COVER_OUTPUT_SIZE)
+                val transparent = scaled.hasAlpha()
+                val extension = if (transparent) "png" else "jpg"
+                val target = File(
+                    coverDir(context),
+                    "cover_${System.currentTimeMillis()}.$extension",
+                )
+                target.outputStream().use { out ->
+                    if (transparent) {
+                        scaled.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    } else {
+                        scaled.compress(Bitmap.CompressFormat.JPEG, 92, out)
+                    }
+                }
+                if (scaled != bitmap) scaled.recycle()
+                pruneOldAvatars(coverDir(context), keep = target)
+                Uri.fromFile(target).toString()
+            }
+        }
+
+    /**
+     * Best-effort delete of an app-owned cover when the user removes it.
+     *
+     * Backup versions before cover payload support can supply a stale or
+     * attacker-edited `profile_cover_uri`, so `file://` alone is not proof of
+     * ownership. The URI and both paths are canonicalized and the candidate
+     * must be a genuine descendant of this install's cover directory. A
+     * missing/rejected file is not an error — the banner still falls back to
+     * the placeholder gradient.
+     */
+    fun deleteCover(context: Context, uri: String?): Boolean =
+        deleteCoverFile(coverDir(context), uri)
+
+    /** Context-free seam for the canonical containment policy and JVM tests. */
+    internal fun deleteCoverFile(coverDirectory: File, uri: String?): Boolean {
+        val file = resolveOwnedCoverFile(coverDirectory, uri) ?: return false
+        if (!file.isFile) return false
+        return try {
+            file.delete()
+        } catch (_: SecurityException) {
+            false
+        }
+    }
+
+    internal fun resolveOwnedCoverFile(coverDirectory: File, uri: String?): File? {
+        if (uri.isNullOrBlank()) return null
+        val parsed = try {
+            JavaUri(uri)
+        } catch (_: URISyntaxException) {
+            return null
+        }
+        if (!parsed.scheme.equals("file", ignoreCase = true) ||
+            parsed.rawAuthority != null || parsed.rawQuery != null || parsed.rawFragment != null
+        ) {
+            return null
+        }
+
+        val root = try {
+            coverDirectory.canonicalFile
+        } catch (_: IOException) {
+            return null
+        } catch (_: SecurityException) {
+            return null
+        }
+        val candidate = try {
+            File(parsed).canonicalFile
+        } catch (_: IllegalArgumentException) {
+            return null
+        } catch (_: IOException) {
+            return null
+        } catch (_: SecurityException) {
+            return null
+        }
+        if (candidate == root) return null
+
+        // Compare canonical File components, not string prefixes. This rejects
+        // ../ traversal, prefix siblings (profile_covers_evil), and symlinks
+        // inside the cover directory that resolve to an outside target.
+        var parent = candidate.parentFile
+        while (parent != null) {
+            if (parent == root) return candidate
+            parent = parent.parentFile
+        }
+        return null
     }
 
     // -----------------------------------------------------------------------

@@ -12,6 +12,43 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
 
+internal enum class ApiFailureCategory {
+    AUTHENTICATION,
+    BILLING,
+    RATE_LIMIT_OR_QUOTA,
+    INVALID_REQUEST,
+    MODEL_UNAVAILABLE,
+    TEMPORARY_PROVIDER,
+    INVALID_RESPONSE,
+    OTHER_HTTP,
+}
+
+internal class ApiRequestException(
+    val category: ApiFailureCategory,
+    message: String,
+    val statusCode: Int? = null,
+    cause: Throwable? = null,
+) : IOException(message, cause)
+
+/** Deliberately narrow and bounded: only another model can plausibly fix these. */
+internal object ModelFallbackPolicy {
+    fun shouldTryAlternate(failure: Throwable): Boolean {
+        val category = (failure as? ApiRequestException)?.category ?: return false
+        return category == ApiFailureCategory.MODEL_UNAVAILABLE ||
+            category == ApiFailureCategory.INVALID_RESPONSE
+    }
+
+    fun selectAlternate(
+        currentModel: String,
+        availableModels: List<String>,
+        failure: Throwable,
+        alternateAlreadyAttempted: Boolean,
+    ): String? {
+        if (alternateAlreadyAttempted || !shouldTryAlternate(failure)) return null
+        return availableModels.firstOrNull { it.isNotBlank() && it != currentModel }
+    }
+}
+
 /**
  * Performs the network call to a user-configured LLM provider and turns the response
  * into a list of [Question]. No third-party HTTP/JSON libraries are used — only the
@@ -81,15 +118,21 @@ Hard rules:
                 }
 
                 if (code !in 200..299) {
-                    throw IOException(friendlyHttpError(code, endpoint.kind))
+                    throw httpFailure(code, endpoint.kind)
                 }
 
-                val content = extractContent(endpoint.kind, raw)
-                val questions = parseQuestions(content, topic, count)
-                if (questions.isEmpty()) {
-                    throw IllegalStateException("Provider returned no questions")
+                try {
+                    val content = extractContent(endpoint.kind, raw)
+                    val questions = parseQuestions(content, topic, count)
+                    if (questions.isEmpty()) {
+                        throw IllegalStateException("Provider returned no questions")
+                    }
+                    questions
+                } catch (e: JSONException) {
+                    throw invalidResponseFailure(e)
+                } catch (e: IllegalStateException) {
+                    throw invalidResponseFailure(e)
                 }
-                questions
             } finally {
                 connection.disconnect()
             }
@@ -475,10 +518,10 @@ Hard rules:
      *
      * The reply as a whole must yield at least [expectedCount] valid questions
      * (extras are truncated to the request); anything less throws, which routes
-     * the failure through generateQuiz's existing error handling — the one-shot
-     * alternate-model retry, then the error card with "Use local quiz" — instead
-     * of silently serving a short or mis-scored quiz. No extra API requests are
-     * made here.
+     * the failure through generateQuiz's existing error handling — an unusable
+     * response is eligible for one explicit alternate-model attempt, then the
+     * error card with "Use local quiz" — instead of silently serving a short or
+     * mis-scored quiz. No extra API requests are made here.
      */
     internal fun parseQuestions(raw: String, topic: String, expectedCount: Int = 0): List<Question> {
         val arr = extractQuestionArray(raw)
@@ -584,10 +627,33 @@ Hard rules:
         }.onFailure { e -> Log.e(TAG, "fetchModels failed", e) }
     }
 
+    internal fun httpFailure(code: Int, kind: ProviderKind): ApiRequestException =
+        ApiRequestException(
+            category = when (code) {
+                400 -> ApiFailureCategory.INVALID_REQUEST
+                401, 403 -> ApiFailureCategory.AUTHENTICATION
+                402 -> ApiFailureCategory.BILLING
+                404 -> ApiFailureCategory.MODEL_UNAVAILABLE
+                429 -> ApiFailureCategory.RATE_LIMIT_OR_QUOTA
+                in 500..599 -> ApiFailureCategory.TEMPORARY_PROVIDER
+                else -> ApiFailureCategory.OTHER_HTTP
+            },
+            message = friendlyHttpError(code, kind),
+            statusCode = code,
+        )
+
+    internal fun invalidResponseFailure(cause: Throwable): ApiRequestException =
+        ApiRequestException(
+            category = ApiFailureCategory.INVALID_RESPONSE,
+            message = cause.message ?: "The selected model returned an unusable response.",
+            cause = cause,
+        )
+
     // internal — shared with other modes' API clients (see extractContent above).
     internal fun friendlyHttpError(code: Int, kind: ProviderKind): String = when (code) {
         400 -> "Request error (check the selected model)."
         401, 403 -> "The API key was rejected. Check it in AI & Model Configuration."
+        402 -> "Billing or account credit is required by this provider."
         404 -> "That model wasn't found. Re-fetch models or pick another from the list."
         429 -> "Rate limit / quota reached. Try again later or use a local quiz."
         in 500..599 -> "The provider is temporarily unavailable. Try again."

@@ -1,6 +1,8 @@
 package quiz.thaton3app.nazo.ui.components
 
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.IntRect
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertFalse
@@ -20,6 +22,31 @@ class AvatarOverlayTest {
         FastOutSlowInEasing.transform(x.coerceIn(0f, 1f))
 
     // ---- avatarOverlayTransform ----
+
+    @Test
+    fun sharedNavigationMotionStaysSubtleAndResponsive() {
+        assertTrue(ScreenNavigationTransitionDurationMs in 200..280)
+        assertTrue(ScreenNavigationSlideFraction in 0.05f..0.12f)
+    }
+
+    @Test
+    fun zeroSlidePolicyKeepsAvatarAlignedUnderReducedMotion() {
+        val transform = avatarOverlayTransform(
+            fraction = 0.5f,
+            transitioning = true,
+            predictiveTargetPresent = false,
+            targetIsPredictive = false,
+            initialIsPredictive = false,
+            winnerIsTarget = false,
+            edgeDirection = 1,
+            ordinaryDirection = 1,
+            containerWidth = 1080f,
+            slideFraction = 0f,
+        )
+
+        assertEquals(0f, transform.slideX, 0f)
+        assertTrue(transform.alpha in 0f..1f)
+    }
 
     @Test
     fun atRestTheOverlayIsFullyVisibleAndUnmoved() {
@@ -45,7 +72,8 @@ class AvatarOverlayTest {
     }
 
     @Test
-    fun ordinaryNavigationIsAPureFadeOfTheIncomingScreen() {
+    fun ordinaryIncomingOverlayMirrorsTheSubtlePushSlideAndFade() {
+        val width = 1080f
         for (f in listOf(0f, 0.25f, 0.5f, 0.75f, 1f)) {
             val t = avatarOverlayTransform(
                 fraction = f,
@@ -55,18 +83,21 @@ class AvatarOverlayTest {
                 initialIsPredictive = false,
                 winnerIsTarget = true,
                 edgeDirection = 1,
-                containerWidth = 1080f,
+                ordinaryDirection = 1,
+                containerWidth = width,
             )
             assertEquals(eased(f), t.alpha, 0f)
-            assertEquals(0f, t.slideX, 0f)
+            assertEquals(
+                width * ScreenNavigationSlideFraction * (1f - eased(f)),
+                t.slideX,
+                0.0001f,
+            )
         }
     }
 
     @Test
-    fun ordinaryNavigationRidesTheExitFadeWhenWinnerIsTheOutgoingScreen() {
-        // Navigation started while a settle was still running: the winner is
-        // the outgoing screen and must follow fadeOut (tween 160 of a 220 ms
-        // segment), not fade in.
+    fun ordinaryWinnerRidesOutgoingPushWithoutChangingNativeViewSize() {
+        val width = 1080f
         for (f in listOf(0f, 0.5f, 1f)) {
             val t = avatarOverlayTransform(
                 fraction = f,
@@ -76,15 +107,79 @@ class AvatarOverlayTest {
                 initialIsPredictive = false,
                 winnerIsTarget = false,
                 edgeDirection = 1,
-                containerWidth = 1080f,
+                ordinaryDirection = 1,
+                containerWidth = width,
             )
-            assertEquals(1f - eased(f * 220f / 160f), t.alpha, 0f)
-            assertEquals(0f, t.slideX, 0f)
+            assertEquals(1f - eased(f), t.alpha, 0f)
+            assertEquals(
+                -width * ScreenNavigationSlideFraction * eased(f),
+                t.slideX,
+                0.0001f,
+            )
         }
     }
 
     @Test
-    fun predictiveGestureSlidesAndFadesTheScreenBeingLeft() {
+    fun ordinaryPopReversesTheSlideDirection() {
+        val width = 800f
+        val forward = avatarOverlayTransform(
+            fraction = 0.5f,
+            transitioning = true,
+            predictiveTargetPresent = false,
+            targetIsPredictive = false,
+            initialIsPredictive = false,
+            winnerIsTarget = false,
+            edgeDirection = 1,
+            ordinaryDirection = 1,
+            containerWidth = width,
+        )
+        val back = avatarOverlayTransform(
+            fraction = 0.5f,
+            transitioning = true,
+            predictiveTargetPresent = false,
+            targetIsPredictive = false,
+            initialIsPredictive = false,
+            winnerIsTarget = false,
+            edgeDirection = 1,
+            ordinaryDirection = -1,
+            containerWidth = width,
+        )
+        assertEquals(-forward.slideX, back.slideX, 0f)
+        assertEquals(forward.alpha, back.alpha, 0f)
+    }
+
+    @Test
+    fun leftEdgePredictivePreviewMatchesOrdinaryBackAtEveryProgress() {
+        val width = 1080f
+        for (f in listOf(0f, 0.2f, 0.5f, 0.8f, 1f)) {
+            val predictive = avatarOverlayTransform(
+                fraction = f,
+                transitioning = true,
+                predictiveTargetPresent = true,
+                targetIsPredictive = true,
+                initialIsPredictive = false,
+                winnerIsTarget = false,
+                edgeDirection = 1,
+                containerWidth = width,
+            )
+            val ordinaryBack = avatarOverlayTransform(
+                fraction = f,
+                transitioning = true,
+                predictiveTargetPresent = false,
+                targetIsPredictive = false,
+                initialIsPredictive = false,
+                winnerIsTarget = false,
+                edgeDirection = 1,
+                ordinaryDirection = -1,
+                containerWidth = width,
+            )
+            assertEquals(ordinaryBack.alpha, predictive.alpha, 0f)
+            assertEquals(ordinaryBack.slideX, predictive.slideX, 0f)
+        }
+    }
+
+    @Test
+    fun predictiveGestureScrubsTheSameSubtleSlideAndFade() {
         val width = 1080f
         // Right-edge swipe: edgeDirection = -1 per NazoApp's mapping.
         for (f in listOf(0f, 0.5f, 1f)) {
@@ -98,9 +193,12 @@ class AvatarOverlayTest {
                 edgeDirection = -1,
                 containerWidth = width,
             )
-            // Mirror of slideOut(to +width*dir) + fadeOut, both tween 220.
             assertEquals(1f - eased(f), t.alpha, 0f)
-            assertEquals(width * -1 * eased(f), t.slideX, 0f)
+            assertEquals(
+                -width * ScreenNavigationSlideFraction * eased(f),
+                t.slideX,
+                0.0001f,
+            )
         }
         // Start: full alpha, no slide (continuous with the resting screen).
         val start = avatarOverlayTransform(
@@ -111,7 +209,7 @@ class AvatarOverlayTest {
         )
         assertEquals(1f, start.alpha, 0f)
         assertEquals(0f, start.slideX, 0f)
-        // End: fully faded out and fully off toward the edge.
+        // End: fully faded, but displaced by only the shared restrained 8%.
         val end = avatarOverlayTransform(
             fraction = 1f, transitioning = true, predictiveTargetPresent = true,
             targetIsPredictive = true, initialIsPredictive = false,
@@ -119,11 +217,11 @@ class AvatarOverlayTest {
             edgeDirection = -1, containerWidth = width,
         )
         assertEquals(0f, end.alpha, 0f)
-        assertEquals(-width, end.slideX, 0f)
+        assertEquals(-width * ScreenNavigationSlideFraction, end.slideX, 0f)
     }
 
     @Test
-    fun cancelSettleSlidesHomeWhileFadingInOnThe180msSpec() {
+    fun cancelSettleUsesTheExactInverseSharedMotion() {
         val width = 1080f
         for (f in listOf(0f, 0.5f, 1f)) {
             val t = avatarOverlayTransform(
@@ -136,11 +234,12 @@ class AvatarOverlayTest {
                 edgeDirection = 1,
                 containerWidth = width,
             )
-            // Mirror of slideIn(from +width*dir, tween 220) + fadeIn(tween 180)
-            // inside a 220 ms segment: the fade's local time runs at
-            // f * 220 / 180 (clamped by the animation at 1).
-            assertEquals(eased(f * 220f / 180f), t.alpha, 0f)
-            assertEquals(width * 1 * (1f - eased(f)), t.slideX, 0f)
+            assertEquals(eased(f), t.alpha, 0f)
+            assertEquals(
+                width * ScreenNavigationSlideFraction * (1f - eased(f)),
+                t.slideX,
+                0.0001f,
+            )
         }
     }
 
@@ -157,26 +256,57 @@ class AvatarOverlayTest {
                 predictiveTarget = null,
             ),
         )
+    }
+
+    @Test
+    fun winnerOnForwardNavigationStaysWithOutgoingScreenUntilSettle() {
         assertSame(
-            Screen.Settings,
+            Screen.Home,
             resolveAvatarWinnerScreen(
-                currentScreen = Screen.Settings,
+                currentScreen = Screen.Profile,
                 currentState = Screen.Home,
-                targetState = Screen.Settings,
+                targetState = Screen.Profile,
                 predictiveTarget = null,
             ),
         )
     }
 
     @Test
-    fun winnerOnForwardNavigationIsTheIncomingScreen() {
-        // currentScreen flips at push time; no predictive target involved.
+    fun stackCommitBeforeAnimateToStillRetainsMeasuredOutgoingAnchor() {
+        // Compose can observe the stack mutation one frame before animateTo
+        // changes the seekable state's target. Profile is not measured yet.
+        assertSame(
+            Screen.Home,
+            resolveAvatarWinnerScreen(
+                currentScreen = Screen.Profile,
+                currentState = Screen.Home,
+                targetState = Screen.Home,
+                predictiveTarget = null,
+            ),
+        )
+    }
+
+    @Test
+    fun ordinaryWinnerChangesOnlyAfterTransitionSettlement() {
         assertSame(
             Screen.Profile,
             resolveAvatarWinnerScreen(
                 currentScreen = Screen.Profile,
-                currentState = Screen.Home,
+                currentState = Screen.Profile,
                 targetState = Screen.Profile,
+                predictiveTarget = null,
+            ),
+        )
+    }
+
+    @Test
+    fun ordinaryBackAlsoRetainsTheOutgoingProfileAnchor() {
+        assertSame(
+            Screen.Profile,
+            resolveAvatarWinnerScreen(
+                currentScreen = Screen.Home,
+                currentState = Screen.Profile,
+                targetState = Screen.Home,
                 predictiveTarget = null,
             ),
         )
@@ -221,6 +351,72 @@ class AvatarOverlayTest {
             ),
         )
     }
+
+    @Test
+    fun staleBoundsNeverBecomeVisibleForANewWinner() {
+        assertFalse(
+            avatarOverlayBoundsMatchWinner(
+                boundsOwner = AvatarAnchorId.Home,
+                winner = AvatarAnchorId.Profile,
+                ready = true,
+            )
+        )
+        assertFalse(
+            avatarOverlayBoundsMatchWinner(
+                boundsOwner = AvatarAnchorId.Profile,
+                winner = AvatarAnchorId.Profile,
+                ready = false,
+            )
+        )
+        assertTrue(
+            avatarOverlayBoundsMatchWinner(
+                boundsOwner = AvatarAnchorId.Profile,
+                winner = AvatarAnchorId.Profile,
+                ready = true,
+            )
+        )
+    }
+
+    @Test
+    fun nativeOverlayClipMatchesTheVisiblePartOfTheComposeAnchor() {
+        val full = Rect(left = 100f, top = 40f, right = 142f, bottom = 82f)
+
+        assertEquals(
+            IntRect(left = 0, top = 0, right = 42, bottom = 42),
+            avatarOverlayLocalClip(full, full),
+        )
+        assertEquals(
+            // Simulates the avatar scrolling 13 px under the status-bar edge.
+            IntRect(left = 0, top = 13, right = 42, bottom = 42),
+            avatarOverlayLocalClip(
+                fullBounds = full,
+                visibleBounds = Rect(left = 100f, top = 53f, right = 142f, bottom = 82f),
+            ),
+        )
+    }
+
+    @Test
+    fun nativeOverlayClipHidesAComposeAnchorThatIsFullyClippedAway() {
+        assertEquals(
+            IntRect.Zero,
+            avatarOverlayLocalClip(
+                fullBounds = Rect(left = 100f, top = -42f, right = 142f, bottom = 0f),
+                visibleBounds = Rect.Zero,
+            ),
+        )
+    }
+
+    @Test
+    fun nativeOverlayClipRoundsInwardSoNoFractionalPixelLeaksPastTheViewport() {
+        assertEquals(
+            IntRect(left = 1, top = 1, right = 41, bottom = 41),
+            avatarOverlayLocalClip(
+                fullBounds = Rect(left = 10f, top = 20f, right = 52f, bottom = 62f),
+                visibleBounds = Rect(left = 10.2f, top = 20.2f, right = 51.8f, bottom = 61.8f),
+            ),
+        )
+    }
+
     @Test
     fun persistentSurfaceActionsFollowTheCurrentAvatarAnchor() {
         val home = AvatarAnchorState(AvatarAnchorId.Home)

@@ -42,6 +42,13 @@
             orientation alone is not enough on API 13+, and omitting the size
             entries would still trigger a recreate.
 
+            Manifest activity attributes are NOT inherited by Kotlin subclasses.
+            Every real Launcher* activity below must repeat this exact value; the
+            default light/dark entries are aliases targeting MainActivity and
+            therefore already use this declaration. Omitting it from a custom
+            launcher activity recreates that activity on rotation, loses NazoApp's
+            in-memory session, and visibly returns through splash to Home.
+
             If orientation-qualified resources are ever added, this must be
             revisited — they would go stale.
         -->
@@ -103,6 +110,7 @@
             android:roundIcon="@mipmap/ic_launcher_round_sakura"
             android:theme="@style/Theme.Nazo.Splash.Sakura"
             android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -129,6 +137,7 @@
             android:roundIcon="@mipmap/ic_launcher_round_midnight"
             android:theme="@style/Theme.Nazo.Splash.Midnight"
             android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -153,6 +162,7 @@
             android:roundIcon="@mipmap/ic_launcher_round_ocean"
             android:theme="@style/Theme.Nazo.Splash.Ocean"
             android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -177,6 +187,7 @@
             android:roundIcon="@mipmap/ic_launcher_round_lantern"
             android:theme="@style/Theme.Nazo.Splash.Lantern"
             android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -198,15 +209,19 @@
 
 
 
-        <!-- Brush: "N" mark. Real <activity> so its manifest theme colors the starting
-             window before the process exists. -->
+        <!-- Retired Brush N / Pixel N migration shims. Existing installs can have one
+             of these component names explicitly enabled by PackageManager. Keep them
+             launchable for one release, but render Sumi Ember; startup sanitization
+             enables LauncherLight and disables the retired component. Fresh installs
+             never expose either entry because both default to disabled. -->
         <activity
             android:name=".LauncherBrush"
             android:label="@string/app_name"
-            android:icon="@mipmap/ic_launcher_nbrush"
-            android:roundIcon="@mipmap/ic_launcher_round_nbrush"
-            android:theme="@style/Theme.Nazo.Splash.Brush"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:theme="@style/Theme.Nazo.Splash"
             android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
             android:enabled="false"
             android:exported="true">
             <intent-filter>
@@ -222,15 +237,14 @@
                 android:resource="@xml/shortcuts" />
         </activity>
 
-        <!-- Pixel: "N" mark. Real <activity> so its manifest theme colors the starting
-             window before the process exists. -->
         <activity
             android:name=".LauncherPixel"
             android:label="@string/app_name"
-            android:icon="@mipmap/ic_launcher_npixel"
-            android:roundIcon="@mipmap/ic_launcher_round_npixel"
-            android:theme="@style/Theme.Nazo.Splash.Pixel"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:theme="@style/Theme.Nazo.Splash"
             android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
             android:enabled="false"
             android:exported="true">
             <intent-filter>

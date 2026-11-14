@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.semantics.Role
@@ -113,6 +114,20 @@ fun ProfileAvatar(
      */
     paused: Boolean = false,
     /**
+     * False while this screen is entering/leaving. GIF/WebP decoding pauses so
+     * AnimatedContent never runs two animated avatar drawables at once. This is
+     * deliberately separate from [paused]: video anchors stay available to the
+     * persistent overlay during navigation and are not marked suppressed.
+     */
+    animationAllowed: Boolean = true,
+    /**
+     * Temporarily hide only the app-level MP4 surface while this Compose slot
+     * is being visually transformed (currently stretch overscroll). The cached
+     * poster remains inside the transformed hierarchy, so the avatar stays a
+     * single moving circle instead of splitting into native and Compose layers.
+     */
+    videoOverlaySuppressed: Boolean = false,
+    /**
      * Which screen's slot this avatar is, for the persistent video overlay:
      * the app-level [PersistentAvatarVideo] tracks the active screen's anchor
      * to position its single TextureView over this circle. Null (or a
@@ -124,7 +139,7 @@ fun ProfileAvatar(
 ) {
     val shape = CircleShape
     val playback = rememberAvatarPlayback()
-    playback.paused = paused
+    playback.paused = paused || !animationAllowed
     val displayKind = remember(pictureUri) { AvatarMedia.displayKind(pictureUri) }
 
     // Video avatars bind an anchor (video branch only): the overlay needs
@@ -139,11 +154,19 @@ fun ProfileAvatar(
     }
     DisposableEffect(anchorState, registry) {
         val state = anchorState
-        onDispose { if (state != null) registry?.unbind(state) }
+        onDispose {
+            state?.refreshBounds = null
+            if (state != null) registry?.unbind(state)
+        }
     }
+    // Reading this snapshot value in composition guarantees one recomposition
+    // when a slide settles. The SideEffect then samples the already-attached
+    // coordinates even if no new measure/layout callback happens at rest.
+    val captureAnchorBounds = registry?.captureEnabled != false
     SideEffect {
-        anchorState?.suppressed = paused
+        anchorState?.suppressed = paused || videoOverlaySuppressed
         anchorState?.centerVisible = playback.visible
+        if (captureAnchorBounds) anchorState?.refreshBounds?.invoke()
         // The persistent TextureView visually overlays this composable and
         // receives native input first. Keep its forwarded actions in sync with
         // the screen-owned tap and press-and-hold behavior.
@@ -209,16 +232,26 @@ fun ProfileAvatar(
             anchorState?.let { state ->
                 state.present = true
                 state.centerVisible = playback.visible
-                // Skip capture while predictive-back motion is animating so
-                // the slot keeps its pre-gesture rest position (the overlay
-                // replicates the slide itself, frame-exactly). positionInWindow
+                // Skip capture during screen motion so the slot keeps its
+                // resting position (the overlay replicates the ordinary or
+                // predictive slide itself, frame-exactly). positionInWindow
                 // + layout size: window coordinates that are never clipped, so
                 // an off-window slot still reports its true rect.
-                if (registry?.captureEnabled != false) {
-                    val p = coords.positionInWindow()
-                    val s = coords.size
-                    state.restBounds = Rect(p.x, p.y, p.x + s.width, p.y + s.height)
+                val refreshBounds = {
+                    if (coords.isAttached) {
+                        val p = coords.positionInWindow()
+                        val s = coords.size
+                        state.restBounds = Rect(p.x, p.y, p.x + s.width, p.y + s.height)
+                        // Keep the root-level native surface clipped exactly
+                        // like this in-screen slot. boundsInWindow intersects
+                        // the circle with scroll and window clipping ancestors;
+                        // positionInWindow above intentionally remains the full
+                        // geometry so video crop/scale never changes at an edge.
+                        state.visibleBounds = coords.boundsInWindow()
+                    }
                 }
+                state.refreshBounds = refreshBounds
+                if (captureAnchorBounds) refreshBounds()
             }
         }
         .clip(shape)

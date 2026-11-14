@@ -41,32 +41,26 @@ data class AppIconOption(
     val splashColor: Long? = null,
     /**
      * Silhouette drawable used by the intro zoom-through (BlendMode.DstOut needs a
-     * flat alpha mask, not full-color art) — defaults to the 謎 kanji foreground.
+     * flat alpha mask, not full-color art). Every kanji family supplies a matching
+     * one-color shape; illustrated marks such as Lantern supply their own.
      */
-    @DrawableRes val introMark: Int = R.drawable.ic_launcher_foreground,
+    @DrawableRes val introMark: Int = R.drawable.ic_mark_nazo_silhouette,
     /** Which launch animation this icon plays. See [IntroStyle]. */
     val introStyle: IntroStyle = IntroStyle.WARP,
     /**
-     * Full-color art shown in the Appearance picker (and nothing else). Defaults to
-     * the 謎 kanji; illustrated variants point at their color mark so the list shows
-     * what actually lands on the home screen.
+     * Full-color art shown in the Appearance picker. Kanji-family assets must
+     * keep Sumi Ember's optical footprint so switching icons changes pigment,
+     * not the apparent size; LauncherIconSwitcherTest pins their alpha bounds.
      */
-    @DrawableRes val previewMark: Int = R.drawable.ic_launcher_foreground,
+    @DrawableRes val previewMark: Int = R.drawable.ic_launcher_foreground_nazo,
 )
 
-/**
- * Launch animation played by `IntroOverlay` after the system splash hands off.
- * Each illustrated mark gets its own so the cold start feels specific to the icon.
- */
+/** Launch animation played by `IntroOverlay` after the system splash hands off. */
 enum class IntroStyle {
-    /** Original: the mark is punched out of the ground and warps past the camera. */
+    /** The mark is punched out of the ground and warps past the camera. */
     WARP,
     /** Lantern: the mark glows brighter, sways, then the light floods the screen. */
     LANTERN_GLOW,
-    /** N marks: a line rises and traces itself into the letter, then warps away. */
-    N_STROKE,
-    /** Pixel "?": snaps through coarse mosaic steps before resolving and zooming. */
-    PIXEL_RESOLVE,
 }
 
 /**
@@ -74,15 +68,15 @@ enum class IntroStyle {
  * launcher shows.
  *
  * Two modes coexist:
- *  - "match system theme" (ThemePreferences.iconFollowsOsTheme): the classic
- *    light/dark green pair, swapped silently when the app is backgrounded.
+ *  - "match system theme" (ThemePreferences.iconFollowsOsTheme): the Sumi Ember
+ *    light/dark pair, swapped silently when the app is backgrounded.
  *  - a user-picked icon from [OPTIONS]: applied immediately, which makes Android
  *    kill the app's task (documented behaviour when the launching component is
  *    disabled) — the UI warns about this and the icon updates on the home screen.
  */
 object LauncherIconSwitcher {
 
-    /** The classic light/dark pair (used by the follow-OS-theme mode). */
+    /** The default Sumi Ember light/dark pair (used by follow-OS-theme mode). */
     const val ID_LIGHT = "light"
     const val ID_DARK = "dark"
 
@@ -90,50 +84,60 @@ object LauncherIconSwitcher {
         AppIconOption(
             id = ID_LIGHT,
             alias = "LauncherLight",
-            label = "Classic Green",
-            blurb = "The original Nazo mark on mint green",
-            startColor = 0xFF36A06F,
-            endColor = 0xFF36A06F,
+            label = "Sumi Ember",
+            blurb = "Brush-lit kanji on deep bottle green",
+            startColor = 0xFF1B4135,
+            endColor = 0xFF1B4135,
             themed = true,
+            introMark = R.drawable.ic_mark_nazo_silhouette,
+            previewMark = R.drawable.ic_launcher_foreground_nazo,
         ),
         AppIconOption(
             id = ID_DARK,
             alias = "LauncherDark",
-            label = "Deep Green",
-            blurb = "Darker take on the classic, easy on OLED",
-            startColor = 0xFF246D4C,
-            endColor = 0xFF246D4C,
+            label = "Sumi Ember Dark",
+            blurb = "Warm kanji on a forest-black ground",
+            startColor = 0xFF0F1713,
+            endColor = 0xFF0F1713,
             themed = true,
+            introMark = R.drawable.ic_mark_nazo_silhouette,
+            previewMark = R.drawable.ic_launcher_foreground_nazo,
         ),
         AppIconOption(
             id = "sakura",
             alias = "LauncherSakura",
             label = "Sakura",
-            blurb = "Soft pink blossom gradient",
+            blurb = "Pearl-and-rose brushwork on petal pink",
             startColor = 0xFFE86A9A,
             endColor = 0xFFB84A78,
             splashTheme = R.style.Theme_Nazo_Splash_Sakura,
             splashColor = 0xFFD05A89,
+            introMark = R.drawable.ic_mark_nazo_variant_silhouette,
+            previewMark = R.drawable.ic_launcher_foreground_sakura,
         ),
         AppIconOption(
             id = "midnight",
             alias = "LauncherMidnight",
             label = "Midnight",
-            blurb = "Near-black stealth icon",
+            blurb = "Moon-silver ink on near-black charcoal",
             startColor = 0xFF1B1F24,
             endColor = 0xFF0B0D10,
             splashTheme = R.style.Theme_Nazo_Splash_Midnight,
             splashColor = 0xFF13161A,
+            introMark = R.drawable.ic_mark_nazo_variant_silhouette,
+            previewMark = R.drawable.ic_launcher_foreground_midnight,
         ),
         AppIconOption(
             id = "ocean",
             alias = "LauncherOcean",
             label = "Ocean",
-            blurb = "Teal-to-deep-sea gradient",
+            blurb = "Seafoam brushwork with deep tidal grain",
             startColor = 0xFF2CA8B8,
             endColor = 0xFF11707F,
             splashTheme = R.style.Theme_Nazo_Splash_Ocean,
             splashColor = 0xFF1E8C9C,
+            introMark = R.drawable.ic_mark_nazo_variant_silhouette,
+            previewMark = R.drawable.ic_launcher_foreground_ocean,
         ),
         AppIconOption(
             id = "lantern",
@@ -148,43 +152,22 @@ object LauncherIconSwitcher {
             introStyle = IntroStyle.LANTERN_GLOW,
             previewMark = R.drawable.ic_mark_lantern,
         ),
-        AppIconOption(
-            id = "nbrush",
-            alias = "LauncherBrush",
-            label = "Brush N",
-            blurb = "Inked initial on warm paper",
-            startColor = 0xFFF0E4CA,
-            endColor = 0xFFD9C7A4,
-            splashTheme = R.style.Theme_Nazo_Splash_Brush,
-            splashColor = 0xFFE8DCC2,
-            introMark = R.drawable.ic_mark_n_brush_silhouette,
-            introStyle = IntroStyle.N_STROKE,
-            previewMark = R.drawable.ic_mark_n_brush,
-        ),
-        AppIconOption(
-            id = "npixel",
-            alias = "LauncherPixel",
-            label = "Pixel N",
-            blurb = "8-bit initial resolving into focus",
-            startColor = 0xFF2C3A55,
-            endColor = 0xFF161E2E,
-            splashTheme = R.style.Theme_Nazo_Splash_Pixel,
-            splashColor = 0xFF212C42,
-            introMark = R.drawable.ic_mark_n_pixel_silhouette,
-            introStyle = IntroStyle.PIXEL_RESOLVE,
-            previewMark = R.drawable.ic_mark_n_pixel,
-        ),
     )
+
+    /**
+     * Hidden one-release migration shims. Existing installs may have one of these
+     * components explicitly enabled; keeping the class name lets that shortcut
+     * launch once, then [sanitize] moves it to Sumi Ember and [select] disables it.
+     */
+    internal val RETIRED_ALIASES = setOf("LauncherBrush", "LauncherPixel")
 
     fun option(id: String): AppIconOption =
         OPTIONS.firstOrNull { it.id == id } ?: OPTIONS.first()
 
     /**
-     * Repairs a saved preference that names an icon which no longer exists (the
-     * Indigo/Bronze color variants were retired in favour of the illustrated
-     * marks). Their manifest components are gone, so a stale pref would leave the
-     * user with no enabled launcher entry after the next swap. Falls back to the
-     * classic light icon and re-applies it.
+     * Repairs a saved preference that names an icon which no longer appears in the
+     * picker. Retired components remain as temporary launchable migration shims,
+     * then [select] disables them after moving the user to Sumi Ember.
      *
      * Returns the id actually in effect.
      */
@@ -194,8 +177,11 @@ object LauncherIconSwitcher {
         return ID_LIGHT
     }
 
+    private fun component(context: Context, alias: String): ComponentName =
+        ComponentName(context.packageName, "${context.packageName}.$alias")
+
     private fun component(context: Context, option: AppIconOption): ComponentName =
-        ComponentName(context.packageName, "${context.packageName}.${option.alias}")
+        component(context, option.alias)
 
     private fun isSystemNight(context: Context): Boolean =
         (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
@@ -220,15 +206,22 @@ object LauncherIconSwitcher {
         try {
             val pm = context.packageManager
             val target = option(id)
-            if (currentId(context) == target.id) return
+            val retiredEnabled = RETIRED_ALIASES.any { alias ->
+                effectiveEnabled(pm, component(context, alias), manifestDefaultEnabled = false)
+            }
+            if (currentId(context) == target.id && !retiredEnabled) return
+
             pm.setComponentEnabledSetting(
                 component(context, target),
                 PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
                 PackageManager.DONT_KILL_APP,
             )
-            OPTIONS.filter { it.id != target.id }.forEach {
+            val aliasesToDisable = OPTIONS
+                .filter { it.id != target.id }
+                .map { it.alias } + RETIRED_ALIASES
+            aliasesToDisable.forEach { alias ->
                 pm.setComponentEnabledSetting(
-                    component(context, it),
+                    component(context, alias),
                     PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
                     PackageManager.DONT_KILL_APP,
                 )

@@ -29,6 +29,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -54,6 +55,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -62,8 +64,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import androidx.compose.material3.CircularProgressIndicator
@@ -97,6 +97,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -114,7 +115,10 @@ import quiz.thaton3app.nazo.data.remote.ModelInfo
 import quiz.thaton3app.nazo.data.remote.preferredDefaultModel
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.NazoTransientMessage
 import quiz.thaton3app.nazo.ui.components.isLandscape
+import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
+import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.ui.theme.Accents
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoError
@@ -341,11 +345,19 @@ fun OnboardingScreen(
                     enter = fadeIn(tween(250, easing = FastOutSlowInEasing)),
                     exit = fadeOut(tween(200, easing = FastOutSlowInEasing)),
                 ) {
+                    val skipInteraction = remember { MutableInteractionSource() }
+                    val skipShape = rememberNazoRoundedCornerMorphShape(
+                        interactionSource = skipInteraction,
+                        restingCorner = 16.dp,
+                        pressedCorner = 8.dp,
+                    )
                     TextButton(
                         onClick = {
                             Haptics.soft(context)
                             onFinish()
                         },
+                        interactionSource = skipInteraction,
+                        modifier = Modifier.clip(skipShape),
                     ) {
                         Text(
                             text = "Skip",
@@ -464,16 +476,22 @@ fun OnboardingScreen(
                     exit = shrinkHorizontally(spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut(tween(200)),
                 ) {
                     Row {
+                        val previousInteraction = remember { MutableInteractionSource() }
+                        val previousShape = rememberNazoPillCornerMorphShape(
+                            interactionSource = previousInteraction,
+                            pressedCornerPercent = 28f,
+                        )
                         IconButton(
                             onClick = {
                                 Haptics.soft(context)
                                 scope.launch { pagerState.animateScrollToPage(page - 1) }
                             },
+                            interactionSource = previousInteraction,
                             modifier = Modifier
                                 .size(58.dp)
-                                .clip(CircleShape)
-                                .background(NazoSurface)
-                                .border(1.dp, NazoTextSecondary.copy(alpha = 0.25f), CircleShape),
+                                .clip(previousShape)
+                                .background(NazoSurface, previousShape)
+                                .border(1.dp, NazoTextSecondary.copy(alpha = 0.25f), previousShape),
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.ArrowBack,
@@ -817,26 +835,22 @@ private fun SetupSlide(
                             }
                         }
 
-                        AnimatedVisibility(
-                            visible = verifyState is VerifyState.Ready,
-                            enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(tween(250)),
-                            exit = shrinkVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut(tween(200)),
-                        ) {
-                            val ready = verifyState as? VerifyState.Ready
+                        NazoTransientMessage(
+                            value = verifyState as? VerifyState.Ready,
+                            label = "onboardingProviderReady",
+                        ) { ready ->
                             Text(
-                                text = "Using ${ready?.modelName ?: ""} · ${ready?.count ?: 0} models available — change anytime in Settings.",
+                                text = "Using ${ready.modelName} · ${ready.count} models available — change anytime in Settings.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = NazoSuccess,
                                 fontWeight = FontWeight.SemiBold,
                             )
                         }
 
-                        AnimatedVisibility(
-                            visible = verifyState is VerifyState.Failed,
-                            enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(tween(250)),
-                            exit = shrinkVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut(tween(200)),
-                        ) {
-                            val failed = verifyState as? VerifyState.Failed
+                        NazoTransientMessage(
+                            value = verifyState as? VerifyState.Failed,
+                            label = "onboardingProviderFailure",
+                        ) { failed ->
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(12.dp))
@@ -845,7 +859,7 @@ private fun SetupSlide(
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                             ) {
                                 Text(
-                                    text = failed?.message ?: "",
+                                    text = failed.message,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = NazoError,
                                 )
@@ -1133,13 +1147,13 @@ private fun FirstGameSlide(
                         onClick = { onGameModeChange("VERSUS") },
                     )
                 }
-                AnimatedVisibility(
-                    visible = showProviderHint,
-                    enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(tween(250)),
-                    exit = shrinkVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut(tween(200)),
-                ) {
+                NazoTransientMessage(
+                    value = "The Guessing Game needs an AI provider — set one up on the previous step."
+                        .takeIf { showProviderHint },
+                    label = "onboardingProviderHint",
+                ) { hint ->
                     Text(
-                        text = "The Guessing Game needs an AI provider — set one up on the previous step.",
+                        text = hint,
                         style = MaterialTheme.typography.bodySmall,
                         color = NazoError,
                         fontWeight = FontWeight.SemiBold,
@@ -1169,47 +1183,25 @@ private fun FirstGameSlide(
                     ),
                 )
 
-                // There are eight suggestions but only ~three fit on screen, and
-                // nothing said the row scrolled — players assumed those three
-                // were the only choices. The fade + chevron on the trailing edge
-                // is the affordance; it disappears once the row is scrolled to
-                // the end.
                 val suggestionScroll = rememberScrollState()
-                Box {
-                    Row(
-                        modifier = Modifier.horizontalScroll(suggestionScroll),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Spacer(Modifier.width(4.dp))
-                        suggestions.forEach { suggestion ->
-                            SelectPill(
-                                text = suggestion,
-                                selected = topicInput.equals(suggestion, ignoreCase = true),
-                                onClick = {
-                                    Haptics.soft(context)
-                                    onTopicChange(suggestion)
-                                },
-                            )
-                        }
-                        // Room for the trailing fade so the last pill is never
-                        // sat under it. The leading side gets the same below.
-                        Spacer(Modifier.width(20.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(suggestionScroll),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Spacer(Modifier.width(4.dp))
+                    suggestions.forEach { suggestion ->
+                        SelectPill(
+                            text = suggestion,
+                            selected = topicInput.equals(suggestion, ignoreCase = true),
+                            onClick = {
+                                Haptics.soft(context)
+                                onTopicChange(suggestion)
+                            },
+                        )
                     }
-                    // Both edges, driven by the real scroll state: left when
-                    // there is content behind, right when there is content
-                    // ahead, both together in the middle, neither when the row
-                    // fits. canScrollBackward/Forward are already derived from
-                    // the ScrollState, so no item counting is involved.
-                    ScrollEdgeHint(
-                        visible = suggestionScroll.canScrollBackward,
-                        trailing = false,
-                        modifier = Modifier.align(Alignment.CenterStart),
-                    )
-                    ScrollEdgeHint(
-                        visible = suggestionScroll.canScrollForward,
-                        trailing = true,
-                        modifier = Modifier.align(Alignment.CenterEnd),
-                    )
+                    Spacer(Modifier.width(4.dp))
                 }
 
                 AnimatedContent(
@@ -1233,59 +1225,6 @@ private fun FirstGameSlide(
                     )
                 }
             }
-        }
-    }
-}
-
-/**
- * Edge affordance for a horizontally scrollable row: a short fade into the
- * slide background with a chevron pointing the way the user can scroll.
- *
- * [trailing] picks the side — true for the right edge (more content ahead),
- * false for the left (content behind). Callers drive [visible] from the
- * ScrollState's own `canScrollForward` / `canScrollBackward`, so the hints
- * always describe the real scroll range: one at each extreme, both in the
- * middle, neither when the row fits.
- *
- * Kept deliberately light — a narrow gradient and a small chevron, no opaque
- * panel — so the topic pills underneath stay readable.
- */
-@Composable
-private fun ScrollEdgeHint(
-    visible: Boolean,
-    trailing: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(tween(180)),
-        exit = fadeOut(tween(180)),
-        modifier = modifier,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = if (trailing) Arrangement.End else Arrangement.Start,
-            modifier = Modifier
-                .height(34.dp)
-                .width(34.dp)
-                .background(
-                    // Fade runs from transparent toward the surface on the
-                    // OUTER side, so the gradient always points off-screen.
-                    Brush.horizontalGradient(
-                        if (trailing) {
-                            listOf(Color.Transparent, NazoSurface.copy(alpha = 0.92f))
-                        } else {
-                            listOf(NazoSurface.copy(alpha = 0.92f), Color.Transparent)
-                        }
-                    )
-                ),
-        ) {
-            Icon(
-                imageVector = if (trailing) Icons.Filled.ChevronRight else Icons.Filled.ChevronLeft,
-                contentDescription = if (trailing) "More topics to the right" else "More topics to the left",
-                tint = NazoTextSecondary,
-                modifier = Modifier.size(18.dp),
-            )
         }
     }
 }
@@ -1356,18 +1295,28 @@ private fun ExpandableSection(
         animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
         label = "chevron",
     )
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 20.dp,
+        pressedCorner = 10.dp,
+    )
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(NazoSurface)
-            .border(1.dp, NazoTextSecondary.copy(alpha = 0.18f), RoundedCornerShape(20.dp))
+            .clip(shape)
+            .background(NazoSurface, shape)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.18f), shape)
             .animateContentSize(animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onToggle() }
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = LocalIndication.current,
+                    onClick = onToggle,
+                )
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -1421,11 +1370,17 @@ private fun SelectPill(
         animationSpec = tween(250, easing = FastOutSlowInEasing),
         label = "pillFg",
     )
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoPillCornerMorphShape(interactionSource)
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(50))
-            .background(bg)
-            .clickable { onClick() }
+            .clip(shape)
+            .background(bg, shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
             .padding(horizontal = 16.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -1465,12 +1420,24 @@ private fun SetupToggleRow(
         Haptics.soft(context)
         onCheckedChange(value)
     }
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 14.dp,
+        pressedCorner = 7.dp,
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(NazoTextSecondary.copy(alpha = 0.08f))
-            .clickable { trigger(!checked) }
+            .clip(shape)
+            .background(NazoTextSecondary.copy(alpha = 0.08f), shape)
+            .toggleable(
+                value = checked,
+                role = Role.Switch,
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onValueChange = trigger,
+            )
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1488,9 +1455,11 @@ private fun SetupToggleRow(
             )
         }
         Spacer(modifier = Modifier.width(10.dp))
+        // The row owns the switch role and interaction so the nested visual
+        // switch cannot toggle twice or compete for press feedback.
         Switch(
             checked = checked,
-            onCheckedChange = trigger,
+            onCheckedChange = null,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = NazoOnPrimary,
                 checkedTrackColor = NazoPrimary,

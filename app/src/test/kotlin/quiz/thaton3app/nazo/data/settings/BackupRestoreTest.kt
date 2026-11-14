@@ -167,6 +167,58 @@ class BackupRestoreTest {
     }
 
     @Test
+    fun apiKeyCiphertextIsNeverExportedOrRestoredOverWorkingCredentials() {
+        assertFalse("nazo_secure" in BackupRepository.STORES)
+
+        val secure = FakeSharedPreferences()
+        secure.edit()
+            .putString("enc_key_gemini", "current-install-ciphertext")
+            .putString("iv_key_gemini", "current-install-iv")
+            .commit()
+        val backend = Backend()
+        backend.created["nazo_secure"] = secure
+
+        // Simulates an old same-device backup or a cross-install backup. Its
+        // Keystore-bound blobs, blank values and unknown garbage are all
+        // ignored before tagged-value parsing and never reach applyValidated.
+        val oldBackup = bundle(
+            stores = mapOf(
+                "nazo_secure" to mapOf(
+                    "enc_key_gemini" to tag("string", "foreign-ciphertext"),
+                    "iv_key_gemini" to tag("string", "foreign-iv"),
+                    "enc_key_openrouter" to tag("string", ""),
+                ),
+                "nazo_theme" to mapOf("mode" to tag("string", "dark")),
+            )
+        )
+        val parsed = BackupRepository.parseAndValidate(oldBackup)
+        assertFalse(parsed.stores.containsKey("nazo_secure"))
+        BackupRepository.applyValidated(backend.provider(), parsed.stores)
+
+        assertFalse("nazo_secure" in backend.touched)
+        assertEquals("current-install-ciphertext", secure.getString("enc_key_gemini", null))
+        assertEquals("current-install-iv", secure.getString("iv_key_gemini", null))
+
+        val invalidForeignSecure = JSONObject()
+            .put("version", 2)
+            .put("stores", JSONObject().put("nazo_secure", "not even a preference object"))
+            .toString()
+        val ignoredInvalid = BackupRepository.parseAndValidate(invalidForeignSecure)
+        BackupRepository.applyValidated(backend.provider(), ignoredInvalid.stores)
+        assertEquals("current-install-ciphertext", secure.getString("enc_key_gemini", null))
+        assertEquals("current-install-iv", secure.getString("iv_key_gemini", null))
+
+        // A modern backup has no secure store at all; missing credential data
+        // likewise preserves the working destination credential.
+        val withoutKeys = BackupRepository.parseAndValidate(
+            bundle(mapOf("nazo_profile" to mapOf("username" to tag("string", "restored"))))
+        )
+        BackupRepository.applyValidated(backend.provider(), withoutKeys.stores)
+        assertEquals("current-install-ciphertext", secure.getString("enc_key_gemini", null))
+        assertEquals("current-install-iv", secure.getString("iv_key_gemini", null))
+    }
+
+    @Test
     fun applyNeverTouchesStoresOutsideTheAllowlist() {
         // Pre-create the out-of-band store so a bug would be visible: if the
         // apply step ever asked for it, the fake would be cleared.
@@ -245,12 +297,93 @@ class BackupRestoreTest {
     }
 
     @Test
+    fun olderQuizStatisticsDefaultBestComboToZero() {
+        val prefs = FakeSharedPreferences()
+        prefs.edit()
+            .putString(
+                "quiz_stats_v1",
+                """{"totalQuizzes":4,"totalQuestionsAnswered":20,"totalCorrect":12}""",
+            )
+            .commit()
+
+        val restored = QuizStatsStore(prefs).get()
+
+        assertEquals(4, restored.totalQuizzes)
+        assertEquals(12, restored.totalCorrect)
+        assertEquals(0, restored.bestCorrectCombo)
+    }
+
+    @Test
+    fun corruptedLocalQuizStatisticsResetToAStableEmptyDocument() {
+        val corruptValues = listOf(
+            "{not json",
+            "[]",
+            """{"totalQuizzes":-1}""",
+            """{"totalQuizzes":1,"totalQuestionsAnswered":2,"totalCorrect":3}""",
+            """{"totalQuizzes":1,"currentStreakDays":1,"bestStreakDays":1,"lastQuizEpochDay":-4}""",
+            """{"difficultyAnswered":{"Easy":"many"}}""",
+            """{"animeAnswered":{"Naruto":1.5}}""",
+        )
+
+        corruptValues.forEach { corrupt ->
+            val prefs = FakeSharedPreferences()
+            prefs.edit().putString(QuizStatsStore.KEY, corrupt).commit()
+            val store = QuizStatsStore(prefs)
+
+            assertEquals(QuizStats(), store.get())
+            val repaired = prefs.getString(QuizStatsStore.KEY, null)
+            assertTrue(!repaired.isNullOrBlank())
+            assertEquals(QuizStats(), QuizStatsJson.decode(repaired!!))
+            // Every startup/background consumer reads the repaired value from
+            // this same seam, so subsequent reads must remain safe.
+            assertEquals(QuizStats(), store.get())
+        }
+    }
+
+    @Test
+    fun backupRejectsMalformedAndSemanticallyInvalidQuizStatistics() {
+        val invalidValues = listOf(
+            "{bad json",
+            """{"totalQuizzes":1,"totalQuestionsAnswered":1,"totalCorrect":2}""",
+            """{"totalQuizzes":1,"currentStreakDays":1,"bestStreakDays":1,"lastQuizEpochDay":"today"}""",
+            """{"totalQuizzes":1,"difficultyPlays":{"Easy":-1}}""",
+            """{"totalQuizzes":1,"totalQuestionsAnswered":1,"animeAnswered":{"Naruto":1},"animeCorrect":{"Naruto":2}}""",
+        )
+
+        invalidValues.forEach { statsJson ->
+            assertThrows(IllegalArgumentException::class.java) {
+                BackupRepository.parseAndValidate(
+                    bundle(
+                        stores = mapOf(
+                            "nazo_stats" to mapOf(
+                                QuizStatsStore.KEY to tag("string", statsJson),
+                            )
+                        )
+                    )
+                )
+            }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupRepository.parseAndValidate(
+                bundle(
+                    stores = mapOf(
+                        "nazo_stats" to mapOf(
+                            QuizStatsStore.KEY to tag("int", 7),
+                        )
+                    )
+                )
+            )
+        }
+    }
+
+    @Test
     fun restoreBringsBackQuizStatistics() {
         val source = FakeSharedPreferences()
         val fixture = QuizStats(
             totalQuizzes = 12,
             totalQuestionsAnswered = 90,
             totalCorrect = 70,
+            bestCorrectCombo = 11,
             currentStreakDays = 5,
             bestStreakDays = 9,
             lastQuizEpochDay = QuizStats.localEpochDay(),

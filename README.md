@@ -25,13 +25,25 @@ themable, no account, no ads.
 
 ## 📱 Screenshots
 
-| Home | Quiz | Results | Review |
-|:---:|:---:|:---:|:---:|
-| <img src="assets/screenshots/home.png" width="180"/> | <img src="assets/screenshots/quiz.png" width="180"/> | <img src="assets/screenshots/results.png" width="180"/> | <img src="assets/screenshots/review.png" width="180"/> |
+| Home | Quiz |
+|:---:|:---:|
+| <img src="assets/screenshots/home.png" width="180"/> | <img src="assets/screenshots/quiz.png" width="180"/> |
 
-| Guessing Game | Statistics | Appearance | AI Providers |
-|:---:|:---:|:---:|:---:|
-| <img src="assets/screenshots/guessing.png" width="180"/> | <img src="assets/screenshots/stats.png" width="180"/> | <img src="assets/screenshots/appearance.png" width="180"/> | <img src="assets/screenshots/providers.png" width="180"/> |
+| Results | Review |
+|:---:|:---:|
+| <img src="assets/screenshots/results.png" width="180"/> | <img src="assets/screenshots/review.png" width="180"/> | 
+
+| Profile | Backup |
+|:---|:---:|
+| <img src="assets/screenshots/profile.png" with="180"/> | <img src="assets/screenshots/backup.png" with="180"/>
+
+| Guessing Game | Statistics |
+|:---:|:---:|
+| <img src="assets/screenshots/guessing.png" width="180"/> | <img src="assets/screenshots/stats.png" width="180"/> |
+
+| Appearance | AI Providers |
+|:---:|:---:|
+| <img src="assets/screenshots/appearance.png" width="180"/> | <img src="assets/screenshots/providers.png" width="180"/> |
 
 ## Features
 
@@ -150,6 +162,7 @@ Local release builds can be signed by configuring a `signingConfig` in
 
 ```
 Nazo/
+├── RELEASE_NOTES.md              # living next-release ledger + release archive
 ├── app/                          # Gradle application module
 │   ├── build.gradle.kts
 │   └── src/main/
@@ -175,7 +188,7 @@ Nazo/
 │       └── res/                  # resources, launcher icons, themes
 └── .github/
     ├── workflows/build-release.yml   # tag-triggered release pipeline
-    └── scripts/gen_release_notes.py  # changelog from commit range
+    └── scripts/gen_release_notes.py  # extracts hand-written ledger notes
 ```
 
 ### Tech stack
@@ -193,6 +206,9 @@ Nazo/
 
 Signed `release` and `debug` APKs are attached to **GitHub Releases**, generated
 automatically whenever a `v*` tag is pushed (see the CI section above).
+Handwritten notes for the next release and the complete release archive live in
+the single [`RELEASE_NOTES.md`](RELEASE_NOTES.md) ledger; tagged builds extract
+the matching marked version block from that file.
 
 ## License
 

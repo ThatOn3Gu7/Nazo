@@ -6,6 +6,9 @@ import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoModalSheet
 import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
+import quiz.thaton3app.nazo.ui.components.NazoSheetHeader
+import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
+import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.rememberRetained
 import quiz.thaton3app.nazo.sound.SoundTheme
 import quiz.thaton3app.nazo.sound.Sounds
@@ -16,10 +19,13 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -32,6 +38,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
@@ -39,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -227,38 +235,14 @@ fun SettingsScreen(
             sheetState = soundSheetState,
         ) {
             NazoSheetColumn {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(NazoPrimary.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.MusicNote,
-                            contentDescription = null,
-                            tint = NazoPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "Sound style",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = NazoTextPrimary,
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = if (soundEnabled) {
+                NazoSheetHeader(
+                    icon = Icons.Filled.MusicNote,
+                    title = "Sound style",
+                    subtitle = if (soundEnabled) {
                         "Tap a style to hear it. It applies to every sound in the app."
                     } else {
                         "Turn on Sound effects above to hear these."
                     },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = NazoTextSecondary,
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -288,17 +272,28 @@ private fun SoundStyleOptionCard(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 18.dp,
+        pressedCorner = 9.dp,
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(NazoSurfaceVariant)
+            .clip(shape)
+            .background(NazoSurfaceVariant, shape)
             .border(
                 width = if (selected) 2.dp else 1.dp,
                 color = if (selected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.12f),
-                shape = RoundedCornerShape(18.dp),
+                shape = shape,
             )
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = indication,
+                onClick = onClick,
+            )
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -344,16 +339,22 @@ private fun SoundStyleOptionCard(
 private fun SettingsHeader(
     onBackClick: () -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoPillCornerMorphShape(
+        interactionSource = interactionSource,
+        pressedCornerPercent = 28f,
+    )
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth()
     ) {
         IconButton(
             onClick = rememberHapticBack(onBackClick),
+            interactionSource = interactionSource,
             modifier = Modifier
                 .size(44.dp)
-                .clip(CircleShape)
-                .background(NazoSurface),
+                .clip(shape)
+                .background(NazoSurface, shape),
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -417,11 +418,23 @@ private fun SettingsRow(
     subtitle: String,
     onClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 0.dp,
+        pressedCorner = 12.dp,
+    )
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clip(shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = indication,
+                onClick = onClick,
+            )
             .padding(horizontal = 16.dp, vertical = 16.dp),
     ) {
         Box(
@@ -477,10 +490,25 @@ private fun SettingsSwitchRow(
         Haptics.soft(context)
         onCheckedChange(value)
     }
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 0.dp,
+        pressedCorner = 12.dp,
+    )
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
+            .clip(shape)
+            .toggleable(
+                value = checked,
+                role = Role.Switch,
+                interactionSource = interactionSource,
+                indication = indication,
+                onValueChange = trigger,
+            )
             .padding(horizontal = 16.dp, vertical = 16.dp),
     ) {
         Box(
@@ -514,7 +542,9 @@ private fun SettingsSwitchRow(
             )
         }
         Spacer(Modifier.width(8.dp))
-        Switch(checked = checked, onCheckedChange = trigger)
+        // The whole row owns the switch semantics and touch target; keeping the
+        // visual Switch passive avoids nested controls firing twice.
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 

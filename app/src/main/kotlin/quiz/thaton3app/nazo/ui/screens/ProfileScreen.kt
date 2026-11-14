@@ -1,9 +1,17 @@
 package quiz.thaton3app.nazo.ui.screens
 
 import java.io.File
+import quiz.thaton3app.nazo.ui.components.CoverBackgroundSheet
+import quiz.thaton3app.nazo.ui.components.TransitioningCoverArtwork
+import quiz.thaton3app.nazo.ui.components.ProfileCoverPreviewDialog
+import quiz.thaton3app.nazo.ui.components.ProfileCoverVideoPreviewDialog
 import quiz.thaton3app.nazo.ui.components.ProfileImagePreviewDialog
+import quiz.thaton3app.nazo.data.profile.AutomaticCoverState
+import quiz.thaton3app.nazo.data.profile.AutomaticCoverStore
+import quiz.thaton3app.nazo.data.profile.CoverVisual
 import quiz.thaton3app.nazo.data.profile.ProfileImageStore
 import quiz.thaton3app.nazo.data.profile.ProfileImageSource
+import quiz.thaton3app.nazo.data.profile.resolveCoverVisual
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.layout.aspectRatio
@@ -12,17 +20,13 @@ import androidx.activity.result.PickVisualMediaRequest
 import android.content.res.Configuration
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import quiz.thaton3app.nazo.ui.components.NazoConfirmButton
 import quiz.thaton3app.nazo.ui.components.NazoDangerButton
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
+import quiz.thaton3app.nazo.ui.components.NazoTransientMessage
 import quiz.thaton3app.nazo.ui.components.Haptics
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -32,10 +36,12 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberOverscrollEffect
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -62,6 +68,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -70,17 +77,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import java.net.HttpURLConnection
-import java.net.URL
-import kotlin.math.abs
 import kotlin.random.Random
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
 import quiz.thaton3app.nazo.R
 import quiz.thaton3app.nazo.data.QuizStats
+import quiz.thaton3app.nazo.progression.PlayerProgress
+import quiz.thaton3app.nazo.progression.PlayerProgression
 import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
@@ -91,23 +93,32 @@ import quiz.thaton3app.nazo.ui.components.AvatarAnchorId
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
 import quiz.thaton3app.nazo.ui.components.SafeRemoteImage
 import quiz.thaton3app.nazo.ui.components.rememberAvatarPlayback
+import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
+import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.ui.theme.*
 
 val ProfileHeaderFont = FontFamily(
     Font(R.font.plus_jakarta_sans_bold, FontWeight.Bold)
 )
 
-// --- Profile cover banner (Phase 1: layout & layering only) ---------------
+// --- Profile cover banner (expanded header + bottom fade) ------------------
 //
-// Facebook-style cover: a wide rounded band across the top of the Profile
-// screen with the avatar straddling its bottom edge — 90% of the circle
-// inside the band, 10% hanging below. The band is drawn inside the screen
-// subtree, which sits above the root-level particle background, so it hides
-// the particles beneath it while they keep drifting behind everything else.
-// Later phases add real banner backgrounds (gradients, gallery, video,
-// avatar-derived), the bottom-edge blur/fade blend, and the selection sheet;
-// this phase only fixes the geometry and the layering those features plug
-// into. The gradient below is a static placeholder, not a selectable preset.
+// Facebook-style cover: a large, responsively tall rounded header at the
+// top of the Profile screen (portrait 300–360.dp at 12.dp gutters;
+// landscape a smaller responsive share inside the left column) with the
+// avatar straddling its bottom edge — 90% of the circle inside, 10%
+// hanging below. The header's bottom fades into NazoBackground so it never
+// ends on a hard rectangle. It is drawn inside the screen subtree, which
+// sits above the root-level particle background, so it hides the particles
+// beneath it while they keep drifting behind everything else.
+// Custom cover media: center-cropped photos plus validated, muted H.264 MP4
+// loops. The picker previews first, then ProfileImageStore writes an app-owned
+// file and only afterwards replaces coverPictureUri in preferences.
+// Built-in collections remain in CoverBackgroundSheet alongside the custom
+// photo/video; their preset id is separate, so switching never discards the
+// custom medium. Automatic matching has its own flag and cached artifact, so
+// it follows avatar changes without overwriting those manual values. The
+// default gradient remains visible while preparation/loading is incomplete.
 
 /** Avatar diameter used by the cover straddle (same 132.dp as before). */
 private val CoverAvatarSize = 132.dp
@@ -117,6 +128,13 @@ private const val CoverOverhangFraction = 0.10f
 
 /** Corner radius of the cover band. */
 private val CoverCornerRadius = 20.dp
+
+/**
+ * Share of the cover's height taken by the bottom fade into the page
+ * background. Sized as a fraction (not a fixed dp) so the blend keeps the
+ * same proportions across the responsive header heights and orientations.
+ */
+private const val CoverBottomFadeFraction = 0.4f
 
 /** Distance the avatar overhangs the cover edge: 10% of its diameter. */
 internal fun coverOverhang(avatarSize: Dp): Dp = avatarSize * CoverOverhangFraction
@@ -129,25 +147,120 @@ internal fun coverOverhang(avatarSize: Dp): Dp = avatarSize * CoverOverhangFract
  */
 internal fun coverContentGap(avatarSize: Dp): Dp = coverOverhang(avatarSize) + 16.dp
 
-/** Cover band height: a substantial slice of the screen, tighter in landscape. */
-internal fun coverHeight(isLandscape: Boolean): Dp = if (isLandscape) 120.dp else 160.dp
+/**
+ * Cover height, responsive to the window so the header is the dominant
+ * element of the upper profile without starving the content below (which
+ * scrolls in portrait, and inside each column in landscape):
+ *  - portrait: 34 % of the screen height, clamped to 220–280.dp;
+ *  - landscape: 34 % of the screen height, clamped to 110–170.dp.
+ * These shorter heights lift the avatar away from the screen midpoint while
+ * leaving the cover visually prominent. Tiny split-screen windows still
+ * scroll rather than clipping the profile content.
+ */
+internal fun coverHeight(isLandscape: Boolean, screenHeightDp: Int): Dp {
+    // Shorten the expanded header so the overlapping avatar sits clearly
+    // above the screen midpoint while the cover still dominates the profile.
+    val fraction = 0.34f
+    val (min, max) = if (isLandscape) 110f to 170f else 220f to 280f
+    return (screenHeightDp * fraction).coerceIn(min, max).dp
+}
+
+internal data class LandscapeProfileSpacing(
+    val startPadding: Dp,
+    val columnSpacing: Dp,
+)
 
 /**
- * The cover band itself: a full-width rounded rectangle with a static
- * placeholder gradient. Opaque on purpose — it must hide the particle
+ * Moves only the landscape cover/avatar column toward the cutout-safe edge.
+ * Scaffold's start inset already clears the display cutout/system bars, so the
+ * additional 24.dp content gutter can shrink as horizontal room increases.
+ * Every dp removed there is added to the 32.dp column gap: left-column width
+ * and the right-column start edge therefore remain unchanged. The left shift
+ * ramps at 4% above 600dp and caps at 15dp, retaining a 9dp visual guard even
+ * on wide screens while protecting narrow split-screen windows.
+ */
+internal fun landscapeProfileSpacing(screenWidthDp: Int): LandscapeProfileSpacing {
+    val coverLeftShift = ((screenWidthDp - 600) * 0.04f).coerceIn(0f, 15f).dp
+    return LandscapeProfileSpacing(
+        startPadding = 24.dp - coverLeftShift,
+        columnSpacing = 32.dp + coverLeftShift,
+    )
+}
+
+/** The right pane already starts below the status bar; this is visual breathing room only. */
+internal val LandscapeRightColumnTopPadding = 8.dp
+
+/**
+ * The banner's width/height ratio for the current configuration, shared
+ * with the cover preview dialog so its frame is exactly WYSIWYG. Mirrors
+ * the layout math: portrait = cover width (screen − 24.dp for the cover's
+ * 12.dp gutters) over the responsive [coverHeight]; landscape = left column
+ * (40 % of screen − 80.dp combined outer/column spacing) over the responsive
+ * cover height, including the top-bar overlap. [landscapeProfileSpacing]
+ * exchanges start gutter for inter-column spacing while preserving that 80.dp
+ * total, so the preview width remains exact. See the landscape Row and portrait
+ * Column in [ProfileScreen].
+ */
+internal fun coverPreviewAspectRatio(
+    screenWidthDp: Int,
+    screenHeightDp: Int,
+    isLandscape: Boolean,
+    coverTopExtensionDp: Float = 0f,
+): Float {
+    val width = if (isLandscape) {
+        (screenWidthDp - 80) * 0.4f
+    } else {
+        (screenWidthDp - 24).toFloat()
+    }
+    val height = coverHeight(isLandscape, screenHeightDp).value + coverTopExtensionDp
+    // Degenerate-width guard (absurd split-screen slivers): never hand the
+    // preview an aspect ratio at or below 1:1.
+    return (width / height).coerceAtLeast(1f)
+}
+
+/**
+ * The app-bar chrome the cover extends upward into (64.dp bar plus the
+ * orientation-specific gutter), as plain dp for the preview dialog and the
+ * selection sheet's WYSIWYG frames. Keep in sync with `coverTopExtension`
+ * inside [ProfileScreen].
+ */
+internal fun coverPreviewTopExtensionDp(isLandscape: Boolean): Float =
+    64f + (if (isLandscape) 8f else 16f)
+
+/**
+ * The cover header itself: a large rounded rectangle drawn from the
+ * resolved [CoverVisual] — the placeholder gradient, custom photo/video,
+ * generated avatar-matched image/video, a bundled preset photo (using the same
+ * `ContentScale.Crop` rules: fill, clip excess, never stretch), or a preset
+ * animated gradient (procedural and lifecycle-aware). Opaque either way, so
+ * it hides the particle
  * background beneath it (the root draws the ambient particle layer behind
  * the transparent screens).
  *
- * The background is applied with `background(brush, shape)` rather than
- * `clip(shape)` on purpose: children — the straddling avatar — must be
- * allowed to overflow the bottom edge, and a clip would slice the
- * overhanging 10% off. The later blur/fade blend for the bottom edge gets
- * its own layer inside this Box.
+ * The bottom [CoverBottomFadeFraction] of the header fades into
+ * [NazoBackground] so the expanded cover doesn't end on a hard rectangular
+ * edge — the blend target is the exact color the page paints, which keeps
+ * it correct across themes. The strip's square bottom corners are
+ * invisible: they paint the same color as the page showing past the
+ * header's rounded corners.
+ *
+ * Two deliberate no-clip rules in this Box:
+ *  1. The Box's own background uses `background(brush, shape)` rather than
+ *     `clip(shape)` so children — the straddling avatar — can overflow the
+ *     bottom edge; a clip would slice the overhanging 10% off. The photo
+ *     and the fade are therefore clipped/sized on their OWN nodes.
+ *  2. Paint order is photo → fade → content (avatar) → edit slot: the
+ *     avatar and the pencil draw above the fade and stay crisp on top of it.
  */
 @Composable
 private fun ProfileCoverBanner(
     height: Dp,
+    visual: CoverVisual,
+    videoPlaybackAllowed: Boolean,
+    liveVideoAllowed: Boolean,
+    transitionsAllowed: Boolean,
     modifier: Modifier = Modifier,
+    editButton: @Composable BoxScope.() -> Unit = {},
     content: @Composable BoxScope.() -> Unit,
 ) {
     Box(
@@ -158,8 +271,80 @@ private fun ProfileCoverBanner(
                 brush = Brush.verticalGradient(listOf(NazoPrimary, NazoSurface)),
                 shape = RoundedCornerShape(CoverCornerRadius),
             ),
-        content = content,
+    ) {
+        // One bounded transition layer owns every artwork kind. It preloads
+        // local media, crossfades static/gradient content, and keeps at most one
+        // live video plane. Paint order stays artwork → fade → content, so the
+        // avatar and edit affordance retain their original geometry and depth.
+        TransitioningCoverArtwork(
+            visual = visual,
+            playbackAllowed = videoPlaybackAllowed,
+            liveVideoAllowed = liveVideoAllowed,
+            transitionsAllowed = transitionsAllowed,
+            modifier = Modifier
+                .matchParentSize()
+                .clip(RoundedCornerShape(CoverCornerRadius)),
+        )
+        // Bottom fade into the page: a soft transparent → NazoBackground
+        // gradient over the lower part of the header. Static drawing only —
+        // no blur layer, no per-frame work (the modest-phone budget from
+        // the particle/overlay work still holds), and the 3-stop curve
+        // eases the transition so no hard boundary is visible.
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .fillMaxHeight(CoverBottomFadeFraction)
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        0.45f to NazoBackground.copy(alpha = 0.55f),
+                        1f to NazoBackground,
+                    )
+                ),
+        )
+        content()
+        Box(modifier = Modifier.align(Alignment.BottomEnd)) {
+            editButton()
+        }
+    }
+}
+
+/**
+ * Pencil in the banner's bottom-right corner: opens the unified cover
+ * selection sheet (photos, animated gradients, custom gallery option).
+ * 44.dp target with 8.dp margins; it clears the straddling avatar even in the
+ * narrowest supported landscape left column (40/60 split at 640.dp). The icon
+ * carries the accessibility label; the clickable Box merges it so TalkBack
+ * announces one "Change cover background" control.
+ */
+@Composable
+private fun CoverEditButton(onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoPillCornerMorphShape(
+        interactionSource = interactionSource,
+        pressedCornerPercent = 28f,
     )
+    Box(
+        modifier = Modifier
+            .padding(8.dp)
+            .size(44.dp)
+            .clip(shape)
+            .background(Color.Black.copy(alpha = 0.35f), shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Edit,
+            contentDescription = "Change cover background",
+            tint = Color.White,
+            modifier = Modifier.size(20.dp),
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -167,12 +352,40 @@ private fun ProfileCoverBanner(
 fun ProfileScreen(
     username: String,
     profilePictureUri: String?,
+    /** Cover banner medium: null, or our app-owned photo/video `file://`. */
+    coverPictureUri: String? = null,
+    /** Built-in cover preset id (`photo_*` / `gradient_*`); null = custom/default flow. */
+    coverPresetId: String? = null,
+    automaticCoverEnabled: Boolean = false,
+    automaticCoverState: AutomaticCoverState = AutomaticCoverState.Idle,
+    /** True only when Profile is the fully settled screen, never during overlap. */
+    screenActive: Boolean = true,
+    /**
+     * False only for an ordinary Profile entry: show the prepared poster until
+     * the screen settles, then create the live TextureView/decoder. Outgoing and
+     * predictive transitions keep an existing surface attached.
+     */
+    coverVideoSurfaceAllowed: Boolean = true,
+    /**
+     * Remains true during an uncommitted predictive-back scrub, so the banner
+     * video keeps advancing exactly like the persistent video avatar. Becomes
+     * false only after navigation commits away from Profile.
+     */
+    coverVideoPlaybackAllowed: Boolean = screenActive,
     quizStats: QuizStats = QuizStats(),
+    progression: PlayerProgress = PlayerProgression.from(quizStats),
+    achievementsUnlocked: Int = 0,
+    achievementCount: Int = 0,
     /** When true, never hit the network: use the local generator directly. */
     offline: Boolean = false,
     onBack: () -> Unit = {},
     onUsernameChange: (String) -> Unit,
     onProfilePictureChange: (String?) -> Unit,
+    onCoverPictureChange: (String?) -> Unit = {},
+    onCoverPresetChange: (String?) -> Unit = {},
+    onAutomaticCoverChange: (Boolean) -> Unit = {},
+    onPrepareAutomaticCover: () -> Unit = {},
+    onStopPreparingAutomaticCover: () -> Unit = {},
     onNavigateToStatistics: () -> Unit,
     onNavigateToSettings: () -> Unit = {},
 ) {
@@ -191,9 +404,43 @@ fun ProfileScreen(
     // Removing a picture is destructive from here (a custom photo would have
     // to be re-added by hand), so it gets one explicit confirmation step.
     var showRemoveConfirm by rememberRetained("Profile.showRemoveConfirm") { false }
+    // Cover (banner) flow: the pencil's action sheet, the remove
+    // confirmation (same destructive-action rule as the avatar's Remove),
+    // and the picked source — retained so a rotation reopens the preview
+    // dialog instead of dropping the pick (same rule as pendingSource).
+    var showCoverSheet by rememberRetained("Profile.showCoverSheet") { false }
+    var showCoverRemoveConfirm by rememberRetained("Profile.showCoverRemoveConfirm") { false }
+    var pendingCoverSource by rememberRetained<ProfileImageSource?>("Profile.pendingCoverSource") { null }
+    var pendingCoverIsVideo by rememberRetained("Profile.pendingCoverIsVideo") { false }
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val avatarOverscrollEffect = rememberOverscrollEffect()
+    val videoAvatarOverscrolling = avatarOverscrollEffect?.isInProgress == true
+
+    // A generated artifact is valid only for the avatar URI that produced it;
+    // this guard prevents one frame of the old background after an avatar swap.
+    val pendingAutomaticState = profilePictureUri?.let(AutomaticCoverState::Preparing)
+        ?: AutomaticCoverState.Unavailable(
+            null,
+            "Add a photo or MP4 video avatar to preview automatic matching.",
+        )
+    val visibleAutomaticState = when (val state = automaticCoverState) {
+        is AutomaticCoverState.Ready ->
+            if (state.artifact.sourceUri == profilePictureUri) state else pendingAutomaticState
+        is AutomaticCoverState.Preparing ->
+            if (state.sourceUri == profilePictureUri) state else pendingAutomaticState
+        is AutomaticCoverState.Unavailable ->
+            if (state.sourceUri == profilePictureUri) state else pendingAutomaticState
+        AutomaticCoverState.Idle -> state
+    }
+    val automaticArtifact = (visibleAutomaticState as? AutomaticCoverState.Ready)?.artifact
+    val coverVisual = resolveCoverVisual(
+        galleryUri = coverPictureUri,
+        presetId = coverPresetId,
+        automaticEnabled = automaticCoverEnabled,
+        automaticArtifact = automaticArtifact,
+    )
 
     // The image being previewed/cropped, and the temp file behind it (URL only).
     // Retained so a rotation does not throw away an edit in progress. The draft
@@ -208,7 +455,8 @@ fun ProfileScreen(
     // less work during the dialog's open animation, same visuals on return.
     val avatarBehindDialogsPaused =
         showPictureDialog || showAvatarPreview || showUrlDialog ||
-            showRemoveConfirm || pendingSource != null
+            showRemoveConfirm || pendingSource != null ||
+            pendingCoverSource != null || showCoverSheet || showCoverRemoveConfirm
 
     // PickVisualMedia is the system photo picker: a gallery grid with no
     // storage permission and no filesystem browsing. It replaces
@@ -231,27 +479,77 @@ fun ProfileScreen(
         }
     )
 
+    // Separate photo/video launch actions keep the system picker's filter
+    // honest. Both are previewed first; accepted media is copied into our
+    // private cover directory, so no long-lived provider permission is needed.
+    val coverPhotoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+        onResult = { uri ->
+            uri?.let {
+                pendingCoverIsVideo = false
+                pendingCoverSource = ProfileImageSource.ContentUri(it)
+            }
+        },
+    )
+    val coverVideoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+        onResult = { uri ->
+            uri?.let {
+                pendingCoverIsVideo = true
+                pendingCoverSource = ProfileImageSource.ContentUri(it)
+            }
+        },
+    )
+
+
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
             CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        "Profile",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontFamily = ProfileHeaderFont,
-                        fontWeight = FontWeight.Bold,
-                        color = NazoPrimary,
-                        letterSpacing = 0.5.sp
-                    )
-                },
+                // Align the compact toolbar capsule with the cover's left edge,
+                // inset slightly so it sits comfortably inside the artwork.
+                title = {},
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    val backInteraction = remember { MutableInteractionSource() }
+                    val backShape = rememberNazoPillCornerMorphShape(backInteraction)
+                    Surface(
+                        // Match the pill's 8.dp top breathing room: portrait
+                        // cover starts at 12.dp; landscape's left column at
+                        // 24.dp. Add the same 8.dp inset in either orientation.
+                        modifier = Modifier.padding(start = if (isLandscape) 32.dp else 20.dp),
+                        shape = backShape,
+                        color = NazoSurface.copy(alpha = 0.94f),
+                        contentColor = NazoTextPrimary,
+                        border = BorderStroke(1.dp, NazoPrimary.copy(alpha = 0.18f)),
+                        shadowElevation = 2.dp,
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(end = 18.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            IconButton(
+                                onClick = onBack,
+                                interactionSource = backInteraction,
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = NazoTextPrimary,
+                                )
+                            }
+                            Text(
+                                "Profile",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontFamily = ProfileHeaderFont,
+                                fontWeight = FontWeight.Bold,
+                                color = NazoPrimary,
+                                letterSpacing = 0.5.sp,
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
+                    containerColor = Color.Transparent,
                 )
             )
         }
@@ -267,130 +565,186 @@ fun ProfileScreen(
             }
         } else null
 
+        // One cover edit affordance for both orientations, handed to the
+        // banner as a slot so the pencil and its menu anchor to the banner's
+        // bottom-right corner regardless of layout.
+        val coverEditButton: @Composable BoxScope.() -> Unit = {
+            CoverEditButton(onClick = { showCoverSheet = true })
+        }
+
+        // Scaffold draws the transparent top app bar above its body content.
+        // Start the body at the top of the window, then extend the cover by the
+        // inset/gutter that used to sit above it. This puts the image behind the
+        // toolbar without shifting the avatar or the content below the cover.
+        val layoutDirection = LocalLayoutDirection.current
+        // Keep the system status-bar region clear. Only overlap the app-bar
+        // row itself; the status icons/clock/battery stay on the page surface.
+        val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        val coverTopExtension = (padding.calculateTopPadding() - statusBarTop)
+            .coerceAtLeast(0.dp) + (if (isLandscape) 8.dp else 16.dp)
+
         if (isLandscape) {
             // --- LANDSCAPE LAYOUT ---
-            Column(
+            val landscapeSpacing = landscapeProfileSpacing(configuration.screenWidthDp)
+            Row(
                 modifier = Modifier
-                    .padding(padding)
-                    .fillMaxSize(),
-            ) {
-                // Cover band: same straddling avatar as portrait; 24.dp
-                // gutters keep it aligned with the row content below.
-                ProfileCoverBanner(
-                    height = coverHeight(isLandscape = true),
-                    modifier = Modifier.padding(horizontal = 24.dp),
-                ) {
-                    ProfileAvatar(
-                        // Bottom-centered, pushed down by exactly the
-                        // overhang so the 10% slice clears the band's edge.
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .offset(y = coverOverhang(CoverAvatarSize)),
-                        name = username,
-                        pictureUri = profilePictureUri,
-                        size = CoverAvatarSize,
-                        onClick = { showPictureDialog = true },
-                        onLongClick = avatarLongPress,
-                        paused = avatarBehindDialogsPaused,
-                        anchorId = AvatarAnchorId.Profile,
+                    .padding(
+                        start = padding.calculateStartPadding(layoutDirection),
+                        top = statusBarTop,
+                        end = padding.calculateEndPadding(layoutDirection),
+                        bottom = padding.calculateBottomPadding(),
                     )
-                }
-
-                // Keep the avatar's overhang clear of the row content.
-                Spacer(Modifier.height(coverContentGap(CoverAvatarSize)))
-
-                Row(
+                    .fillMaxSize()
+                    .padding(
+                        start = landscapeSpacing.startPadding,
+                        end = 24.dp,
+                        bottom = 8.dp,
+                    ),
+                horizontalArrangement = Arrangement.spacedBy(landscapeSpacing.columnSpacing),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Left Column: Cover & Username. The banner lives ENTIRELY
+                // in this column (40/60 split) — it must not stretch across
+                // the screen or push the stats side out of view.
+                Column(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(32.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .fillMaxHeight()
+                        // Preserve platform stretch. During it, the native MP4
+                        // layer yields to the poster inside this transformed
+                        // hierarchy, preventing the former two-circle split.
+                        .verticalScroll(
+                            rememberScrollState(),
+                            overscrollEffect = avatarOverscrollEffect,
+                        ),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Top
                 ) {
-                    // Left Column: Username & hint
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .verticalScroll(rememberScrollState()),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                    // Cover band: same straddling avatar as portrait, living
+                    // entirely inside this column (40/60 split).
+                    ProfileCoverBanner(
+                        height = coverHeight(
+                            isLandscape = true,
+                            screenHeightDp = configuration.screenHeightDp,
+                        ) + coverTopExtension,
+                        visual = coverVisual,
+                        videoPlaybackAllowed =
+                            coverVideoPlaybackAllowed && !avatarBehindDialogsPaused,
+                        liveVideoAllowed = coverVideoSurfaceAllowed,
+                        transitionsAllowed = screenActive,
+                        editButton = coverEditButton,
                     ) {
-                        Surface(
-                            onClick = { showUsernameDialog = true },
-                            shape = MaterialTheme.shapes.extraLarge,
-                            color = Color.Transparent,
-                            modifier = Modifier.clip(MaterialTheme.shapes.extraLarge)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                            ) {
-                                Text(
-                                    text = username.ifBlank {
-                                        if (quizStats.totalQuizzes > 0) "Edit Profile" else "Create Profile"
-                                    },
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = NazoTextPrimary
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Icon(
-                                    imageVector = Icons.Rounded.Edit,
-                                    contentDescription = "Edit username",
-                                    tint = NazoPrimary,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(Modifier.height(8.dp))
-                        // Discloses both picture gestures; the press-and-hold
-                        // preview was previously a hidden easter egg.
-                        Text(
-                            text = if (profilePictureUri.isNullOrBlank())
-                                "Tap the picture to choose one"
-                            else
-                                "Tap the picture to change it · press and hold to preview",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = NazoTextSecondary,
-                            textAlign = TextAlign.Center,
+                        ProfileAvatar(
+                            // Bottom-centered, pushed down by exactly the
+                            // overhang so the 10% slice clears the band's edge.
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .offset(y = coverOverhang(CoverAvatarSize)),
+                            name = username,
+                            pictureUri = profilePictureUri,
+                            size = CoverAvatarSize,
+                            onClick = { showPictureDialog = true },
+                            onLongClick = avatarLongPress,
+                            paused = avatarBehindDialogsPaused,
+                            animationAllowed = screenActive,
+                            videoOverlaySuppressed = videoAvatarOverscrolling,
+                            anchorId = AvatarAnchorId.Profile,
                         )
                     }
 
-                    // Right Column: Stats & Menu
-                    Column(
-                        modifier = Modifier
-                            .weight(1.5f)
-                            .fillMaxHeight()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        if (quizStats.totalQuizzes > 0) {
-                            ProfileStatsCard(stats = quizStats)
-                            Spacer(modifier = Modifier.height(16.dp))
-                        }
+                    // Keep the avatar's overhang clear of the row content.
+                    Spacer(Modifier.height(coverContentGap(CoverAvatarSize)))
 
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                    val usernameInteraction = remember { MutableInteractionSource() }
+                    val usernameShape = rememberNazoRoundedCornerMorphShape(
+                        interactionSource = usernameInteraction,
+                        restingCorner = 28.dp,
+                        pressedCorner = 14.dp,
+                    )
+                    Surface(
+                        onClick = { showUsernameDialog = true },
+                        interactionSource = usernameInteraction,
+                        shape = usernameShape,
+                        color = Color.Transparent,
+                        modifier = Modifier.clip(usernameShape)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
-                            ProfileMenuItem(
-                                icon = Icons.Filled.BarChart,
-                                title = "Statistics",
-                                subtitle = "View your quiz insights",
-                                onClick = onNavigateToStatistics
+                            Text(
+                                text = username.ifBlank {
+                                    if (quizStats.totalQuizzes > 0) "Edit Profile" else "Create Profile"
+                                },
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = NazoTextPrimary
                             )
-                            ProfileMenuItem(
-                                icon = Icons.Filled.Settings,
-                                title = "Settings",
-                                subtitle = "Appearance, categories, backup",
-                                onClick = onNavigateToSettings
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(
+                                imageVector = Icons.Rounded.Edit,
+                                contentDescription = "Edit username",
+                                tint = NazoPrimary,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    // Discloses both picture gestures; the press-and-hold
+                    // preview was previously a hidden easter egg.
+                    Text(
+                        text = if (profilePictureUri.isNullOrBlank())
+                            "Tap the picture to choose one"
+                        else
+                            "Tap the picture to change it · press and hold to preview",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NazoTextSecondary,
+                        textAlign = TextAlign.Center,
+                    )
+
+                }
+
+                // Right Column: Stats & Menu. The parent already begins below
+                // the status bar, so this pane must not reserve the toolbar's
+                // cover-only overlap. Top arrangement keeps the statistics card
+                // near the safe edge; verticalScroll still handles short windows.
+                Column(
+                    modifier = Modifier
+                        .weight(1.5f)
+                        .fillMaxHeight()
+                        .padding(top = LandscapeRightColumnTopPadding)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.Top
+                ) {
+                    ProfileProgressCard(
+                        stats = quizStats,
+                        progression = progression,
+                        achievementsUnlocked = achievementsUnlocked,
+                        achievementCount = achievementCount,
+                        onClick = onNavigateToStatistics,
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        ProfileMenuItem(
+                            icon = Icons.Filled.BarChart,
+                            title = "Statistics",
+                            subtitle = "View your quiz insights",
+                            onClick = onNavigateToStatistics
+                        )
+                        ProfileMenuItem(
+                            icon = Icons.Filled.Settings,
+                            title = "Settings",
+                            subtitle = "Appearance, categories, backup",
+                            onClick = onNavigateToSettings
+                        )
                     }
                 }
             }
@@ -398,15 +752,39 @@ fun ProfileScreen(
             // --- PORTRAIT LAYOUT (Original) ---
             Column(
                 modifier = Modifier
-                    .padding(padding)
+                    .padding(
+                        start = padding.calculateStartPadding(layoutDirection),
+                        top = statusBarTop,
+                        end = padding.calculateEndPadding(layoutDirection),
+                        bottom = padding.calculateBottomPadding(),
+                    )
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                    // Preserve platform stretch; the native video temporarily
+                    // yields to the in-tree poster while this effect is active.
+                    .verticalScroll(
+                        rememberScrollState(),
+                        overscrollEffect = avatarOverscrollEffect,
+                    )
+                    .padding(bottom = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Cover band spans the content width; the avatar straddles
-                // its bottom edge — 90% inside the band, 10% below it.
-                ProfileCoverBanner(height = coverHeight(isLandscape = false)) {
+                // Expanded cover: wider than the content (12.dp gutters
+                // vs 24.dp) and responsively tall — the dominant element
+                // of the upper profile — with the avatar straddling its
+                // bottom edge: 90% inside the band, 10% below it.
+                ProfileCoverBanner(
+                    height = coverHeight(
+                        isLandscape = false,
+                        screenHeightDp = configuration.screenHeightDp,
+                    ) + coverTopExtension,
+                    visual = coverVisual,
+                    videoPlaybackAllowed =
+                        coverVideoPlaybackAllowed && !avatarBehindDialogsPaused,
+                    liveVideoAllowed = coverVideoSurfaceAllowed,
+                    transitionsAllowed = screenActive,
+                    editButton = coverEditButton,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                ) {
                     ProfileAvatar(
                         // Bottom-centered, pushed down by exactly the
                         // overhang so the 10% slice clears the band's edge.
@@ -419,83 +797,104 @@ fun ProfileScreen(
                         onClick = { showPictureDialog = true },
                         onLongClick = avatarLongPress,
                         paused = avatarBehindDialogsPaused,
+                        animationAllowed = screenActive,
+                        videoOverlaySuppressed = videoAvatarOverscrolling,
                         anchorId = AvatarAnchorId.Profile,
                     )
                 }
 
                 Spacer(Modifier.height(coverContentGap(CoverAvatarSize)))
 
-                Surface(
-                    onClick = { showUsernameDialog = true },
-                    shape = MaterialTheme.shapes.extraLarge,
-                    color = Color.Transparent,
-                    modifier = Modifier.clip(MaterialTheme.shapes.extraLarge)
+                // Everything below keeps the original 24.dp gutters, so
+                // the wider cover doesn't disturb the content's rhythm.
+                Column(
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    val usernameInteraction = remember { MutableInteractionSource() }
+                    val usernameShape = rememberNazoRoundedCornerMorphShape(
+                        interactionSource = usernameInteraction,
+                        restingCorner = 28.dp,
+                        pressedCorner = 14.dp,
+                    )
+                    Surface(
+                        onClick = { showUsernameDialog = true },
+                        interactionSource = usernameInteraction,
+                        shape = usernameShape,
+                        color = Color.Transparent,
+                        modifier = Modifier.clip(usernameShape)
                     ) {
-                        Text(
-                            text = username.ifBlank {
-                                if (quizStats.totalQuizzes > 0) "Edit Profile" else "Create Profile"
-                            },
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            color = NazoTextPrimary
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = username.ifBlank {
+                                    if (quizStats.totalQuizzes > 0) "Edit Profile" else "Create Profile"
+                                },
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = NazoTextPrimary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(
+                                imageVector = Icons.Rounded.Edit,
+                                contentDescription = "Edit username",
+                                tint = NazoPrimary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    // Discloses both picture gestures; the press-and-hold preview
+                    // was previously a hidden easter egg.
+                    Text(
+                        text = if (profilePictureUri.isNullOrBlank())
+                            "Tap the picture to choose one"
+                        else
+                            "Tap the picture to change it · press and hold to preview",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NazoTextSecondary,
+                        textAlign = TextAlign.Center,
+                    )
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    ProfileProgressCard(
+                        stats = quizStats,
+                        progression = progression,
+                        achievementsUnlocked = achievementsUnlocked,
+                        achievementCount = achievementCount,
+                        onClick = onNavigateToStatistics,
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        ProfileMenuItem(
+                            icon = Icons.Filled.BarChart,
+                            title = "Statistics",
+                            subtitle = "View your quiz insights",
+                            onClick = onNavigateToStatistics
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Icon(
-                            imageVector = Icons.Rounded.Edit,
-                            contentDescription = "Edit username",
-                            tint = NazoPrimary,
-                            modifier = Modifier.size(22.dp)
+                        ProfileMenuItem(
+                            icon = Icons.Filled.Settings,
+                            title = "Settings",
+                            subtitle = "Appearance, categories, backup",
+                            onClick = onNavigateToSettings
                         )
                     }
-                }
-
-                Spacer(Modifier.height(8.dp))
-                // Discloses both picture gestures; the press-and-hold preview
-                // was previously a hidden easter egg.
-                Text(
-                    text = if (profilePictureUri.isNullOrBlank())
-                        "Tap the picture to choose one"
-                    else
-                        "Tap the picture to change it · press and hold to preview",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NazoTextSecondary,
-                    textAlign = TextAlign.Center,
-                )
-
-                Spacer(modifier = Modifier.height(32.dp))
-
-                if (quizStats.totalQuizzes > 0) {
-                    ProfileStatsCard(stats = quizStats)
-                    Spacer(modifier = Modifier.height(24.dp))
-                }
-
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    ProfileMenuItem(
-                        icon = Icons.Filled.BarChart,
-                        title = "Statistics",
-                        subtitle = "View your quiz insights",
-                        onClick = onNavigateToStatistics
-                    )
-                    ProfileMenuItem(
-                        icon = Icons.Filled.Settings,
-                        title = "Settings",
-                        subtitle = "Appearance, categories, backup",
-                        onClick = onNavigateToSettings
-                    )
                 }
             }
         }
     }
+
     // Scaffold(
     //     containerColor = Color.Transparent,
     //     topBar = {
@@ -624,8 +1023,16 @@ fun ProfileScreen(
                         // provider it asks the model; without one it falls back
                         // to the local generator silently — no API error for a
                         // user who never configured a key.
+                        val generateInteraction = remember { MutableInteractionSource() }
+                        val generateShape = rememberNazoPillCornerMorphShape(
+                            interactionSource = generateInteraction,
+                            pressedCornerPercent = 28f,
+                            enabled = !generatingName,
+                        )
                         IconButton(
                             enabled = !generatingName,
+                            interactionSource = generateInteraction,
+                            modifier = Modifier.clip(generateShape),
                             onClick = {
                                 val provider = apiKeyStore.getGenerationProvider()
                                 val key = provider?.let { apiKeyStore.getKey(it) }
@@ -700,16 +1107,15 @@ fun ProfileScreen(
                         }
                     },
                     // Always present, so the field does not jump as the error
-                    // appears and disappears; AnimatedVisibility fades and
-                    // expands the text instead of snapping it in.
+                    // appears and disappears; the retained message host fades
+                    // and resizes without clearing the text before its exit.
                     supportingText = {
-                        AnimatedVisibility(
-                            visible = nameError != null,
-                            enter = fadeIn(tween(180)) + expandVertically(tween(180)),
-                            exit = fadeOut(tween(140)) + shrinkVertically(tween(140)),
-                        ) {
+                        NazoTransientMessage(
+                            value = nameError,
+                            label = "profileUsernameError",
+                        ) { visibleError ->
                             Text(
-                                text = nameError.orEmpty(),
+                                text = visibleError,
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -762,14 +1168,22 @@ fun ProfileScreen(
                 ) {
                     // Visible way out — the viewer previously closed only by
                     // tapping outside or Back, which nothing advertised.
+                    val closeInteraction = remember { MutableInteractionSource() }
+                    val closeShape = rememberNazoPillCornerMorphShape(
+                        interactionSource = closeInteraction,
+                        pressedCornerPercent = 28f,
+                    )
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(8.dp)
                             .size(32.dp)
-                            .clip(CircleShape)
-                            .background(NazoSurfaceVariant)
-                            .clickable { showAvatarPreview = false },
+                            .clip(closeShape)
+                            .background(NazoSurfaceVariant, closeShape)
+                            .clickable(
+                                interactionSource = closeInteraction,
+                                indication = LocalIndication.current,
+                            ) { showAvatarPreview = false },
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
@@ -849,27 +1263,40 @@ fun ProfileScreen(
     if (showPictureDialog) {
         var avatarTab by remember { mutableStateOf(0) }
         var nonce by remember { mutableStateOf("") }
-        var dynamicTabs by remember { mutableStateOf<List<Pair<String, List<AvatarPreset>>>>(emptyList()) }
-        var loadingDynamic by remember { mutableStateOf(true) }
-        val scope = rememberCoroutineScope()
-
-        val tabs = remember(nonce, dynamicTabs) {
-            buildStaticAvatarCategories(nonce) + dynamicTabs
+        var dynamicResults by remember {
+            mutableStateOf<Map<DynamicAvatarSource, AvatarSourceResult>>(emptyMap())
         }
-        val safeTab = avatarTab.coerceIn(0, tabs.size - 1)
+        var loadingSource by remember { mutableStateOf<DynamicAvatarSource?>(null) }
+
+        val staticTabs = remember(nonce) { AvatarPickerSources.staticCategories(nonce) }
+        val tabs = staticTabs + AvatarPickerSources.dynamicSources.map { source ->
+            source.tabTitle to (dynamicResults[source]?.items ?: emptyList())
+        }
+        val safeTab = avatarTab.coerceIn(0, tabs.lastIndex)
+        val selectedDynamicSource = AvatarPickerSources.sourceForTab(safeTab, staticTabs.size)
+        val selectedDynamicResult = selectedDynamicSource?.let(dynamicResults::get)
+        val loadingDynamic = loadingSource != null
 
         fun refreshAvatars() {
             nonce = Random.nextLong(100_000, 999_999).toString()
-            scope.launch {
-                loadingDynamic = true
-                dynamicTabs = fetchDynamicAvatarTabs()
-                loadingDynamic = false
+            selectedDynamicSource?.let { source ->
+                dynamicResults = dynamicResults - source
             }
         }
 
-        LaunchedEffect(Unit) {
-            dynamicTabs = fetchDynamicAvatarTabs()
-            loadingDynamic = false
+        // Privacy: opening the picker (Emoji is the default tab) performs no
+        // network requests. Each remote API is contacted only when the player
+        // deliberately opens that source's tab, and one unavailable source
+        // does not delay or remove any of the others.
+        LaunchedEffect(selectedDynamicSource, nonce) {
+            val source = selectedDynamicSource ?: return@LaunchedEffect
+            if (dynamicResults[source] != null) return@LaunchedEffect
+            loadingSource = source
+            try {
+                dynamicResults = dynamicResults + (source to AvatarPickerSources.fetch(source))
+            } finally {
+                if (loadingSource == source) loadingSource = null
+            }
         }
 
         // LANDSCAPE SPACING ONLY -- portrait is untouched.
@@ -897,7 +1324,16 @@ fun ProfileScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("Change profile picture", modifier = Modifier.weight(1f))
-                    IconButton(onClick = { refreshAvatars() }) {
+                    val refreshInteraction = remember { MutableInteractionSource() }
+                    val refreshShape = rememberNazoPillCornerMorphShape(
+                        interactionSource = refreshInteraction,
+                        pressedCornerPercent = 28f,
+                    )
+                    IconButton(
+                        onClick = { refreshAvatars() },
+                        interactionSource = refreshInteraction,
+                        modifier = Modifier.clip(refreshShape),
+                    ) {
                         if (loadingDynamic) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(20.dp),
@@ -967,12 +1403,20 @@ fun ProfileScreen(
                                 is AvatarPreset.Generated -> preset.url
                             }
                             key(presetKey) {
+                                val presetInteraction = remember { MutableInteractionSource() }
+                                val presetShape = rememberNazoPillCornerMorphShape(
+                                    interactionSource = presetInteraction,
+                                    pressedCornerPercent = 28f,
+                                )
                                 Surface(
                                     modifier = Modifier
                                         .padding(horizontal = 8.dp)
                                         .size(64.dp)
-                                        .clip(CircleShape)
-                                        .clickable {
+                                        .clip(presetShape)
+                                        .clickable(
+                                            interactionSource = presetInteraction,
+                                            indication = LocalIndication.current,
+                                        ) {
                                             val value = when (preset) {
                                                 is AvatarPreset.Emoji -> "emoji:${preset.symbol}"
                                                 is AvatarPreset.Generated -> preset.url
@@ -981,7 +1425,7 @@ fun ProfileScreen(
                                             showPictureDialog = false
                                         },
                                     color = NazoSurfaceVariant,
-                                    shape = CircleShape
+                                    shape = presetShape
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         when (preset) {
@@ -1025,24 +1469,40 @@ fun ProfileScreen(
                             }
                         }
                     }
-                    if (loadingDynamic) {
+                    if (loadingDynamic && selectedDynamicSource == loadingSource) {
                         Spacer(Modifier.height(16.dp))
                         Text(
-                            "Loading extra styles…",
+                            "Loading ${selectedDynamicSource?.tabTitle?.lowercase() ?: "avatars"}…",
                             style = MaterialTheme.typography.labelMedium,
-                            color = NazoTextSecondary
+                            color = NazoTextSecondary,
+                        )
+                    } else if (selectedDynamicResult?.unavailable == true) {
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "This avatar source is unavailable right now. Try refresh or choose another tab.",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = NazoTextSecondary,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
                     if (!profilePictureUri.isNullOrBlank()) {
                         Spacer(Modifier.height(12.dp))
                         // The full-size viewer used to be reachable only by an
                         // undisclosed press-and-hold; this is its visible route.
+                        val viewInteraction = remember { MutableInteractionSource() }
+                        val viewShape = rememberNazoRoundedCornerMorphShape(
+                            interactionSource = viewInteraction,
+                            restingCorner = 16.dp,
+                            pressedCorner = 8.dp,
+                        )
                         TextButton(
                             onClick = {
                                 showPictureDialog = false
                                 showAvatarPreview = true
                             },
-                            modifier = Modifier.fillMaxWidth(),
+                            interactionSource = viewInteraction,
+                            modifier = Modifier.fillMaxWidth().clip(viewShape),
                         ) {
                             Text("View current picture full size", color = NazoPrimary)
                         }
@@ -1301,9 +1761,17 @@ fun ProfileScreen(
                                     color = NazoPrimary,
                                 )
                             } else {
+                                val fetchInteraction = remember { MutableInteractionSource() }
+                                val fetchShape = rememberNazoPillCornerMorphShape(
+                                    interactionSource = fetchInteraction,
+                                    pressedCornerPercent = 28f,
+                                    enabled = url.isNotBlank(),
+                                )
                                 IconButton(
                                     onClick = { fetch() },
                                     enabled = url.isNotBlank(),
+                                    interactionSource = fetchInteraction,
+                                    modifier = Modifier.clip(fetchShape),
                                 ) {
                                     Icon(
                                         imageVector = if (previewBitmap != null) {
@@ -1321,15 +1789,14 @@ fun ProfileScreen(
                     )
 
                     // Fades/expands rather than snapping the dialog taller.
-                    AnimatedVisibility(
-                        visible = fetchError != null,
-                        enter = fadeIn(tween(180)) + expandVertically(tween(180)),
-                        exit = fadeOut(tween(140)) + shrinkVertically(tween(140)),
-                    ) {
+                    NazoTransientMessage(
+                        value = fetchError,
+                        label = "profileCoverFetchError",
+                    ) { visibleError ->
                         Column {
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                text = fetchError.orEmpty(),
+                                text = visibleError,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = NazoError,
                                 textAlign = TextAlign.Center,
@@ -1361,6 +1828,13 @@ fun ProfileScreen(
                     }
                     if (previewBitmap != null) {
                         Spacer(Modifier.width(4.dp))
+                        val cropInteraction = remember { MutableInteractionSource() }
+                        val cropShape = rememberNazoRoundedCornerMorphShape(
+                            interactionSource = cropInteraction,
+                            restingCorner = 16.dp,
+                            pressedCorner = 8.dp,
+                            enabled = !fetching,
+                        )
                         TextButton(
                             onClick = {
                                 // Hand the downloaded draft to the shared crop
@@ -1375,6 +1849,8 @@ fun ProfileScreen(
                                 }
                             },
                             enabled = !fetching,
+                            interactionSource = cropInteraction,
+                            modifier = Modifier.clip(cropShape),
                         ) {
                             Icon(
                                 Icons.Filled.Crop,
@@ -1436,6 +1912,135 @@ fun ProfileScreen(
             stateKeyPrefix = "Profile",
         )
     }
+
+    // Cover pick preview: validate → WYSIWYG banner frame → safe app-private
+    // save. Video validation also proves an H.264 decoder can produce a frame.
+    val activeCoverSource = pendingCoverSource
+    if (activeCoverSource != null) {
+        val dismissCoverPreview = {
+            pendingCoverSource = null
+            pendingCoverIsVideo = false
+        }
+        val acceptCover: (String) -> Unit = { savedUri ->
+            pendingCoverSource = null
+            pendingCoverIsVideo = false
+            onAutomaticCoverChange(false)
+            onCoverPictureChange(savedUri)
+            // The new custom medium should show immediately. The old custom
+            // file is only pruned after this save has fully validated.
+            onCoverPresetChange(null)
+        }
+        if (pendingCoverIsVideo && activeCoverSource is ProfileImageSource.ContentUri) {
+            ProfileCoverVideoPreviewDialog(
+                source = activeCoverSource,
+                onDismiss = dismissCoverPreview,
+                onAccepted = acceptCover,
+            )
+        } else {
+            ProfileCoverPreviewDialog(
+                source = activeCoverSource,
+                onDismiss = dismissCoverPreview,
+                onAccepted = acceptCover,
+            )
+        }
+    }
+
+
+    // Unified cover selection: bundled photos, animated gradients, and the
+    // custom gallery option, each previewed at the real banner ratio.
+    // Applying a preset writes only the preset id — the stored photo file
+    // and its uri stay untouched, so "Your photo" switches back for free.
+    if (showCoverSheet) {
+        CoverBackgroundSheet(
+            galleryUri = coverPictureUri,
+            presetId = coverPresetId,
+            automaticEnabled = automaticCoverEnabled,
+            automaticState = visibleAutomaticState,
+            bannerRatio = coverPreviewAspectRatio(
+                screenWidthDp = configuration.screenWidthDp,
+                screenHeightDp = configuration.screenHeightDp,
+                isLandscape = isLandscape,
+                coverTopExtensionDp = coverPreviewTopExtensionDp(isLandscape),
+            ),
+            onDismiss = { showCoverSheet = false },
+            onPrepareAutomatic = onPrepareAutomaticCover,
+            onStopPreparingAutomatic = onStopPreparingAutomaticCover,
+            onSelectAutomatic = { onAutomaticCoverChange(true) },
+            onSelectPreset = { id ->
+                onAutomaticCoverChange(false)
+                onCoverPresetChange(id)
+            },
+            onUseCustomMedia = {
+                onAutomaticCoverChange(false)
+                onCoverPresetChange(null)
+            },
+            onPickPhoto = {
+                showCoverSheet = false
+                coverPhotoLauncher.launch(
+                    PickVisualMediaRequest(
+                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                    )
+                )
+            },
+            onPickVideo = {
+                showCoverSheet = false
+                coverVideoLauncher.launch(
+                    PickVisualMediaRequest(
+                        ActivityResultContracts.PickVisualMedia.VideoOnly
+                    )
+                )
+            },
+            onRemove = {
+                showCoverSheet = false
+                showCoverRemoveConfirm = true
+            },
+        )
+    }
+
+    // Remove-cover confirmation — the same destructive-action step the
+    // avatar's Remove uses; Cancel leaves the photo untouched.
+    if (showCoverRemoveConfirm) {
+        AlertDialog(
+            onDismissRequest = { showCoverRemoveConfirm = false },
+            icon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = NazoError) },
+            title = { Text("Remove cover background?") },
+            text = {
+                Text(
+                    if (automaticCoverEnabled) {
+                        "Automatic matching will be turned off and your profile will return " +
+                            "to the plain cover background."
+                    } else if (!coverPictureUri.isNullOrBlank()) {
+                        "Your profile goes back to the plain cover background. To use " +
+                            "this photo or video again you would need to choose it again."
+                    } else {
+                        "Your profile goes back to the plain cover background."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                NazoDangerButton(onClick = {
+                    Haptics.doubleLight(context)
+                    onAutomaticCoverChange(false)
+                    AutomaticCoverStore.discardAll(context)
+                    ProfileImageStore.deleteCover(context, coverPictureUri)
+                    onCoverPictureChange(null)
+                    // Removing clears BOTH layers (custom file + preset id)
+                    // back to the placeholder — same destructive step as
+                    // before, with the same confirmation.
+                    onCoverPresetChange(null)
+                    showCoverRemoveConfirm = false
+                }) {
+                    Text("Remove", maxLines = 1)
+                }
+            },
+            dismissButton = {
+                NazoSecondaryButton(onClick = { showCoverRemoveConfirm = false }, muted = true) {
+                    Text("Cancel", maxLines = 1)
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -1445,12 +2050,19 @@ private fun ProfileMenuItem(
     subtitle: String,
     onClick: () -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 16.dp,
+        pressedCorner = 8.dp,
+    )
     Card(
         onClick = onClick,
+        interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, NazoPrimary.copy(alpha = 0.30f), RoundedCornerShape(16.dp)),
-        shape = RoundedCornerShape(16.dp),
+            .border(1.dp, NazoPrimary.copy(alpha = 0.30f), shape),
+        shape = shape,
         colors = CardDefaults.cardColors(containerColor = NazoSurfaceVariant.copy(alpha = 0.5f)),
     ) {
         ListItem(
@@ -1524,189 +2136,157 @@ private fun ProfileStatCell(
 }
 
 @Composable
-private fun ProfileStatsCard(stats: QuizStats) {
+private fun ProfileProgressCard(
+    stats: QuizStats,
+    progression: PlayerProgress,
+    achievementsUnlocked: Int,
+    achievementCount: Int,
+    onClick: () -> Unit,
+) {
+    val accuracy = if (stats.totalQuestionsAnswered > 0) {
+        stats.totalCorrect * 100 / stats.totalQuestionsAnswered
+    } else {
+        0
+    }
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 24.dp,
+        pressedCorner = 12.dp,
+    )
+
     Card(
+        onClick = onClick,
+        interactionSource = interactionSource,
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, NazoPrimary.copy(alpha = 0.30f), RoundedCornerShape(24.dp)),
-        shape = RoundedCornerShape(24.dp),
+            .border(1.dp, NazoPrimary.copy(alpha = 0.30f), shape),
+        shape = shape,
         colors = CardDefaults.cardColors(
-            containerColor = NazoSurfaceVariant.copy(alpha = 0.45f)
-        )
+            containerColor = NazoSurfaceVariant.copy(alpha = 0.45f),
+        ),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(NazoPrimary.copy(alpha = 0.14f))
+                        .border(1.dp, NazoPrimary.copy(alpha = 0.28f), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            progression.level.toString(),
+                            style = MaterialTheme.typography.titleLarge,
+                            color = NazoPrimary,
+                            fontWeight = FontWeight.ExtraBold,
+                        )
+                        Text(
+                            "LEVEL",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NazoTextSecondary,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Level ${progression.level} Otaku",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = NazoTextPrimary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "${progression.totalXp} lifetime XP · $achievementsUnlocked/$achievementCount badges",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NazoTextSecondary,
+                    )
+                }
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = "View progression and insights",
+                    tint = NazoPrimary,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(9.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(NazoPrimary.copy(alpha = 0.10f)),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progression.progressFraction.coerceAtLeast(0.001f))
+                        .height(9.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(NazoPrimary.copy(alpha = 0.72f), NazoPrimary),
+                            ),
+                        ),
+                )
+            }
+            Spacer(Modifier.height(7.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    "${progression.currentLevelXp} / ${progression.xpPerLevel} XP",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = NazoTextSecondary,
+                )
+                Text(
+                    "${progression.xpToNextLevel} XP to Level ${progression.level + 1}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = NazoPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 16.dp),
+                color = NazoTextSecondary.copy(alpha = 0.10f),
+            )
             Row(modifier = Modifier.fillMaxWidth()) {
                 ProfileStatCell(
                     icon = Icons.Filled.Quiz,
                     value = stats.totalQuizzes.toString(),
-                    label = "Quizzes",
-                    modifier = Modifier.weight(1f)
+                    label = "Games",
+                    modifier = Modifier.weight(1f),
                 )
                 ProfileStatCell(
-                    icon = Icons.Filled.QuestionAnswer,
-                    value = stats.totalQuestionsAnswered.toString(),
-                    label = "Answered",
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(modifier = Modifier.fillMaxWidth()) {
-                ProfileStatCell(
-                    icon = Icons.Filled.CheckCircle,
-                    value = stats.totalCorrect.toString(),
-                    label = "Correct",
-                    modifier = Modifier.weight(1f)
+                    icon = Icons.Filled.TrackChanges,
+                    value = "$accuracy%",
+                    label = "Accuracy",
+                    modifier = Modifier.weight(1f),
                 )
                 ProfileStatCell(
                     icon = Icons.Filled.LocalFireDepartment,
                     value = stats.currentStreakDays.toString(),
                     label = "Streak",
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                )
+                ProfileStatCell(
+                    icon = Icons.Filled.EmojiEvents,
+                    value = achievementsUnlocked.toString(),
+                    label = "Badges",
+                    modifier = Modifier.weight(1f),
                 )
             }
         }
     }
 }
 
-// --- Avatar presets & sources ---
-//
-// "Anime Style" = DiceBear "adventurer" avatars. Extra open-source sources:
-// DiceBear pixel-art/shapes, RoboHash (robots/monsters/cats), Pravatar, RandomUser,
-// Jikan (MyAnimeList) and waifu.im.
-
-private sealed interface AvatarPreset {
-    data class Emoji(val symbol: String) : AvatarPreset
-    data class Generated(val id: String, val url: String) : AvatarPreset
-}
-
-private val ANIME_SEEDS = listOf(
-    "Aiko", "Botan", "Chiyo", "Daichi", "Emi", "Fuma",
-    "Haruto", "Ichika", "Jun", "Kaida", "Lin", "Mio",
-    "Noa", "Ren", "Suzu", "Tsumugi"
-)
-private val ROBO_SEEDS = listOf("Rex", "Volt", "Zed", "Kilo", "Nova", "Byte", "Gizmo", "Unit")
-
-private fun seeded(seed: String, nonce: String) = if (nonce.isBlank()) seed else "$seed-$nonce"
-
-private fun dicebearUrl(style: String, seed: String, nonce: String) =
-    "https://api.dicebear.com/10.x/$style/png?seed=${seeded(seed, nonce)}&size=256&backgroundType=gradientLinear"
-
-private fun robohashUrl(set: String, seed: String, nonce: String) =
-    "https://robohash.org/${seeded(seed, nonce)}?set=$set&size=256x256"
-
-private fun pravatarUrl(seed: String, nonce: String): String {
-    val n = abs(seeded(seed, nonce).hashCode() % 70) + 1
-    return "https://i.pravatar.cc/256?img=$n"
-}
-
-/**
- * Emoji avatars. The `emoji:` picture format has always been supported end to
- * end (avatar rendering, full-size preview, backup payloads) — this list is
- * its first visible entry point in the picker.
- */
-private val EMOJI_CHOICES = listOf(
-    "⚡", "🔥", "🌙", "⭐", "🌸", "🍀", "👻", "✨",
-    "🦊", "🐱", "🎮", "📚", "🎯", "🍜", "💤", "😎",
-)
-
-/** Static tabs — rebuilt instantly on every refresh (new nonce = new art). */
-private fun buildStaticAvatarCategories(nonce: String): List<Pair<String, List<AvatarPreset>>> = listOf(
-    "Emoji" to EMOJI_CHOICES.map { AvatarPreset.Emoji(it) },
-    "Anime Style" to ANIME_SEEDS.map {
-        AvatarPreset.Generated("adv-$it-$nonce", dicebearUrl("adventurer", it, nonce))
-    },
-    "Pixel Art" to ANIME_SEEDS.map {
-        AvatarPreset.Generated("pix-$it-$nonce", dicebearUrl("pixel-art", it, nonce))
-    },
-    "Abstract" to ANIME_SEEDS.take(8).map {
-        AvatarPreset.Generated("shp-$it-$nonce", dicebearUrl("shapes", it, nonce))
-    },
-    "Robots" to ROBO_SEEDS.map {
-        AvatarPreset.Generated("rob-$it-$nonce", robohashUrl("set1", it, nonce))
-    },
-    "Monsters" to ROBO_SEEDS.map {
-        AvatarPreset.Generated("mon-$it-$nonce", robohashUrl("set2", it, nonce))
-    },
-    "Cats" to ROBO_SEEDS.map {
-        AvatarPreset.Generated("cat-$it-$nonce", robohashUrl("set4", it, nonce))
-    },
-    "Portraits" to (1..8).map { i ->
-        AvatarPreset.Generated("prt-$i-$nonce", pravatarUrl("portrait$i", nonce))
-    }
-)
-
-// --- Dynamic open-source APIs (fetched async, appear as extra tabs) ---
-
-private fun httpGet(url: String): String? = try {
-    val conn = URL(url).openConnection() as HttpURLConnection
-    conn.connectTimeout = 15000
-    conn.readTimeout = 15000
-    conn.requestMethod = "GET"
-    val body = if (conn.responseCode in 200..299) {
-        conn.inputStream.bufferedReader().use { it.readText() }
-    } else {
-        conn.disconnect()
-        null
-    }
-    body
-} catch (_: Exception) {
-    null
-}
-
-/** Each call hits random pages/endpoints, so every refresh yields fresh faces. */
-private suspend fun fetchDynamicAvatarTabs(): List<Pair<String, List<AvatarPreset>>> =
-    withContext(Dispatchers.IO) {
-        val results = mutableListOf<Pair<String, List<AvatarPreset>>>()
-
-        // Jikan — open-source MyAnimeList REST API
-        runCatching {
-            val page = Random.nextInt(1, 40)
-            val body = httpGet("https://api.jikan.moe/v4/characters?page=$page&order_by=members&sort=desc")
-                ?: return@runCatching
-            val arr = JSONObject(body).optJSONArray("data") ?: return@runCatching
-            val items = mutableListOf<AvatarPreset>()
-            for (i in 0 until arr.length()) {
-                val url = arr.optJSONObject(i)
-                    ?.optJSONObject("images")
-                    ?.optJSONObject("jpg")
-                    ?.optString("image_url")
-                    ?.takeIf { it.isNotBlank() }
-                url?.let { items.add(AvatarPreset.Generated("jikan-$i-$page", it)) }
-            }
-            if (items.isNotEmpty()) results.add("Anime Faces" to items)
-        }
-
-        // waifu.im — open-source anime image archive
-        runCatching {
-            val body = httpGet("https://api.waifu.im/images/?is_nsfw=false")
-                ?: return@runCatching
-            val arr = JSONObject(body).optJSONArray("images") ?: return@runCatching
-            val items = mutableListOf<AvatarPreset>()
-            for (i in 0 until arr.length()) {
-                val url = arr.optJSONObject(i)?.optString("url")?.takeIf { it.isNotBlank() }
-                url?.let { items.add(AvatarPreset.Generated("waifu-$i", it)) }
-            }
-            if (items.isNotEmpty()) results.add("Anime Art" to items)
-        }
-
-        // RandomUser — free & open-source, real photos
-        runCatching {
-            val body = httpGet("https://randomuser.me/api/?results=10")
-                ?: return@runCatching
-            val arr = JSONObject(body).optJSONArray("results") ?: return@runCatching
-            val items = mutableListOf<AvatarPreset>()
-            for (i in 0 until arr.length()) {
-                val url = arr.optJSONObject(i)
-                    ?.optJSONObject("picture")
-                    ?.optString("medium")
-                    ?.takeIf { it.isNotBlank() }
-                url?.let { items.add(AvatarPreset.Generated("ruser-$i", it)) }
-            }
-            if (items.isNotEmpty()) results.add("Real Photos" to items)
-        }
-
-        results
-    }
+// Avatar catalogue/network policy lives in AvatarPickerSources.kt so its
+// lazy-request, host allowlist and malformed-response behavior stay unit-testable.
 
 private val USERNAME_ADJECTIVES = listOf(
     "Shadow", "Neon", "Crimson", "Silent", "Lunar",

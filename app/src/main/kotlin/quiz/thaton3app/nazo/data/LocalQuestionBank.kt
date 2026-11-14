@@ -1097,11 +1097,13 @@ object LocalQuestionBank {
      * surface harder questions instead of only getting a shorter timer.
      */
     fun getQuestions(count: Int, topic: String = "", difficulty: String = "Medium"): List<Question> {
+        // A nonblank topic is a hard scope, not a preference. Returning an
+        // empty list lets the host offer an explicit recovery choice instead
+        // of silently turning "Frieren" (or a typo) into an all-anime quiz.
         val base = if (topic.isBlank()) {
-            allQuestions
+            canonical
         } else {
-            val filtered = allQuestions.filter { it.matches(topic) }
-            if (filtered.isEmpty()) allQuestions else filtered
+            canonical.filter { it.matches(topic) }
         }
         val exact = base.filter { it.difficulty.equals(difficulty, ignoreCase = true) }.shuffled()
         val rest = base.filter { !it.difficulty.equals(difficulty, ignoreCase = true) }.shuffled()

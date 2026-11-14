@@ -6,13 +6,13 @@ This file has **two parts**, and the split matters:
 
 | Part | Applies to | Covers |
 |---|---|---|
-| [Part 1 — Universal rules](#part-1--universal-rules) | **Everyone.** Every agent, every bot, every human, every environment. | Commit tags, release cadence, live-test guides, `handoff.md` entries. |
+| [Part 1 — Universal rules](#part-1--universal-rules) | **Everyone.** Every agent, every bot, every human, every environment. | Commit tags, release cadence, and live-test guides. |
 | [Part 2 — Arena.ai sandbox rules](#part-2--arenaai-sandbox-rules-nobody-else) | **Only** agents running in Arena.ai Agent Mode on an `arena/**` branch. | Building via CI, PR handling, sandbox quirks. |
 
-**Part 1 is mandatory for everyone.** Tagged commit subjects, a `handoff.md`
-entry, and a live-test guide are project conventions — not Arena conventions —
-so an agent working in Termux, a local terminal, or any other platform follows
-them exactly the same way.
+**Part 1 is mandatory for everyone.** Tagged commit subjects and a live-test
+guide are project conventions — not Arena conventions — so an agent working in
+Termux, a local terminal, or any other platform follows them exactly the same
+way.
 
 > **If you are not an Arena.ai agent, follow Part 1 and skip Part 2.**
 > Part 2 describes workarounds for a sandbox that has no Android SDK and no
@@ -34,20 +34,24 @@ scope**, so the log is skimmable and it is obvious what each commit touched:
 <type>(<scope>): <imperative summary>
 ```
 
-Allowed types: `feat`, `fix`, `perf`, `refactor`, `docs`, `style`, `test`,
-`build`, `ci`, `chore`.
+Use only these types unless the owner explicitly asks for something else:
 
-The scope is the area of the app, not a file path — `quiz`, `quiz-bank`,
-`icons`, `nav`, `theme`, `guessing`, `versus`, `daily`, `stats`, `settings`,
-`onboarding`, `widget`, `api`, `agents`.
+- `feat` for new or expanded behavior.
+- `fix` for corrections, cleanup, maintenance, tests, or documentation.
+
+The scope is the area of the app, not a file path — for example `quiz`,
+`quiz-bank`, `icons`, `nav`, `theme`, `ui`, `interactions`, `guessing`,
+`versus`, `daily`, `stats`, `settings`, `onboarding`, `widget`, `api`, or
+`agents`.
 
 ```
 ✅ fix(nav): animate the floating tab bar on Home↔Settings
 ✅ feat(icons): add selectable launcher icons in Appearance
-✅ perf(stats): memoise AchievementEngine.compute()
+✅ fix(agents): clarify the commit message style
 ❌ Rebalance giveaway answers across the local question bank
 ❌ Update files
 ❌ fix: stuff
+❌ docs(agents): update contributor guidance
 ```
 
 Other commit rules:
@@ -55,10 +59,29 @@ Other commit rules:
 - Group related changes into **separate, categorized commits**. Do not lump an
   unrelated grab-bag into one commit.
 - The subject describes the **most impactful** change in the commit.
-- Lesser changes riding along in the same commit go in the **body**, as a
-  bulleted list, each line also tagged (`- fix(api): ...`).
-- A genuinely trivial change (import fix, one-line padding tweak) needs only a
-  single-line message.
+- Every commit, including a tiny import or spacing fix, gets a short body after
+  a blank line. Use one to three casual, friendly sentences explaining what
+  changed and why it is useful.
+- Keep the body readable. Do not turn it into a file-by-file implementation
+  dump, fill it with code references, or make it longer than the change needs.
+  A few short bullets are fine only when one sentence would be less clear.
+- If an AI agent contributed, finish with this exact plain-text reference after
+  another blank line: `Co-authored by Arena Agent`.
+- Do **not** use a `Co-authored-by:` Git trailer, an email address, angle
+  brackets, a numeric account ID, or the old lowercase `arena-agent` credit.
+  The conventional subject remains the obvious commit header; the final line
+  is only a small acknowledgement.
+
+A complete message should look like this:
+
+```
+feat(interactions): unify shared press feedback
+
+Give tappable controls the same restrained response so the app feels more
+consistent without making ordinary actions slower.
+
+Co-authored by Arena Agent
+```
 
 ## Release cadence
 
@@ -69,6 +92,29 @@ Other commit rules:
   batch is wrong — this happened once and had to be reverted (v8.0 → v7.0).
 - Bump **only** when the owner explicitly asks to prepare or ship a version. In
   that case the bump is the **last** commit, after all feature and doc commits.
+- Every published APK—including alpha, beta, and release-candidate builds—gets
+  a unique, monotonically increasing `versionCode`. A final release must use a
+  higher code than all of its pre-releases, while `versionName` matches the tag.
+
+## Living release ledger (`RELEASE_NOTES.md`)
+
+`RELEASE_NOTES.md` is the single canonical release-history and next-release
+ledger. Do not create per-version release-note files, separate roadmap notes,
+or session changelog documents.
+
+- After a user-visible bug fix, feature, or visual/logical improvement is
+  completed, add one short player-facing entry under **Next release** before
+  closing the task. Group entries beneath their UTC completion timestamp and
+  mark each one as **Added**, **Fixed**, or **Improved**.
+- Record the result players receive, not implementation details, attempts that
+  were reverted, raw commit subjects, or internal maintenance with no release
+  impact. Keep each entry useful as source material for public notes.
+- When preparing a release, turn the accumulated entries into handwritten
+  GitHub notes and the in-app changelog, then move them into that version's
+  archive section with the GitHub release timestamp. Leave a fresh **Next
+  release** section at the top for subsequent work.
+- Keep every shipped version in this same file. The release workflow extracts
+  a version's marked block from this ledger; do not duplicate it elsewhere.
 
 ## Every change ships with a "How to test it live" guide
 
@@ -90,30 +136,8 @@ Each guide must answer three things:
 
 If a change is genuinely not user-visible (a lock, a refactor), say so plainly
 and give the closest observable proxy — the stress case that used to crash, the
-screen that used to stutter.
-
-Mirror the same steps into a `handoff.md` entry for the session, so a future
-agent touching related code can re-verify the feature.
-
-## Session handoff notes (`handoff.md`)
-
-**Every session that changes anything must append an entry to `handoff.md`.**
-This applies to every agent in every environment — it is how the next
-contributor (human or AI) learns why the code looks the way it does.
-
-Append at the **bottom** (newest last), under a `##` heading naming the topic.
-An entry contains:
-
-1. **What changed** — the behaviour, not a file list. A table works well when
-   several distinct fixes ship together.
-2. **Why** — the underlying cause, and any option you considered and rejected.
-   Future agents keep re-introducing bugs whose fix looks arbitrary.
-3. **How to test it live** — the same steps handed to the owner (see above).
-4. **Anything deliberately left undone**, so the next session doesn't assume
-   it was overlooked.
-
-Record dead ends too: an approach that failed and *why* saves the next agent
-from repeating it.
+screen that used to stutter. Put durable rationale next to the code it explains;
+do not add running research or session-log files to the repository.
 
 Keep `AGENTS.md` current as well. If a rule here is stale or wrong, fix it in
 the same commit as the work that revealed the problem.
@@ -182,47 +206,31 @@ below is how you reach it.
 
 A run takes roughly **2 minutes**. Budget for it; don't poll in a tight loop.
 
-## ⚠️ Never let the owner merge your open PR
-
-**Remind the owner, in the report where you open the PR and again whenever
-merging comes up, that they must NOT merge or close it while the session is
-live.**
-
-Merging or closing the PR ends the session's access to the branch. Once that
-happens the agent can no longer push, no longer trigger CI, and no more changes
-can be made in that session — the work is frozen wherever it stopped. The PR
-should stay open until the owner is completely finished with the session and
-has no further changes to request.
-
-Phrase it plainly, e.g.: *"Please don't merge this PR yet — merging ends my
-access to the branch and I won't be able to push any further changes."*
-
 ## Only spend CI on real code changes
 
 Every push to `arena/**` can start a full `assembleDebug`. Compiling unchanged
 code to validate a markdown edit is pure waste.
 
-### The workflow skips docs-only pushes automatically
+### The workflow has a legacy docs-only skip path
 
-`PR-assemble.yml` has a `gate` job that inspects the head commit and skips the
-build when **both** of these hold:
+`PR-assemble.yml` has a `gate` job that inspects the head commit and can skip
+the build when **both** of these hold:
 
 1. the subject's conventional-commit type is **`docs`, `chore`, `style`, or
-   `ci`** (any scope, e.g. `docs(agents):`), or the subject contains
-   `[skip ci]` / `[ci skip]`; **and**
+   `ci`**, or the subject contains `[skip ci]` / `[ci skip]`; **and**
 2. the push changed **no compilable files** — nothing matching `.kt`, `.kts`,
    `.java`, `.xml`, `.gradle`, `.pro`, `.properties`, `.json`, image/font/audio
    assets, or the Gradle wrapper.
 
-Both conditions are required on purpose, and the gate is **fail-safe**: a
-commit mistagged `docs:` that *does* touch Kotlin still gets compiled, so a
-wrong tag can never sneak a broken build through. The run then shows the reason
-`tagged as docs/chore but compilable files changed` — treat that as a hint to
-fix your tag. `workflow_dispatch` always builds.
+That path remains for older history and owner-directed exceptions. It does not
+change the Part 1 convention: agents use `feat` or `fix` and must never pick a
+disallowed type just to avoid CI. A markdown-only `fix(agents):` commit may
+therefore run the normal build, which is preferable to making the history
+misleading.
 
-This means **a `docs:` commit is now safe to push on its own** — it appears in
-Actions as a near-instant skipped run rather than a 2-minute compile. Check the
-run summary for the gate's decision and reason.
+Both gate conditions are required on purpose, and the gate is **fail-safe**: a
+skip-eligible subject that *does* touch Kotlin still gets compiled, so a wrong
+tag can never sneak a broken build through. `workflow_dispatch` always builds.
 
 > **Gotcha:** never write the literal marker `[skip` `ci]` (or `[ci skip]`)
 > anywhere in a commit message — **including the body** — unless you mean it.
@@ -241,8 +249,8 @@ The gate removes the *cost* of a stray docs push, not the reason to be tidy:
 
   Correct order:
   1. make the code changes,
-  2. write the `handoff.md` / doc updates,
-  3. `git add -A` and commit **once**,
+  2. update only durable code-adjacent or user-facing documentation,
+  3. commit the complete change set in coherent categorized commits,
   4. push **once**.
 - **Never push mid-task just to check CI.** Finish the change set first.
 - Never use `[skip ci]` on a commit that touches app code to dodge a red
@@ -251,11 +259,6 @@ The gate removes the *cost* of a stray docs push, not the reason to be tidy:
 
 ## Other sandbox gotchas
 
-- **You cannot push workflow files.** The Arena GitHub token lacks the
-  `workflow` scope, so any commit touching `.github/workflows/**` is rejected
-  on push. If a workflow needs changing, write the new file as a `*.yml.draft`
-  at the repo root with a header explaining what the owner must copy where, and
-  flag it in your report.
 - **A green build means "it compiles" — not "it works."** CI never runs the
   app. This is exactly why the Part 1 live-test guide is mandatory: the owner
   is the only one who can actually run this thing.

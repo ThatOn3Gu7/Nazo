@@ -1,8 +1,9 @@
 package quiz.thaton3app.nazo.ui.screens
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -14,23 +15,32 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberOverscrollEffect
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -48,24 +58,37 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.PI
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import quiz.thaton3app.nazo.R
 import quiz.thaton3app.nazo.daily.DailyChallengeCard
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.ui.components.Haptics
@@ -73,6 +96,12 @@ import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.data.QuizStats
 import quiz.thaton3app.nazo.ui.components.NazoModalSheet
 import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
+import quiz.thaton3app.nazo.ui.components.NazoSheetHeader
+import quiz.thaton3app.nazo.ui.components.nazoExpressiveCornerPercent
+import quiz.thaton3app.nazo.ui.components.rememberNazoExpressivePressState
+import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
+import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
+import quiz.thaton3app.nazo.ui.components.rememberSystemReduceMotion
 import quiz.thaton3app.nazo.ui.components.AvatarAnchorId
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
 import quiz.thaton3app.nazo.ui.components.SPARKLE_METEORS
@@ -80,6 +109,8 @@ import quiz.thaton3app.nazo.ui.components.SPARKLE_TWINKLE
 import quiz.thaton3app.nazo.ui.components.drawMeteorShower
 import quiz.thaton3app.nazo.ui.components.drawTwinklingStars
 import quiz.thaton3app.nazo.ui.components.isLandscape
+import quiz.thaton3app.nazo.ui.mode.NazoMode
+import quiz.thaton3app.nazo.ui.mode.modeIdentitySpec
 import quiz.thaton3app.nazo.ui.theme.*
 
 enum class Difficulty(val label: String) {
@@ -89,13 +120,51 @@ enum class Difficulty(val label: String) {
     OTAKU_MASTER("Otaku Master"),
 }
 
-/** Which game mode the Home screen is configured to start. */
-enum class NazoMode(val label: String) {
-    QUIZ("Quiz"),
-    GUESSING("Guessing Game"),
-    SURVIVAL("Survival"),
-    BLITZ("Blitz"),
-    VERSUS("Versus"),
+internal enum class HomeCountControls { Questions, Rounds, None }
+
+internal fun homeCountControls(mode: NazoMode): HomeCountControls = when (mode) {
+    NazoMode.QUIZ, NazoMode.VERSUS -> HomeCountControls.Questions
+    NazoMode.GUESSING -> HomeCountControls.Rounds
+    NazoMode.SURVIVAL, NazoMode.BLITZ -> HomeCountControls.None
+}
+
+internal fun homePracticeVisible(mode: NazoMode, practiceCount: Int): Boolean =
+    mode == NazoMode.QUIZ && practiceCount > 0
+
+internal fun challengeSummary(
+    mode: NazoMode,
+    difficulty: Difficulty,
+    questionCount: Int,
+    guessingRounds: Int,
+): String {
+    val formatCount: (Int, String) -> String = { count, noun ->
+        "$count $noun${if (count == 1) "" else "s"}"
+    }
+    val detail = when (mode) {
+        NazoMode.QUIZ, NazoMode.VERSUS -> formatCount(questionCount, "question")
+        NazoMode.GUESSING -> formatCount(guessingRounds, "round")
+        NazoMode.SURVIVAL -> "endless run"
+        NazoMode.BLITZ -> "60-second run"
+    }
+    return "${difficulty.label} • $detail"
+}
+
+private val HOME_TOPIC_STARTERS = listOf(
+    "Naruto",
+    "One Piece",
+    "Jujutsu Kaisen",
+    "Characters",
+)
+
+/** Curated empty-state starters, then a bounded autocomplete tray while typing. */
+internal fun homeTopicSuggestions(topic: String, available: List<String>): List<String> {
+    val query = topic.trim()
+    if (query.isEmpty()) {
+        return HOME_TOPIC_STARTERS.mapNotNull { starter ->
+            available.firstOrNull { it.equals(starter, ignoreCase = true) }
+        }
+    }
+    return available.filter { it.contains(query, ignoreCase = true) }.take(8)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -143,14 +212,16 @@ fun HomeScreen(
 ) {
     val difficulty = Difficulty.valueOf(difficultyName)
     val nazoMode = NazoMode.entries.firstOrNull { it.name == mode } ?: NazoMode.QUIZ
-    val isGuessing = nazoMode == NazoMode.GUESSING
     val context = LocalContext.current
+    val reduceMotion = rememberSystemReduceMotion()
     var showProviderSheet by remember { mutableStateOf(false) }
-    
+    var showModeSheet by remember { mutableStateOf(false) }
+
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val modeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
 
-    // Smooth dismiss helper that lets the slide-down animation complete before unmounting
+    // Smooth dismiss helpers let each slide-down finish before its sheet unmounts.
     fun dismissSheet(onComplete: () -> Unit = {}) {
         scope.launch {
             sheetState.hide()
@@ -160,7 +231,18 @@ fun HomeScreen(
         }
     }
 
+    fun dismissModeSheet(onComplete: () -> Unit = {}) {
+        scope.launch {
+            modeSheetState.hide()
+        }.invokeOnCompletion {
+            showModeSheet = false
+            onComplete()
+        }
+    }
+
     val landscape = isLandscape()
+    val avatarOverscrollEffect = rememberOverscrollEffect()
+    val videoAvatarOverscrolling = avatarOverscrollEffect?.isInProgress == true
 
     // Group 1: Profile, Badges, Daily Challenge, and Mode Selection
     val leftContent: @Composable () -> Unit = {
@@ -171,6 +253,7 @@ fun HomeScreen(
             profileName = profileName,
             profilePictureUri = profilePictureUri,
             onProfileClick = onProfileClick,
+            videoAvatarOverscrolling = videoAvatarOverscrolling,
         )
 
         Spacer(Modifier.height(14.dp))
@@ -210,38 +293,28 @@ fun HomeScreen(
 
         SectionLabel("MODE")
         Spacer(Modifier.height(8.dp))
-        ModeSelector(
-            selected = nazoMode,
-            onSelect = { m ->
-                if (nazoMode != m) Haptics.light(context)
-                onModeChange(m.name)
-            },
-        )
 
-        Spacer(Modifier.height(8.dp))
-
-        // One line of flavor per mode. The old 28sp two-line hero duplicated
-        // the blurb inside the selector above and pushed the setup controls a
-        // full screen down; the pitch stays, the wall of text goes.
+        // This identity card is now the sole mode picker on Home. Tapping it
+        // opens the richer bottom sheet; there is no second dropdown competing
+        // with the mode's personality or repeating the same selection.
         AnimatedContent(
             targetState = nazoMode,
             transitionSpec = {
-                (slideInVertically(spring(stiffness = Spring.StiffnessMediumLow)) { it / 3 } + fadeIn())
-                    .togetherWith(slideOutVertically { -it / 3 } + fadeOut())
+                if (reduceMotion) {
+                    fadeIn(tween(90)) togetherWith fadeOut(tween(70))
+                } else {
+                    (slideInVertically(spring(stiffness = Spring.StiffnessMediumLow)) { it / 4 } + fadeIn())
+                        .togetherWith(slideOutVertically { -it / 4 } + fadeOut())
+                }
             },
-            label = "modeHeadline",
-        ) { m ->
-            Text(
-                text = when (m) {
-                    NazoMode.GUESSING -> "Can you spot the mystery image?"
-                    NazoMode.SURVIVAL -> "How long can you survive?"
-                    NazoMode.BLITZ -> "How many in 60 seconds?"
-                    NazoMode.VERSUS -> "Who knows their anime better?"
-                    else -> "Ready to test your anime knowledge?"
+            label = "modeIdentity",
+        ) { selectedMode ->
+            ModeIdentityCard(
+                mode = selectedMode,
+                onClick = {
+                    Haptics.light(context)
+                    showModeSheet = true
                 },
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = NazoTextSecondary,
             )
         }
     }
@@ -255,97 +328,54 @@ fun HomeScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        SectionLabel("DIFFICULTY")
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            listOf(Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD).forEach { level ->
-                PillButton(
-                    text = level.label,
-                    selected = difficulty == level,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        if (difficulty != level) Haptics.light(context)
-                        onDifficultyChange(level.name)
-                    },
-                )
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        PillButton(
-            text = Difficulty.OTAKU_MASTER.label,
-            selected = difficulty == Difficulty.OTAKU_MASTER,
-            icon = Icons.Filled.WorkspacePremium,
-            onClick = {
-                if (difficulty != Difficulty.OTAKU_MASTER) Haptics.light(context)
-                onDifficultyChange(Difficulty.OTAKU_MASTER.name)
+        ChallengeSetupCard(
+            mode = nazoMode,
+            difficulty = difficulty,
+            questionCount = questionCount,
+            guessingRounds = guessingRounds,
+            reduceMotion = reduceMotion,
+            onDifficultySelected = { level ->
+                if (difficulty != level) Haptics.light(context)
+                onDifficultyChange(level.name)
+            },
+            onQuestionCountSelected = { count ->
+                if (questionCount != count) Haptics.light(context)
+                onQuestionCountChange(count)
+            },
+            onGuessingRoundsSelected = { count ->
+                if (guessingRounds != count) Haptics.light(context)
+                onGuessingRoundsChange(count)
             },
         )
 
-        Spacer(Modifier.height(16.dp))
-
-        if (isGuessing) {
-            SectionLabel("ROUNDS")
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf(1, 3, 5).forEach { count ->
-                    PillButton(
-                        text = if (count == 1) "1 Round" else "$count Rounds",
-                        selected = guessingRounds == count,
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            if (guessingRounds != count) Haptics.light(context)
-                            onGuessingRoundsChange(count)
-                        },
+        AnimatedVisibility(
+            visible = homePracticeVisible(nazoMode, practiceCount),
+            enter = if (reduceMotion) {
+                fadeIn(tween(90))
+            } else {
+                fadeIn(tween(180, easing = FastOutSlowInEasing)) +
+                    expandVertically(
+                        expandFrom = Alignment.Top,
+                        animationSpec = tween(240, easing = FastOutSlowInEasing),
                     )
-                }
-            }
-        } else if (nazoMode == NazoMode.QUIZ || nazoMode == NazoMode.VERSUS) {
-            SectionLabel("QUESTIONS")
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf(5, 10, 15).forEach { count ->
-                    PillButton(
-                        text = "$count Questions",
-                        selected = questionCount == count,
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            if (questionCount != count) Haptics.light(context)
-                            onQuestionCountChange(count)
-                        },
+            },
+            exit = if (reduceMotion) {
+                fadeOut(tween(70))
+            } else {
+                fadeOut(tween(140, easing = FastOutSlowInEasing)) +
+                    shrinkVertically(
+                        shrinkTowards = Alignment.Top,
+                        animationSpec = tween(220, easing = FastOutSlowInEasing),
                     )
-                }
-            }
-
-            if (nazoMode == NazoMode.QUIZ && practiceCount > 0) {
+            },
+            label = "homePracticeVisibility",
+        ) {
+            Column(Modifier.fillMaxWidth()) {
                 Spacer(Modifier.height(14.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(50))
-                        .background(NazoSurface)
-                        .border(1.dp, NazoPrimary.copy(alpha = 0.35f), RoundedCornerShape(50))
-                        .clickable {
-                            Haptics.light(context)
-                            onStartPractice()
-                        }
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.School,
-                        contentDescription = null,
-                        tint = NazoPrimary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "Practice your misses ($practiceCount)",
-                        color = NazoPrimary,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
+                PracticeMissesButton(
+                    practiceCount = practiceCount,
+                    onClick = onStartPractice,
+                )
             }
         }
 
@@ -401,7 +431,10 @@ fun HomeScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .verticalScroll(leftScroll)
+                        // Keep the platform stretch. While it is active the
+                        // app-level MP4 layer yields to the in-tree poster, so
+                        // one circle stretches with the rest of the pane.
+                        .verticalScroll(leftScroll, overscrollEffect = avatarOverscrollEffect)
                         .padding(bottom = 20.dp)
                 ) {
                     leftContent()
@@ -422,7 +455,9 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(scrollState)
+                    // Preserve the platform stretch; its progress temporarily
+                    // swaps the native video layer for the transformed poster.
+                    .verticalScroll(scrollState, overscrollEffect = avatarOverscrollEffect)
                     .padding(horizontal = 20.dp)
                     .navigationBarsPadding()
                     .padding(bottom = 96.dp)
@@ -434,40 +469,69 @@ fun HomeScreen(
             }
         }
 
+        if (showModeSheet) {
+            NazoModalSheet(
+                onDismissRequest = { showModeSheet = false },
+                sheetState = modeSheetState,
+            ) {
+                NazoSheetColumn {
+                    NazoSheetHeader(
+                        icon = Icons.Filled.SportsEsports,
+                        title = "Choose a game mode",
+                        subtitle = "Five ways to play, one Nazo identity",
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    NazoMode.entries.forEach { candidate ->
+                        ModePickerCard(
+                            mode = candidate,
+                            selected = candidate == nazoMode,
+                            onClick = {
+                                if (candidate != nazoMode) Haptics.light(context)
+                                dismissModeSheet {
+                                    if (candidate != nazoMode) onModeChange(candidate.name)
+                                }
+                            },
+                        )
+                        Spacer(Modifier.height(10.dp))
+                    }
+                    val cancelInteraction = remember { MutableInteractionSource() }
+                    val cancelShape = rememberNazoRoundedCornerMorphShape(
+                        interactionSource = cancelInteraction,
+                        restingCorner = 12.dp,
+                        pressedCorner = 6.dp,
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .clip(cancelShape)
+                            .clickable(
+                                interactionSource = cancelInteraction,
+                                indication = LocalIndication.current,
+                            ) { dismissModeSheet() },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "Cancel",
+                            color = NazoTextSecondary,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
+            }
+        }
+
         if (showProviderSheet) {
             NazoModalSheet(
                 onDismissRequest = { showProviderSheet = false },
                 sheetState = sheetState,
             ) {
                 NazoSheetColumn {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(NazoPrimary.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Key,
-                                contentDescription = null,
-                                tint = NazoPrimary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Text(
-                            text = "Switch API key",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = NazoTextPrimary,
-                        )
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "Choose which configured provider generates your quizzes.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NazoTextSecondary,
+                    NazoSheetHeader(
+                        icon = Icons.Filled.Key,
+                        title = "Switch API key",
+                        subtitle = "Choose which configured provider generates your quizzes.",
                     )
                     Spacer(Modifier.height(16.dp))
                     
@@ -478,13 +542,22 @@ fun HomeScreen(
                             color = NazoTextSecondary,
                         )
                         Spacer(Modifier.height(14.dp))
+                        val setupInteraction = remember { MutableInteractionSource() }
+                        val setupShape = rememberNazoRoundedCornerMorphShape(
+                            interactionSource = setupInteraction,
+                            restingCorner = 14.dp,
+                            pressedCorner = 7.dp,
+                        )
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(50.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(NazoPrimary)
-                                .clickable {
+                                .clip(setupShape)
+                                .background(NazoPrimary, setupShape)
+                                .clickable(
+                                    interactionSource = setupInteraction,
+                                    indication = LocalIndication.current,
+                                ) {
                                     dismissSheet { onManageClick() }
                                 },
                             contentAlignment = Alignment.Center,
@@ -500,14 +573,27 @@ fun HomeScreen(
                             val name = PROVIDER_DISPLAY[id] ?: id
                             val icon = PROVIDER_ICONS[id] ?: Icons.Filled.Settings
                             val isSel = id == activeProvider
-                            
+                            val interactionSource = remember(id) { MutableInteractionSource() }
+                            val indication = LocalIndication.current
+                            val shape = rememberNazoRoundedCornerMorphShape(
+                                interactionSource = interactionSource,
+                                restingCorner = 14.dp,
+                                pressedCorner = 7.dp,
+                            )
+
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(if (isSel) NazoPrimary.copy(alpha = 0.08f) else Color.Transparent)
-                                    .clickable {
+                                    .clip(shape)
+                                    .background(
+                                        if (isSel) NazoPrimary.copy(alpha = 0.08f) else Color.Transparent,
+                                        shape,
+                                    )
+                                    .clickable(
+                                        interactionSource = interactionSource,
+                                        indication = indication,
+                                    ) {
                                         dismissSheet { onSelectProvider(id) }
                                     }
                                     .padding(horizontal = 14.dp, vertical = 14.dp),
@@ -546,13 +632,22 @@ fun HomeScreen(
                             HorizontalDivider(color = NazoTextSecondary.copy(alpha = 0.08f))
                         }
                         Spacer(Modifier.height(16.dp))
+                        val manageInteraction = remember { MutableInteractionSource() }
+                        val manageShape = rememberNazoRoundedCornerMorphShape(
+                            interactionSource = manageInteraction,
+                            restingCorner = 14.dp,
+                            pressedCorner = 7.dp,
+                        )
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(50.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(NazoPillUnselected)
-                                .clickable {
+                                .clip(manageShape)
+                                .background(NazoPillUnselected, manageShape)
+                                .clickable(
+                                    interactionSource = manageInteraction,
+                                    indication = LocalIndication.current,
+                                ) {
                                     dismissSheet { onManageClick() }
                                 },
                             contentAlignment = Alignment.Center,
@@ -565,12 +660,21 @@ fun HomeScreen(
                         }
                     }
                     Spacer(Modifier.height(10.dp))
+                    val cancelInteraction = remember { MutableInteractionSource() }
+                    val cancelShape = rememberNazoRoundedCornerMorphShape(
+                        interactionSource = cancelInteraction,
+                        restingCorner = 12.dp,
+                        pressedCorner = 6.dp,
+                    )
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(44.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
+                            .clip(cancelShape)
+                            .clickable(
+                                interactionSource = cancelInteraction,
+                                indication = LocalIndication.current,
+                            ) {
                                 dismissSheet()
                             },
                         contentAlignment = Alignment.Center,
@@ -594,27 +698,29 @@ private fun HomeHeader(
     profileName: String,
     profilePictureUri: String?,
     onProfileClick: () -> Unit,
+    videoAvatarOverscrolling: Boolean,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth()
     ) {
-        // Brand lockup: solid mark + wordmark. Deliberately NOT pill-shaped —
-        // pills on this screen mean "status or selection", and the logo used
-        // to wear the same chrome as the interactive chips below it.
+        // Brand lockup: the same custom brush mark as the default launcher,
+        // rather than a system-font approximation. Deliberately NOT pill-shaped—
+        // pills on this screen mean "status or selection". The fixed bottle-
+        // green tile keeps the identity stable across user-selected app accents.
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(RoundedCornerShape(11.dp))
-                    .background(NazoPrimary),
+                    .background(Color(0xFF1B4135)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = "謎",
-                    color = NazoOnPrimary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 19.sp,
+                Image(
+                    painter = painterResource(R.drawable.ic_mark_nazo_brand),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.size(28.dp),
                 )
             }
             Spacer(Modifier.width(10.dp))
@@ -631,6 +737,7 @@ private fun HomeHeader(
             pictureUri = profilePictureUri,
             size = 42.dp,
             onClick = onProfileClick,
+            videoOverlaySuppressed = videoAvatarOverscrolling,
             anchorId = AvatarAnchorId.Home,
             modifier = Modifier.size(42.dp),
         )
@@ -671,13 +778,24 @@ private fun ApiKeyBadge(
         keyWithoutModel -> "Choose a model"
         else -> "API Key inactive"
     }
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoPillCornerMorphShape(
+        interactionSource = interactionSource,
+        enabled = onClick != null,
+    )
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .then(if (onClick != null) Modifier.clickable { onClick.invoke() } else Modifier)
-            .background(bg)
-            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(50))
+            .clip(shape)
+            .background(bg, shape)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), shape)
+            .then(
+                if (onClick != null) Modifier.clickable(
+                    interactionSource = interactionSource,
+                    indication = LocalIndication.current,
+                    onClick = onClick,
+                ) else Modifier
+            )
             .padding(horizontal = 14.dp, vertical = 7.dp),
     ) {
         Box(
@@ -744,12 +862,17 @@ private fun StreakFlameChip(
         streakDays >= 3 -> 21.dp
         else -> 18.dp
     }
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoPillCornerMorphShape(interactionSource)
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(flameColor.copy(alpha = 0.12f))
-            .border(1.dp, flameColor.copy(alpha = 0.35f), RoundedCornerShape(50))
-            .clickable {
+            .clip(shape)
+            .background(flameColor.copy(alpha = 0.12f), shape)
+            .border(1.dp, flameColor.copy(alpha = 0.35f), shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+            ) {
                 Haptics.soft(context)
                 expanded = true
             }
@@ -1031,136 +1154,341 @@ private val MODE_ICONS = mapOf(
     NazoMode.VERSUS to Icons.Filled.Groups,
 )
 
-private fun modeBlurb(m: NazoMode): String = when (m) {
-    NazoMode.QUIZ -> "AI-crafted questions on any topic you pick"
-    NazoMode.GUESSING -> "Guess the anime from a mystery image"
-    NazoMode.SURVIVAL -> "Endless questions • 3 lives • how far can you go?"
-    NazoMode.BLITZ -> "60 seconds on the clock • works offline"
-    NazoMode.VERSUS -> "Pass & play — 2 players, same questions"
-}
-
-/**
- * Compact mode dropdown: a single card showing the selected mode with its
- * icon and one-line pitch; tapping expands it in place to list the other
- * modes. Replaces the old 3-row pill grid to keep Home short.
- */
+/** The selected identity is also Home's sole mode-selection control. */
 @Composable
-private fun ModeSelector(
-    selected: NazoMode,
-    onSelect: (NazoMode) -> Unit,
+private fun ModeIdentityCard(
+    mode: NazoMode,
+    onClick: () -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    val chevron by animateFloatAsState(
-        targetValue = if (expanded) 180f else 0f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label = "modeChevron",
+    val identity = modeIdentitySpec(mode)
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 20.dp,
+        pressedCorner = 10.dp,
     )
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
-            .background(NazoSurface)
-            .border(
-                width = 1.dp,
-                color = if (expanded) NazoPrimary.copy(alpha = 0.35f)
-                else NazoTextSecondary.copy(alpha = 0.08f),
-                shape = RoundedCornerShape(22.dp),
+            .clip(shape)
+            .background(NazoSurface.copy(alpha = 0.72f), shape)
+            .border(1.dp, NazoPrimary.copy(alpha = 0.22f), shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = indication,
+                onClick = onClick,
             )
-            .animateContentSize(spring(stiffness = Spring.StiffnessMediumLow)),
+            .padding(horizontal = 14.dp, vertical = 13.dp),
     ) {
-        // Selected mode header — always visible, toggles the list.
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { expanded = !expanded }
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "${mode.label.uppercase()}  •  ${identity.eyebrow}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoPrimary,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.1.sp,
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = identity.headline,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = NazoTextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = identity.cues.joinToString("  •  "),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoTextSecondary,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                ModeSignature(mode)
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "CHANGE",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NazoPrimary,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp,
+                    )
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowUp,
+                        contentDescription = "Choose game mode",
+                        tint = NazoPrimary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Rich sheet row. [ModeSignature] is intentionally reused here so the future
+ * personality animations have one obvious home instead of a second visual
+ * system that can drift away from the selected card.
+ */
+@Composable
+private fun ModePickerCard(
+    mode: NazoMode,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val identity = modeIdentitySpec(mode)
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
+    val borderColor by animateColorAsState(
+        targetValue = if (selected) NazoPrimary.copy(alpha = 0.58f)
+        else NazoTextSecondary.copy(alpha = 0.12f),
+        animationSpec = tween(220),
+        label = "modePickerBorder",
+    )
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 22.dp,
+        pressedCorner = 11.dp,
+    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                if (selected) NazoPrimary.copy(alpha = 0.08f) else NazoBackground.copy(alpha = 0.58f),
+                shape,
+            )
+            .border(if (selected) 1.5.dp else 1.dp, borderColor, shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = indication,
+                onClick = onClick,
+            )
+            .padding(14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
-                contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .size(42.dp)
+                    .size(38.dp)
                     .clip(CircleShape)
-                    .background(NazoPrimary.copy(alpha = 0.14f)),
+                    .background(if (selected) NazoPrimary.copy(alpha = 0.16f) else NazoSurfaceVariant),
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = MODE_ICONS[selected] ?: Icons.Filled.Quiz,
+                    imageVector = MODE_ICONS[mode] ?: Icons.Filled.Quiz,
                     contentDescription = null,
+                    tint = if (selected) NazoPrimary else NazoTextSecondary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Spacer(Modifier.width(11.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = mode.label,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (selected) NazoPrimary else NazoTextPrimary,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = identity.eyebrow,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoTextSecondary,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.9.sp,
+                )
+            }
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = "Selected mode",
                     tint = NazoPrimary,
                     modifier = Modifier.size(22.dp),
                 )
             }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
+        }
+        Spacer(Modifier.height(11.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = selected.label,
+                    text = identity.headline,
                     style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold,
                     color = NazoTextPrimary,
+                    fontWeight = FontWeight.SemiBold,
                 )
+                Spacer(Modifier.height(3.dp))
                 Text(
-                    text = modeBlurb(selected),
+                    text = identity.description,
                     style = MaterialTheme.typography.bodySmall,
                     color = NazoTextSecondary,
-                    maxLines = 1,
+                    lineHeight = 18.sp,
                 )
             }
-            Spacer(Modifier.width(8.dp))
-            Icon(
-                imageVector = Icons.Filled.KeyboardArrowDown,
-                contentDescription = if (expanded) "Collapse modes" else "Expand modes",
-                tint = NazoTextSecondary,
-                modifier = Modifier
-                    .size(24.dp)
-                    .rotate(chevron),
-            )
+            Spacer(Modifier.width(12.dp))
+            ModeSignature(mode)
         }
-        if (expanded) {
-            HorizontalDivider(color = NazoTextSecondary.copy(alpha = 0.08f))
-            NazoMode.entries.filter { it != selected }.forEach { m ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
+        Spacer(Modifier.height(9.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            identity.cues.forEach { cue -> ModeCuePill(cue, selected) }
+        }
+    }
+}
+
+@Composable
+private fun ModeCuePill(text: String, selected: Boolean) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(
+                if (selected) NazoPrimary.copy(alpha = 0.12f)
+                else NazoSurfaceVariant
+            )
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (selected) NazoPrimary else NazoTextSecondary,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun ModeSignature(mode: NazoMode) {
+    Box(
+        modifier = Modifier
+            .width(88.dp)
+            .height(58.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(NazoBackground.copy(alpha = 0.88f))
+            .border(1.dp, NazoPrimary.copy(alpha = 0.16f), RoundedCornerShape(16.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        when (mode) {
+            NazoMode.QUIZ -> Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            expanded = false
-                            onSelect(m)
-                        }
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(NazoPrimary.copy(alpha = 0.14f)),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(NazoPillUnselected),
-                    ) {
-                        Icon(
-                            imageVector = MODE_ICONS[m] ?: Icons.Filled.Quiz,
-                            contentDescription = null,
-                            tint = NazoTextSecondary,
-                            modifier = Modifier.size(19.dp),
-                        )
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            text = m.label,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = NazoTextPrimary,
-                        )
-                        Text(
-                            text = modeBlurb(m),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = NazoTextSecondary,
-                            maxLines = 1,
+                    Icon(Icons.Filled.Quiz, null, tint = NazoPrimary, modifier = Modifier.size(17.dp))
+                }
+                Spacer(Modifier.width(7.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf(26.dp, 20.dp, 24.dp).forEachIndexed { index, width ->
+                        Box(
+                            Modifier
+                                .width(width)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    if (index == 0) NazoPrimary
+                                    else NazoTextSecondary.copy(alpha = 0.28f)
+                                )
                         )
                     }
                 }
             }
-            Spacer(Modifier.height(6.dp))
+            NazoMode.GUESSING -> Box(
+                modifier = Modifier
+                    .size(width = 58.dp, height = 38.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(NazoSurfaceVariant)
+                    .border(1.dp, NazoPrimary.copy(alpha = 0.36f), RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "?",
+                    color = NazoPrimary,
+                    fontSize = 23.sp,
+                    fontWeight = FontWeight.Black,
+                )
+                Icon(
+                    imageVector = Icons.Filled.ImageSearch,
+                    contentDescription = null,
+                    tint = NazoPrimary,
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(5.dp).size(13.dp),
+                )
+            }
+            NazoMode.SURVIVAL -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "LIVES",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoTextSecondary,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                )
+                Spacer(Modifier.height(5.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    repeat(3) {
+                        Icon(
+                            Icons.Filled.Favorite,
+                            contentDescription = null,
+                            tint = NazoError,
+                            modifier = Modifier.size(17.dp),
+                        )
+                    }
+                }
+            }
+            NazoMode.BLITZ -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Timer, null, tint = NazoPrimary, modifier = Modifier.size(23.dp))
+                Spacer(Modifier.width(5.dp))
+                Column {
+                    Text("60", color = NazoTextPrimary, fontWeight = FontWeight.Black, fontSize = 20.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        repeat(4) { index ->
+                            Box(
+                                Modifier
+                                    .width((10 - index).dp)
+                                    .height(2.dp)
+                                    .background(NazoPrimary.copy(alpha = 1f - index * 0.16f))
+                            )
+                        }
+                    }
+                }
+            }
+            NazoMode.VERSUS -> Row(verticalAlignment = Alignment.CenterVertically) {
+                VersusMiniPlayer("P1", active = true)
+                Text(
+                    text = "VS",
+                    color = NazoTextSecondary,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+                VersusMiniPlayer("P2", active = false)
+            }
         }
+    }
+}
+
+@Composable
+private fun VersusMiniPlayer(label: String, active: Boolean) {
+    Box(
+        modifier = Modifier
+            .size(28.dp)
+            .clip(CircleShape)
+            .background(if (active) NazoPrimary else NazoPillUnselected),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = if (active) NazoOnPrimary else NazoTextSecondary,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
@@ -1179,109 +1507,256 @@ private fun SectionLabel(text: String) {
 @Composable
 private fun TopicInputCard(topic: String, onTopicChange: (String) -> Unit) {
     val focusManager = LocalFocusManager.current
-    val suggestions = remember(topic) {
-        if (topic.isBlank()) emptyList()
-        else LocalQuestionBank.suggestions().filter { it.contains(topic, ignoreCase = true) }.take(8)
+    val reduceMotion = rememberSystemReduceMotion()
+    val allSuggestions = remember { LocalQuestionBank.suggestions() }
+    var focused by remember { mutableStateOf(false) }
+    val suggestions = remember(topic, allSuggestions) {
+        homeTopicSuggestions(topic, allSuggestions)
     }
+    val showSuggestions = focused && suggestions.isNotEmpty()
+    val cardShape = RoundedCornerShape(24.dp)
+    val fieldShape = RoundedCornerShape(18.dp)
+    val fieldBorder by animateColorAsState(
+        targetValue = if (focused) {
+            NazoOnDarkCard.copy(alpha = 0.62f)
+        } else {
+            NazoOnDarkCard.copy(alpha = 0.18f)
+        },
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "topicFieldBorder",
+    )
+    val fieldBackground by animateColorAsState(
+        targetValue = if (focused) {
+            NazoOnDarkCard.copy(alpha = 0.13f)
+        } else {
+            NazoOnDarkCard.copy(alpha = 0.08f)
+        },
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "topicFieldBackground",
+    )
 
-    // Label + control, the same rhythm as DIFFICULTY and QUESTIONS below.
-    // The old wrapper card put a surface around a field that already has its
-    // own surface — one input wore more chrome than the mode selector, which
-    // muddled both the hierarchy and the page's card rhythm.
     Column(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        SectionLabel("TOPIC")
-        Spacer(Modifier.height(8.dp))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(NazoSurfaceVariant)
-                .padding(horizontal = 14.dp, vertical = 12.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Search,
-                contentDescription = null,
-                tint = NazoTextSecondary,
-                modifier = Modifier.size(20.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(cardShape)
+            .background(
+                brush = Brush.linearGradient(
+                    listOf(
+                        NazoDarkCard,
+                        NazoDarkCardAccent.copy(alpha = 0.96f),
+                    ),
+                ),
+                shape = cardShape,
             )
-            Spacer(Modifier.width(10.dp))
-            Box(modifier = Modifier.weight(1f)) {
-                if (topic.isEmpty()) {
-                    Text(
-                        text = "Anime or theme (e.g., Jujutsu Kaisen)",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = NazoTextPlaceholder,
-                    )
-                }
-                BasicTextField(
-                    value = topic,
-                    onValueChange = onTopicChange,
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Text,
-                        imeAction = ImeAction.Done,
+            .border(1.dp, NazoOnDarkCard.copy(alpha = 0.14f), cardShape)
+            .padding(14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(NazoOnDarkCard.copy(alpha = 0.10f))
+                    .border(
+                        1.dp,
+                        NazoOnDarkCard.copy(alpha = 0.16f),
+                        RoundedCornerShape(14.dp),
                     ),
-                    keyboardActions = KeyboardActions(
-                        onDone = { focusManager.clearFocus() },
-                    ),
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(
-                        color = NazoTextPrimary,
-                        fontWeight = FontWeight.Medium
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.AutoAwesome,
+                    contentDescription = null,
+                    tint = NazoOnDarkCard,
+                    modifier = Modifier.size(21.dp),
                 )
             }
-            if (topic.isNotEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .size(22.dp)
-                        .clip(CircleShape)
-                        .background(NazoTextSecondary.copy(alpha = 0.2f))
-                        .clickable { onTopicChange("") },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = "Clear",
-                        tint = NazoTextPrimary,
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "CHALLENGE FOCUS",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoOnDarkCardMuted,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.2.sp,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "Choose an anime or theme",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = NazoOnDarkCard,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                )
             }
+            Spacer(Modifier.width(8.dp))
+            TopicStatusBadge(ready = topic.isNotBlank())
         }
 
-        if (suggestions.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            HorizontalDivider(color = NazoSurfaceVariant, thickness = 1.dp)
-            Spacer(Modifier.height(6.dp))
-            suggestions.forEach { suggestion ->
+        Spacer(Modifier.height(13.dp))
+
+        BasicTextField(
+            value = topic,
+            onValueChange = onTopicChange,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Words,
+                keyboardType = KeyboardType.Text,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = { focusManager.clearFocus() },
+            ),
+            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                color = NazoOnDarkCard,
+                fontWeight = FontWeight.SemiBold,
+            ),
+            cursorBrush = SolidColor(NazoOnDarkCard),
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics { contentDescription = "Challenge topic, optional" }
+                .onFocusChanged { focused = it.isFocused },
+            decorationBox = { innerTextField ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable {
-                            onTopicChange(suggestion)
-                            focusManager.clearFocus()
-                        }
-                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                        .clip(fieldShape)
+                        .background(fieldBackground, fieldShape)
+                        .border(1.dp, fieldBorder, fieldShape)
+                        .defaultMinSize(minHeight = 58.dp)
+                        .padding(start = 14.dp, end = 9.dp, top = 8.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.AutoAwesome,
+                        imageVector = Icons.Filled.Search,
                         contentDescription = null,
-                        tint = NazoPrimary,
-                        modifier = Modifier.size(16.dp),
+                        tint = if (focused) NazoOnDarkCard else NazoOnDarkCardMuted,
+                        modifier = Modifier.size(21.dp),
                     )
                     Spacer(Modifier.width(10.dp))
-                    Text(
-                        text = suggestion,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NazoTextPrimary,
-                        fontWeight = FontWeight.Medium
+                    Box(modifier = Modifier.weight(1f)) {
+                        if (topic.isEmpty()) {
+                            Text(
+                                text = "Anime, character, arc, or theme",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = NazoOnDarkCardMuted,
+                                maxLines = 1,
+                            )
+                        }
+                        innerTextField()
+                    }
+                    if (topic.isNotEmpty()) {
+                        Spacer(Modifier.width(6.dp))
+                        val clearInteraction = remember { MutableInteractionSource() }
+                        val clearShape = rememberNazoPillCornerMorphShape(
+                            interactionSource = clearInteraction,
+                            pressedCornerPercent = 28f,
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(clearShape)
+                                .background(NazoOnDarkCard.copy(alpha = 0.12f), clearShape)
+                                .clickable(
+                                    interactionSource = clearInteraction,
+                                    indication = LocalIndication.current,
+                                    role = Role.Button,
+                                ) { onTopicChange("") },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Clear topic",
+                                tint = NazoOnDarkCard,
+                                modifier = Modifier.size(17.dp),
+                            )
+                        }
+                    }
+                }
+            },
+        )
+
+        Spacer(Modifier.height(9.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = if (topic.isBlank()) Icons.Filled.Shuffle else Icons.Filled.CheckCircle,
+                contentDescription = null,
+                tint = NazoOnDarkCardMuted,
+                modifier = Modifier.size(15.dp),
+            )
+            Spacer(Modifier.width(7.dp))
+            Text(
+                text = if (topic.isBlank()) {
+                    "Leave blank for a mixed challenge"
+                } else {
+                    "Your challenge will center on this focus"
+                },
+                style = MaterialTheme.typography.labelMedium,
+                color = NazoOnDarkCardMuted,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+
+        AnimatedVisibility(
+            visible = showSuggestions,
+            enter = if (reduceMotion) {
+                fadeIn(tween(90))
+            } else {
+                fadeIn(tween(160, easing = FastOutSlowInEasing)) +
+                    expandVertically(
+                        expandFrom = Alignment.Top,
+                        animationSpec = tween(200, easing = FastOutSlowInEasing),
                     )
+            },
+            exit = if (reduceMotion) {
+                fadeOut(tween(70))
+            } else {
+                fadeOut(tween(120, easing = FastOutSlowInEasing)) +
+                    shrinkVertically(
+                        shrinkTowards = Alignment.Top,
+                        animationSpec = tween(180, easing = FastOutSlowInEasing),
+                    )
+            },
+            label = "topicSuggestionsVisibility",
+        ) {
+            Column(Modifier.fillMaxWidth()) {
+                Spacer(Modifier.height(13.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = if (topic.isBlank()) "START WITH" else "MATCHES",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NazoOnDarkCardMuted,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = "TAP TO USE",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NazoOnDarkCardMuted.copy(alpha = 0.78f),
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.6.sp,
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    suggestions.forEach { suggestion ->
+                        TopicSuggestionChip(
+                            suggestion = suggestion,
+                            onClick = {
+                                onTopicChange(suggestion)
+                                focusManager.clearFocus()
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -1289,61 +1764,514 @@ private fun TopicInputCard(topic: String, onTopicChange: (String) -> Unit) {
 }
 
 @Composable
-private fun PillButton(
-    text: String,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+private fun TopicStatusBadge(ready: Boolean) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(
+                if (ready) NazoOnDarkCard.copy(alpha = 0.14f)
+                else NazoOnDarkCard.copy(alpha = 0.08f),
+            )
+            .border(
+                1.dp,
+                NazoOnDarkCard.copy(alpha = if (ready) 0.24f else 0.12f),
+                RoundedCornerShape(50),
+            )
+            .padding(horizontal = 9.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = if (ready) Icons.Filled.Check else Icons.Filled.Edit,
+            contentDescription = null,
+            tint = if (ready) NazoOnDarkCard else NazoOnDarkCardMuted,
+            modifier = Modifier.size(13.dp),
+        )
+        Spacer(Modifier.width(5.dp))
+        Text(
+            text = if (ready) "READY" else "OPTIONAL",
+            style = MaterialTheme.typography.labelSmall,
+            color = if (ready) NazoOnDarkCard else NazoOnDarkCardMuted,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.7.sp,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun TopicSuggestionChip(
+    suggestion: String,
     onClick: () -> Unit,
 ) {
-    val scale by animateFloatAsState(
-        targetValue = if (selected) 1.02f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label = "pillScale"
+    val interactionSource = remember(suggestion) { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 14.dp,
+        pressedCorner = 7.dp,
     )
-    val pillBg by animateColorAsState(
-        targetValue = if (selected) NazoPrimary else NazoPillUnselected,
-        animationSpec = tween(durationMillis = 180),
-        label = "pillBg",
-    )
-    val pillFg by animateColorAsState(
-        targetValue = if (selected) NazoOnPrimary else NazoTextPrimary,
-        animationSpec = tween(durationMillis = 180),
-        label = "pillFg",
-    )
-    
-    Box(
-        modifier = modifier
-        .scale(scale)
-        .clip(RoundedCornerShape(50))
-        .background(pillBg)
-        .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(50))
-        .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 12.dp),
-        contentAlignment = Alignment.Center,
+    Row(
+        modifier = Modifier
+            .defaultMinSize(minHeight = 48.dp)
+            .clip(shape)
+            .background(NazoOnDarkCard.copy(alpha = 0.10f), shape)
+            .border(1.dp, NazoOnDarkCard.copy(alpha = 0.16f), shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            if (icon != null) {
+        Icon(
+            imageVector = Icons.Filled.AutoAwesome,
+            contentDescription = null,
+            tint = NazoOnDarkCardMuted,
+            modifier = Modifier.size(15.dp),
+        )
+        Spacer(Modifier.width(7.dp))
+        Text(
+            text = suggestion,
+            style = MaterialTheme.typography.labelLarge,
+            color = NazoOnDarkCard,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun ChallengeSetupCard(
+    mode: NazoMode,
+    difficulty: Difficulty,
+    questionCount: Int,
+    guessingRounds: Int,
+    reduceMotion: Boolean,
+    onDifficultySelected: (Difficulty) -> Unit,
+    onQuestionCountSelected: (Int) -> Unit,
+    onGuessingRoundsSelected: (Int) -> Unit,
+) {
+    val cardShape = RoundedCornerShape(22.dp)
+    val summary = challengeSummary(mode, difficulty, questionCount, guessingRounds)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(NazoSurface, cardShape)
+            .border(1.dp, NazoPrimary.copy(alpha = 0.20f), cardShape)
+            .padding(14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(NazoPrimary.copy(alpha = 0.13f)),
+                contentAlignment = Alignment.Center,
+            ) {
                 Icon(
-                    imageVector = icon,
+                    imageVector = Icons.Filled.Tune,
                     contentDescription = null,
-                    tint = pillFg,
-                    modifier = Modifier.size(18.dp)
+                    tint = NazoPrimary,
+                    modifier = Modifier.size(22.dp),
                 )
-                Spacer(Modifier.width(6.dp))
             }
-            Text(
-                text = text,
-                style = MaterialTheme.typography.bodyMedium,
-                color = pillFg,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                maxLines = 1,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "CHALLENGE SETUP",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoPrimary,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.2.sp,
+                )
+                Spacer(Modifier.height(2.dp))
+                AnimatedContent(
+                    targetState = summary,
+                    transitionSpec = {
+                        if (reduceMotion) {
+                            fadeIn(tween(90)) togetherWith fadeOut(tween(70))
+                        } else {
+                            (fadeIn(tween(160, easing = FastOutSlowInEasing)) +
+                                slideInVertically(
+                                    tween(180, easing = FastOutSlowInEasing),
+                                ) { it / 3 })
+                                .togetherWith(
+                                    fadeOut(tween(120, easing = FastOutSlowInEasing)) +
+                                        slideOutVertically(
+                                            tween(150, easing = FastOutSlowInEasing),
+                                        ) { -it / 3 },
+                                )
+                        }
+                    },
+                    label = "challengeSummary",
+                ) { value ->
+                    Text(
+                        text = value,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = NazoTextSecondary,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+        ChallengeGroupLabel(
+            title = "DIFFICULTY",
+            supporting = "Choose your pace",
+        )
+        Spacer(Modifier.height(8.dp))
+        ChallengeDifficultyRail(
+            selected = difficulty,
+            onSelected = onDifficultySelected,
+        )
+
+        // Count controls are part of this one setup surface rather than a
+        // disconnected pill row. Its animated height keeps the card and every
+        // sibling below it moving as one unit when a mode has no count choice.
+        AnimatedContent(
+            targetState = homeCountControls(mode),
+            modifier = Modifier.fillMaxWidth(),
+            transitionSpec = {
+                val transform = if (reduceMotion) {
+                    fadeIn(tween(90)) togetherWith fadeOut(tween(70))
+                } else {
+                    (fadeIn(tween(180, easing = FastOutSlowInEasing)) +
+                        slideInVertically(tween(220, easing = FastOutSlowInEasing)) { it / 10 })
+                        .togetherWith(
+                            fadeOut(tween(140, easing = FastOutSlowInEasing)) +
+                                slideOutVertically(
+                                    tween(180, easing = FastOutSlowInEasing),
+                                ) { -it / 10 },
+                        )
+                }
+                transform.using(
+                    SizeTransform(clip = false) { _, _ ->
+                        if (reduceMotion) snap() else tween(
+                            durationMillis = 240,
+                            easing = FastOutSlowInEasing,
+                        )
+                    },
+                )
+            },
+            label = "challengeCountControls",
+        ) { controls ->
+            when (controls) {
+                HomeCountControls.Questions -> ChallengeCountGroup(
+                    title = "QUESTIONS",
+                    supporting = "Pick a run length",
+                    values = listOf(5, 10, 15),
+                    selected = questionCount,
+                    captions = listOf("Quick", "Standard", "Long"),
+                    onSelected = onQuestionCountSelected,
+                )
+
+                HomeCountControls.Rounds -> ChallengeCountGroup(
+                    title = "ROUNDS",
+                    supporting = "Choose your session",
+                    values = listOf(1, 3, 5),
+                    selected = guessingRounds,
+                    captions = listOf("Quick", "Standard", "Marathon"),
+                    onSelected = onGuessingRoundsSelected,
+                )
+
+                HomeCountControls.None -> Spacer(Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChallengeGroupLabel(title: String, supporting: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelSmall,
+            color = NazoTextPrimary,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+        )
+        Spacer(Modifier.weight(1f))
+        Text(
+            text = supporting,
+            style = MaterialTheme.typography.labelSmall,
+            color = NazoTextSecondary,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+@Composable
+private fun ChallengeDifficultyRail(
+    selected: Difficulty,
+    onSelected: (Difficulty) -> Unit,
+) {
+    val railShape = RoundedCornerShape(18.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(railShape)
+            .background(NazoPillUnselected.copy(alpha = 0.58f), railShape)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.10f), railShape)
+            .padding(4.dp)
+            .selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Difficulty.entries.forEach { level ->
+            ChallengeDifficultyOption(
+                difficulty = level,
+                selected = selected == level,
+                modifier = Modifier.weight(1f),
+                onClick = { onSelected(level) },
             )
         }
+    }
+}
+
+@Composable
+private fun ChallengeDifficultyOption(
+    difficulty: Difficulty,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 14.dp,
+        pressedCorner = 7.dp,
+    )
+    val container by animateColorAsState(
+        targetValue = if (selected) NazoPrimary else Color.Transparent,
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "challengeDifficultyContainer_${difficulty.name}",
+    )
+    val foreground by animateColorAsState(
+        targetValue = if (selected) NazoOnPrimary else NazoTextPrimary,
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "challengeDifficultyForeground_${difficulty.name}",
+    )
+    val iconTint by animateColorAsState(
+        targetValue = if (selected) NazoOnPrimary else NazoPrimary,
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "challengeDifficultyIcon_${difficulty.name}",
+    )
+    val icon = when (difficulty) {
+        Difficulty.EASY -> Icons.Filled.Lightbulb
+        Difficulty.MEDIUM -> Icons.Filled.TrackChanges
+        Difficulty.HARD -> Icons.Filled.LocalFireDepartment
+        Difficulty.OTAKU_MASTER -> Icons.Filled.WorkspacePremium
+    }
+
+    Column(
+        modifier = modifier
+            .defaultMinSize(minHeight = 70.dp)
+            .clip(shape)
+            .background(container, shape)
+            .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
+            .padding(horizontal = 3.dp, vertical = 9.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = iconTint,
+            modifier = Modifier.size(19.dp),
+        )
+        Spacer(Modifier.height(5.dp))
+        Text(
+            text = difficulty.label,
+            style = MaterialTheme.typography.labelMedium,
+            color = foreground,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            lineHeight = 13.sp,
+            maxLines = 2,
+        )
+    }
+}
+
+@Composable
+private fun ChallengeCountGroup(
+    title: String,
+    supporting: String,
+    values: List<Int>,
+    selected: Int,
+    captions: List<String>,
+    onSelected: (Int) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Spacer(Modifier.height(16.dp))
+        ChallengeGroupLabel(title = title, supporting = supporting)
+        Spacer(Modifier.height(8.dp))
+        val railShape = RoundedCornerShape(18.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(railShape)
+                .background(NazoPillUnselected.copy(alpha = 0.58f), railShape)
+                .border(1.dp, NazoTextSecondary.copy(alpha = 0.10f), railShape)
+                .padding(4.dp)
+                .selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            values.forEachIndexed { index, value ->
+                ChallengeCountOption(
+                    value = value,
+                    caption = captions.getOrElse(index) { "" },
+                    selected = selected == value,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onSelected(value) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChallengeCountOption(
+    value: Int,
+    caption: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 14.dp,
+        pressedCorner = 7.dp,
+    )
+    val container by animateColorAsState(
+        targetValue = if (selected) NazoPrimary else Color.Transparent,
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "challengeCountContainer_$value",
+    )
+    val foreground by animateColorAsState(
+        targetValue = if (selected) NazoOnPrimary else NazoTextPrimary,
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "challengeCountForeground_$value",
+    )
+    val secondary by animateColorAsState(
+        targetValue = if (selected) NazoOnPrimary.copy(alpha = 0.76f) else NazoTextSecondary,
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "challengeCountSecondary_$value",
+    )
+
+    Column(
+        modifier = modifier
+            .defaultMinSize(minHeight = 62.dp)
+            .clip(shape)
+            .background(container, shape)
+            .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
+            .padding(horizontal = 6.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = value.toString(),
+            style = MaterialTheme.typography.titleMedium,
+            color = foreground,
+            fontWeight = FontWeight.Black,
+        )
+        Text(
+            text = caption,
+            style = MaterialTheme.typography.labelSmall,
+            color = secondary,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * Corner-only expressive prototype. The Row keeps its original measurement and
+ * full touch target; only the clipping outline and matching border interpolate.
+ */
+@Composable
+private fun PracticeMissesButton(
+    practiceCount: Int,
+    onClick: () -> Unit,
+) {
+    val context = LocalContext.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
+    val expressivePress = rememberNazoExpressivePressState(interactionSource)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                val cornerPercent = nazoExpressiveCornerPercent(expressivePress.progress)
+                shape = RoundedCornerShape(cornerPercent.roundToInt())
+                clip = true
+            }
+            .drawWithContent {
+                val cornerPercent = nazoExpressiveCornerPercent(expressivePress.progress)
+                val radius = size.minDimension * cornerPercent / 100f
+                drawRoundRect(
+                    color = NazoSurface,
+                    cornerRadius = CornerRadius(radius, radius),
+                )
+                drawContent()
+
+                val strokeWidth = 1.dp.toPx()
+                val inset = strokeWidth / 2f
+                val borderRadius = (radius - inset).coerceAtLeast(0f)
+                drawRoundRect(
+                    color = NazoPrimary.copy(alpha = 0.35f),
+                    topLeft = Offset(inset, inset),
+                    size = Size(
+                        width = size.width - strokeWidth,
+                        height = size.height - strokeWidth,
+                    ),
+                    cornerRadius = CornerRadius(borderRadius, borderRadius),
+                    style = Stroke(width = strokeWidth),
+                )
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = indication,
+            ) {
+                Haptics.light(context)
+                onClick()
+            }
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.School,
+            contentDescription = null,
+            tint = NazoPrimary,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = "Practice your misses ($practiceCount)",
+            color = NazoPrimary,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }
 
@@ -1351,6 +2279,7 @@ private fun PillButton(
 private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val reduceMotion = rememberSystemReduceMotion()
 
     // Tap sequence: the sparkle twinkles, then navigation fires a beat later so
     // the animation is actually seen. `launching` also guards against a second
@@ -1367,7 +2296,7 @@ private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> U
     val pressed by interactionSource.collectIsPressedAsState()
 
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.97f else 1f,
+        targetValue = if (pressed && !reduceMotion) 0.97f else 1f,
         // Springy on release so it feels responsive rather than sluggish.
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
@@ -1376,35 +2305,40 @@ private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> U
         label = "generate_press_scale",
     )
     val pressOverlay by animateFloatAsState(
-        targetValue = if (pressed) 0.16f else 0f,
+        targetValue = if (pressed && !reduceMotion) 0.16f else 0f,
         animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
         label = "generate_press_overlay",
     )
     val elevation by animateDpAsState(
-        targetValue = if (pressed) 1.dp else 8.dp,
+        targetValue = if (pressed && !reduceMotion) 1.dp else 8.dp,
         animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
         label = "generate_press_elevation",
     )
 
     // Idle sheen: a soft highlight that travels left-to-right on a long loop,
     // with a pause between sweeps so it reads as a gentle shine, not a spinner.
-    val sheen = rememberInfiniteTransition(label = "generate_sheen")
-    val sheenX by sheen.animateFloat(
-        initialValue = -0.35f,
-        targetValue = 1.35f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes<Float> {
-                durationMillis = 4200
-                // Dwell off-screen, sweep across, then hold before repeating.
-                (-0.35f) at 0
-                (-0.35f) at 1400
-                1.35f at 3000 using LinearEasing
-                1.35f at 4200
-            },
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "generate_sheen_x",
-    )
+    val sheenX = if (reduceMotion) {
+        -0.35f
+    } else {
+        val sheen = rememberInfiniteTransition(label = "generate_sheen")
+        val animatedSheen by sheen.animateFloat(
+            initialValue = -0.35f,
+            targetValue = 1.35f,
+            animationSpec = infiniteRepeatable(
+                animation = keyframes<Float> {
+                    durationMillis = 4200
+                    // Dwell off-screen, sweep across, then hold before repeating.
+                    (-0.35f) at 0
+                    (-0.35f) at 1400
+                    1.35f at 3000 using LinearEasing
+                    1.35f at 4200
+                },
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "generate_sheen_x",
+        )
+        animatedSheen
+    }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -1428,7 +2362,7 @@ private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> U
             // while pressed so the two effects never overlap.
             .drawWithContent {
                 drawContent()
-                if (!pressed) {
+                if (!pressed && !reduceMotion) {
                     val bandWidth = size.width * 0.38f
                     val center = size.width * sheenX
                     drawRect(
@@ -1469,6 +2403,13 @@ private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> U
                 if (launching) return@clickable
                 launching = true
                 Haptics.light(context)
+                if (reduceMotion) {
+                    // The action stays immediate under Remove animations; no
+                    // decorative sheen, press transform, sparkle or delay.
+                    onClick()
+                    launching = false
+                    return@clickable
+                }
                 scope.launch {
                     twinkle.snapTo(0f)
                     // ~420ms of twinkle, then a short beat so the animation

@@ -1,5 +1,6 @@
 package quiz.thaton3app.nazo.ui.components
 
+import android.graphics.Rect as AndroidRect
 import android.graphics.SurfaceTexture
 import android.view.Surface
 import android.view.TextureView
@@ -38,11 +39,14 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import quiz.thaton3app.nazo.data.profile.AvatarMedia
 import quiz.thaton3app.nazo.ui.Screen
+import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.roundToInt
 
 /**
@@ -59,9 +63,9 @@ import kotlin.math.roundToInt
  * Three pieces make that work:
  *
  *  - **Position** comes from the anchor's window bounds captured while the
- *    screens are at rest, plus a slide replicated from the screen transition
- *    ([avatarOverlayTransform]) while predictive-back motion runs. Bounds
- *    are the anchor's `positionInWindow` + layout size — never clipped to
+ *    screens are at rest, plus the slide replicated from the screen transition
+ *    by [avatarOverlayTransform]. Bounds are the anchor's `positionInWindow`
+ *    + layout size — never clipped to
  *    the window — so a circle sliding off the edge keeps its full size.
  *  - **Alpha** is replicated from the very same transitionSpec branches that
  *    animate the screens (co-located rule: change one, change the other), so
@@ -89,11 +93,15 @@ import kotlin.math.roundToInt
 // Overlay transform (pure — mirrors the screen transitionSpec in NazoApp)
 // ---------------------------------------------------------------------------
 
+/** Shared visual policy for taps, back arrows, and predictive-back scrubbing. */
+internal const val ScreenNavigationTransitionDurationMs = 240
+internal const val ScreenNavigationSlideFraction = 0.08f
+
 /** What the overlay should look like for one frame of the screen transition. */
 internal data class AvatarOverlayTransform(
     /** 0f..1f — multiplied into the overlay's draw alpha. */
     val alpha: Float,
-    /** Horizontal slide in px, matching the predictive-back slide specs. */
+    /** Horizontal slide in px, matching the shared screen transition. */
     val slideX: Float,
 )
 
@@ -120,6 +128,7 @@ internal data class AvatarOverlayTransform(
  *   transition's target (incoming) side — decides fade-in vs fade-out in
  *   the ordinary branch.
  * @param edgeDirection `predictiveBackEdgeDirection` (±1).
+ * @param ordinaryDirection +1 for pushes, -1 for ordinary pops.
  * @param containerWidth screen content width in px (after the rail inset).
  */
 internal fun avatarOverlayTransform(
@@ -130,35 +139,47 @@ internal fun avatarOverlayTransform(
     initialIsPredictive: Boolean,
     winnerIsTarget: Boolean,
     edgeDirection: Int,
+    ordinaryDirection: Int = 1,
     containerWidth: Float,
+    /** Zero under Remove animations; default preserves the shared 8% motion. */
+    slideFraction: Float = ScreenNavigationSlideFraction,
 ): AvatarOverlayTransform {
     if (!transitioning) return AvatarOverlayTransform(alpha = 1f, slideX = 0f)
     val eased: (Float) -> Float = { FastOutSlowInEasing.transform(it.coerceIn(0f, 1f)) }
     return when {
         predictiveTargetPresent && targetIsPredictive -> AvatarOverlayTransform(
-            // Branch 1 of the spec: the screen being LEFT slides toward the
-            // edge (tween 220) and fades out (tween 220) while the revealed
-            // screen comes in behind it. The winner is that left screen.
+            // Predictive commit/preview: identical to an ordinary back pop,
+            // except the gesture edge mirrors direction. The outgoing winner
+            // travels only the shared 8% distance while fading with the same
+            // 240 ms FastOutSlowIn curve scrubbed by gesture progress.
             alpha = 1f - eased(fraction),
-            slideX = containerWidth * edgeDirection * eased(fraction),
+            slideX = containerWidth * slideFraction *
+                edgeDirection * eased(fraction),
         )
 
         predictiveTargetPresent && initialIsPredictive -> AvatarOverlayTransform(
-            // Branch 2: the cancelled gesture settles back — the screen we
-            // stay on slides home (tween 220) while its fade-in (tween 180)
-            // runs against the segment's 220 ms total.
-            alpha = eased(fraction * 220f / 180f),
-            slideX = containerWidth * edgeDirection * (1f - eased(fraction)),
+            // A flipped cancellation segment is the exact inverse of that
+            // shared subtle motion; fade and slide use one duration/easing.
+            alpha = eased(fraction),
+            slideX = containerWidth * slideFraction *
+                edgeDirection * (1f - eased(fraction)),
         )
 
-        // Ordinary navigation: pure fade, no horizontal movement — the
-        // incoming screen fades in (tween 220); if the winner is somehow the
-        // outgoing side (navigation started while a settle was still
-        // running), it rides the exit fade (tween 160) instead.
-        winnerIsTarget -> AvatarOverlayTransform(alpha = eased(fraction), slideX = 0f)
+        // Ordinary navigation uses one duration/easing for slide and fade.
+        // The overlay stays with the outgoing anchor until it is fully gone;
+        // the incoming screen draws its cached poster in the destination slot.
+        // Only after settle does the persistent surface rebase to that slot,
+        // so its native view is never resized from Home's 42dp to Profile's
+        // 132dp while visible.
+        winnerIsTarget -> AvatarOverlayTransform(
+            alpha = eased(fraction),
+            slideX = containerWidth * slideFraction *
+                ordinaryDirection * (1f - eased(fraction)),
+        )
         else -> AvatarOverlayTransform(
-            alpha = 1f - eased(fraction * 220f / 160f),
-            slideX = 0f,
+            alpha = 1f - eased(fraction),
+            slideX = -containerWidth * slideFraction *
+                ordinaryDirection * eased(fraction),
         )
     }
 }
@@ -166,14 +187,15 @@ internal fun avatarOverlayTransform(
 /**
  * Which screen's avatar slot the overlay belongs to right now.
  *
- * At rest — and during ordinary navigation — that is simply [currentScreen],
- * so a forward push hands the circle to the incoming screen immediately.
- * While predictive-back motion runs it is the transition side that is NOT
- * the gesture's target: the screen being dismissed keeps the circle through
- * the whole gesture and its commit settle (sliding and fading out with it),
- * and a cancel keeps it on the screen we never left. The revealed screen
- * takes over only once the transition settles — by then its anchor has been
- * re-captured at rest, so the hand-off lands exactly on its slot.
+ * At rest this is [currentScreen]. During ordinary navigation it remains the
+ * transition's current/outgoing screen — including the one composition between
+ * a stack mutation and `animateTo` establishing its segment. The live native
+ * surface therefore fades/slides out at one stable size while the incoming
+ * screen's cached poster fades in at its own size. Only after settle does the
+ * surface rebase invisibly to the destination anchor.
+ *
+ * Predictive back keeps the same rule it already had: the transition side that
+ * is NOT the gesture's target owns the circle through the gesture and settle.
  */
 internal fun resolveAvatarWinnerScreen(
     currentScreen: Screen,
@@ -183,6 +205,11 @@ internal fun resolveAvatarWinnerScreen(
 ): Screen = when {
     predictiveTarget != null && currentState != targetState ->
         if (currentState == predictiveTarget) targetState else currentState
+
+    // Ordinary segment in flight, or the stack has changed one frame before
+    // animateTo updates targetState: retain the known outgoing anchor.
+    predictiveTarget == null &&
+        (currentState != targetState || currentState != currentScreen) -> currentState
 
     else -> currentScreen
 }
@@ -205,12 +232,20 @@ enum class AvatarAnchorId { Home, Profile }
 internal class AvatarAnchorState(val id: AvatarAnchorId) {
 
     /**
-     * The slot's window bounds WITHOUT the predictive-back slide applied —
-     * captured only while the transition is at rest (or pure-fading, which
-     * does not move layout), so the overlay can add the replicated slide
-     * itself and stay frame-exact during the gesture.
+     * The slot's window bounds WITHOUT a screen slide applied — captured only
+     * while the transition is at rest, so the overlay can add the replicated
+     * slide itself and remain frame-exact during motion.
      */
     var restBounds: Rect by mutableStateOf(Rect.Zero)
+
+    /**
+     * The part of [restBounds] that the anchor's Compose ancestors actually
+     * expose. Unlike the full placement above, `boundsInWindow()` intersects
+     * with scroll-viewport clips. Mirroring that clip onto the root-level
+     * TextureView keeps live pixels out of the status-bar and navigation areas
+     * when the in-screen poster has already disappeared beneath their edge.
+     */
+    var visibleBounds: Rect by mutableStateOf(Rect.Zero)
 
     /** False until the owning screen has laid out at least once. */
     var present: Boolean by mutableStateOf(false)
@@ -224,6 +259,9 @@ internal class AvatarAnchorState(val id: AvatarAnchorId) {
     /** Current screen-owned actions forwarded by the persistent native surface. */
     var onClick: (() -> Unit)? by mutableStateOf(null)
     var onLongClick: (() -> Unit)? by mutableStateOf(null)
+
+    /** Re-reads the last attached LayoutCoordinates when a slide settles. */
+    var refreshBounds: (() -> Unit)? = null
 }
 
 /**
@@ -235,8 +273,8 @@ internal class AvatarAnchorRegistry {
     private val anchors = mutableStateMapOf<AvatarAnchorId, AvatarAnchorState>()
 
     /**
-     * False while predictive-back motion is animating: anchors keep their
-     * pre-gesture rest position instead of sampling the sliding one.
+     * False during any screen slide: anchors keep their pre-transition rest
+     * position instead of sampling animated placement as new geometry.
      */
     var captureEnabled: Boolean by mutableStateOf(true)
 
@@ -264,6 +302,43 @@ internal fun dispatchAvatarAnchorLongClick(anchor: AvatarAnchorState?): Boolean 
     val action = anchor?.onLongClick ?: return false
     action()
     return true
+}
+
+/** Old native-view geometry must stay transparent after the winner changes. */
+internal fun avatarOverlayBoundsMatchWinner(
+    boundsOwner: AvatarAnchorId?,
+    winner: AvatarAnchorId?,
+    ready: Boolean,
+): Boolean = ready && winner != null && boundsOwner == winner
+
+/**
+ * Converts an ancestor-clipped window rect into TextureView-local pixels.
+ *
+ * The full avatar remains laid out at [fullBounds] so video crop/scale does not
+ * change as it approaches an edge. Only its exposed pixels are clipped. Inward
+ * rounding is deliberate: a fractional pixel must never leak above a scroll
+ * viewport into the system status-bar area.
+ */
+internal fun avatarOverlayLocalClip(
+    fullBounds: Rect,
+    visibleBounds: Rect,
+): IntRect {
+    if (fullBounds.isEmpty || visibleBounds.isEmpty) return IntRect.Zero
+
+    val left = maxOf(fullBounds.left, visibleBounds.left)
+    val top = maxOf(fullBounds.top, visibleBounds.top)
+    val right = minOf(fullBounds.right, visibleBounds.right)
+    val bottom = minOf(fullBounds.bottom, visibleBounds.bottom)
+    if (right <= left || bottom <= top) return IntRect.Zero
+
+    val width = fullBounds.width.roundToInt().coerceAtLeast(0)
+    val height = fullBounds.height.roundToInt().coerceAtLeast(0)
+    return IntRect(
+        left = ceil(left - fullBounds.left).toInt().coerceIn(0, width),
+        top = ceil(top - fullBounds.top).toInt().coerceIn(0, height),
+        right = floor(right - fullBounds.left).toInt().coerceIn(0, width),
+        bottom = floor(bottom - fullBounds.top).toInt().coerceIn(0, height),
+    )
 }
 
 /** Provided by NazoApp around the screens subtree. */
@@ -320,7 +395,7 @@ internal fun AvatarVideoAnchorContent(
  *   has no avatar (the overlay hides and the player idles).
  * @param alpha from [avatarOverlayTransform], computed in NazoApp next to
  *   the transitionSpec it mirrors.
- * @param slideX likewise — the replicated predictive-back slide, in px.
+ * @param slideX likewise — the replicated shared navigation slide, in px.
  * @param railInset mirrors the screens area's rail padding so the container
  *   width equals the slide width the transitionSpec uses.
  * @param blurBlocking true while the NazoApp-level blocking dialogs blur the
@@ -369,13 +444,15 @@ internal fun PersistentAvatarVideo(
     val failed = registry.failed
     val window: IntSize = LocalWindowInfo.current.containerSize
 
-    // "Any part of the circle is inside the window" — position-based, so a
-    // half-scrolled avatar still shows (and only pauses, via centerVisible),
-    // while a fully off-screen or fully slid-away slot hides the overlay.
-    val onWindow = anchor?.restBounds?.let { b ->
-        window.width <= 0 || window.height <= 0 ||
-            (b.left < window.width && b.top < window.height &&
-                b.right > 0f && b.bottom > 0f)
+    // "Any exposed part of the circle is inside the window." Use the anchor's
+    // ancestor-clipped bounds, not its full placement: once Compose has clipped
+    // the poster at a scroll/status-bar edge, the native overlay must disappear
+    // at that same edge rather than floating above it as a second circle.
+    val onWindow = anchor?.visibleBounds?.let { b ->
+        !b.isEmpty &&
+            (window.width <= 0 || window.height <= 0 ||
+                (b.left < window.width && b.top < window.height &&
+                    b.right > 0f && b.bottom > 0f))
     } ?: false
 
     val shown = isVideo && !failed && playback.foreground &&
@@ -390,6 +467,7 @@ internal fun PersistentAvatarVideo(
     val shouldPlay = shown && anchor?.centerVisible != false
 
     val textureHolder = remember { arrayOfNulls<TextureView>(1) }
+    var frameRendered by remember { mutableStateOf(false) }
 
     DisposableEffect(session, shouldPlay) {
         val s = session
@@ -410,21 +488,43 @@ internal fun PersistentAvatarVideo(
         }
     }
 
-    // Sticky last-known slot geometry: the child keeps a stable position
-    // even for a frame where the winner's anchor is unbound (avatar change,
-    // screen swap) — alpha gates visibility anyway.
+    // Keep the native child attached across winner changes, but never DRAW old
+    // geometry as if it belonged to the new winner. That one-frame stale-bounds
+    // fallback was the visible 42dp -> 132dp jump on Home -> Profile. The view
+    // stays alive and transparent until the destination's final rest bounds are
+    // available, then rebases once at its true size.
     var lastBounds by remember { mutableStateOf(Rect.Zero) }
+    var lastVisibleBounds by remember { mutableStateOf(Rect.Zero) }
+    var boundsWinner by remember { mutableStateOf(winnerId) }
+    var winnerBoundsReady by remember { mutableStateOf(false) }
+    val boundsMatchWinner = avatarOverlayBoundsMatchWinner(
+        boundsOwner = boundsWinner,
+        winner = winnerId,
+        ready = winnerBoundsReady,
+    )
     SideEffect {
+        val winnerChanged = boundsWinner != winnerId
+        if (winnerChanged) {
+            frameRendered = false
+            boundsWinner = winnerId
+            winnerBoundsReady = false
+            lastVisibleBounds = Rect.Zero
+        }
         val b = anchor?.restBounds
-        if (b != null && !b.isEmpty) lastBounds = b
+        if (b != null && !b.isEmpty) {
+            if (lastBounds.size != b.size) frameRendered = false
+            lastBounds = b
+            lastVisibleBounds = anchor.visibleBounds
+            boundsWinner = winnerId
+            winnerBoundsReady = true
+        }
     }
 
     // Capture policy: only on a shown → hidden transition that happens while
     // the circle was genuinely visible (alpha above noise). Home ↔ Profile
-    // keeps `shown` true throughout, so navigation between the avatar screens
-    // performs ZERO bitmap captures; a slide-out or a push to an avatar-less
-    // screen hides at alpha ≈ 0 and skips the capture too.
-    var frameRendered by remember { mutableStateOf(false) }
+    // normally keeps `shown` true; if the destination waits one frame for final
+    // bounds, the outgoing overlay has already reached alpha 0. Either way,
+    // navigation performs ZERO synchronous bitmap captures.
     var wasShown by remember { mutableStateOf(false) }
     var lastShownAlpha by remember { mutableFloatStateOf(1f) }
     SideEffect { if (shown) lastShownAlpha = alpha }
@@ -441,7 +541,17 @@ internal fun PersistentAvatarVideo(
     // width, and its window origin converts the anchor's window bounds into
     // local placement offsets.
     var containerOrigin by remember { mutableStateOf<Offset?>(null) }
-    val effectiveAlpha = if (shown) alpha else 0f
+    // Keep the cached poster visible until TextureView has produced a frame at
+    // the winner's NEW size. This prevents one stretched old-size video frame
+    // from appearing during the hidden 42dp <-> 132dp native-view rebase.
+    val effectiveAlpha = if (shown && boundsMatchWinner && frameRendered) alpha else 0f
+    val localClip = avatarOverlayLocalClip(lastBounds, lastVisibleBounds)
+    val fullLocalClip = IntRect(
+        left = 0,
+        top = 0,
+        right = lastBounds.width.roundToInt().coerceAtLeast(0),
+        bottom = lastBounds.height.roundToInt().coerceAtLeast(0),
+    )
 
     Box(
         modifier = Modifier
@@ -461,7 +571,7 @@ internal fun PersistentAvatarVideo(
             Box(
                 modifier = Modifier
                     // Placement in px: window bounds → container-local, plus
-                    // the replicated predictive-back slide. offset moves the
+                    // the replicated shared navigation slide. offset moves the
                     // NODE (so clip/alpha follow it); layout below only fixes
                     // the node's size to the slot's own size — 42 dp Home and
                     // 132 dp Profile both match exactly.
@@ -532,7 +642,9 @@ internal fun PersistentAvatarVideo(
                                         surfaceTexture: SurfaceTexture,
                                         width: Int,
                                         height: Int,
-                                    ) = Unit
+                                    ) {
+                                        frameRendered = false
+                                    }
 
                                     override fun onSurfaceTextureUpdated(
                                         surfaceTexture: SurfaceTexture,
@@ -547,9 +659,25 @@ internal fun PersistentAvatarVideo(
                         // INVISIBLE does: keep the TextureView attached (and its
                         // SurfaceTexture alive), but remove its hit region whenever
                         // there is no visible avatar anchor to represent.
-                        view.visibility = if (shown) View.VISIBLE else View.INVISIBLE
-                        view.isClickable = shown && anchorHasClickAction
-                        view.isLongClickable = shown && anchorHasLongClickAction
+                        val geometryReady = shown && boundsMatchWinner && localClip != IntRect.Zero
+                        view.visibility = if (geometryReady) View.VISIBLE else View.INVISIBLE
+                        // AndroidView is hosted at app scope, outside the
+                        // anchor's scroll clip. Reapply that exact clip to the
+                        // native child so only the same pixels as the in-screen
+                        // poster can be seen. `null` avoids an unnecessary clip
+                        // when the complete circle is exposed.
+                        view.clipBounds = when {
+                            !geometryReady -> AndroidRect(0, 0, 0, 0)
+                            localClip == fullLocalClip -> null
+                            else -> AndroidRect(
+                                localClip.left,
+                                localClip.top,
+                                localClip.right,
+                                localClip.bottom,
+                            )
+                        }
+                        view.isClickable = geometryReady && anchorHasClickAction
+                        view.isLongClickable = geometryReady && anchorHasLongClickAction
                     },
                 )
             }

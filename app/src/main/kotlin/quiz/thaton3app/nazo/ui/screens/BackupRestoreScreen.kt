@@ -4,19 +4,14 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -25,6 +20,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.verticalScroll
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
+import quiz.thaton3app.nazo.ui.components.NazoTransientMessage
 import quiz.thaton3app.nazo.ui.components.NazoDangerButton
 import quiz.thaton3app.nazo.ui.components.NazoAdaptiveDialog
 import quiz.thaton3app.nazo.ui.components.isLandscape
@@ -62,6 +58,8 @@ import quiz.thaton3app.nazo.data.settings.ProfilePreferences
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.ui.components.rememberHapticBack
+import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
+import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -236,13 +234,12 @@ fun BackupRestoreScreen(
 
             // Live operation status: progress while it runs, then a success or
             // failure note in place of the old transient Toasts.
-            AnimatedVisibility(
-                visible = opStatus != null,
-                enter = expandVertically(animationSpec = tween(200)) + fadeIn(tween(200)),
-                exit = shrinkVertically(animationSpec = tween(160)) + fadeOut(tween(140)),
-            ) {
+            NazoTransientMessage(
+                value = opStatus,
+                label = "backupOperationStatus",
+            ) { visibleStatus ->
                 StatusBanner(
-                    status = opStatus,
+                    status = visibleStatus,
                     onDismiss = { opStatus = null },
                 )
             }
@@ -577,12 +574,11 @@ private fun AnimatedActionRow(
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.96f else 1f,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = 400f),
-        label = "press_scale"
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 0.dp,
+        pressedCorner = 12.dp,
+        enabled = enabled,
     )
     // While an operation is running the rows dim and stop accepting taps, so
     // one backup/restore can never be launched on top of another.
@@ -592,12 +588,12 @@ private fun AnimatedActionRow(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .scale(scale)
+            .clip(shape)
             .alpha(contentAlpha)
             .clickable(
                 enabled = enabled,
                 interactionSource = interactionSource,
-                indication = null,
+                indication = LocalIndication.current,
                 onClick = onClick
             )
             .padding(horizontal = 16.dp, vertical = 16.dp),
@@ -1026,11 +1022,21 @@ private fun AutoBackupFreqContent(
             Column {
                 listOf("off" to "Off", "daily" to "Daily", "weekly" to "Weekly").forEachIndexed { index, (value, label) ->
                     val selected = currentFreq == value
+                    val itemInteraction = remember(value) { MutableInteractionSource() }
+                    val itemShape = rememberNazoRoundedCornerMorphShape(
+                        interactionSource = itemInteraction,
+                        restingCorner = 0.dp,
+                        pressedCorner = 8.dp,
+                    )
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onSelect(value, label) }
+                            .clip(itemShape)
+                            .clickable(
+                                interactionSource = itemInteraction,
+                                indication = LocalIndication.current,
+                            ) { onSelect(value, label) }
                             .padding(vertical = 16.dp, horizontal = 20.dp),
                     ) {
                         Text(
@@ -1076,14 +1082,20 @@ private fun AutoBackupFreqContent(
 
 @Composable
 private fun ScreenHeader(title: String, onBackClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoPillCornerMorphShape(
+        interactionSource = interactionSource,
+        pressedCornerPercent = 28f,
+    )
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(
             onClick = rememberHapticBack(onBackClick),
+            interactionSource = interactionSource,
             modifier = Modifier
                 .size(44.dp)
-                .clip(CircleShape)
-                .background(NazoSurface)
-                .border(1.dp, NazoTextSecondary.copy(alpha = 0.1f), CircleShape),
+                .clip(shape)
+                .background(NazoSurface, shape)
+                .border(1.dp, NazoTextSecondary.copy(alpha = 0.1f), shape),
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NazoTextPrimary, modifier = Modifier.size(22.dp))
         }
@@ -1132,8 +1144,7 @@ private fun RowDivider() {
  * in every orientation.
  */
 @Composable
-private fun StatusBanner(status: OpStatus?, onDismiss: () -> Unit) {
-    if (status == null) return
+private fun StatusBanner(status: OpStatus, onDismiss: () -> Unit) {
     val container = when (status) {
         is OpStatus.Busy -> NazoPrimary.copy(alpha = 0.16f)
         is OpStatus.Done -> NazoSuccessBg
@@ -1144,15 +1155,25 @@ private fun StatusBanner(status: OpStatus?, onDismiss: () -> Unit) {
         is OpStatus.Done -> NazoSuccess
         is OpStatus.Failed -> NazoError
     }
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoPillCornerMorphShape(
+        interactionSource = interactionSource,
+        enabled = status is OpStatus.Failed,
+    )
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
-            .clip(RoundedCornerShape(50))
-            .background(container)
-            .clickable(enabled = status is OpStatus.Failed, onClick = onDismiss)
+            .clip(shape)
+            .background(container, shape)
+            .clickable(
+                enabled = status is OpStatus.Failed,
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onDismiss,
+            )
             .padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 10.dp),
     ) {
         when (status) {

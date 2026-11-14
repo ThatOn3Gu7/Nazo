@@ -7,9 +7,9 @@ package quiz.thaton3app.nazo.data
  * These are deliberately hand-maintained constants rather than anything
  * generated at runtime:
  *
- *  - The **changelog** is written for players, in the same voice as
- *    `RELEASE_NOTES_<version>.md`. The raw commit log is not a changelog — most
- *    of the commits between 8.0 and 9.0, for instance, were failed attempts at
+ *  - The **changelog** is written for players, in the same voice as the
+ *    canonical `RELEASE_NOTES.md` ledger. The raw commit log is not a changelog —
+ *    most of the commits between 8.0 and 9.0, for instance, were failed attempts at
  *    one bug that cancelled each other out. Entries here describe what actually
  *    changed for someone using the app.
  *  - The **licence list** mirrors `gradle/libs.versions.toml`. Nazo does not use
@@ -18,8 +18,9 @@ package quiz.thaton3app.nazo.data
  *    dependency is added. It is short enough that this is honest work, and it
  *    lets us state real versions instead of a vague list.
  *
- * When cutting a release: add a [ChangelogEntry] here as well as the
- * `RELEASE_NOTES_<version>.md` file.
+ * When cutting a release: promote the accumulated section in
+ * `RELEASE_NOTES.md`, then add its player-facing summary as a [ChangelogEntry]
+ * here.
  */
 
 /** One shipped version, newest first in [NAZO_CHANGELOG]. */
@@ -37,6 +38,42 @@ data class ChangelogEntry(
  * release's own notes and commit range.
  */
 val NAZO_CHANGELOG: List<ChangelogEntry> = listOf(
+    ChangelogEntry(
+        version = "14.0-beta01",
+        date = "12 Nov 2026",
+        changes = listOf(
+            "Update actions now share one clean row, with Download & Install on the left and View on GitHub on the right.",
+            "Auto-check frequency now opens a Nazo-style option sheet instead of a drop-up field, and its selected text no longer exposes selection handles.",
+            "A default-off pre-release switch lets willing testers include beta and release-candidate builds in manual and scheduled checks, with clear warnings and reliable alpha, beta, RC and final version ordering.",
+        ),
+    ),
+    ChangelogEntry(
+        version = "13.0",
+        date = "11 Nov 2026",
+        changes = listOf(
+            "Sumi Ember becomes Nazo's new hand-painted identity across launchers, themed icons, splash screens, Home and Appearance; Sakura, Midnight and Ocean now share its balanced kanji footprint.",
+            "Quiz, Survival, Blitz, Versus and Guessing now carry distinct setup, live-play and results identities while preserving their original rules, scoring and timers.",
+            "Quiz play gains restrained answer feedback, polished explanations, consecutive-correct combo seals and a travelling wavy progress line that Blitz also uses for its global clock.",
+            "Progression connects Results, Profile and Statistics through one level and XP model, clearer completion rewards and an expanded collection of 20 achievement badges.",
+            "Home's new Challenge Focus and Challenge Setup surfaces bring topic suggestions, difficulty, Questions or Rounds and a live selection summary into one responsive flow.",
+            "App-wide corner-only press feedback replaces generic shrinking on interactive surfaces while preserving ripples, haptics, accessibility, scrolling and Android Remove animations.",
+            "Navigation, predictive back and profile media hand-offs are more stable; completed Results no longer replay, and awarded quiz time stays frozen through Review and cancelled back gestures.",
+            "Final fixes keep About reachable in landscape Settings, smooth transient-message exits, preserve rotation state, and give onboarding a deliberate hand-off to Home.",
+        ),
+    ),
+    ChangelogEntry(
+        version = "12.0",
+        date = "6 Nov 2026",
+        changes = listOf(
+            "Back gestures preview the real destination screen as you swipe on Android 13 and newer, then commit or cancel naturally with your finger.",
+            "Animated profile pictures: choose a GIF, animated WebP or short MP4, preview it before saving, view it full size, and carry it in backups.",
+            "Custom profile covers: use your own photo, one of 14 included artworks, or one of five animated gradients in the redesigned profile header.",
+            "Video and automatic covers: use a muted MP4 loop or let Nazo create a soft matching image or blurred video from the current avatar.",
+            "Cover changes now crossfade smoothly, rapid choices settle on the latest selection, and animated media keeps stable playback without extra players.",
+            "Quiz play feels more responsive with restrained question hand-offs, an always-wobbling music-player-style progress line, rewarding correct-answer glow, clear wrong-answer motion, polished explanations and subtle consecutive-answer combos.",
+            "Progression now feels connected from results to Profile and Statistics, with a richer level card, animated XP progress, a compact scrollable collection of 20 achievement badges—including combo and long-term mastery goals—and restrained level-up or unlock moments.",
+        ),
+    ),
     ChangelogEntry(
         version = "12.0-beta01",
         date = "25 Oct 2026",
@@ -243,6 +280,10 @@ val NAZO_LIBRARIES: List<ThirdPartyLibrary> = listOf(
     ThirdPartyLibrary(
         "Material Icons Extended", "2025.10.01", "Apache-2.0",
         "https://developer.android.com/jetpack/androidx/releases/compose-material",
+    ),
+    ThirdPartyLibrary(
+        "Media3 Transformer & Effects", "1.5.1", "Apache-2.0",
+        "https://developer.android.com/media/media3/transformer",
     ),
     ThirdPartyLibrary(
         "WorkManager", "2.9.1", "Apache-2.0",

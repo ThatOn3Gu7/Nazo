@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-"""Generate release notes from the commits in the given range (e.g. v2.0..HEAD).
+"""Emit release notes for a tag, or generate a legacy commit-based fallback.
 
-The output has two audiences:
+Tagged release builds read the matching hand-written block from the single
+`RELEASE_NOTES.md` ledger. This keeps public notes and the accumulated release
+history in one canonical file. Outside a tagged build, the older commit-range
+generator remains available for local inspection and historical compatibility.
+
+Generated output has two audiences:
 
 1. **Players**, who see the notes inside the app on the update screen. They get
    a short, curated "What's New" list — only real features and fixes, written
@@ -28,6 +33,8 @@ enough for players:
     Release-Note: skip
         Keep this commit out of the player list entirely.
 """
+import os
+from pathlib import Path
 import re
 import subprocess
 import sys
@@ -39,6 +46,57 @@ range_arg = sys.argv[1] if len(sys.argv) > 1 else ""
 # renders nothing for them. Changing them means changing UpdateChecker.kt too.
 HIGHLIGHTS_START = "<!--NAZO_NOTES_START-->"
 HIGHLIGHTS_END = "<!--NAZO_NOTES_END-->"
+LEDGER_PATH = Path("RELEASE_NOTES.md")
+
+
+def tagged_version():
+    """Return the version being released, without its leading `v`."""
+    ref_name = os.environ.get("GITHUB_REF_NAME", "").strip()
+    if ref_name.startswith("v"):
+        return ref_name.removeprefix("v")
+
+    exact_tag = subprocess.run(
+        ["git", "describe", "--tags", "--exact-match", "HEAD"],
+        capture_output=True,
+        text=True,
+    )
+    if exact_tag.returncode == 0:
+        return exact_tag.stdout.strip().removeprefix("v")
+    return None
+
+
+def ledger_notes(version):
+    """Extract one version's exact hand-written body from the living ledger."""
+    if version is None or not LEDGER_PATH.is_file():
+        return None
+
+    text = LEDGER_PATH.read_text(encoding="utf-8")
+    start_marker = f"<!--NAZO_RELEASE_{version}_START-->"
+    end_marker = f"<!--NAZO_RELEASE_{version}_END-->"
+    start = text.find(start_marker)
+    end = text.find(end_marker)
+
+    if start < 0 or end < 0:
+        raise ValueError(
+            f"{LEDGER_PATH} has no complete marked block for {version}; "
+            "promote the Next release notes before tagging"
+        )
+    if end <= start:
+        raise ValueError(f"Malformed {version} marker order in {LEDGER_PATH}")
+
+    body_start = start + len(start_marker)
+    return text[body_start:end].strip()
+
+
+try:
+    hand_written_notes = ledger_notes(tagged_version())
+except ValueError as error:
+    sys.stderr.write(f"release notes error: {error}\n")
+    sys.exit(1)
+
+if hand_written_notes:
+    print(hand_written_notes)
+    sys.exit(0)
 
 # Conventional-commit subject: type(optional scope)!: description
 COMMIT_RE = re.compile(r"^(?P<type>[a-zA-Z]+)(?:\((?P<scope>[^)]*)\))?(?P<bang>!)?:\s*(?P<desc>.+)$")

@@ -10,15 +10,20 @@ import android.widget.Toast
 import androidx.activity.BackEventCompat
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.SeekableTransitionState
+import androidx.compose.animation.core.animateDp
 import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -29,7 +34,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -42,6 +49,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -53,6 +62,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.math.PI
+import kotlin.math.roundToInt
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -63,13 +73,18 @@ import quiz.thaton3app.nazo.IntroStyle
 import quiz.thaton3app.nazo.LauncherIconSwitcher
 import quiz.thaton3app.nazo.R
 import quiz.thaton3app.nazo.achievements.AchievementEngine
+import quiz.thaton3app.nazo.progression.PlayerProgression
+import quiz.thaton3app.nazo.progression.ProgressionReward
 import quiz.thaton3app.nazo.daily.DailyChallenge
 import quiz.thaton3app.nazo.daily.DailyStore
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.data.Question
+import quiz.thaton3app.nazo.data.QuizEngine
+import quiz.thaton3app.nazo.data.QuizStats
 import quiz.thaton3app.nazo.data.backup.BackupScheduler
 import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.data.remote.Connectivity
+import quiz.thaton3app.nazo.data.remote.ModelFallbackPolicy
 import quiz.thaton3app.nazo.data.remote.QuizCache
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.data.settings.BackupPrefs
@@ -78,6 +93,10 @@ import quiz.thaton3app.nazo.data.settings.ProfilePreferences
 import quiz.thaton3app.nazo.data.settings.QuestionHistoryStore
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
+import quiz.thaton3app.nazo.data.profile.AutomaticCoverState
+import quiz.thaton3app.nazo.data.profile.AutomaticCoverStore
+import quiz.thaton3app.nazo.data.profile.CoverVisual
+import quiz.thaton3app.nazo.data.profile.resolveCoverVisual
 import quiz.thaton3app.nazo.modes.guessing_game.GuessApiClient
 import quiz.thaton3app.nazo.modes.guessing_game.GuessImageFetcher
 import quiz.thaton3app.nazo.modes.guessing_game.GuessPayload
@@ -88,6 +107,10 @@ import quiz.thaton3app.nazo.modes.guessing_game.GuessingPlayScreen
 import quiz.thaton3app.nazo.modes.guessing_game.GuessingResultsScreen
 import quiz.thaton3app.nazo.records.RecordsStore
 import quiz.thaton3app.nazo.reminders.ReminderScheduler
+import quiz.thaton3app.nazo.session.ActiveGuessSession
+import quiz.thaton3app.nazo.session.ActiveQuizSession
+import quiz.thaton3app.nazo.session.ActiveSessionStore
+import quiz.thaton3app.nazo.session.SavedGuessPhase
 import quiz.thaton3app.nazo.session.SessionMemory
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.AiMissingDialog
@@ -97,7 +120,11 @@ import quiz.thaton3app.nazo.ui.components.AvatarAnchorRegistry
 import quiz.thaton3app.nazo.ui.components.AvatarFrameCache
 import quiz.thaton3app.nazo.ui.components.AvatarVideoHost
 import quiz.thaton3app.nazo.ui.components.CHANGELOG_ID
+import quiz.thaton3app.nazo.ui.components.ScreenNavigationSlideFraction
+import quiz.thaton3app.nazo.ui.components.ScreenNavigationTransitionDurationMs
+import quiz.thaton3app.nazo.ui.components.prepareCoverArtwork
 import quiz.thaton3app.nazo.ui.components.LocalAvatarAnchorRegistry
+import quiz.thaton3app.nazo.ui.components.LocalTopicUnavailableDialog
 import quiz.thaton3app.nazo.ui.components.PersistentAvatarVideo
 import quiz.thaton3app.nazo.ui.components.avatarOverlayTransform
 import quiz.thaton3app.nazo.ui.components.resolveAvatarWinnerScreen
@@ -111,6 +138,7 @@ import quiz.thaton3app.nazo.ui.components.WhatsNewSheet
 import quiz.thaton3app.nazo.ui.components.WhatsNewStore
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.launch.IntroOverlay
+import quiz.thaton3app.nazo.ui.mode.NazoMode
 import quiz.thaton3app.nazo.ui.onboarding.OnboardingPrefs
 import quiz.thaton3app.nazo.ui.onboarding.OnboardingScreen
 import quiz.thaton3app.nazo.ui.screens.*
@@ -120,8 +148,8 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 import quiz.thaton3app.nazo.ui.theme.NazoTheme
 import quiz.thaton3app.nazo.widget.NazoWidgetProvider
 
-// Every destination in the app. Wrapping this in AnimatedContent gives us a single,
-// uniform fade-in / fade-out transition between ALL screens (Roadmap #2).
+// Every destination in the app. One shared subtle slide/fade transition serves
+// taps, back arrows, and the progress-driven predictive-back preview.
 /**
  * Shortest time a generation loading card stays up before an error may replace
  * it. Comfortably longer than the card's own 160 ms fade-out + 220 ms fade-in,
@@ -129,6 +157,18 @@ import quiz.thaton3app.nazo.widget.NazoWidgetProvider
  * Error -> Loading -> Error transition instead of jerking in place.
  */
 private const val MIN_LOADING_MS = 900L
+
+/**
+ * Kept separate per structural Settings layout. During rotation AnimatedContent
+ * briefly composes both layouts; sharing one ScrollState lets their different
+ * max ranges overwrite each other and can leave the landscape list clamped.
+ */
+private val LocalSettingsScrollState = staticCompositionLocalOf<ScrollState> {
+    error("Settings scroll state was not provided")
+}
+
+internal fun settingsScrollTransferOffset(outgoingValue: Int, incomingMaxValue: Int): Int =
+    outgoingValue.coerceIn(0, incomingMaxValue.coerceAtLeast(0))
 
 sealed interface Screen {
     data object Home : Screen
@@ -151,6 +191,133 @@ sealed interface Screen {
     data object VersusHandoff : Screen
     data object VersusResults : Screen
     data object VersusReview : Screen
+}
+
+/**
+ * Profile's expensive visual work is tied to transition REST, not merely to the
+ * navigation stack's destination. [AnimatedContent] composes both screens while
+ * moving between them; starting gradient frame clocks, GIFs, and a cover decoder
+ * in that overlap steals the exact frames needed by the screen animation.
+ *
+ * The live cover TextureView is a separate decision: keep an already-visible
+ * outgoing/predictive surface attached, and keep playback running for an
+ * uncommitted predictive scrub just like the persistent avatar player. Defer
+ * creating a NEW surface during an ordinary Profile entry until the layout has
+ * settled; the poster occupies identical bounds in the meantime.
+ */
+internal data class ProfileRenderPolicy(
+    val activeVisualWork: Boolean,
+    val liveCoverSurfaceAllowed: Boolean,
+    /**
+     * Unlike decorative clocks, a playing cover is visible feedback. Keep it
+     * live while Profile remains the foreground destination — including an
+     * uncommitted predictive-back scrub — and pause only when the pop commits.
+     */
+    val coverVideoPlaybackAllowed: Boolean,
+)
+
+internal fun profileRenderPolicy(
+    currentScreen: Screen,
+    transitionCurrent: Screen,
+    transitionTarget: Screen,
+    predictiveBackTarget: Screen?,
+): ProfileRenderPolicy {
+    val atRest = currentScreen == Screen.Profile &&
+        transitionCurrent == Screen.Profile &&
+        transitionTarget == Screen.Profile &&
+        predictiveBackTarget == null
+    val ordinaryEntry = predictiveBackTarget == null &&
+        currentScreen == Screen.Profile &&
+        transitionCurrent != Screen.Profile
+    return ProfileRenderPolicy(
+        activeVisualWork = atRest,
+        liveCoverSurfaceAllowed = !ordinaryEntry,
+        coverVideoPlaybackAllowed = currentScreen == Screen.Profile,
+    )
+}
+
+/**
+ * Session-scoped one-shot gate for the normal quiz result choreography.
+ *
+ * AnimatedContent may dispose Results after Review is opened and compose it
+ * again for an ordinary or predictive back preview. Compose-local `remember`
+ * cannot distinguish that reconstruction from a newly completed quiz, so the
+ * owner above the navigation transition records whether this run's entrance
+ * has already started.
+ */
+internal class QuizCompleteEntranceGate {
+    private var pending = false
+
+    fun armForCompletedQuiz() {
+        pending = true
+    }
+
+    fun shouldPlayEntrance(): Boolean = pending
+
+    fun markEntranceStarted() {
+        pending = false
+    }
+}
+
+/**
+ * The one navigation visual language used by both committed navigation and
+ * predictive back. A predictive gesture does not substitute a different full-
+ * width transition: `SeekableTransitionState.seekTo(progress)` scrubs this same
+ * restrained 8% slide and fade as far as the finger has travelled.
+ *
+ * [direction] is +1 when the target enters from the right and -1 when it enters
+ * from the left. [targetZIndex] keeps pushes above and back targets behind the
+ * screen being dismissed without changing the motion itself. Android Remove
+ * animations keeps the same connected fade but sets the slide to zero and
+ * shortens the settle, rather than forcing vestibular motion.
+ */
+internal const val ReducedMotionNavigationDurationMs = 90
+
+internal fun screenNavigationSlideFraction(reduceMotion: Boolean): Float =
+    if (reduceMotion) 0f else ScreenNavigationSlideFraction
+
+internal fun screenNavigationDurationMs(reduceMotion: Boolean): Int =
+    if (reduceMotion) ReducedMotionNavigationDurationMs
+    else ScreenNavigationTransitionDurationMs
+
+private fun subtleScreenNavigationTransform(
+    direction: Int,
+    targetZIndex: Float,
+    reduceMotion: Boolean,
+): ContentTransform {
+    val slideFraction = screenNavigationSlideFraction(reduceMotion)
+    val durationMs = screenNavigationDurationMs(reduceMotion)
+    val enter = slideInHorizontally(
+        initialOffsetX = { width ->
+            (width * slideFraction * direction).roundToInt()
+        },
+        animationSpec = tween(
+            durationMs,
+            easing = FastOutSlowInEasing,
+        ),
+    ) + fadeIn(
+        animationSpec = tween(
+            durationMs,
+            easing = FastOutSlowInEasing,
+        ),
+    )
+    val exit = slideOutHorizontally(
+        targetOffsetX = { width ->
+            (-width * slideFraction * direction).roundToInt()
+        },
+        animationSpec = tween(
+            durationMs,
+            easing = FastOutSlowInEasing,
+        ),
+    ) + fadeOut(
+        animationSpec = tween(
+            durationMs,
+            easing = FastOutSlowInEasing,
+        ),
+    )
+    return (enter togetherWith exit).apply {
+        this.targetContentZIndex = targetZIndex
+    }
 }
 
 /**
@@ -198,6 +365,13 @@ private fun SettingsDetailPlaceholder() {
     }
 }
 
+private data class LocalTopicMissRequest(
+    val topic: String,
+    val difficulty: String,
+    val count: Int,
+    val mode: String,
+)
+
 private data class GenerationRequest(
     val topic: String,
     val difficulty: String,
@@ -207,6 +381,8 @@ private data class GenerationRequest(
     val model: String,
     /** True when this request is the automatic one-shot retry with another model. */
     val isFallback: Boolean = false,
+    val fallbackFromModel: String? = null,
+    val fallbackCause: String? = null,
 )
 
 /**
@@ -228,6 +404,22 @@ private fun openExternalUrl(context: Context, url: String) {
 @Composable
 fun NazoApp(launchDailyChallenge: Boolean = false) {
     val context = LocalContext.current
+    val activeSessionStore = remember { ActiveSessionStore(context.applicationContext) }
+    // SharedPreferences, rather than a saved-instance-state Bundle, carries the
+    // exact generated payload safely across process death without risking the
+    // Binder transaction limit. The store rejects corrupt/expired snapshots.
+    val restoredSession = remember { activeSessionStore.load() }
+    val restoredQuiz = restoredSession as? ActiveQuizSession
+    val restoredGuess = restoredSession as? ActiveGuessSession
+    val restoredAtEpochMs = remember { System.currentTimeMillis() }
+    val restoredAtElapsedMs = remember { SystemClock.elapsedRealtime() }
+    fun remainingFrom(snapshotRemainingMs: Long, savedAtEpochMs: Long): Long =
+        ActiveSessionStore.remainingAfterRestore(
+            snapshotRemainingMs,
+            savedAtEpochMs,
+            restoredAtEpochMs,
+        )
+
     val apiKeyStore = remember { ApiKeyStore(context) }
     val themePrefs = remember { ThemePreferences(context) }
     val statsStore = remember { QuizStatsStore(context.applicationContext) }
@@ -243,7 +435,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // Daily challenge (Phase 5): flag marks the in-flight quiz as today's
     // daily; the earned bonus is surfaced on the results screen.
     val dailyStore = remember { DailyStore(context.applicationContext) }
-    var isDailyQuiz by remember { mutableStateOf(false) }
+    var isDailyQuiz by remember { mutableStateOf(restoredQuiz?.daily ?: false) }
     var lastDailyBonus by remember { mutableIntStateOf(0) }
     // Sound effects (Phase 7): opt-in, persisted in the Sounds store.
     var soundEnabled by remember { mutableStateOf(Sounds.isEnabled(context)) }
@@ -253,6 +445,22 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     val profilePrefs = remember { ProfilePreferences(context) }
     var profileName by remember { mutableStateOf(profilePrefs.username) }
     var profilePictureUri by remember { mutableStateOf(profilePrefs.profilePictureUri) }
+    // Cover banner image (Profile only): null = no stored photo.
+    var coverPictureUri by remember { mutableStateOf(profilePrefs.coverPictureUri) }
+    // Built-in cover preset id (photo_*/gradient_*); null = gallery/default.
+    // Stored SEPARATELY from the photo uri so presets never discard it.
+    var coverPresetId by remember { mutableStateOf(profilePrefs.coverPresetId) }
+    var automaticCoverEnabled by remember {
+        mutableStateOf(profilePrefs.automaticCoverEnabled)
+    }
+    var automaticCoverState by remember {
+        mutableStateOf<AutomaticCoverState>(
+            AutomaticCoverStore.cachedArtifact(context, profilePictureUri)
+                ?.let(AutomaticCoverState::Ready)
+                ?: AutomaticCoverState.Idle
+        )
+    }
+    var automaticCoverPreviewActive by remember { mutableStateOf(false) }
 
     // Video avatars prepare BEFORE any screen asks for them: as soon as the
     // saved URI is known (app start, avatar change, backup restore), kick off
@@ -266,8 +474,96 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         AvatarVideoHost.prepareForAvatar(context, profilePictureUri)
         AvatarFrameCache.warmFromDisc(context, profilePictureUri)
     }
+
+    // Automatic artifacts are generated only while selected or when the cover
+    // sheet explicitly requests a preview. A source-key guard in ProfileScreen
+    // prevents the old avatar's artifact from flashing during replacement.
+    LaunchedEffect(profilePictureUri, automaticCoverEnabled, automaticCoverPreviewActive) {
+        val source = profilePictureUri
+        val cached = AutomaticCoverStore.cachedArtifact(context, source)
+        if (cached != null) {
+            automaticCoverState = AutomaticCoverState.Ready(cached)
+            return@LaunchedEffect
+        }
+        if (!automaticCoverEnabled && !automaticCoverPreviewActive) {
+            AutomaticCoverStore.discardAll(context)
+            automaticCoverState = AutomaticCoverState.Idle
+            return@LaunchedEffect
+        }
+
+        automaticCoverState = source?.let(AutomaticCoverState::Preparing)
+            ?: AutomaticCoverState.Unavailable(
+                sourceUri = null,
+                message = "Add a photo or MP4 video avatar to preview automatic matching.",
+            )
+        if (source == null) {
+            AutomaticCoverStore.discardAll(context)
+            return@LaunchedEffect
+        }
+
+        AutomaticCoverStore.prepare(context, source)
+            .onSuccess { artifact ->
+                if (profilePictureUri == artifact.sourceUri) {
+                    automaticCoverState = AutomaticCoverState.Ready(artifact)
+                }
+            }
+            .onFailure { failure ->
+                if (profilePictureUri == source) {
+                    AutomaticCoverStore.discardAll(context)
+                    val message = failure.message
+                        ?: "Couldn't prepare an automatic cover from that avatar."
+                    automaticCoverState = AutomaticCoverState.Unavailable(source, message)
+                    if (automaticCoverEnabled) {
+                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+    }
+
+    // Validate the retained manual medium even when a preset currently sits on
+    // top of it. A dead private path should not survive indefinitely in prefs.
+    LaunchedEffect(coverPictureUri) {
+        val uri = coverPictureUri ?: return@LaunchedEffect
+        val localPath = runCatching { Uri.parse(uri).path }.getOrNull()
+        if (uri.startsWith("file://") &&
+            (localPath.isNullOrBlank() || !java.io.File(localPath).isFile)
+        ) {
+            coverPictureUri = null
+            profilePrefs.coverPictureUri = null
+            Toast.makeText(
+                context,
+                "Your saved cover is no longer available.",
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
+
+    // Prepare only the RESOLVED cover while Home is idle. Photos enter Coil's
+    // exact request cache and videos enter the bounded poster cache; no live
+    // decoder is created here. This moves disk/metadata work off the first
+    // Home -> Profile transition without wasting work on a hidden manual medium.
+    val activeAutomaticArtifact =
+        (automaticCoverState as? AutomaticCoverState.Ready)?.artifact
+            ?.takeIf { it.sourceUri == profilePictureUri }
+    val activeCoverVisual: CoverVisual = remember(
+        coverPictureUri,
+        coverPresetId,
+        automaticCoverEnabled,
+        activeAutomaticArtifact,
+    ) {
+        resolveCoverVisual(
+            galleryUri = coverPictureUri,
+            presetId = coverPresetId,
+            automaticEnabled = automaticCoverEnabled,
+            automaticArtifact = activeAutomaticArtifact,
+        )
+    }
+    LaunchedEffect(activeCoverVisual) {
+        prepareCoverArtwork(context, activeCoverVisual)
+    }
     val backupPrefs = remember { BackupPrefs(context) }
-    val settingsScrollState = rememberScrollState()
+    val settingsPortraitScrollState = rememberScrollState()
+    val settingsLandscapeScrollState = rememberScrollState()
 
     // First-launch onboarding tour (ui/onboarding). Shown as an overlay above
     // the app until completed/skipped, then never again (persisted flag).
@@ -397,14 +693,29 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // Navigation back-stack: `navigationStack` is the source of truth for where we are and
     // where "back" should return to. Both the system back (gesture / hardware button) and the
     // in-app back arrows pop this stack, so a user always returns to the screen they came from.
-    val navigationStack = remember { mutableStateListOf<Screen>(Screen.Home) }
+    val restoredDestination = when {
+        restoredQuiz?.destination == ActiveQuizSession.Destination.VERSUS_HANDOFF -> Screen.VersusHandoff
+        restoredQuiz != null -> Screen.Quiz
+        restoredGuess != null -> Screen.GuessingGame
+        else -> null
+    }
+    val navigationStack = remember {
+        mutableStateListOf<Screen>().apply {
+            add(Screen.Home)
+            restoredDestination?.let(::add)
+        }
+    }
     val currentScreen = navigationStack.last()
+    // +1 pushes toward deeper content (new screen enters from the right), -1
+    // returns toward Home (target enters from the left). Predictive back keeps
+    // using the gesture edge and ignores this ordinary-navigation direction.
+    var ordinaryNavigationDirection by remember { mutableIntStateOf(1) }
     // Video-avatar anchor slots (which circle the persistent app-level
     // video surface is positioned over). Remembered next to the navigation
     // state: it outlives every screen swap by design.
     val avatarAnchorRegistry = remember { AvatarAnchorRegistry() }
     // Screen content width (post rail-inset) for the overlay's replicated
-    // predictive-back slide; probed from the screens AnimatedContent.
+    // subtle navigation slide; probed from the screens AnimatedContent.
     var screensWidthPx by remember { mutableIntStateOf(0) }
 
     // Dialog state that has to outlive the portrait <-> landscape layout swap.
@@ -425,9 +736,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // Predictive back: the system gesture drives the screen transition directly.
     // SeekableTransitionState lets BackEventCompat.progress scrub the real
     // AnimatedContent transition (the same mechanism Navigation Compose uses
-    // for its predictive-back pop previews), so the outgoing screen tracks the
-    // finger while the screen behind it is revealed. Committing settles to the
-    // popped screen; cancelling settles back to where we were. The state is
+    // for its predictive-back pop previews), so the shared subtle slide/fade
+    // tracks gesture progress while the screen behind is revealed. Committing
+    // settles to the popped screen; cancelling settles back to where we were. The state is
     // remembered HERE, above the layout-mode AnimatedContent, so it is bound
     // to its Transition exactly once and survives layout swaps.
     val screenTransitionState = remember { SeekableTransitionState<Screen>(Screen.Home) }
@@ -451,18 +762,29 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     val settingsDetail = currentScreen.asSettingsDetail()
     val showListDetail = isLandscape() && !showOnboarding &&
         (currentScreen == Screen.Settings || settingsDetail != null)
+    val profilePolicy = profileRenderPolicy(
+        currentScreen = currentScreen,
+        transitionCurrent = screenTransitionState.currentState,
+        transitionTarget = screenTransitionState.targetState,
+        predictiveBackTarget = predictiveBackTarget,
+    )
+    // Set this before either AnimatedContent child composes. Anchors then see
+    // the correct capture policy in the very first transition/settlement frame,
+    // rather than briefly publishing transformed placement as resting bounds.
+    avatarAnchorRegistry.captureEnabled =
+        screenTransitionState.currentState == screenTransitionState.targetState
 
-    // Keep the seekable transition aligned with ordinary navigation (forward
-    // fades still use the plain transition), and settle any interrupted
-    // predictive gesture. Commit: currentScreen is already the popped screen,
+    // Keep the seekable transition aligned with ordinary directional motion,
+    // and settle any interrupted predictive gesture. Commit: currentScreen is
+    // already the popped screen,
     // so animateTo continues the same segment to completion (unchanged).
     // Cancel: reverse the scrub on the SAME segment, frame-stepped exactly
     // like the finger, instead of letting animateTo flip the segment — the
     // flip runs the transition's target-change path, whose initial-value
-    // alignment animates toward the former target's values (the enter
-    // animation's declared off-edge start), which shows as a small rightward
-    // bounce before the settle. snapTo then normalizes the state machine at
-    // rest (a visual no-op at fraction 0), so the next navigation starts from
+    // alignment animates toward the former target's declared enter offset,
+    // which shows as a small directional bounce before the settle. snapTo then
+    // normalizes the state machine at rest (a visual no-op at fraction 0), so
+    // the next navigation starts from
     // a clean segment rather than a stale one.
     LaunchedEffect(currentScreen, predictiveBackInProgress) {
         val settle = coroutineContext[Job]
@@ -473,7 +795,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 if (cancelledTo != null && cancelledTo == screenTransitionState.targetState &&
                     currentScreen != screenTransitionState.targetState
                 ) {
-                    val durationNanos = 220_000_000L
+                    val durationNanos =
+                        ScreenNavigationTransitionDurationMs * 1_000_000L
                     val startNanos = withFrameNanos { it }
                     val from = screenTransitionState.fraction
                     var value = from
@@ -523,6 +846,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         if (screen == Screen.Settings || screen.asSettingsDetail() != null) {
             val existing = navigationStack.indexOf(screen)
             if (existing >= 0) {
+                ordinaryNavigationDirection = -1
                 while (navigationStack.lastIndex > existing) {
                     navigationStack.removeAt(navigationStack.lastIndex)
                 }
@@ -535,21 +859,38 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 screen.asSettingsDetail() != null &&
                 !screen.isAboutDetail()
             ) {
+                ordinaryNavigationDirection = 1
                 navigationStack[navigationStack.lastIndex] = screen
                 return
             }
         }
+        ordinaryNavigationDirection = 1
         navigationStack.add(screen)
     }
     fun replace(screen: Screen) {
-        if (navigationStack.isNotEmpty()) navigationStack[navigationStack.lastIndex] = screen
+        if (navigationStack.isNotEmpty()) {
+            ordinaryNavigationDirection = 1
+            navigationStack[navigationStack.lastIndex] = screen
+        }
     }
     fun goBack() {
-        if (navigationStack.size > 1) navigationStack.removeAt(navigationStack.lastIndex)
+        if (navigationStack.size > 1) {
+            ordinaryNavigationDirection = -1
+            navigationStack.removeAt(navigationStack.lastIndex)
+        }
     }
     fun goHome() {
+        ordinaryNavigationDirection = -1
         navigationStack.clear()
         navigationStack.add(Screen.Home)
+    }
+
+    // System/back-arrow exits from active gameplay are explicit quits just like
+    // the screens' close buttons. Clear synchronously so a completed back
+    // gesture followed by immediate process death cannot resurrect the run.
+    fun goBackClearingActiveSession() {
+        activeSessionStore.clear()
+        goBack()
     }
 
     // Leaving Home cancels the "press back again to exit" flag; it also auto-resets after 2s.
@@ -638,7 +979,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             } else if (showAiMissingDialog) {
                 // Preserve the existing non-dismissible AI configuration dialog.
             } else if (navigationStack.size > 1) {
-                goBack()
+                if (currentScreen == Screen.Quiz ||
+                    currentScreen == Screen.VersusHandoff ||
+                    currentScreen == Screen.GuessingGame
+                ) {
+                    goBackClearingActiveSession()
+                } else {
+                    goBack()
+                }
             } else {
                 // Home keeps Nazo's existing double-back-to-exit behavior.
                 if (backPressedOnce) {
@@ -653,28 +1001,89 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             if (!canPreview) predictiveBackTarget = null
         }
     }
-    var questions by remember { mutableStateOf(emptyList<Question>()) }
-    var userAnswers by remember { mutableStateOf<List<String?>>(emptyList()) }
-    var currentQuestionIndex by remember { mutableIntStateOf(0) }
-    var score by remember { mutableIntStateOf(0) }
-    var quizDifficulty by remember { mutableStateOf("Medium") }
-    var quizStartedAt by remember { mutableStateOf(0L) }
+    var questions by remember { mutableStateOf(restoredQuiz?.questions ?: emptyList()) }
+    var userAnswers by remember { mutableStateOf(restoredQuiz?.userAnswers ?: emptyList()) }
+    var currentQuestionIndex by remember {
+        mutableIntStateOf(restoredQuiz?.currentQuestionIndex ?: 0)
+    }
+    var score by remember { mutableIntStateOf(restoredQuiz?.score ?: 0) }
+    var quizDifficulty by remember { mutableStateOf(restoredQuiz?.difficulty ?: "Medium") }
+    val restoredQuizDowntimeMs = restoredQuiz?.let {
+        (restoredAtEpochMs - it.savedAtEpochMs).coerceAtLeast(0L)
+    } ?: 0L
+    var quizElapsedBaseMs by remember {
+        mutableLongStateOf((restoredQuiz?.quizElapsedMs ?: 0L) + restoredQuizDowntimeMs)
+    }
+    var quizStartedAt by remember {
+        mutableLongStateOf(if (restoredQuiz != null) restoredAtElapsedMs else 0L)
+    }
+    var pendingQuizAnswer by remember { mutableStateOf(restoredQuiz?.pendingAnswer) }
+    var pendingQuizTimeUp by remember { mutableStateOf(restoredQuiz?.pendingTimeUp ?: false) }
+    var questionDeadline by remember {
+        mutableLongStateOf(
+            restoredQuiz?.let {
+                restoredAtElapsedMs + remainingFrom(it.questionRemainingMs, it.savedAtEpochMs)
+            } ?: 0L
+        )
+    }
+    // Completion time is a result snapshot, not a value recalculated from the
+    // current clock. Predictive-back seeking recomposes both screens on every
+    // progress frame, so deriving elapsed time in Results made a cancelled
+    // preview visibly restart the finished quiz's timer.
+    var quizFinishedAt by remember { mutableLongStateOf(0L) }
+
+    fun restartQuestionClock() {
+        val seconds = QuizEngine.specFor(quizDifficulty).secondsPerQuestion
+        questionDeadline = SystemClock.elapsedRealtime() + seconds * 1_000L
+        pendingQuizAnswer = null
+        pendingQuizTimeUp = false
+    }
+
+    fun restartQuizClock() {
+        quizElapsedBaseMs = 0L
+        quizStartedAt = SystemClock.elapsedRealtime()
+        quizFinishedAt = 0L
+        restartQuestionClock()
+    }
+
+    fun freezeQuizClock() {
+        if (quizFinishedAt == 0L) quizFinishedAt = SystemClock.elapsedRealtime()
+    }
+
+    // Lives above AnimatedContent so reconstructing Results as Review's back
+    // target cannot replay completion sounds, confetti, haptics, or entrances.
+    val quizCompleteEntranceGate = remember { QuizCompleteEntranceGate() }
+    // State-layer guards: callbacks can be dispatched twice before a button's
+    // next disabled/removed frame, so progression itself owns idempotence.
+    val quizProgressionGate = remember { QuizProgressionGate() }
+    val guessProgressionGate = remember { GuessProgressionGate() }
+    // Transient summary for the game that just ended. It is derived from the
+    // same stores as Statistics/Profile and deliberately never persisted.
+    var lastProgressionReward by remember { mutableStateOf<ProgressionReward?>(null) }
 
     // ---- Question-based game modes (share the quiz screen/flow) ----
     // "normal" (incl. daily & practice) | "survival" | "blitz" | "versus".
-    var quizMode by remember { mutableStateOf("normal") }
+    var quizMode by remember { mutableStateOf(restoredQuiz?.mode ?: "normal") }
     // Survival: 3 lives; the run ends on the 3rd wrong answer. Batches of 5
     // keep getting appended (AI when available, local bank otherwise).
-    var survivalWrongs by remember { mutableIntStateOf(0) }
+    var survivalWrongs by remember { mutableIntStateOf(restoredQuiz?.survivalWrongs ?: 0) }
     var survivalFetching by remember { mutableStateOf(false) }
-    // Blitz: one global 60-second deadline (epoch ms).
-    var blitzDeadline by remember { mutableStateOf(0L) }
+    // Blitz: one global 60-second deadline (monotonic while this process lives).
+    var blitzDeadline by remember {
+        mutableLongStateOf(
+            restoredQuiz?.takeIf { it.mode == "blitz" }?.let {
+                restoredAtElapsedMs + remainingFrom(it.blitzRemainingMs, it.savedAtEpochMs)
+            } ?: 0L
+        )
+    }
     // Versus: which player is at the phone (1 or 2) + Player 1's final score.
-    var versusStage by remember { mutableIntStateOf(1) }
-    var versusP1Score by remember { mutableIntStateOf(0) }
+    var versusStage by remember { mutableIntStateOf(restoredQuiz?.versusStage ?: 1) }
+    var versusP1Score by remember { mutableIntStateOf(restoredQuiz?.versusP1Score ?: 0) }
     // P1's picks, frozen at the handoff so the head-to-head review can show
     // both players side by side.
-    var versusP1Answers by remember { mutableStateOf<List<String?>>(emptyList()) }
+    var versusP1Answers by remember {
+        mutableStateOf<List<String?>>(restoredQuiz?.versusP1Answers ?: emptyList())
+    }
 
     // ---- Guessing Game (modes/guessing_game) ----
     // Home-screen mode preset is hoisted here too (like the quiz presets) so the
@@ -688,21 +1097,39 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         )
     }
     var guessRounds by rememberSaveable { mutableIntStateOf(3) }
-    var guessTopic by remember { mutableStateOf("") }
-    var guessDifficulty by remember { mutableStateOf("Medium") }
-    var guessPhase by remember { mutableStateOf<GuessPhase>(GuessPhase.Idle) }
+    var guessTopic by remember { mutableStateOf(restoredGuess?.topic ?: "") }
+    var guessDifficulty by remember { mutableStateOf(restoredGuess?.difficulty ?: "Medium") }
+    var guessPhase by remember {
+        mutableStateOf<GuessPhase>(
+            when (val phase = restoredGuess?.phase) {
+                SavedGuessPhase.Preparing -> GuessPhase.Preparing(restoredGuess.round)
+                is SavedGuessPhase.Playing -> GuessPhase.Playing(phase.payload, phase.imageUrl)
+                is SavedGuessPhase.Error -> GuessPhase.Error(phase.message, phase.offline)
+                null -> GuessPhase.Idle
+            }
+        )
+    }
     // "blur" | "pixel" — the guessing game's image reveal style (Appearance).
     var guessRevealStyle by remember { mutableStateOf(themePrefs.guessRevealStyle) }
     // Whether the guessing game auto-crops mystery images to the character's
     // face + upper body (Appearance → Guessing Game).
     var guessAutoCrop by remember { mutableStateOf(themePrefs.guessAutoCrop) }
-    var guessRound by remember { mutableIntStateOf(1) }
-    var guessTotalRounds by remember { mutableIntStateOf(3) }
-    var guessScore by remember { mutableIntStateOf(0) }
-    var guessResults by remember { mutableStateOf<List<GuessRoundResult>>(emptyList()) }
+    var guessRound by remember { mutableIntStateOf(restoredGuess?.round ?: 1) }
+    var guessTotalRounds by remember { mutableIntStateOf(restoredGuess?.totalRounds ?: 3) }
+    var guessScore by remember { mutableIntStateOf(restoredGuess?.score ?: 0) }
+    var guessResults by remember {
+        mutableStateOf<List<GuessRoundResult>>(restoredGuess?.results ?: emptyList())
+    }
     // Outcome of the CURRENT round (null until the player answers or time runs
     // out) — drives the in-place reveal on the play screen.
-    var guessRoundResult by remember { mutableStateOf<GuessRoundResult?>(null) }
+    var guessRoundResult by remember { mutableStateOf(restoredGuess?.roundResult) }
+    var guessRoundDeadline by remember {
+        mutableLongStateOf(
+            restoredGuess?.takeIf { it.roundTimerStarted }?.let {
+                restoredAtElapsedMs + remainingFrom(it.roundRemainingMs, it.savedAtEpochMs)
+            } ?: 0L
+        )
+    }
     // Targets already played this game, so the AI keeps picking something new.
     // (Round-target anti-repeat moved to session/SessionMemory.guessAvoidList()
     // — it now spans ALL guessing games this launch, not just one game, and
@@ -742,7 +1169,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // instantly can still be held long enough for the spinner to be seen.
     var loadingShownAt by remember { mutableStateOf(0L) }
     var generationRequest by remember { mutableStateOf<GenerationRequest?>(null) }
-    var aiGenerated by remember { mutableStateOf(false) }
+    var localTopicMiss by remember { mutableStateOf<LocalTopicMissRequest?>(null) }
+    var aiGenerated by remember { mutableStateOf(restoredQuiz?.aiGenerated ?: false) }
     // Cache keys (provider:model:topic:difficulty:count) for AI question-sets that have already
     // been ANSWERED this session. If a regeneration hits a cache entry that's in here, we bypass
     // the cache and pull a fresh set from the API — so "Generate AI quiz" again doesn't repeat
@@ -771,12 +1199,39 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         if (elapsed < MIN_LOADING_MS) delay(MIN_LOADING_MS - elapsed)
     }
 
+    fun achievementsFor(stats: QuizStats) = AchievementEngine.compute(
+        stats = stats,
+        hasPerfectQuiz = listOf("Easy", "Medium", "Hard", "Otaku Master", "Daily")
+            .any { recordsStore.quizBestPercent(it) >= 100 },
+        dailiesCompleted = dailyStore.completedCount(),
+    )
+
+    fun captureProgressionReward(
+        beforeStats: QuizStats,
+        afterStats: QuizStats,
+        beforeBonusXp: Int,
+        beforeAchievements: List<quiz.thaton3app.nazo.achievements.Achievement>,
+    ) {
+        lastProgressionReward = PlayerProgression.rewardBetween(
+            before = PlayerProgression.from(beforeStats, beforeBonusXp),
+            after = PlayerProgression.from(afterStats, dailyStore.totalBonusXp()),
+            beforeAchievements = beforeAchievements,
+            afterAchievements = achievementsFor(afterStats),
+        )
+    }
+
     fun runLocal(topic: String, difficulty: String, count: Int) {
         // Anti-repeat (session + persistent history): over-fetch from the
         // bank, prefer questions the player hasn't answered this launch OR
         // in the recent past, and only top up with seen ones when the pool
         // is exhausted — a small topic must still fill a full quiz.
         val pool = LocalQuestionBank.getQuestions(count * 4, topic, difficulty)
+        if (pool.isEmpty()) {
+            offlineDialogMode = null
+            localTopicMiss = LocalTopicMissRequest(topic, difficulty, count, quizMode)
+            return
+        }
+        localTopicMiss = null
         val (seen, fresh) = pool.partition {
             SessionMemory.isQuestionSeen(it.text) || questionHistory.isSeen(it.text)
         }
@@ -786,6 +1241,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         score = 0
         aiGenerated = false
         generationState = GenerationState.Idle
+        restartQuestionClock()
+        quizProgressionGate.startSession()
         if (navigationStack.last() == Screen.Loading) replace(Screen.Quiz) else navigate(Screen.Quiz)
     }
 
@@ -804,12 +1261,25 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 score = 0
                 aiGenerated = true
                 generationState = GenerationState.Idle
+                restartQuestionClock()
+                quizProgressionGate.startSession()
+                if (req.isFallback) {
+                    Toast.makeText(
+                        context,
+                        "${req.fallbackFromModel ?: "The selected model"} failed; using ${req.model} for this quiz.",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
                 if (navigationStack.last() == Screen.Loading) replace(Screen.Quiz) else navigate(Screen.Quiz)
                 return
             }
         }
         generationState = GenerationState.Loading(
-            "${req.provider} • ${req.model}" + if (req.isFallback) " (auto-retry)" else ""
+            if (req.isFallback) {
+                "Trying one alternate model • ${req.provider} • ${req.model}"
+            } else {
+                "${req.provider} • ${req.model}"
+            }
         )
         // Only (re)start the dwell clock when the spinner is actually appearing.
         // The auto-fallback re-enters here mid-flight; restarting it there would
@@ -847,25 +1317,50 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     score = 0
                     aiGenerated = true
                     generationState = GenerationState.Idle
+                    restartQuestionClock()
+                    quizProgressionGate.startSession()
+                    if (req.isFallback) {
+                        Toast.makeText(
+                            context,
+                            "${req.fallbackFromModel ?: "The selected model"} failed; using ${req.model} for this quiz.",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
                     replace(Screen.Quiz)
                 }
                 .onFailure { e ->
                     if (token != generationToken) return@onFailure
-                    // Retry-with-fallback: on the FIRST failure, silently try
-                    // once more with the next model configured for this
-                    // provider before surfacing an error screen.
-                    if (!req.isFallback) {
-                        val altModel = apiKeyStore.getModels(req.provider)
-                            .map { it.id }
-                            .firstOrNull { it != req.model }
-                        if (altModel != null) {
-                            val retry = req.copy(model = altModel, isFallback = true)
-                            generationRequest = retry
-                            launchGeneration(retry)
-                            return@onFailure
-                        }
+                    val failureMessage = e.message ?: "Something went wrong."
+                    // One alternate MODEL on the same provider is useful only
+                    // when the selected model is missing or returned an
+                    // unusable payload. Auth, billing/quota, rate-limit,
+                    // network, request and provider failures are surfaced
+                    // immediately: changing models cannot safely fix them and
+                    // would create an unexpected extra request.
+                    val altModel = ModelFallbackPolicy.selectAlternate(
+                        currentModel = req.model,
+                        availableModels = apiKeyStore.getModels(req.provider).map { it.id },
+                        failure = e,
+                        alternateAlreadyAttempted = req.isFallback,
+                    )
+                    if (altModel != null) {
+                        val retry = req.copy(
+                            model = altModel,
+                            isFallback = true,
+                            fallbackFromModel = req.model,
+                            fallbackCause = failureMessage,
+                        )
+                        generationRequest = retry
+                        launchGeneration(retry)
+                        return@onFailure
                     }
-                    val msg = e.message ?: "Something went wrong."
+                    val msg = if (req.isFallback) {
+                        "${req.fallbackFromModel ?: "The selected model"} failed: " +
+                            "${req.fallbackCause ?: "unknown error"}\n" +
+                            "Alternate ${req.model} also failed: $failureMessage"
+                    } else {
+                        failureMessage
+                    }
                     awaitMinimumLoading()
                     // Re-check: the user may have cancelled during the dwell.
                     if (token != generationToken) return@onFailure
@@ -885,7 +1380,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         // assignments, so offline quizzes inherited the PREVIOUS game's
         // difficulty (wrong timer/hints/stats/records) and a stale start time.
         quizDifficulty = difficulty
-        quizStartedAt = SystemClock.elapsedRealtime()
+        restartQuizClock()
         // Offline mode: skip any API attempt and go straight to the local bank
         // (stats still record normally in `answer`).
         if (isOfflineMode) {
@@ -931,7 +1426,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         quizDifficulty = "Daily"
         isDailyQuiz = true
         quizMode = "normal"
-        quizStartedAt = SystemClock.elapsedRealtime()
+        restartQuizClock()
+        quizProgressionGate.startSession()
         navigate(Screen.Quiz)
     }
 
@@ -953,7 +1449,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         quizDifficulty = "Practice"
         isDailyQuiz = false
         quizMode = "normal"
-        quizStartedAt = SystemClock.elapsedRealtime()
+        restartQuizClock()
+        quizProgressionGate.startSession()
         navigate(Screen.Quiz)
     }
 
@@ -1014,9 +1511,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     fun finishSurvival() {
         if (quizMode != "survival") return // double-fire guard
         quizMode = "survival-done" // also blocks any in-flight top-up from appending
+        activeSessionStore.clear()
         val answered = questions.take(userAnswers.size)
         val finishedAnswers = userAnswers
         val finishedDifficulty = quizDifficulty
+        val beforeStats = quizStats
+        val beforeBonusXp = dailyStore.totalBonusXp()
+        val beforeAchievements = achievementsFor(beforeStats)
+        val afterStats = beforeStats.record(finishedDifficulty, answered, finishedAnswers)
         // The quiz screen may still render one exit-transition frame — keep the
         // index inside the truncated list.
         currentQuestionIndex = (userAnswers.size - 1).coerceAtLeast(0)
@@ -1028,6 +1530,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         }
         quizPrevBest = recordsStore.survivalBest()
         quizNewRecord = recordsStore.submitSurvival(score)
+        lastDailyBonus = 0
+        captureProgressionReward(beforeStats, afterStats, beforeBonusXp, beforeAchievements)
+        freezeQuizClock()
+        quizCompleteEntranceGate.armForCompletedQuiz()
         replace(Screen.Results)
     }
 
@@ -1038,7 +1544,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         survivalWrongs = 0
         survivalFetching = false
         quizDifficulty = difficulty
-        quizStartedAt = SystemClock.elapsedRealtime()
+        restartQuizClock()
         if (isOfflineMode) {
             runLocal(topic, difficulty, 5)
             return
@@ -1065,8 +1571,13 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     fun finishBlitz() {
         if (quizMode != "blitz") return // double-fire guard (time-up races an answer)
         quizMode = "blitz-done"
+        activeSessionStore.clear()
         val answered = questions.take(userAnswers.size)
         val finishedAnswers = userAnswers
+        val beforeStats = quizStats
+        val beforeBonusXp = dailyStore.totalBonusXp()
+        val beforeAchievements = achievementsFor(beforeStats)
+        val afterStats = beforeStats.record("Blitz", answered, finishedAnswers)
         // Time-up can land mid-question: clamp the index and never leave the
         // list empty, since the quiz screen may render one more exit frame.
         currentQuestionIndex = (userAnswers.size - 1).coerceAtLeast(0)
@@ -1078,6 +1589,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         }
         quizPrevBest = recordsStore.blitzBest()
         quizNewRecord = recordsStore.submitBlitz(score)
+        lastDailyBonus = 0
+        captureProgressionReward(beforeStats, afterStats, beforeBonusXp, beforeAchievements)
+        freezeQuizClock()
+        quizCompleteEntranceGate.armForCompletedQuiz()
         replace(Screen.Results)
     }
 
@@ -1086,10 +1601,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         isDailyQuiz = false
         quizMode = "blitz"
         quizDifficulty = "Blitz"
-        quizStartedAt = SystemClock.elapsedRealtime()
+        restartQuizClock()
         // Blitz is instant + offline by design: a big local-bank pool, unseen
         // questions first. The chosen difficulty picks the pool.
         val pool = LocalQuestionBank.getQuestions(80, topic, difficulty)
+        if (pool.isEmpty()) {
+            localTopicMiss = LocalTopicMissRequest(topic, difficulty, count = 60, mode = "blitz")
+            return
+        }
+        localTopicMiss = null
         val (seen, fresh) = pool.partition {
             SessionMemory.isQuestionSeen(it.text) || questionHistory.isSeen(it.text)
         }
@@ -1100,6 +1620,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         aiGenerated = false
         generationState = GenerationState.Idle
         blitzDeadline = SystemClock.elapsedRealtime() + 60_000L
+        quizProgressionGate.startSession()
         navigate(Screen.Quiz)
     }
 
@@ -1111,7 +1632,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         versusP1Score = 0
         versusP1Answers = emptyList()
         quizDifficulty = difficulty
-        quizStartedAt = SystemClock.elapsedRealtime()
+        restartQuizClock()
         if (isOfflineMode) {
             runLocal(topic, difficulty, count)
             return
@@ -1141,15 +1662,19 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // onboarding, and not when today's daily is already cleared (Home then shows
     // the completed card as usual).
     LaunchedEffect(Unit) {
-        if (launchDailyChallenge && !showOnboarding && !dailyStore.isCompletedToday()) {
+        if (restoredSession == null && launchDailyChallenge &&
+            !showOnboarding && !dailyStore.isCompletedToday()
+        ) {
             startDailyChallenge()
         }
     }
 
-    fun answer(isCorrect: Boolean, selected: String?) {
+    fun answer(ticket: QuizProgressionTicket, isCorrect: Boolean, selected: String?) {
         // A finished run's screen can still fire one queued answer during the
         // exit transition (blitz auto-advance, double-tap) — ignore it.
         if (quizMode == "blitz-done" || quizMode == "survival-done") return
+        val currentStage = if (quizMode == "versus") versusStage else 0
+        if (!quizProgressionGate.tryConsume(ticket, currentStage, currentQuestionIndex)) return
         // Anti-repeat: the moment a question is answered (right OR wrong)
         // it's remembered — for this launch (SessionMemory) AND across
         // launches (QuestionHistoryStore). Quitting mid-quiz still counts
@@ -1179,11 +1704,13 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             if (currentQuestionIndex >= questions.size - 3) survivalTopUp()
             if (currentQuestionIndex < questions.lastIndex) {
                 currentQuestionIndex++
+                restartQuestionClock()
             } else {
                 // Horizon caught up with us — try an instant local fill.
                 appendLocalSurvivalBatch()
                 if (currentQuestionIndex < questions.lastIndex) {
                     currentQuestionIndex++
+                    restartQuestionClock()
                 } else {
                     finishSurvival() // pool truly exhausted
                 }
@@ -1195,6 +1722,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         if (quizMode == "blitz") {
             if (currentQuestionIndex < questions.lastIndex) {
                 currentQuestionIndex++
+                restartQuestionClock()
             } else {
                 finishBlitz()
             }
@@ -1205,6 +1733,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         if (quizMode == "versus") {
             if (currentQuestionIndex < questions.lastIndex) {
                 currentQuestionIndex++
+                restartQuestionClock()
             } else if (versusStage == 1) {
                 versusP1Score = score
                 versusP1Answers = userAnswers
@@ -1215,9 +1744,12 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 currentQuestionIndex = 0
                 score = 0
                 versusStage = 2
+                pendingQuizAnswer = null
+                pendingQuizTimeUp = false
                 replace(Screen.VersusHandoff)
             } else {
                 // Party mode: intentionally NO stats/records writes.
+                activeSessionStore.clear()
                 replace(Screen.VersusResults)
             }
             return
@@ -1225,7 +1757,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
 
         if (currentQuestionIndex < questions.lastIndex) {
             currentQuestionIndex++
+            restartQuestionClock()
         } else {
+            activeSessionStore.clear()
             // Mark this AI question-set as "already answered this session" so a later
             // regeneration with the same params bypasses the cache and fetches fresh ones.
             if (aiGenerated) {
@@ -1239,6 +1773,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             val finishedQuestions = questions
             val finishedAnswers = userAnswers
             val finishedDifficulty = quizDifficulty
+            val beforeStats = quizStats
+            val beforeBonusXp = dailyStore.totalBonusXp()
+            val beforeAchievements = achievementsFor(beforeStats)
+            val afterStats = beforeStats.record(
+                finishedDifficulty,
+                finishedQuestions,
+                finishedAnswers,
+            )
             scope.launch {
                 statsStore.record(finishedDifficulty, finishedQuestions, finishedAnswers)
                 quizStats = statsStore.get()
@@ -1254,11 +1796,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             } else {
                 0
             }
+            captureProgressionReward(beforeStats, afterStats, beforeBonusXp, beforeAchievements)
+            freezeQuizClock()
             // REPLACE the quiz screen (don't push on top of it): the finished
             // quiz must not stay on the back-stack, otherwise the system back
             // gesture from the results screen returns to the last question.
             // Back from Results now lands on Home. (Guessing mode already did
             // this via replace(Screen.GuessingResults).)
+            quizCompleteEntranceGate.armForCompletedQuiz()
             replace(Screen.Results)
         }
     }
@@ -1335,6 +1880,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     // Player already tapped Next — the preparing screen is
                     // showing; hand the finished round over directly.
                     guessRoundResult = null
+                    guessRoundDeadline = 0L
                     guessPhase = GuessPhase.Playing(payload, url)
                     // Keep the chain alive: this round was built by the
                     // prefetch, not beginGuessRoundJob, so kick ITS next
@@ -1375,6 +1921,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
      */
     fun beginGuessRoundJob(provider: String, key: String, model: String) {
         guessRoundResult = null
+        guessRoundDeadline = 0L
         guessPhase = GuessPhase.Preparing(guessRound)
         guessPreparingAt = SystemClock.elapsedRealtime()
         val startedRound = guessRound
@@ -1470,6 +2017,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         guessScore = 0
         guessResults = emptyList()
         guessRoundResult = null
+        guessRoundDeadline = 0L
+        guessProgressionGate.startSession()
         if (navigationStack.last() != Screen.GuessingGame) navigate(Screen.GuessingGame)
         prepareGuessRound()
     }
@@ -1499,8 +2048,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         guessResults = guessResults + result
     }
 
-    fun guessNext() {
+    fun guessNext(ticket: GuessProgressionTicket) {
         val last = guessResults.lastOrNull() ?: return
+        if (last.round != guessRound || guessRoundResult?.round != guessRound) return
+        if (!guessProgressionGate.tryConsume(ticket, guessRound)) return
         // All rounds are always played — a miss reveals the answer and moves
         // on; the game ends once the last round is finished.
         val finished = last.round >= guessTotalRounds
@@ -1508,6 +2059,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // Game over — drop any lingering prefetch state (defensive: the
             // last round never kicks one, but a stale job must not outlive
             // the game).
+            activeSessionStore.clear()
             clearGuessPrefetch()
             // Game complete — fold the result into the shared stats, exactly
             // like a finished quiz (level/XP, streak, difficulty, topics).
@@ -1515,6 +2067,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             val finishedTopic = guessTopic
             val finishedAnswered = guessResults.size
             val finishedCorrect = guessResults.count { it.correct }
+            val beforeStats = quizStats
+            val beforeBonusXp = dailyStore.totalBonusXp()
+            val beforeAchievements = achievementsFor(beforeStats)
+            val afterStats = beforeStats.recordGuessing(
+                finishedDifficulty,
+                finishedTopic,
+                finishedAnswered,
+                finishedCorrect,
+            )
             scope.launch {
                 statsStore.recordGuessing(finishedDifficulty, finishedTopic, finishedAnswered, finishedCorrect)
                 quizStats = statsStore.get()
@@ -1524,17 +2085,20 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // Personal best check (previous best captured first for the caption).
             guessPrevBest = recordsStore.guessBestPoints(finishedDifficulty, guessTotalRounds)
             guessNewRecord = recordsStore.submitGuess(finishedDifficulty, guessTotalRounds, guessScore)
+            captureProgressionReward(beforeStats, afterStats, beforeBonusXp, beforeAchievements)
             guessPhase = GuessPhase.Idle
             replace(Screen.GuessingResults)
         } else {
             guessRound++
             guessRoundResult = null
+            guessRoundDeadline = 0L
             val prebuilt = guessPrefetch
             guessPrefetch = null
             if (prebuilt != null && prebuilt.round == guessRound) {
                 // The background job already built this round while the
                 // player was playing the last one — straight into the game,
                 // no preparing screen.
+                guessRoundDeadline = 0L
                 guessPhase = GuessPhase.Playing(prebuilt.payload, prebuilt.url)
                 // Keep the prefetch chain alive for the round AFTER this one
                 // (guarded: skips on the last round / a missing provider /
@@ -1551,6 +2115,124 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 // No prefetch in flight (skipped — provider not configured,
                 // last-round guard, or a failed build) — generate now.
                 prepareGuessRound()
+            }
+        }
+    }
+
+    // Resume asynchronous work that cannot itself survive process death. Exact
+    // already-generated quiz questions / guessing payloads came from the
+    // checkpoint above; only a round that was still Preparing is regenerated.
+    LaunchedEffect(restoredSession) {
+        when (restoredSession) {
+            is ActiveQuizSession -> {
+                quizProgressionGate.startSession()
+                restoredSession.questions
+                    .take(restoredSession.currentQuestionIndex)
+                    .forEach { SessionMemory.recordQuestion(it.text) }
+            }
+            is ActiveGuessSession -> {
+                guessProgressionGate.startSession()
+                restoredSession.results.forEach {
+                    SessionMemory.recordGuessTarget(it.target)
+                    it.aliases.forEach(SessionMemory::recordGuessTarget)
+                }
+                when {
+                    restoredSession.phase == SavedGuessPhase.Preparing -> prepareGuessRound()
+                    restoredSession.phase is SavedGuessPhase.Playing &&
+                        restoredSession.roundResult == null -> kickGuessPrefetch(guessRound)
+                }
+            }
+            null -> Unit
+        }
+    }
+
+    // Persist only authoritative gameplay state. Decorative animation, open
+    // dialogs, hints, image bitmaps and prefetch jobs are intentionally absent.
+    LaunchedEffect(
+        currentScreen,
+        questions,
+        userAnswers,
+        currentQuestionIndex,
+        score,
+        quizDifficulty,
+        quizMode,
+        aiGenerated,
+        isDailyQuiz,
+        pendingQuizAnswer,
+        pendingQuizTimeUp,
+        questionDeadline,
+        survivalWrongs,
+        blitzDeadline,
+        versusStage,
+        versusP1Score,
+        versusP1Answers,
+        guessTopic,
+        guessDifficulty,
+        guessTotalRounds,
+        guessRound,
+        guessScore,
+        guessResults,
+        guessRoundResult,
+        guessPhase,
+        guessRoundDeadline,
+    ) {
+        val nowElapsed = SystemClock.elapsedRealtime()
+        val nowEpoch = System.currentTimeMillis()
+        when {
+            (currentScreen == Screen.Quiz || currentScreen == Screen.VersusHandoff) &&
+                questions.isNotEmpty() && quizMode !in setOf("survival-done", "blitz-done") -> {
+                val elapsed = quizElapsedBaseMs +
+                    (nowElapsed - quizStartedAt).coerceAtLeast(0L)
+                activeSessionStore.save(
+                    ActiveQuizSession(
+                        savedAtEpochMs = nowEpoch,
+                        destination = if (currentScreen == Screen.VersusHandoff) {
+                            ActiveQuizSession.Destination.VERSUS_HANDOFF
+                        } else {
+                            ActiveQuizSession.Destination.QUIZ
+                        },
+                        mode = quizMode,
+                        questions = questions,
+                        userAnswers = userAnswers,
+                        currentQuestionIndex = currentQuestionIndex,
+                        score = score,
+                        difficulty = quizDifficulty,
+                        aiGenerated = aiGenerated,
+                        daily = isDailyQuiz,
+                        pendingAnswer = pendingQuizAnswer,
+                        pendingTimeUp = pendingQuizTimeUp,
+                        questionRemainingMs = (questionDeadline - nowElapsed).coerceAtLeast(0L),
+                        quizElapsedMs = elapsed,
+                        survivalWrongs = survivalWrongs,
+                        blitzRemainingMs = (blitzDeadline - nowElapsed).coerceAtLeast(0L),
+                        versusStage = versusStage,
+                        versusP1Score = versusP1Score,
+                        versusP1Answers = versusP1Answers,
+                    )
+                )
+            }
+            currentScreen == Screen.GuessingGame && guessPhase != GuessPhase.Idle -> {
+                val savedPhase = when (val phase = guessPhase) {
+                    is GuessPhase.Playing -> SavedGuessPhase.Playing(phase.payload, phase.imageUrl)
+                    is GuessPhase.Preparing -> SavedGuessPhase.Preparing
+                    is GuessPhase.Error -> SavedGuessPhase.Error(phase.message, phase.isOffline)
+                    GuessPhase.Idle -> return@LaunchedEffect
+                }
+                activeSessionStore.save(
+                    ActiveGuessSession(
+                        savedAtEpochMs = nowEpoch,
+                        topic = guessTopic,
+                        difficulty = guessDifficulty,
+                        totalRounds = guessTotalRounds,
+                        round = guessRound,
+                        score = guessScore,
+                        results = guessResults,
+                        roundResult = guessRoundResult,
+                        phase = savedPhase,
+                        roundTimerStarted = guessRoundDeadline > 0L,
+                        roundRemainingMs = (guessRoundDeadline - nowElapsed).coerceAtLeast(0L),
+                    )
+                )
             }
         }
     }
@@ -1572,6 +2254,17 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // Landscape moves the nav bar to a right-edge rail; screens that show it
     // must inset their content so nothing sits underneath.
     val landscape = isLandscape()
+    LaunchedEffect(landscape) {
+        val outgoing = if (landscape) settingsPortraitScrollState else settingsLandscapeScrollState
+        val incoming = if (landscape) settingsLandscapeScrollState else settingsPortraitScrollState
+
+        // End any fling owned by the layout being replaced. More importantly,
+        // the incoming list owns a different MutatorMutex/max range, so an old
+        // portrait fling can never block landscape input (or vice versa).
+        outgoing.scroll { }
+        withFrameNanos { }
+        incoming.scrollTo(settingsScrollTransferOffset(outgoing.value, incoming.maxValue))
+    }
     NazoTheme(darkTheme = isDark, accentId = accentName) {
         Box(
             modifier = Modifier
@@ -1651,7 +2344,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     )
 
                     Screen.Settings -> SettingsScreen(
-                        scrollState = settingsScrollState,
+                        scrollState = LocalSettingsScrollState.current,
                         onBackClick = { goBack() },
                         onHomeClick = { goHome() },
                         onOpenAiProvider = { navigate(Screen.AiProvider) },
@@ -1685,23 +2378,61 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     },
                 )
 
-                    Screen.Profile -> ProfileScreen(
-                        username = profileName,
-                        profilePictureUri = profilePictureUri,
-                        quizStats = quizStats,
-                        offline = offlineMode,
-                        onBack = { goBack() },
-                        onUsernameChange = { name ->
-                            profileName = name
-                            profilePrefs.username = name
-                        },
-                        onProfilePictureChange = { uri ->
-                            profilePictureUri = uri
-                            profilePrefs.profilePictureUri = uri
-                        },
-                        onNavigateToStatistics = { navigate(Screen.Statistics) },
-                        onNavigateToSettings = { navigate(Screen.Settings) },
-                    )
+                    Screen.Profile -> {
+                        val dailiesCompleted = dailyStore.completedCount()
+                        val bonusXp = dailyStore.totalBonusXp()
+                        val achievements = remember(quizStats, dailiesCompleted) {
+                            achievementsFor(quizStats)
+                        }
+                        val progression = remember(quizStats, bonusXp) {
+                            PlayerProgression.from(quizStats, bonusXp)
+                        }
+                        ProfileScreen(
+                            username = profileName,
+                            profilePictureUri = profilePictureUri,
+                            coverPictureUri = coverPictureUri,
+                            coverPresetId = coverPresetId,
+                            automaticCoverEnabled = automaticCoverEnabled,
+                            automaticCoverState = automaticCoverState,
+                            screenActive = profilePolicy.activeVisualWork,
+                            coverVideoSurfaceAllowed = profilePolicy.liveCoverSurfaceAllowed,
+                            coverVideoPlaybackAllowed = profilePolicy.coverVideoPlaybackAllowed,
+                            quizStats = quizStats,
+                            progression = progression,
+                            achievementsUnlocked = achievements.count { it.unlocked },
+                            achievementCount = achievements.size,
+                            offline = offlineMode,
+                            onBack = { goBack() },
+                            onUsernameChange = { name ->
+                                profileName = name
+                                profilePrefs.username = name
+                            },
+                            onProfilePictureChange = { uri ->
+                                profilePictureUri = uri
+                                profilePrefs.profilePictureUri = uri
+                            },
+                            onCoverPictureChange = { uri ->
+                                coverPictureUri = uri
+                                profilePrefs.coverPictureUri = uri
+                            },
+                            onCoverPresetChange = { id ->
+                                coverPresetId = id
+                                profilePrefs.coverPresetId = id
+                            },
+                            onAutomaticCoverChange = { enabled ->
+                                automaticCoverEnabled = enabled
+                                profilePrefs.automaticCoverEnabled = enabled
+                            },
+                            onPrepareAutomaticCover = {
+                                automaticCoverPreviewActive = true
+                            },
+                            onStopPreparingAutomaticCover = {
+                                automaticCoverPreviewActive = false
+                            },
+                            onNavigateToStatistics = { navigate(Screen.Statistics) },
+                            onNavigateToSettings = { navigate(Screen.Settings) },
+                        )
+                    }
 
                     Screen.AiProvider -> AiProviderScreen(
                         apiKeyStore = apiKeyStore,
@@ -1719,16 +2450,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         val dailiesCompleted = dailyStore.completedCount()
                         val bonusXp = dailyStore.totalBonusXp()
                         val achievements = remember(quizStats, dailiesCompleted) {
-                            AchievementEngine.compute(
-                                stats = quizStats,
-                                hasPerfectQuiz = listOf("Easy", "Medium", "Hard", "Otaku Master", "Daily")
-                                    .any { recordsStore.quizBestPercent(it) >= 100 },
-                                dailiesCompleted = dailiesCompleted,
-                            )
+                            achievementsFor(quizStats)
+                        }
+                        val progression = remember(quizStats, bonusXp) {
+                            PlayerProgression.from(quizStats, bonusXp)
                         }
                         StatisticsScreen(
                             stats = quizStats,
                             bonusXp = bonusXp,
+                            progression = progression,
                             achievements = achievements,
                             onBackClick = { goBack() },
                             onHomeClick = { goHome() },
@@ -1810,6 +2540,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             quizStats = statsStore.get()
                             profileName = profilePrefs.username
                             profilePictureUri = profilePrefs.profilePictureUri
+                            coverPictureUri = profilePrefs.coverPictureUri
+                            coverPresetId = profilePrefs.coverPresetId
+                            automaticCoverEnabled = profilePrefs.automaticCoverEnabled
                             themeMode = themePrefs.mode
                             accentName = themePrefs.accent
                             navBarFloating = themePrefs.floatingNavBar
@@ -1856,7 +2589,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     Screen.Quiz -> ActiveQuizScreen(
                         question = questions[currentQuestionIndex],
                         currentQuestionIndex = currentQuestionIndex,
+                        progressionTicket = quizProgressionGate.ticket(
+                            stage = if (quizMode == "versus") versusStage else 0,
+                            questionIndex = currentQuestionIndex,
+                        ),
+                        questionDeadlineMs = questionDeadline,
+                        restoredAnswer = pendingQuizAnswer,
+                        restoredTimeUp = pendingQuizTimeUp,
                         totalQuestions = questions.size,
+                        currentScore = score,
                         difficulty = quizDifficulty,
                         isAiGenerated = aiGenerated,
                         endless = quizMode == "survival",
@@ -1869,22 +2610,52 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         // not at the Next tap — the chip drops at once and the
                         // fatal question's button can say "Finish Quiz".
                         onLifeLost = { if (quizMode == "survival") survivalWrongs++ },
-                        onNextQuestion = { isCorrect, selected -> answer(isCorrect, selected) },
-                        onCloseClick = { goHome() },
+                        onQuestionGraded = { selected, timeUp ->
+                            pendingQuizAnswer = selected
+                            pendingQuizTimeUp = timeUp
+                        },
+                        onNextQuestion = { ticket, isCorrect, selected ->
+                            answer(ticket, isCorrect, selected)
+                        },
+                        onTimerResumed = { pausedMillis ->
+                            // Results use this host-level monotonic span. Shift
+                            // its origin so time spent deciding in the quit
+                            // confirmation is excluded just like the visible
+                            // question/Blitz countdowns.
+                            if (quizStartedAt > 0L && quizFinishedAt == 0L) {
+                                quizStartedAt += pausedMillis
+                                questionDeadline += pausedMillis
+                                if (quizMode == "blitz") blitzDeadline += pausedMillis
+                            }
+                        },
+                        onCloseClick = {
+                            activeSessionStore.clear()
+                            goHome()
+                        },
                     )
 
                     Screen.Results -> QuizCompleteScreen(
                         score = score,
                         totalQuestions = questions.size,
-                        timeSpent = formatElapsed(quizStartedAt),
+                        timeSpent = formatQuizElapsed(
+                            quizStartedAt,
+                            quizFinishedAt,
+                            quizElapsedBaseMs,
+                        ),
                         difficulty = quizDifficulty,
                         bestPercent = quizPrevBest,
                         isNewRecord = quizNewRecord,
                         dailyBonusXp = lastDailyBonus,
+                        progressionReward = lastProgressionReward,
                         modeLabel = when (quizMode) {
                             "survival", "survival-done" -> "Survival"
                             "blitz", "blitz-done" -> "Blitz"
                             else -> null
+                        },
+                        playEntranceSequence =
+                            quizCompleteEntranceGate.shouldPlayEntrance(),
+                        onEntranceSequenceStarted = {
+                            quizCompleteEntranceGate.markEntranceStarted()
                         },
                         onPlayAnother = { goHome() },
                         onReviewAnswers = { navigate(Screen.Review) },
@@ -1894,7 +2665,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     Screen.VersusHandoff -> VersusHandoffScreen(
                         p1Score = versusP1Score,
                         totalQuestions = questions.size,
-                        onPlayer2Ready = { replace(Screen.Quiz) },
+                        onPlayer2Ready = {
+                            restartQuestionClock()
+                            replace(Screen.Quiz)
+                        },
                     )
 
                     Screen.VersusResults -> VersusResultsScreen(
@@ -1960,6 +2734,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         topic = guessTopic,
                         difficultyLabel = guessDifficulty,
                         round = guessRound,
+                        progressionTicket = guessProgressionGate.ticket(guessRound),
+                        roundDeadlineMs = guessRoundDeadline,
                         totalRounds = guessTotalRounds,
                         score = guessScore,
                         phase = guessPhase,
@@ -1976,12 +2752,19 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             guessJob?.cancel()
                             clearGuessPrefetch()
                             guessPhase = GuessPhase.Idle
+                            activeSessionStore.clear()
                             goHome()
+                        },
+                        onRoundTimerStarted = { deadline ->
+                            if (guessRoundDeadline == 0L) guessRoundDeadline = deadline
+                        },
+                        onTimerResumed = { pausedMillis ->
+                            if (guessRoundDeadline > 0L) guessRoundDeadline += pausedMillis
                         },
                         onRoundComplete = { correct, answerText, remainingMs ->
                             guessRoundComplete(correct, answerText, remainingMs)
                         },
-                        onNextRound = { guessNext() },
+                        onNextRound = { ticket -> guessNext(ticket) },
                     )
 
                     Screen.GuessingResults -> GuessingResultsScreen(
@@ -1991,6 +2774,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         difficulty = guessDifficulty,
                         bestPoints = guessPrevBest,
                         isNewRecord = guessNewRecord,
+                        progressionReward = lastProgressionReward,
                         onPlayAgain = {
                             goBack()
                             startGuessing(guessTopic, guessDifficulty, guessTotalRounds)
@@ -2013,6 +2797,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             CompositionLocalProvider(
                 LocalRetainedStateStore provides retainedState,
                 LocalAvatarAnchorRegistry provides avatarAnchorRegistry,
+                LocalSettingsScrollState provides settingsPortraitScrollState,
             ) {
 
             // The Home <-> landscape-Settings switch is a STRUCTURAL change:
@@ -2032,8 +2817,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 transitionSpec = {
                     // Same language and durations as the screen transition, so
                     // the mode switch does not stand out from normal navigation.
-                    fadeIn(animationSpec = tween(220)) togetherWith
-                        fadeOut(animationSpec = tween(160))
+                    fadeIn(animationSpec = tween(if (reduceMotion) 90 else 220)) togetherWith
+                        fadeOut(animationSpec = tween(if (reduceMotion) 70 else 160))
                 },
                 label = "layoutModeTransition",
             ) { listDetail ->
@@ -2047,17 +2832,23 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                                 else Modifier
                             ),
                     ) {
-                        // Master: always the settings list.
+                        // Master: always the settings list. It intentionally
+                        // owns a different ScrollState from the full-width
+                        // branch because both branches overlap during rotation.
                         Box(modifier = Modifier.weight(0.42f)) {
-                            renderScreen(Screen.Settings)
+                            CompositionLocalProvider(
+                                LocalSettingsScrollState provides settingsLandscapeScrollState,
+                            ) {
+                                renderScreen(Screen.Settings)
+                            }
                         }
                         // Detail: the selected sub-screen, or a hint when none is.
                         Box(modifier = Modifier.weight(0.58f)) {
                             AnimatedContent(
                                 targetState = settingsDetail,
                                 transitionSpec = {
-                                    fadeIn(animationSpec = tween(200)) togetherWith
-                                        fadeOut(animationSpec = tween(140))
+                                    fadeIn(animationSpec = tween(if (reduceMotion) 90 else 200)) togetherWith
+                                        fadeOut(animationSpec = tween(if (reduceMotion) 70 else 140))
                                 },
                                 label = "settingsDetailTransition",
                             ) { detail ->
@@ -2076,8 +2867,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             .padding(end = railInset)
                             .then(if (offlineDialogMode != null || showAiMissingDialog) Modifier.blur(16.dp) else Modifier)
                             // Content-area width for the avatar overlay's
-                            // replicated predictive-back slide: the same
-                            // post-padding width slideInHorizontally slides by.
+                            // replicated subtle slide: the same post-padding
+                            // width slideInHorizontally uses for its 8% offset.
                             .onGloballyPositioned { coords ->
                                 val w = coords.size.width
                                 if (w > 0 && w != screensWidthPx) screensWidthPx = w
@@ -2085,45 +2876,41 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         transitionSpec = {
                             when {
                                 predictiveBackTarget != null && targetState == predictiveBackTarget -> {
-                                    // A predictive gesture seeking toward the screen
-                                    // behind (or its commit settle): the screen being
-                                    // left tracks the finger toward the edge while the
-                                    // one behind is revealed from the opposite side —
-                                    // slide + fade in both directions.
-                                    (slideInHorizontally(
-                                        initialOffsetX = { width -> -width * predictiveBackEdgeDirection },
-                                        animationSpec = tween(220),
-                                    ) + fadeIn(animationSpec = tween(220)))
-                                        .togetherWith(
-                                            slideOutHorizontally(
-                                                targetOffsetX = { width -> width * predictiveBackEdgeDirection },
-                                                animationSpec = tween(220),
-                                            ) + fadeOut(animationSpec = tween(220)),
-                                        )
-                                        .apply { targetContentZIndex = -1f }
+                                    // Scrub the SAME subtle back transition used by a
+                                    // back arrow. The gesture edge only mirrors its
+                                    // direction; distance, alpha, easing, and duration
+                                    // are shared with ordinary navigation.
+                                    subtleScreenNavigationTransform(
+                                        direction = -predictiveBackEdgeDirection,
+                                        targetZIndex = -1f,
+                                        reduceMotion = reduceMotion,
+                                    ).using(null)
                                 }
 
                                 predictiveBackTarget != null && initialState == predictiveBackTarget -> {
-                                    // A cancelled gesture settles back — continuous
-                                    // with the above: the dragged screen slides home
-                                    // while the revealed one retreats behind it.
-                                    (slideInHorizontally(
-                                        initialOffsetX = { width -> width * predictiveBackEdgeDirection },
-                                        animationSpec = tween(220),
-                                    ) + fadeIn(animationSpec = tween(180)))
-                                        .togetherWith(
-                                            slideOutHorizontally(
-                                                targetOffsetX = { width -> -width * predictiveBackEdgeDirection },
-                                                animationSpec = tween(220),
-                                            ) + fadeOut(animationSpec = tween(180)),
-                                        )
-                                        .apply { targetContentZIndex = 1f }
+                                    // If Compose flips the segment while cancelling,
+                                    // use the exact inverse of that same subtle motion
+                                    // so the current screen returns without a style
+                                    // switch or full-width retreat.
+                                    subtleScreenNavigationTransform(
+                                        direction = predictiveBackEdgeDirection,
+                                        targetZIndex = 1f,
+                                        reduceMotion = reduceMotion,
+                                    ).using(null)
                                 }
 
                                 else -> {
-                                    // Ordinary navigation keeps the existing fade.
-                                    fadeIn(animationSpec = tween(220)) togetherWith
-                                        fadeOut(animationSpec = tween(160))
+                                    // Ordinary push/pop: both screens move as stable,
+                                    // full-size layers. Disabling AnimatedContent's
+                                    // SizeTransform is important here — Profile's
+                                    // media may become ready during the overlap, but
+                                    // that must never animate container measurement.
+                                    val direction = ordinaryNavigationDirection
+                                    subtleScreenNavigationTransform(
+                                        direction = direction,
+                                        targetZIndex = if (direction > 0) 1f else -1f,
+                                        reduceMotion = reduceMotion,
+                                    ).using(null)
                                 }
                             }
                         },
@@ -2150,9 +2937,11 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 transitionState = screenTransitionState,
                 predictiveBackTarget = predictiveBackTarget,
                 edgeDirection = predictiveBackEdgeDirection,
+                ordinaryDirection = ordinaryNavigationDirection,
                 screensWidthPx = screensWidthPx,
                 railInset = railInset,
                 blurBlocking = offlineDialogMode != null || showAiMissingDialog,
+                reduceMotion = reduceMotion,
             )
 
             // The bottom nav lives OUTSIDE AnimatedContent, for the same reason
@@ -2237,6 +3026,28 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 )
             }
 
+            localTopicMiss?.let { request ->
+                LocalTopicUnavailableDialog(
+                    topic = request.topic,
+                    onChangeTopic = {
+                        localTopicMiss = null
+                        generationToken++
+                        generationJob?.cancel()
+                        generationState = GenerationState.Idle
+                        goHome()
+                    },
+                    onUseAnyTopic = {
+                        localTopicMiss = null
+                        quizMode = request.mode
+                        if (request.mode == "blitz") {
+                            startBlitz(topic = "", difficulty = request.difficulty)
+                        } else {
+                            runLocal(topic = "", difficulty = request.difficulty, count = request.count)
+                        }
+                    },
+                )
+            }
+
             // Onboarding sits above the app content/dialogs but BELOW the
             // cold-start intro, so the 謎 animation plays over it and fades
             // out to reveal the tour on a true first launch. The tour is also
@@ -2244,87 +3055,132 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // state + persistence as AppearanceScreen), a verified provider
             // key refreshes `selectedProvider`, and "Play Now" launches the
             // user's very first game straight from the tour.
-            if (showOnboarding) {
-                OnboardingScreen(
-                    isDark = isDark,
-                    themeMode = themeMode,
-                    onThemeModeChange = { themeMode = it; themePrefs.mode = it },
-                    accentId = accentName,
-                    onAccentChange = { accentName = it; themePrefs.accent = it },
-                    revealStyle = guessRevealStyle,
-                    onRevealStyleChange = {
-                        guessRevealStyle = it
-                        themePrefs.guessRevealStyle = it
+            AnimatedVisibility(
+                visible = showOnboarding,
+                enter = fadeIn(tween(if (reduceMotion) 90 else 180)),
+                exit = if (reduceMotion) {
+                    fadeOut(tween(90))
+                } else {
+                    // Let the tour become a rounded foreground card before it
+                    // clears Home. Delaying the fade makes the hand-off readable
+                    // without turning it into a full-screen theatrical sweep.
+                    scaleOut(
+                        targetScale = 0.94f,
+                        transformOrigin = TransformOrigin(0.5f, 0.42f),
+                        animationSpec = tween(340, easing = FastOutSlowInEasing),
+                    ) + slideOutVertically(
+                        animationSpec = tween(340, easing = FastOutSlowInEasing),
+                        targetOffsetY = { -it / 18 },
+                    ) + fadeOut(
+                        animationSpec = tween(
+                            durationMillis = 260,
+                            delayMillis = 70,
+                            easing = FastOutSlowInEasing,
+                        ),
+                    )
+                },
+                label = "onboardingOverlayVisibility",
+            ) {
+                val exitCorner by transition.animateDp(
+                    transitionSpec = {
+                        tween(
+                            durationMillis = if (reduceMotion) 90 else 300,
+                            easing = FastOutSlowInEasing,
+                        )
                     },
-                    backgroundStyle = backgroundStyle,
-                    onBackgroundStyleChange = {
-                        backgroundStyle = it
-                        themePrefs.backgroundStyle = it
-                    },
-                    celebrationStyle = celebrationStyle,
-                    onCelebrationStyleChange = {
-                        celebrationStyle = it
-                        themePrefs.celebrationStyle = it
-                    },
-                    floatingNavBar = navBarFloating,
-                    onFloatingNavBarChange = {
-                        navBarFloating = it
-                        themePrefs.floatingNavBar = it
-                    },
-                    iconFollowsOsTheme = themePrefs.iconFollowsOsTheme,
-                    onIconFollowsOsThemeChange = { enabled ->
-                        // Just persist the preference; the actual swap happens silently
-                        // when the app is backgrounded (MainActivity.onStop).
-                        themePrefs.iconFollowsOsTheme = enabled
-                    },
-                    soundEnabled = soundEnabled,
-                    onSoundEnabledChange = { v ->
-                        soundEnabled = v
-                        Sounds.setEnabled(context, v)
-                    },
-                    remindersEnabled = remindersEnabled,
-                    onRemindersEnabledChange = { v ->
-                        remindersEnabled = v
-                        ReminderScheduler.setEnabled(context.applicationContext, v)
-                    },
-                    forceOffline = offlineMode,
-                    onForceOfflineChange = { v ->
-                        // The user's choice always wins, even with no network.
-                        // Going online while disconnected is allowed on
-                        // purpose: the app simply explains itself when an
-                        // online action is actually attempted.
-                        offlineMode = v
-                        if (!v) connectivityProbe++
-                    },
-                    onProvidersChanged = {
-                        selectedProvider = apiKeyStore.getSelectedProvider()
-                    },
-                    onPlayNow = { mode, topic ->
-                        onboardingPrefs.completed = true
-                        showOnboarding = false
-                        homeTopic = topic
-                        if (mode == "GUESSING") {
-                            homeMode = NazoMode.GUESSING.name
-                            startGuessing(topic, "Medium", 3)
-                        } else if (mode == "SURVIVAL") {
-                            homeMode = NazoMode.SURVIVAL.name
-                            startSurvival(topic, "Medium")
-                        } else if (mode == "BLITZ") {
-                            homeMode = NazoMode.BLITZ.name
-                            startBlitz(topic, "Medium")
-                        } else if (mode == "VERSUS") {
-                            homeMode = NazoMode.VERSUS.name
-                            startVersus(topic, "Medium", 5)
-                        } else {
-                            homeMode = NazoMode.QUIZ.name
-                            startQuiz(topic, "Medium", 5)
-                        }
-                    },
-                    onFinish = {
-                        onboardingPrefs.completed = true
-                        showOnboarding = false
-                    },
-                )
+                    label = "onboardingExitCorner",
+                ) { state ->
+                    if (state == EnterExitState.Visible || reduceMotion) 0.dp else 30.dp
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            shape = RoundedCornerShape(exitCorner)
+                            clip = exitCorner > 0.dp
+                        },
+                ) {
+                    OnboardingScreen(
+                        isDark = isDark,
+                        themeMode = themeMode,
+                        onThemeModeChange = { themeMode = it; themePrefs.mode = it },
+                        accentId = accentName,
+                        onAccentChange = { accentName = it; themePrefs.accent = it },
+                        revealStyle = guessRevealStyle,
+                        onRevealStyleChange = {
+                            guessRevealStyle = it
+                            themePrefs.guessRevealStyle = it
+                        },
+                        backgroundStyle = backgroundStyle,
+                        onBackgroundStyleChange = {
+                            backgroundStyle = it
+                            themePrefs.backgroundStyle = it
+                        },
+                        celebrationStyle = celebrationStyle,
+                        onCelebrationStyleChange = {
+                            celebrationStyle = it
+                            themePrefs.celebrationStyle = it
+                        },
+                        floatingNavBar = navBarFloating,
+                        onFloatingNavBarChange = {
+                            navBarFloating = it
+                            themePrefs.floatingNavBar = it
+                        },
+                        iconFollowsOsTheme = themePrefs.iconFollowsOsTheme,
+                        onIconFollowsOsThemeChange = { enabled ->
+                            // Just persist the preference; the actual swap happens silently
+                            // when the app is backgrounded (MainActivity.onStop).
+                            themePrefs.iconFollowsOsTheme = enabled
+                        },
+                        soundEnabled = soundEnabled,
+                        onSoundEnabledChange = { v ->
+                            soundEnabled = v
+                            Sounds.setEnabled(context, v)
+                        },
+                        remindersEnabled = remindersEnabled,
+                        onRemindersEnabledChange = { v ->
+                            remindersEnabled = v
+                            ReminderScheduler.setEnabled(context.applicationContext, v)
+                        },
+                        forceOffline = offlineMode,
+                        onForceOfflineChange = { v ->
+                            // The user's choice always wins, even with no network.
+                            // Going online while disconnected is allowed on
+                            // purpose: the app simply explains itself when an
+                            // online action is actually attempted.
+                            offlineMode = v
+                            if (!v) connectivityProbe++
+                        },
+                        onProvidersChanged = {
+                            selectedProvider = apiKeyStore.getSelectedProvider()
+                        },
+                        onPlayNow = { mode, topic ->
+                            onboardingPrefs.completed = true
+                            showOnboarding = false
+                            homeTopic = topic
+                            if (mode == "GUESSING") {
+                                homeMode = NazoMode.GUESSING.name
+                                startGuessing(topic, "Medium", 3)
+                            } else if (mode == "SURVIVAL") {
+                                homeMode = NazoMode.SURVIVAL.name
+                                startSurvival(topic, "Medium")
+                            } else if (mode == "BLITZ") {
+                                homeMode = NazoMode.BLITZ.name
+                                startBlitz(topic, "Medium")
+                            } else if (mode == "VERSUS") {
+                                homeMode = NazoMode.VERSUS.name
+                                startVersus(topic, "Medium", 5)
+                            } else {
+                                homeMode = NazoMode.QUIZ.name
+                                startQuiz(topic, "Medium", 5)
+                            }
+                        },
+                        onFinish = {
+                            onboardingPrefs.completed = true
+                            showOnboarding = false
+                        },
+                    )
+                }
             }
 
             // KEEP LAST: the cold-start intro must be the final child of this
@@ -2336,13 +3192,13 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // Continue the system splash's color: when a custom app icon is active
             // its flat splash color carries into the zoom-through, so there's no
             // color jump between the two. The follow-OS-theme pair passes null and
-            // keeps the original light/dark greens.
+            // keeps the Sumi Ember bottle-green/forest-black grounds.
             val introIcon = if (themePrefs.iconFollowsOsTheme) null
             else LauncherIconSwitcher.option(appIcon)
             IntroOverlay(
                 isDark = isDark,
                 backgroundColor = introIcon?.splashColor?.let { Color(it) },
-                mark = introIcon?.introMark ?: R.drawable.ic_launcher_foreground,
+                mark = introIcon?.introMark ?: R.drawable.ic_mark_nazo_silhouette,
                 style = introIcon?.introStyle ?: IntroStyle.WARP,
             )
         }
@@ -2367,15 +3223,13 @@ private fun AvatarOverlayLayer(
     transitionState: SeekableTransitionState<Screen>,
     predictiveBackTarget: Screen?,
     edgeDirection: Int,
+    ordinaryDirection: Int,
     screensWidthPx: Int,
     railInset: Dp,
     blurBlocking: Boolean,
+    reduceMotion: Boolean,
 ) {
     val transitioning = transitionState.currentState != transitionState.targetState
-    // While predictive-back motion animates, anchors keep their pre-gesture
-    // rest position; otherwise every layout pass refreshes it (pure fades
-    // don't move layout, so capturing through them is safe).
-    registry.captureEnabled = !(predictiveBackTarget != null && transitioning)
     val winner = resolveAvatarWinnerScreen(
         currentScreen = currentScreen,
         currentState = transitionState.currentState,
@@ -2392,7 +3246,9 @@ private fun AvatarOverlayLayer(
             transitionState.currentState == predictiveBackTarget,
         winnerIsTarget = winner == transitionState.targetState,
         edgeDirection = edgeDirection,
+        ordinaryDirection = ordinaryDirection,
         containerWidth = screensWidthPx.toFloat(),
+        slideFraction = screenNavigationSlideFraction(reduceMotion),
     )
     PersistentAvatarVideo(
         uri = uri,
@@ -2409,12 +3265,18 @@ private fun AvatarOverlayLayer(
     )
 }
 
-private fun formatElapsed(startedAt: Long): String {
-    if (startedAt == 0L) return "0m 0s"
-    // elapsedRealtime(), not currentTimeMillis(): a monotonic clock that can't
-    // jump. Wall time moves when the OS does an NTP sync or the user edits the
-    // date mid-quiz, which produced absurd or negative durations.
-    val secs = ((SystemClock.elapsedRealtime() - startedAt) / 1000).toInt().coerceAtLeast(0)
+internal fun formatQuizElapsed(
+    startedAt: Long,
+    finishedAt: Long,
+    elapsedBeforeStartMs: Long = 0L,
+): String {
+    if (startedAt <= 0L || finishedAt <= 0L) return "0m 0s"
+    // The live span comes from elapsedRealtime(), not currentTimeMillis(). A
+    // restored process contributes its checkpointed prefix separately, so a
+    // reboot/process restart cannot make an AI quiz's result clock restart.
+    val elapsed = elapsedBeforeStartMs.coerceAtLeast(0L) +
+        (finishedAt - startedAt).coerceAtLeast(0L)
+    val secs = (elapsed / 1000L).toInt()
     return "${secs / 60}m ${secs % 60}s"
 }
 

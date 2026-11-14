@@ -4,6 +4,7 @@ import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +31,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoTab
+import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoErrorBg
@@ -74,12 +77,18 @@ fun ReviewAnswersScreen(
         ) {
             Spacer(Modifier.height(28.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
+                val interactionSource = remember { MutableInteractionSource() }
+                val shape = rememberNazoPillCornerMorphShape(
+                    interactionSource = interactionSource,
+                    pressedCornerPercent = 28f,
+                )
                 IconButton(
                     onClick = rememberHapticBack(onBackClick),
+                    interactionSource = interactionSource,
                     modifier = Modifier
                         .size(40.dp)
-                        .clip(CircleShape)
-                        .background(NazoSurface),
+                        .clip(shape)
+                        .background(NazoSurface, shape),
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,

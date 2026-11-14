@@ -8,6 +8,7 @@ import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -56,7 +58,11 @@ import androidx.compose.ui.unit.sp
 import quiz.thaton3app.nazo.data.QuizStats
 import quiz.thaton3app.nazo.achievements.Achievement
 import quiz.thaton3app.nazo.achievements.AchievementsCard
+import quiz.thaton3app.nazo.progression.PlayerProgress
+import quiz.thaton3app.nazo.progression.PlayerProgression
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
+import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
+import quiz.thaton3app.nazo.ui.components.rememberSystemReduceMotion
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoDarkCard
 import quiz.thaton3app.nazo.ui.theme.NazoDarkCardAccent
@@ -108,7 +114,7 @@ private data class StatsData(
     val topAnime: List<MasteredAnimeStat>,
 )
 
-private fun QuizStats.toStatsData(bonusXp: Int = 0): StatsData {
+private fun QuizStats.toStatsData(progression: PlayerProgress): StatsData {
     val overallAccuracyPercent = if (totalQuestionsAnswered > 0) {
         totalCorrect * 100 / totalQuestionsAnswered
     } else {
@@ -136,21 +142,14 @@ private fun QuizStats.toStatsData(bonusXp: Int = 0): StatsData {
     }
     val bestTopic = topAnime.firstOrNull()?.title
 
-    // Daily-challenge bonus XP is added on top of the stats-derived XP, so
-    // dailies push the level forward without distorting any recorded stat.
-    val xp = totalCorrect * 10 + totalQuizzes * 5 + bonusXp
-    val xpForNextLevel = 200
-    val level = (xp / xpForNextLevel) + 1
-    val currentXp = xp % xpForNextLevel
-
     return StatsData(
-        level = level,
-        currentXp = currentXp,
-        xpForNextLevel = xpForNextLevel,
+        level = progression.level,
+        currentXp = progression.currentLevelXp,
+        xpForNextLevel = progression.xpPerLevel,
         totalQuizzes = totalQuizzes,
         overallAccuracyPercent = overallAccuracyPercent,
         currentStreakDays = currentStreakDays,
-        totalXp = xp,
+        totalXp = progression.totalXp,
         bestTopic = bestTopic,
         difficulty = difficulty,
         topAnime = if (topAnime.isEmpty()) {
@@ -171,18 +170,20 @@ private data class AnimeAcc(val anime: String, val answered: Int, val avgScore: 
 fun StatisticsScreen(
     stats: QuizStats = QuizStats(),
     bonusXp: Int = 0,
+    progression: PlayerProgress = PlayerProgression.from(stats, bonusXp),
     achievements: List<Achievement> = emptyList(),
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
 ) {
-    val data = remember(stats, bonusXp) { stats.toStatsData(bonusXp) }
-    
-    // Hoist the animation state to the screen level so it only plays once per visit
-    var playAnimations by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { 
-        // A tiny delay ensures the screen slide-in transition finishes before counting starts
-        kotlinx.coroutines.delay(150)
-        playAnimations = true 
+    val data = remember(stats, progression) { stats.toStatsData(progression) }
+    val reduceMotion = rememberSystemReduceMotion()
+
+    // One restrained count/fill per visit. Remove Animations paints the settled
+    // state immediately instead of briefly hiding progression behind a delay.
+    var playAnimations by remember { mutableStateOf(reduceMotion) }
+    LaunchedEffect(reduceMotion) {
+        if (!reduceMotion) kotlinx.coroutines.delay(150)
+        playAnimations = true
     }
 
     Column(
@@ -199,11 +200,16 @@ fun StatisticsScreen(
             contentPadding = PaddingValues(top = 28.dp, bottom = 12.dp)
         ) {
             item {
-                ScreenHeader(title = "Statistics & Insights", onBackClick = onBackClick)
+                ScreenHeader(title = "Progression & Insights", onBackClick = onBackClick)
                 Spacer(Modifier.height(20.dp))
             }
             item {
-                RankCard(data, animate = playAnimations)
+                RankCard(
+                    stats = data,
+                    achievementsUnlocked = achievements.count { it.unlocked },
+                    achievementCount = achievements.size,
+                    animate = playAnimations,
+                )
                 Spacer(Modifier.height(16.dp))
             }
             item {
@@ -295,16 +301,22 @@ fun StatisticsScreen(
 
 @Composable
 private fun ScreenHeader(title: String, onBackClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoPillCornerMorphShape(
+        interactionSource = interactionSource,
+        pressedCornerPercent = 28f,
+    )
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth()
     ) {
         IconButton(
             onClick = rememberHapticBack(onBackClick),
+            interactionSource = interactionSource,
             modifier = Modifier
                 .size(44.dp)
-                .clip(CircleShape)
-                .background(NazoSurface),
+                .clip(shape)
+                .background(NazoSurface, shape),
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NazoTextPrimary, modifier = Modifier.size(22.dp))
         }
@@ -314,94 +326,162 @@ private fun ScreenHeader(title: String, onBackClick: () -> Unit) {
 }
 
 @Composable
-private fun RankCard(stats: StatsData, animate: Boolean) {
+private fun RankCard(
+    stats: StatsData,
+    achievementsUnlocked: Int,
+    achievementCount: Int,
+    animate: Boolean,
+) {
     val animatedXp by animateIntAsState(
         targetValue = if (animate) stats.currentXp else 0,
         animationSpec = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
-        label = "animatedXp"
+        label = "animatedXp",
     )
-
     val targetProgress = if (stats.xpForNextLevel > 0) {
         (stats.currentXp.toFloat() / stats.xpForNextLevel).coerceIn(0f, 1f)
-    } else 0f
-
+    } else {
+        0f
+    }
     val animatedProgress by animateFloatAsState(
         targetValue = if (animate) targetProgress else 0f,
         animationSpec = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
-        label = "animatedProgress"
+        label = "animatedProgress",
     )
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(NazoDarkCard)
-            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
-            .padding(16.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(NazoDarkCard, NazoDarkCardAccent.copy(alpha = 0.94f)),
+                ),
+            )
+            .border(1.dp, NazoOnDarkCard.copy(alpha = 0.12f), RoundedCornerShape(24.dp))
+            .padding(18.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // A level medallion gives the current rank a stable visual identity;
+            // only the bar and number roll, so this stays cheap on lower-end GPUs.
             Box(
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(68.dp)
                     .clip(CircleShape)
-                    .background(NazoDarkCardAccent),
+                    .background(NazoOnDarkCard.copy(alpha = 0.10f))
+                    .border(1.dp, NazoOnDarkCard.copy(alpha = 0.28f), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Filled.EmojiEvents, contentDescription = null, tint = NazoOnDarkCard, modifier = Modifier.size(22.dp))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = stats.level.toString(),
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = NazoOnDarkCard,
+                        fontWeight = FontWeight.ExtraBold,
+                    )
+                    Text(
+                        text = "LEVEL",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NazoOnDarkCardMuted,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "CURRENT RANK",
                     style = MaterialTheme.typography.labelSmall,
                     color = NazoOnDarkCardMuted,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp,
                 )
                 Text(
                     text = "Level ${stats.level} Otaku",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleLarge,
                     color = NazoOnDarkCard,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.ExtraBold,
                 )
-                Spacer(Modifier.height(2.dp))
-                // Headline progress in one place: level + lifetime XP (the
-                // same figure the share card prints).
                 Text(
-                    text = "${stats.totalXp} XP earned",
+                    text = "${stats.totalXp} lifetime XP",
                     style = MaterialTheme.typography.bodySmall,
                     color = NazoOnDarkCardMuted,
                 )
             }
-            Icon(Icons.Filled.StarBorder, contentDescription = null, tint = NazoOnDarkCardMuted, modifier = Modifier.size(22.dp))
+            if (achievementCount > 0) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Filled.EmojiEvents,
+                        contentDescription = null,
+                        tint = NazoOnDarkCard,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Text(
+                        text = "$achievementsUnlocked/$achievementCount",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = NazoOnDarkCard,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "BADGES",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NazoOnDarkCardMuted,
+                    )
+                }
+            }
         }
-        Spacer(Modifier.height(14.dp))
-        
+
+        Spacer(Modifier.height(22.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "NEXT LEVEL",
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoOnDarkCardMuted,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.8.sp,
+            )
+            Text(
+                text = "${(animatedProgress * 100).toInt()}%",
+                style = MaterialTheme.typography.labelMedium,
+                color = NazoOnDarkCard,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        Spacer(Modifier.height(7.dp))
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(6.dp)
+                .height(11.dp)
                 .clip(RoundedCornerShape(50))
-                .background(NazoDarkCardTrack)
+                .background(NazoDarkCardTrack),
         ) {
             Box(
                 modifier = Modifier
-                    // coerceAtLeast(0.001f) prevents "fraction must be greater than 0" crash on exact 0f
                     .fillMaxWidth(animatedProgress.coerceAtLeast(0.001f))
-                    .height(6.dp)
+                    .height(11.dp)
                     .clip(RoundedCornerShape(50))
-                    .background(NazoOnDarkCard)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(NazoPrimary, NazoOnDarkCard),
+                        ),
+                    ),
             )
         }
         Spacer(Modifier.height(10.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
             Text(
                 text = "$animatedXp / ${stats.xpForNextLevel} XP",
                 style = MaterialTheme.typography.bodyMedium,
-                color = NazoOnDarkCardMuted,
+                color = NazoOnDarkCard,
+                fontWeight = FontWeight.SemiBold,
             )
             Text(
-                // Real target, not the rolling counter: this label states a
-                // fact ("37 XP to Level 4"), so counting through 200→37 would
-                // read as wrong data mid-animation.
                 text = "${stats.xpForNextLevel - stats.currentXp} XP to Level ${stats.level + 1}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = NazoOnDarkCardMuted,

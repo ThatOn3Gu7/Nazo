@@ -20,10 +20,16 @@ package quiz.thaton3app.nazo
  * (splash handoff, intent handling, the Daily Challenge shortcut action) from
  * [MainActivity]. Only the manifest theme differs.
  *
- * Registered in [LauncherIconSwitcher.OPTIONS] via `AppIconOption.alias`; exactly
- * one is enabled at a time. Adding a new icon means: an adaptive icon, a
- * `Theme.Nazo.Splash.*` style, a subclass here, a manifest `<activity>`, and one
- * `OPTIONS` entry.
+ * Important: Android does not inherit `<activity>` attributes from a Kotlin
+ * superclass. Every real launcher activity must repeat MainActivity's full
+ * `android:configChanges` declaration in the manifest. Without it, rotation
+ * destroys that subclass, rebuilds NazoApp from Home, and plays splash again —
+ * even though the same rotation is handled in-place through the default aliases.
+ *
+ * Active variants are registered in [LauncherIconSwitcher.OPTIONS] via
+ * `AppIconOption.alias`; exactly one is enabled at a time. Adding a new icon means:
+ * an adaptive icon, a `Theme.Nazo.Splash.*` style, a subclass here, a manifest
+ * `<activity>` with the shared configChanges contract, and one `OPTIONS` entry.
  */
 class LauncherSakura : MainActivity()
 
@@ -33,6 +39,10 @@ class LauncherOcean : MainActivity()
 
 class LauncherLantern : MainActivity()
 
+// Retain these component class names for one release so installs that had the
+// retired icon enabled can still launch and migrate back to LauncherLight.
+@Deprecated("Brush N is retired; migration shim only")
 class LauncherBrush : MainActivity()
 
+@Deprecated("Pixel N is retired; migration shim only")
 class LauncherPixel : MainActivity()

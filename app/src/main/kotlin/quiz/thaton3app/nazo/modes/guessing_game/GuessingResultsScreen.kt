@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.ImageSearch
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.EmojiEvents
@@ -61,13 +62,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
+import quiz.thaton3app.nazo.progression.ProgressionReward
 import quiz.thaton3app.nazo.records.NewRecordBadge
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
 import quiz.thaton3app.nazo.ui.components.Haptics
-import quiz.thaton3app.nazo.ui.components.NazoButtonShape
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
+import quiz.thaton3app.nazo.ui.components.ProgressionRewardBanner
 import quiz.thaton3app.nazo.ui.components.ShareResultCard
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
@@ -85,6 +87,7 @@ fun GuessingResultsScreen(
     difficulty: String,
     bestPoints: Int = -1,
     isNewRecord: Boolean = false,
+    progressionReward: ProgressionReward? = null,
     onPlayAgain: () -> Unit,
     onHomeClick: () -> Unit,
 ) {
@@ -179,6 +182,14 @@ fun GuessingResultsScreen(
                 ) {
                     Column {
                         Text(
+                            text = "MYSTERY ARCHIVE",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NazoPrimary,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.2.sp,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
                             text = heading,
                             style = MaterialTheme.typography.headlineMedium,
                             color = headingColor,
@@ -229,6 +240,14 @@ fun GuessingResultsScreen(
                     }
                 }
 
+                progressionReward?.let { reward ->
+                    Spacer(Modifier.height(12.dp))
+                    ProgressionRewardBanner(
+                        reward = reward,
+                        animateEntrance = true,
+                    )
+                }
+
                     },
                     details = {
                 AnimatedVisibility(
@@ -237,7 +256,7 @@ fun GuessingResultsScreen(
                 ) {
                     Column {
                         Text(
-                            text = "ROUNDS",
+                            text = "REVEALED ARCHIVE",
                             style = MaterialTheme.typography.labelSmall,
                             color = NazoTextSecondary,
                             fontWeight = FontWeight.Bold,
@@ -334,10 +353,11 @@ fun GuessingResultsScreen(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(56.dp)
-                                // Solid bed: a control is an island the
-                                // celebration can never show through.
-                                .background(NazoBackground, NazoButtonShape),
+                                .height(56.dp),
+                            // Solid bed: a control is an island the celebration
+                            // can never show through. Keep it on the animated
+                            // surface so fill and edge morph together.
+                            containerColor = NazoBackground,
                             muted = true,
                         ) {
                             Icon(Icons.Filled.Home, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
@@ -371,8 +391,8 @@ fun GuessingResultsScreen(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(56.dp)
-                                .background(NazoBackground, NazoButtonShape),
+                                .height(56.dp),
+                            containerColor = NazoBackground,
                             muted = true,
                         ) {
                             Icon(Icons.Filled.Share, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
@@ -518,7 +538,7 @@ private fun ScoreCard(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = if (allMissed) Icons.Outlined.FitnessCenter else Icons.Outlined.EmojiEvents,
+                    imageVector = if (allMissed) Icons.Outlined.FitnessCenter else Icons.Filled.ImageSearch,
                     contentDescription = null,
                     tint = NazoOnPrimary,
                     modifier = Modifier.size(38.dp)

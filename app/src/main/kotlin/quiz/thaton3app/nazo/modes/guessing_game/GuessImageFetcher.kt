@@ -20,9 +20,8 @@ import quiz.thaton3app.nazo.vision.AnimeImageGate
  * Resolves a direct image URL of the round's TARGET ENTITY using keyless
  * public sources, in order:
  *
- * GROUND STAGES (official art, franchise-anchored — the "100% official"
- * path from docs/official-art-research.md). The franchise is resolved ONCE
- * per round into each database's media row (1 call each, outside the
+ * GROUND STAGES (curated art, franchise-anchored). The franchise is resolved
+ * ONCE per round into each database's media row (1 call each, outside the
  * variant loop), then the target is looked up INSIDE that franchise's own
  * CAST LIST — a same-name-proof way to fetch the character's official
  * portrait with zero free-text image searching:
@@ -849,8 +848,8 @@ object GuessImageFetcher {
     }
 
     /**
-     * GROUND STAGE — the FANDOM infobox (see docs/official-art-research.md
-     * §2.5/§5.4). The franchise's own wiki is looked up in [FandomWikiMap],
+     * GROUND STAGE — the Fandom infobox. The franchise's own wiki is looked
+     * up in [FandomWikiMap],
      * so the page search is franchise-scoped BY CONSTRUCTION (a "Zoro"
      * search inside the One Piece wiki can only be One Piece's Zoro) —
      * and the infobox image on a character page is the official character-
@@ -1048,11 +1047,12 @@ object GuessImageFetcher {
     /**
      * Last resort: DuckDuckGo's image endpoint. GET the image-search HTML
      * (browser UA) for the per-session `vqd` token, then the JSON i.js API.
+     * Both requests explicitly select strict Safe Search; [DuckDuckGoImagePolicy]
+     * additionally rejects marked-explicit metadata, malformed/non-HTTPS
+     * entries and results with no target evidence before any bytes are fetched.
      * The token format has changed over time, so several extraction shapes
-     * are tried (numeric, then any token). Every hit must be HTTPS, must
-     * mention the target, and must be a decodable format (Bing thumbnails
-     * have no extension, so they are exempt from the format check only).
-     * There is NO blind top-hit fallback: a miss beats a wrong face.
+     * are tried (numeric, then any token). There is no blind top-hit fallback:
+     * a miss is safer than displaying an unrelated image.
      */
     private fun fromDuckDuckGo(targetName: String, franchise: String, imageQuery: String): String? {
         val query = when {
@@ -1062,7 +1062,7 @@ object GuessImageFetcher {
             else -> targetName
         }
         val html = getText(
-            "https://duckduckgo.com/?q=${enc(query)}&iax=1&ia=images",
+            DuckDuckGoImagePolicy.tokenUrl(query),
             userAgent = BROWSER_USER_AGENT,
         ) ?: return null
         val vqd = listOf(
@@ -1073,18 +1073,10 @@ object GuessImageFetcher {
             Regex("""vqd=([\w-]+)"""),
         ).firstNotNullOfOrNull { it.find(html)?.groupValues?.get(1) } ?: return null
         val json = getJson(
-            "https://duckduckgo.com/i.js?q=${enc(query)}&vqd=$vqd&o=json&p=1&l=wt-wt",
+            DuckDuckGoImagePolicy.resultsUrl(query, vqd),
             userAgent = BROWSER_USER_AGENT,
         ) ?: return null
-        val results = json.optJSONArray("results") ?: return null
-        for (i in 0 until results.length()) {
-            val r = results.getJSONObject(i)
-            val url = r.optString("image", "").ifBlank { r.optString("thumbnail", "") }
-            if (!url.startsWith("https://")) continue
-            if (!urlMatchesTarget(url, targetName)) continue
-            if (isUsableImage(url) || url.contains("bing.net/th")) return url
-        }
-        return null
+        return DuckDuckGoImagePolicy.selectCandidate(json, targetName)
     }
 
     /**
@@ -1146,21 +1138,6 @@ object GuessImageFetcher {
 
     /** False for cosplay / fan-art / merchandise titles (see [JUNK_TITLE]). */
     private fun isCleanTitle(title: String): Boolean = !JUNK_TITLE.containsMatchIn(title)
-
-    /**
-     * DDG/Bing URLs are loose: Bing thumbnails (opaque, no slug to inspect)
-     * are trusted, anything with a readable path must mention the target.
-     * YouTube thumbnails are NOT trusted — they are usually video frames of
-     * real people.
-     */
-    private fun urlMatchesTarget(url: String, targetName: String): Boolean {
-        val words = targetWords(targetName)
-        if (words.isEmpty()) return true
-        val u = url.lowercase()
-        if (u.contains(words.joinToString(" "))) return true
-        if (u.contains("bing.net/th")) return true
-        return u.contains(words.maxByOrNull { it.length }!!) || words.count { u.contains(it) } * 2 > words.size
-    }
 
     /**
      * HTTPS only, and a format Coil can decode (no SVG — the svg module

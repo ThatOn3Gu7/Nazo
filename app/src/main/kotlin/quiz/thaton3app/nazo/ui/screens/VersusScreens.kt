@@ -1,8 +1,10 @@
 package quiz.thaton3app.nazo.ui.screens
 
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -58,9 +61,9 @@ import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
 import quiz.thaton3app.nazo.ui.components.Haptics
-import quiz.thaton3app.nazo.ui.components.NazoButtonShape
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
+import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
@@ -98,21 +101,21 @@ fun VersusHandoffScreen(
             .padding(horizontal = 28.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(
-                modifier = Modifier
-                    .size(88.dp)
-                    .clip(CircleShape)
-                    .background(NazoPrimary.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.SwapHoriz,
-                    contentDescription = null,
-                    tint = NazoPrimary,
-                    modifier = Modifier.size(44.dp),
-                )
-            }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = "HEAD-TO-HEAD • TURN 2",
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoPrimary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.2.sp,
+            )
+            Spacer(Modifier.height(12.dp))
+            VersusHandoffRail()
             Spacer(Modifier.height(24.dp))
             Text(
                 text = "Player 1 is done!",
@@ -130,15 +133,20 @@ fun VersusHandoffScreen(
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(36.dp))
+            val readyInteraction = remember { MutableInteractionSource() }
+            val readyShape = rememberNazoPillCornerMorphShape(readyInteraction)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(NazoPrimary)
-                    .clickable {
+                    .clip(readyShape)
+                    .background(NazoPrimary, readyShape)
+                    .clickable(
+                        interactionSource = readyInteraction,
+                        indication = LocalIndication.current,
+                    ) {
                         Haptics.light(context)
                         onPlayer2Ready()
                     },
@@ -148,6 +156,82 @@ fun VersusHandoffScreen(
                 Text("I'm Player 2 — Let's go!", color = NazoOnPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
         }
+    }
+}
+
+@Composable
+private fun VersusHandoffRail() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(NazoSurface)
+            .border(1.dp, NazoPrimary.copy(alpha = 0.24f), RoundedCornerShape(24.dp))
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        HandoffPlayerCard(
+            label = "P1",
+            status = "LOCKED IN",
+            active = false,
+            modifier = Modifier.weight(1f),
+        )
+        Box(
+            modifier = Modifier
+                .padding(horizontal = 10.dp)
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(NazoPrimary.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.SwapHoriz,
+                contentDescription = null,
+                tint = NazoPrimary,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+        HandoffPlayerCard(
+            label = "P2",
+            status = "UP NEXT",
+            active = true,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun HandoffPlayerCard(
+    label: String,
+    status: String,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (active) NazoPrimary.copy(alpha = 0.14f) else NazoBackground)
+            .border(
+                1.dp,
+                if (active) NazoPrimary.copy(alpha = 0.5f) else Color.Transparent,
+                RoundedCornerShape(16.dp),
+            )
+            .padding(vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleLarge,
+            color = if (active) NazoPrimary else NazoTextSecondary,
+            fontWeight = FontWeight.Black,
+        )
+        Text(
+            text = status,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (active) NazoPrimary else NazoTextSecondary,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.6.sp,
+        )
     }
 }
 
@@ -198,6 +282,14 @@ fun VersusResultsScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
+            Text(
+                text = "HEAD-TO-HEAD • FINAL",
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoPrimary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.2.sp,
+            )
+            Spacer(Modifier.height(12.dp))
             // Screen identity: a trophy emblem crowning the match result.
             Box(
                 contentAlignment = Alignment.Center,
@@ -287,10 +379,11 @@ fun VersusResultsScreen(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
-                    // Solid bed: a control is an island the celebration can
-                    // never show through.
-                    .background(NazoBackground, NazoButtonShape),
+                    .height(56.dp),
+                // Solid bed: a control is an island the celebration can never
+                // show through. It belongs to the animated button surface so
+                // the fill and edge morph together.
+                containerColor = NazoBackground,
                 muted = true,
             ) {
                 Icon(Icons.Filled.FactCheck, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
@@ -305,8 +398,8 @@ fun VersusResultsScreen(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
-                    .background(NazoBackground, NazoButtonShape),
+                    .height(56.dp),
+                containerColor = NazoBackground,
                 muted = true,
             ) {
                 Icon(Icons.Filled.Home, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
@@ -399,13 +492,21 @@ fun VersusReviewScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 12.dp),
         ) {
+            val backInteraction = remember { MutableInteractionSource() }
+            val backShape = rememberNazoPillCornerMorphShape(
+                interactionSource = backInteraction,
+                pressedCornerPercent = 28f,
+            )
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .size(40.dp)
-                    .clip(CircleShape)
-                    .background(NazoSurface)
-                    .clickable {
+                    .clip(backShape)
+                    .background(NazoSurface, backShape)
+                    .clickable(
+                        interactionSource = backInteraction,
+                        indication = LocalIndication.current,
+                    ) {
                         Haptics.light(context)
                         onBackClick()
                     },

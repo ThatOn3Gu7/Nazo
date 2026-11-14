@@ -2,15 +2,15 @@ package quiz.thaton3app.nazo.modes.guessing_game
 
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
+import android.os.Build
+import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -23,14 +23,15 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -98,15 +99,22 @@ import coil.request.SuccessResult
 import java.nio.ByteBuffer
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import quiz.thaton3app.nazo.hints.HintEngine
 import quiz.thaton3app.nazo.hints.HintPill
 import quiz.thaton3app.nazo.hints.HintRevealPill
 import quiz.thaton3app.nazo.sound.Sounds
+import quiz.thaton3app.nazo.ui.GuessProgressionTicket
 import quiz.thaton3app.nazo.ui.components.Haptics
+import quiz.thaton3app.nazo.ui.components.NazoQuitDialog
 import quiz.thaton3app.nazo.ui.components.WavySpinner
 import quiz.thaton3app.nazo.ui.components.isLandscape
+import quiz.thaton3app.nazo.ui.components.rememberGameplayQuitPauseState
+import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
+import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
+import quiz.thaton3app.nazo.ui.mode.mysteryRevealStage
 import quiz.thaton3app.nazo.ui.theme.*
 import quiz.thaton3app.nazo.vision.PortraitCrop
 
@@ -129,10 +137,12 @@ private const val MAX_BLUR = 28f
  * to [GuessPhase].
  */
 @Composable
-fun GuessingPlayScreen(
+internal fun GuessingPlayScreen(
     topic: String,
     difficultyLabel: String,
     round: Int,
+    progressionTicket: GuessProgressionTicket,
+    roundDeadlineMs: Long,
     totalRounds: Int,
     score: Int,
     phase: GuessPhase,
@@ -143,8 +153,10 @@ fun GuessingPlayScreen(
     onRetryRound: () -> Unit,
     onOpenSettings: () -> Unit,
     onQuit: () -> Unit,
+    onRoundTimerStarted: (deadlineMs: Long) -> Unit,
+    onTimerResumed: (pausedMillis: Long) -> Unit,
     onRoundComplete: (correct: Boolean, answerText: String?, remainingMs: Long) -> Unit,
-    onNextRound: () -> Unit,
+    onNextRound: (GuessProgressionTicket) -> Unit,
 ) {
     val context = LocalContext.current
     val durationMs = GuessScoring.durationMsFor(difficultyLabel)
@@ -159,7 +171,7 @@ fun GuessingPlayScreen(
     var imageFetchFailed by remember { mutableStateOf(false) }
     // One software bitmap is the single source of truth for both reveal paths.
     var remainingMs by remember { mutableLongStateOf(durationMs) }
-    var showQuitDialog by remember { mutableStateOf(false) }
+    val quitPauseState = rememberGameplayQuitPauseState()
     var mysteryBitmap by remember { mutableStateOf<Bitmap?>(null) }
     val imageLoader = remember { ImageLoader(context) }
 
@@ -170,7 +182,11 @@ fun GuessingPlayScreen(
         stateForPhase = phase
         submitted = null
         timedOut = false
-        remainingMs = durationMs
+        remainingMs = if (roundDeadlineMs > 0L) {
+            (roundDeadlineMs - SystemClock.elapsedRealtime()).coerceIn(0L, durationMs)
+        } else {
+            durationMs
+        }
         imageFetchFailed = false
         imageReady = false
         mysteryBitmap = null
@@ -245,14 +261,28 @@ fun GuessingPlayScreen(
     // The loop stops as soon as the player answers or the timer reaches zero.
     LaunchedEffect(imageReady, payload) {
         if (!imageReady || payload == null) return@LaunchedEffect
-        val startNanos = withFrameNanos { it }
+        // If the image became ready behind an open confirmation, begin only
+        // after the player chooses Stay; time before the round was visible must
+        // not be charged to the reveal countdown.
+        while (quitPauseState.timerPaused) delay(50)
+        val deadline = roundDeadlineMs.takeIf { it > 0L }
+            ?: (SystemClock.elapsedRealtime() + durationMs).also(onRoundTimerStarted)
+        val pauseMillisAtStart = quitPauseState.accumulatedPauseMillis
         var lastTickSecond = -1
         var done = false
         while (!done) {
             if (submitted != null || timedOut) break
-            withFrameNanos { nowNanos ->
-                val elapsedMs = (nowNanos - startNanos) / 1_000_000
-                val remaining = (durationMs - elapsedMs).coerceAtLeast(0L)
+            if (quitPauseState.timerPaused) {
+                delay(50)
+                continue
+            }
+            withFrameNanos {
+                val pausedSinceStart = (
+                    quitPauseState.accumulatedPauseMillis - pauseMillisAtStart
+                ).coerceAtLeast(0L)
+                val remaining = (
+                    deadline + pausedSinceStart - SystemClock.elapsedRealtime()
+                ).coerceAtLeast(0L)
                 remainingMs = remaining
                 val sec = ((remaining + 999) / 1000).toInt()
                 if (sec != lastTickSecond) {
@@ -291,7 +321,9 @@ fun GuessingPlayScreen(
         onRoundComplete(correct, answer, remainingMs)
     }
 
-    BackHandler(enabled = true) { showQuitDialog = !showQuitDialog }
+    BackHandler(enabled = !quitPauseState.timerPaused) {
+        quitPauseState.requestQuit()
+    }
 
     Box(
         modifier = Modifier
@@ -310,15 +342,21 @@ fun GuessingPlayScreen(
                 Spacer(Modifier.height(20.dp))
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    val closeInteraction = remember { MutableInteractionSource() }
+                    val closeShape = rememberNazoPillCornerMorphShape(
+                        interactionSource = closeInteraction,
+                        pressedCornerPercent = 28f,
+                    )
                     IconButton(
                         onClick = {
                             Haptics.light(context)
-                            showQuitDialog = true
+                            quitPauseState.requestQuit()
                         },
+                        interactionSource = closeInteraction,
                         modifier = Modifier
                             .size(40.dp)
-                            .clip(CircleShape)
-                            .background(NazoSurface)
+                            .clip(closeShape)
+                            .background(NazoSurface, closeShape)
                     ) {
                         Icon(Icons.Filled.Close, contentDescription = "Close", tint = NazoTextSecondary)
                     }
@@ -368,6 +406,37 @@ fun GuessingPlayScreen(
                         color = if (displaySeconds <= 5) NazoError else NazoPrimary,
                         trackColor = NazoSurface
                     )
+                    Spacer(Modifier.height(7.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Filled.AutoAwesome,
+                            contentDescription = null,
+                            tint = NazoPrimary,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "MYSTERY REVEAL",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NazoPrimary,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.9.sp,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        AnimatedContent(
+                            targetState = mysteryRevealStage(timerFrac(), revealed),
+                            transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(140)) },
+                            label = "mysteryRevealStage",
+                        ) { stage ->
+                            Text(
+                                text = stage.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = NazoTextSecondary,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp,
+                            )
+                        }
+                    }
                 }
             }
 
@@ -482,7 +551,7 @@ fun GuessingPlayScreen(
                             RevealCard(
                                 result = roundResult,
                                 totalRounds = totalRounds,
-                                onNext = onNextRound,
+                                onNext = { onNextRound(progressionTicket) },
                             )
                         }
                     },
@@ -492,13 +561,13 @@ fun GuessingPlayScreen(
             }
         }
 
-        QuitDialog(
-            show = showQuitDialog,
-            onStay = { showQuitDialog = false },
-            onQuit = {
-                showQuitDialog = false
-                onQuit()
-            },
+        NazoQuitDialog(
+            visible = quitPauseState.dialogVisible,
+            title = "Quit guessing game?",
+            message = "Your score in this game will be lost.",
+            onStay = { onTimerResumed(quitPauseState.stay()) },
+            onHideForQuit = { quitPauseState.hideForQuit() },
+            onQuit = onQuit,
         )
     }
 }
@@ -599,7 +668,12 @@ private fun MysteryImageCard(
     startFraction: Float,
     mysteryBitmap: Bitmap?,
 ) {
-    val usePixels = revealStyle == "pixel" && mysteryBitmap != null
+    val renderer = remember(revealStyle) {
+        BlurRevealCompatibility.renderer(revealStyle, Build.VERSION.SDK_INT)
+    }
+    val usePixels = renderer == BlurRevealCompatibility.Renderer.PIXEL_STYLE && mysteryBitmap != null
+    val useNativeBlur = renderer == BlurRevealCompatibility.Renderer.NATIVE_BLUR
+    val useCompatibilityBlur = renderer == BlurRevealCompatibility.Renderer.COMPATIBILITY_BLUR
 
     // Blur reveal: full strength at the start of the timer, easing to sharp.
     // Skipped entirely in pixel mode and once the round is decided.
@@ -640,6 +714,10 @@ private fun MysteryImageCard(
         1f + 0.12f * blurRadiusDp / MAX_BLUR
     }
     val levelIndex = (pixelEffect * (PIXEL_LEVELS.size - 1)).roundToInt()
+    val compatibilityBlurCell = BlurRevealCompatibility.compatibilityCellSize(
+        blurRadius = blurRadiusDp,
+        maximumBlurRadius = MAX_BLUR.toInt(),
+    )
 
     val cardHeight = if (isLandscape()) {
         (LocalConfiguration.current.screenHeightDp * 0.62f).dp.coerceAtMost(300.dp)
@@ -652,34 +730,41 @@ private fun MysteryImageCard(
             .height(cardHeight)
             .clip(RoundedCornerShape(28.dp))
             .background(NazoSurfaceVariant)
+            .border(1.dp, NazoPrimary.copy(alpha = 0.24f), RoundedCornerShape(28.dp))
     ) {
         if (!imageReady) {
             ImageFetchingIndicator()
         } else if (imageFetchFailed || mysteryBitmap == null) {
             GuessImagePlaceholder(query = query.ifBlank { "Mystery image" })
         } else {
-            // The reveal is applied OVER the bitmap, never into it: blur is a
-            // draw modifier and the pixelation resamples at draw time. The
-            // decoded pixels are only ever read, which is the arrangement that
-            // finally produced correct colour.
+            // The reveal is applied OVER the bitmap, never into it. Android 12+
+            // uses the native blur draw effect; Android 8-11 smoothly upscale a
+            // downsampled copy because RenderEffect blur is unavailable there.
+            // Pixel mode keeps its hard nearest-neighbour blocks. The decoded
+            // source pixels are read-only in every path.
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .scale(revealScale)
                     .then(
-                        if (usePixels) {
-                            Modifier
-                        } else {
+                        if (useNativeBlur) {
                             Modifier.blur(
                                 radius = blurRadius,
                                 edgeTreatment = BlurredEdgeTreatment(RoundedCornerShape(28.dp)),
                             )
+                        } else {
+                            Modifier
                         }
                     )
             ) {
                 PixelatedImage(
                     bitmap = mysteryBitmap,
-                    cellSize = if (usePixels) PIXEL_LEVELS[levelIndex] else 1,
+                    cellSize = when {
+                        usePixels -> PIXEL_LEVELS[levelIndex]
+                        useCompatibilityBlur -> compatibilityBlurCell
+                        else -> 1
+                    },
+                    smoothUpscale = useCompatibilityBlur,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -805,15 +890,24 @@ private fun ChoiceInput(
             animationSpec = tween(220),
             label = "choiceBorder"
         )
+        val interactionSource = remember(optionText) { MutableInteractionSource() }
+        val shape = rememberNazoPillCornerMorphShape(
+            interactionSource = interactionSource,
+            enabled = !revealed,
+        )
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 12.dp)
-                .clip(RoundedCornerShape(50))
-                .background(bgColor)
-                .border(1.dp, borderColor, RoundedCornerShape(50))
-                .clickable(enabled = !revealed) { onSubmit(optionText) }
+                .clip(shape)
+                .background(bgColor, shape)
+                .border(1.dp, borderColor, shape)
+                .clickable(
+                    enabled = !revealed,
+                    interactionSource = interactionSource,
+                    indication = LocalIndication.current,
+                ) { onSubmit(optionText) }
                 .padding(horizontal = 20.dp, vertical = 15.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -919,12 +1013,20 @@ private fun AutocompleteInput(
                 )
             }
             if (typed.isNotEmpty() && !revealed) {
+                val clearInteraction = remember { MutableInteractionSource() }
+                val clearShape = rememberNazoPillCornerMorphShape(
+                    interactionSource = clearInteraction,
+                    pressedCornerPercent = 28f,
+                )
                 Box(
                     modifier = Modifier
                         .size(22.dp)
-                        .clip(CircleShape)
-                        .background(NazoTextSecondary.copy(alpha = 0.2f))
-                        .clickable { typed = "" },
+                        .clip(clearShape)
+                        .background(NazoTextSecondary.copy(alpha = 0.2f), clearShape)
+                        .clickable(
+                            interactionSource = clearInteraction,
+                            indication = LocalIndication.current,
+                        ) { typed = "" },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -940,11 +1042,20 @@ private fun AutocompleteInput(
         if (!revealed) {
             Spacer(Modifier.height(14.dp))
             suggestions.forEach { suggestion ->
+                val suggestionInteraction = remember(suggestion) { MutableInteractionSource() }
+                val suggestionShape = rememberNazoRoundedCornerMorphShape(
+                    interactionSource = suggestionInteraction,
+                    restingCorner = 10.dp,
+                    pressedCorner = 4.dp,
+                )
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable {
+                        .clip(suggestionShape)
+                        .clickable(
+                            interactionSource = suggestionInteraction,
+                            indication = LocalIndication.current,
+                        ) {
                             focusManager.clearFocus()
                             onSubmit(suggestion)
                         }
@@ -970,13 +1081,31 @@ private fun AutocompleteInput(
             }
             Spacer(Modifier.height(14.dp))
             val canSubmit = typed.isNotBlank()
+            val submitInteraction = remember { MutableInteractionSource() }
+            val submitShape = rememberNazoRoundedCornerMorphShape(
+                interactionSource = submitInteraction,
+                restingCorner = 14.dp,
+                pressedCorner = 7.dp,
+                enabled = canSubmit,
+            )
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(if (canSubmit) NazoPrimary else NazoPillUnselected)
-                    .then(if (canSubmit) Modifier.clickable { focusManager.clearFocus(); onSubmit(typed) } else Modifier)
+                    .clip(submitShape)
+                    .background(
+                        color = if (canSubmit) NazoPrimary else NazoPillUnselected,
+                        shape = submitShape,
+                    )
+                    .then(
+                        if (canSubmit) Modifier.clickable(
+                            interactionSource = submitInteraction,
+                            indication = LocalIndication.current,
+                        ) {
+                            focusManager.clearFocus()
+                            onSubmit(typed)
+                        } else Modifier
+                    )
                     .padding(horizontal = 16.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -1067,12 +1196,17 @@ private fun RevealCard(
                 )
             }
             Spacer(Modifier.height(20.dp))
+            val nextInteraction = remember { MutableInteractionSource() }
+            val nextShape = rememberNazoPillCornerMorphShape(nextInteraction)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(50))
-                    .background(NazoPrimary)
-                    .clickable {
+                    .clip(nextShape)
+                    .background(NazoPrimary, nextShape)
+                    .clickable(
+                        interactionSource = nextInteraction,
+                        indication = LocalIndication.current,
+                    ) {
                         Haptics.light(context)
                         onNext()
                     }
@@ -1159,14 +1293,24 @@ private fun PreparingCard(round: Int, totalRounds: Int, topic: String, onCancel:
 
 @Composable
 private fun CancelTextButton(label: String, onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 14.dp,
+        pressedCorner = 7.dp,
+    )
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(44.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color.Transparent)
-            .border(1.dp, NazoTextSecondary.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
+            .clip(shape)
+            .background(Color.Transparent, shape)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.25f), shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -1234,111 +1378,6 @@ private fun ErrorCard(
 }
 
 @Composable
-private fun QuitDialog(
-    show: Boolean,
-    onStay: () -> Unit,
-    onQuit: () -> Unit,
-) {
-    val context = LocalContext.current
-    AnimatedVisibility(
-        visible = show,
-        enter = fadeIn(tween(180)) + scaleIn(tween(180, easing = LinearOutSlowInEasing), initialScale = 0.9f),
-        exit = fadeOut(tween(180)) + scaleOut(tween(180, easing = FastOutLinearInEasing), targetScale = 0.9f),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.5f))
-                .clickable { },
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(
-                modifier = Modifier
-                    .widthIn(max = 340.dp)
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(NazoSurface)
-                    .border(1.5.dp, NazoTextSecondary.copy(alpha = 0.3f), RoundedCornerShape(32.dp))
-                    .padding(28.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(CircleShape)
-                        .background(NazoError),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "!",
-                        color = NazoOnPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 34.sp,
-                    )
-                }
-                Spacer(Modifier.height(18.dp))
-                Text(
-                    text = "Quit guessing game?",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = NazoTextPrimary,
-                    fontWeight = FontWeight.Bold,
-                )
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    text = "Your score in this game will be lost.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = NazoTextSecondary,
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(Modifier.height(22.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(54.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(NazoPrimary)
-                            .clickable {
-                                Haptics.light(context)
-                                onStay()
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "Stay",
-                            color = NazoOnPrimary,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(54.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .border(1.5.dp, NazoError, RoundedCornerShape(16.dp))
-                            .clickable {
-                                Haptics.light(context)
-                                onQuit()
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "Quit",
-                            color = NazoError,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun SectionLabelGuess(text: String) {
     Text(
         text = text,
@@ -1352,13 +1391,23 @@ private fun SectionLabelGuess(text: String) {
 
 @Composable
 private fun GuessPrimaryButton(label: String, onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 14.dp,
+        pressedCorner = 7.dp,
+    )
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(NazoPrimary)
-            .clickable(onClick = onClick)
+            .clip(shape)
+            .background(NazoPrimary, shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -1373,14 +1422,24 @@ private fun GuessPrimaryButton(label: String, onClick: () -> Unit) {
 
 @Composable
 private fun GuessOutlineButton(label: String, onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 14.dp,
+        pressedCorner = 7.dp,
+    )
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .border(1.5.dp, NazoPrimary, RoundedCornerShape(14.dp))
-            .background(Color.Transparent)
-            .clickable(onClick = onClick)
+            .clip(shape)
+            .border(1.5.dp, NazoPrimary, shape)
+            .background(Color.Transparent, shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -1395,13 +1454,23 @@ private fun GuessOutlineButton(label: String, onClick: () -> Unit) {
 
 @Composable
 private fun GuessTextButton(label: String, onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 14.dp,
+        pressedCorner = 7.dp,
+    )
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(44.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color.Transparent)
-            .clickable(onClick = onClick)
+            .clip(shape)
+            .background(Color.Transparent, shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,
     ) {
