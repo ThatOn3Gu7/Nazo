@@ -2008,7 +2008,7 @@ fun ProfileScreen(
                     Haptics.doubleLight(context)
                     onAutomaticCoverChange(false)
                     AutomaticCoverStore.discardAll(context)
-                    ProfileImageStore.deleteCover(coverPictureUri)
+                    ProfileImageStore.deleteCover(context, coverPictureUri)
                     onCoverPictureChange(null)
                     // Removing clears BOTH layers (custom file + preset id)
                     // back to the placeholder — same destructive step as

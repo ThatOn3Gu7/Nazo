@@ -105,6 +105,7 @@ import quiz.thaton3app.nazo.hints.HintEngine
 import quiz.thaton3app.nazo.hints.HintPill
 import quiz.thaton3app.nazo.hints.HintRevealPill
 import quiz.thaton3app.nazo.sound.Sounds
+import quiz.thaton3app.nazo.ui.GuessProgressionTicket
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoQuitDialog
 import quiz.thaton3app.nazo.ui.components.WavySpinner
@@ -136,10 +137,11 @@ private const val MAX_BLUR = 28f
  * to [GuessPhase].
  */
 @Composable
-fun GuessingPlayScreen(
+internal fun GuessingPlayScreen(
     topic: String,
     difficultyLabel: String,
     round: Int,
+    progressionTicket: GuessProgressionTicket,
     totalRounds: Int,
     score: Int,
     phase: GuessPhase,
@@ -151,7 +153,7 @@ fun GuessingPlayScreen(
     onOpenSettings: () -> Unit,
     onQuit: () -> Unit,
     onRoundComplete: (correct: Boolean, answerText: String?, remainingMs: Long) -> Unit,
-    onNextRound: () -> Unit,
+    onNextRound: (GuessProgressionTicket) -> Unit,
 ) {
     val context = LocalContext.current
     val durationMs = GuessScoring.durationMsFor(difficultyLabel)
@@ -542,7 +544,7 @@ fun GuessingPlayScreen(
                             RevealCard(
                                 result = roundResult,
                                 totalRounds = totalRounds,
-                                onNext = onNextRound,
+                                onNext = { onNextRound(progressionTicket) },
                             )
                         }
                     },

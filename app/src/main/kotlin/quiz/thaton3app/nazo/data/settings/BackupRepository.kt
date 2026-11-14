@@ -21,10 +21,11 @@ import java.util.LinkedHashSet
  * JSON bundle and writes it to either an SAF [Uri] (manual backup, user-chosen
  * location) or a fixed app-external file (automatic backup).
  *
- * Included stores: quiz stats, profile, theme, AI provider models, and the
- * AndroidKeystore-encrypted API-key blobs. The key blobs only re-decrypt on the
- * same device/keystore, which is the expected behaviour. Internal update-checker
- * stores are intentionally excluded (not user data).
+ * Included stores: quiz stats, profile, theme, and AI provider models. API-key
+ * ciphertext is deliberately excluded: it is bound to one Android Keystore and
+ * is neither portable nor useful in a backup. Restore therefore leaves the
+ * destination install's current encrypted keys untouched. Internal
+ * update-checker stores are also excluded (not user data).
  *
  * SharedPreferences values are type-tagged on export so they round-trip exactly
  * (Boolean / Int / Long / Float / String / Set<String>). A `content://` gallery
@@ -59,7 +60,8 @@ object BackupRepository {
         "nazo_theme",
         "nazo_profile",
         "nazo_provider_models",
-        "nazo_secure",
+        // nazo_secure is intentionally not portable: its ciphertext can only
+        // be opened by the Android Keystore key that created it.
         "nazo_records",
         "nazo_daily",
         "nazo_sound",
@@ -103,7 +105,6 @@ object BackupRepository {
         "nazo_theme" -> "Appearance" to "Theme, accent colour and icon"
         "nazo_profile" -> "Profile" to "Username and avatar"
         "nazo_provider_models" -> "AI providers" to "Selected provider and models"
-        "nazo_secure" -> "API keys" to "Encrypted — only usable on this device"
         "nazo_records" -> "Personal records" to "Best scores and streaks"
         "nazo_daily" -> "Daily challenge" to "Streak days and daily bonus state"
         "nazo_sound" -> "Sound & haptics" to "Audio and vibration preferences"
@@ -463,9 +464,25 @@ object BackupRepository {
                 }
                 entry[k] = t to v
             }
+            if (name == "nazo_stats") validateQuizStatsEntry(entry)
             pending[name] = entry
         }
         return ParsedBackup(pending, AvatarPayload.decode(root.optJSONObject("picture")))
+    }
+
+    /** A corrupt aggregate must never be committed and crash every stats consumer. */
+    private fun validateQuizStatsEntry(entry: Map<String, Pair<String, Any?>>) {
+        val tagged = entry[QuizStatsStore.KEY] ?: return
+        if (tagged.first != "string" || tagged.second !is String) {
+            throw IllegalArgumentException("Invalid backup file (quiz statistics type)")
+        }
+        try {
+            QuizStatsJson.decode(tagged.second as String)
+        } catch (e: org.json.JSONException) {
+            throw IllegalArgumentException("Invalid backup file (quiz statistics)", e)
+        } catch (e: IllegalArgumentException) {
+            throw IllegalArgumentException("Invalid backup file (quiz statistics)", e)
+        }
     }
 
     private fun applyValidated(
