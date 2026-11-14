@@ -8,6 +8,7 @@ then archived below; there should be no per-version release-note files.
 ## Next release
 
 - 2026-11-04 — Fixed the post-update What's New sheet for beta and RC builds by deriving its gate and content from the newest in-app changelog entry, with regression coverage for pre-release entries.
+- 2026-11-04 — Fixed live MP4 avatars appearing as two layers on Home and Profile: the persistent video now obeys the avatar slot's scroll/system-bar clipping, and avatar panes no longer apply an unsynchronizable stretch at scroll boundaries.
 
 ## Release archive
 

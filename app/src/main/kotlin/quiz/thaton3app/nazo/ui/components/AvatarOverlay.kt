@@ -1,5 +1,6 @@
 package quiz.thaton3app.nazo.ui.components
 
+import android.graphics.Rect as AndroidRect
 import android.graphics.SurfaceTexture
 import android.view.Surface
 import android.view.TextureView
@@ -38,11 +39,14 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import quiz.thaton3app.nazo.data.profile.AvatarMedia
 import quiz.thaton3app.nazo.ui.Screen
+import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.roundToInt
 
 /**
@@ -234,6 +238,15 @@ internal class AvatarAnchorState(val id: AvatarAnchorId) {
      */
     var restBounds: Rect by mutableStateOf(Rect.Zero)
 
+    /**
+     * The part of [restBounds] that the anchor's Compose ancestors actually
+     * expose. Unlike the full placement above, `boundsInWindow()` intersects
+     * with scroll-viewport clips. Mirroring that clip onto the root-level
+     * TextureView keeps live pixels out of the status-bar and navigation areas
+     * when the in-screen poster has already disappeared beneath their edge.
+     */
+    var visibleBounds: Rect by mutableStateOf(Rect.Zero)
+
     /** False until the owning screen has laid out at least once. */
     var present: Boolean by mutableStateOf(false)
 
@@ -297,6 +310,36 @@ internal fun avatarOverlayBoundsMatchWinner(
     winner: AvatarAnchorId?,
     ready: Boolean,
 ): Boolean = ready && winner != null && boundsOwner == winner
+
+/**
+ * Converts an ancestor-clipped window rect into TextureView-local pixels.
+ *
+ * The full avatar remains laid out at [fullBounds] so video crop/scale does not
+ * change as it approaches an edge. Only its exposed pixels are clipped. Inward
+ * rounding is deliberate: a fractional pixel must never leak above a scroll
+ * viewport into the system status-bar area.
+ */
+internal fun avatarOverlayLocalClip(
+    fullBounds: Rect,
+    visibleBounds: Rect,
+): IntRect {
+    if (fullBounds.isEmpty || visibleBounds.isEmpty) return IntRect.Zero
+
+    val left = maxOf(fullBounds.left, visibleBounds.left)
+    val top = maxOf(fullBounds.top, visibleBounds.top)
+    val right = minOf(fullBounds.right, visibleBounds.right)
+    val bottom = minOf(fullBounds.bottom, visibleBounds.bottom)
+    if (right <= left || bottom <= top) return IntRect.Zero
+
+    val width = fullBounds.width.roundToInt().coerceAtLeast(0)
+    val height = fullBounds.height.roundToInt().coerceAtLeast(0)
+    return IntRect(
+        left = ceil(left - fullBounds.left).toInt().coerceIn(0, width),
+        top = ceil(top - fullBounds.top).toInt().coerceIn(0, height),
+        right = floor(right - fullBounds.left).toInt().coerceIn(0, width),
+        bottom = floor(bottom - fullBounds.top).toInt().coerceIn(0, height),
+    )
+}
 
 /** Provided by NazoApp around the screens subtree. */
 internal val LocalAvatarAnchorRegistry = compositionLocalOf<AvatarAnchorRegistry?> { null }
@@ -401,13 +444,15 @@ internal fun PersistentAvatarVideo(
     val failed = registry.failed
     val window: IntSize = LocalWindowInfo.current.containerSize
 
-    // "Any part of the circle is inside the window" — position-based, so a
-    // half-scrolled avatar still shows (and only pauses, via centerVisible),
-    // while a fully off-screen slot hides the overlay.
-    val onWindow = anchor?.restBounds?.let { b ->
-        window.width <= 0 || window.height <= 0 ||
-            (b.left < window.width && b.top < window.height &&
-                b.right > 0f && b.bottom > 0f)
+    // "Any exposed part of the circle is inside the window." Use the anchor's
+    // ancestor-clipped bounds, not its full placement: once Compose has clipped
+    // the poster at a scroll/status-bar edge, the native overlay must disappear
+    // at that same edge rather than floating above it as a second circle.
+    val onWindow = anchor?.visibleBounds?.let { b ->
+        !b.isEmpty &&
+            (window.width <= 0 || window.height <= 0 ||
+                (b.left < window.width && b.top < window.height &&
+                    b.right > 0f && b.bottom > 0f))
     } ?: false
 
     val shown = isVideo && !failed && playback.foreground &&
@@ -449,6 +494,7 @@ internal fun PersistentAvatarVideo(
     // stays alive and transparent until the destination's final rest bounds are
     // available, then rebases once at its true size.
     var lastBounds by remember { mutableStateOf(Rect.Zero) }
+    var lastVisibleBounds by remember { mutableStateOf(Rect.Zero) }
     var boundsWinner by remember { mutableStateOf(winnerId) }
     var winnerBoundsReady by remember { mutableStateOf(false) }
     val boundsMatchWinner = avatarOverlayBoundsMatchWinner(
@@ -462,11 +508,13 @@ internal fun PersistentAvatarVideo(
             frameRendered = false
             boundsWinner = winnerId
             winnerBoundsReady = false
+            lastVisibleBounds = Rect.Zero
         }
         val b = anchor?.restBounds
         if (b != null && !b.isEmpty) {
             if (lastBounds.size != b.size) frameRendered = false
             lastBounds = b
+            lastVisibleBounds = anchor.visibleBounds
             boundsWinner = winnerId
             winnerBoundsReady = true
         }
@@ -497,6 +545,13 @@ internal fun PersistentAvatarVideo(
     // the winner's NEW size. This prevents one stretched old-size video frame
     // from appearing during the hidden 42dp <-> 132dp native-view rebase.
     val effectiveAlpha = if (shown && boundsMatchWinner && frameRendered) alpha else 0f
+    val localClip = avatarOverlayLocalClip(lastBounds, lastVisibleBounds)
+    val fullLocalClip = IntRect(
+        left = 0,
+        top = 0,
+        right = lastBounds.width.roundToInt().coerceAtLeast(0),
+        bottom = lastBounds.height.roundToInt().coerceAtLeast(0),
+    )
 
     Box(
         modifier = Modifier
@@ -604,8 +659,23 @@ internal fun PersistentAvatarVideo(
                         // INVISIBLE does: keep the TextureView attached (and its
                         // SurfaceTexture alive), but remove its hit region whenever
                         // there is no visible avatar anchor to represent.
-                        val geometryReady = shown && boundsMatchWinner
+                        val geometryReady = shown && boundsMatchWinner && localClip != IntRect.Zero
                         view.visibility = if (geometryReady) View.VISIBLE else View.INVISIBLE
+                        // AndroidView is hosted at app scope, outside the
+                        // anchor's scroll clip. Reapply that exact clip to the
+                        // native child so only the same pixels as the in-screen
+                        // poster can be seen. `null` avoids an unnecessary clip
+                        // when the complete circle is exposed.
+                        view.clipBounds = when {
+                            !geometryReady -> AndroidRect(0, 0, 0, 0)
+                            localClip == fullLocalClip -> null
+                            else -> AndroidRect(
+                                localClip.left,
+                                localClip.top,
+                                localClip.right,
+                                localClip.bottom,
+                            )
+                        }
                         view.isClickable = geometryReady && anchorHasClickAction
                         view.isLongClickable = geometryReady && anchorHasLongClickAction
                     },

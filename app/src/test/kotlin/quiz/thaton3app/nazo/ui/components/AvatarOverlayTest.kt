@@ -1,6 +1,8 @@
 package quiz.thaton3app.nazo.ui.components
 
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.IntRect
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertFalse
@@ -372,6 +374,46 @@ class AvatarOverlayTest {
                 winner = AvatarAnchorId.Profile,
                 ready = true,
             )
+        )
+    }
+
+    @Test
+    fun nativeOverlayClipMatchesTheVisiblePartOfTheComposeAnchor() {
+        val full = Rect(left = 100f, top = 40f, right = 142f, bottom = 82f)
+
+        assertEquals(
+            IntRect(left = 0, top = 0, right = 42, bottom = 42),
+            avatarOverlayLocalClip(full, full),
+        )
+        assertEquals(
+            // Simulates the avatar scrolling 13 px under the status-bar edge.
+            IntRect(left = 0, top = 13, right = 42, bottom = 42),
+            avatarOverlayLocalClip(
+                fullBounds = full,
+                visibleBounds = Rect(left = 100f, top = 53f, right = 142f, bottom = 82f),
+            ),
+        )
+    }
+
+    @Test
+    fun nativeOverlayClipHidesAComposeAnchorThatIsFullyClippedAway() {
+        assertEquals(
+            IntRect.Zero,
+            avatarOverlayLocalClip(
+                fullBounds = Rect(left = 100f, top = -42f, right = 142f, bottom = 0f),
+                visibleBounds = Rect.Zero,
+            ),
+        )
+    }
+
+    @Test
+    fun nativeOverlayClipRoundsInwardSoNoFractionalPixelLeaksPastTheViewport() {
+        assertEquals(
+            IntRect(left = 1, top = 1, right = 41, bottom = 41),
+            avatarOverlayLocalClip(
+                fullBounds = Rect(left = 10f, top = 20f, right = 52f, bottom = 62f),
+                visibleBounds = Rect(left = 10.2f, top = 20.2f, right = 51.8f, bottom = 61.8f),
+            ),
         )
     }
 
