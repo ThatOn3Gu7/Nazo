@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberOverscrollEffect
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -421,6 +422,8 @@ fun ProfileScreen(
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val avatarOverscrollEffect = rememberOverscrollEffect()
+    val videoAvatarOverscrolling = avatarOverscrollEffect?.isInProgress == true
 
     // A generated artifact is valid only for the avatar URI that produced it;
     // this guard prevents one frame of the old background after an avatar swap.
@@ -614,13 +617,12 @@ fun ProfileScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        // The live MP4 circle is a persistent app-level native
-                        // surface. Compose's draw-only stretch would move the
-                        // poster beneath it without moving that surface, making
-                        // the avatar appear doubled at the scroll boundary.
+                        // Preserve platform stretch. During it, the native MP4
+                        // layer yields to the poster inside this transformed
+                        // hierarchy, preventing the former two-circle split.
                         .verticalScroll(
                             rememberScrollState(),
-                            overscrollEffect = null,
+                            overscrollEffect = avatarOverscrollEffect,
                         ),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Top
@@ -652,6 +654,7 @@ fun ProfileScreen(
                             onLongClick = avatarLongPress,
                             paused = avatarBehindDialogsPaused,
                             animationAllowed = screenActive,
+                            videoOverlaySuppressed = videoAvatarOverscrolling,
                             anchorId = AvatarAnchorId.Profile,
                         )
                     }
@@ -763,12 +766,11 @@ fun ProfileScreen(
                         bottom = padding.calculateBottomPadding(),
                     )
                     .fillMaxSize()
-                    // Preserve normal scrolling while removing the visual
-                    // stretch that cannot also transform the root-level native
-                    // video surface positioned over the avatar poster.
+                    // Preserve platform stretch; the native video temporarily
+                    // yields to the in-tree poster while this effect is active.
                     .verticalScroll(
                         rememberScrollState(),
-                        overscrollEffect = null,
+                        overscrollEffect = avatarOverscrollEffect,
                     )
                     .padding(bottom = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -803,6 +805,7 @@ fun ProfileScreen(
                         onLongClick = avatarLongPress,
                         paused = avatarBehindDialogsPaused,
                         animationAllowed = screenActive,
+                        videoOverlaySuppressed = videoAvatarOverscrolling,
                         anchorId = AvatarAnchorId.Profile,
                     )
                 }

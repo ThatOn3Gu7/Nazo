@@ -121,6 +121,13 @@ fun ProfileAvatar(
      */
     animationAllowed: Boolean = true,
     /**
+     * Temporarily hide only the app-level MP4 surface while this Compose slot
+     * is being visually transformed (currently stretch overscroll). The cached
+     * poster remains inside the transformed hierarchy, so the avatar stays a
+     * single moving circle instead of splitting into native and Compose layers.
+     */
+    videoOverlaySuppressed: Boolean = false,
+    /**
      * Which screen's slot this avatar is, for the persistent video overlay:
      * the app-level [PersistentAvatarVideo] tracks the active screen's anchor
      * to position its single TextureView over this circle. Null (or a
@@ -157,7 +164,7 @@ fun ProfileAvatar(
     // coordinates even if no new measure/layout callback happens at rest.
     val captureAnchorBounds = registry?.captureEnabled != false
     SideEffect {
-        anchorState?.suppressed = paused
+        anchorState?.suppressed = paused || videoOverlaySuppressed
         anchorState?.centerVisible = playback.visible
         if (captureAnchorBounds) anchorState?.refreshBounds?.invoke()
         // The persistent TextureView visually overlays this composable and
