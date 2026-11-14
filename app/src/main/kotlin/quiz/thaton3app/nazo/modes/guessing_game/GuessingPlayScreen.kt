@@ -109,7 +109,6 @@ import quiz.thaton3app.nazo.ui.GuessProgressionTicket
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoQuitDialog
 import quiz.thaton3app.nazo.ui.components.WavySpinner
-import quiz.thaton3app.nazo.ui.components.elapsedGameplayMillis
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.components.rememberGameplayQuitPauseState
 import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
@@ -142,6 +141,7 @@ internal fun GuessingPlayScreen(
     difficultyLabel: String,
     round: Int,
     progressionTicket: GuessProgressionTicket,
+    roundDeadlineMs: Long,
     totalRounds: Int,
     score: Int,
     phase: GuessPhase,
@@ -152,6 +152,8 @@ internal fun GuessingPlayScreen(
     onRetryRound: () -> Unit,
     onOpenSettings: () -> Unit,
     onQuit: () -> Unit,
+    onRoundTimerStarted: (deadlineMs: Long) -> Unit,
+    onTimerResumed: (pausedMillis: Long) -> Unit,
     onRoundComplete: (correct: Boolean, answerText: String?, remainingMs: Long) -> Unit,
     onNextRound: (GuessProgressionTicket) -> Unit,
 ) {
@@ -179,7 +181,11 @@ internal fun GuessingPlayScreen(
         stateForPhase = phase
         submitted = null
         timedOut = false
-        remainingMs = durationMs
+        remainingMs = if (roundDeadlineMs > 0L) {
+            (roundDeadlineMs - SystemClock.elapsedRealtime()).coerceIn(0L, durationMs)
+        } else {
+            durationMs
+        }
         imageFetchFailed = false
         imageReady = false
         mysteryBitmap = null
@@ -258,7 +264,8 @@ internal fun GuessingPlayScreen(
         // after the player chooses Stay; time before the round was visible must
         // not be charged to the reveal countdown.
         while (quitPauseState.timerPaused) delay(50)
-        val timerStartedAt = SystemClock.elapsedRealtime()
+        val deadline = roundDeadlineMs.takeIf { it > 0L }
+            ?: (SystemClock.elapsedRealtime() + durationMs).also(onRoundTimerStarted)
         val pauseMillisAtStart = quitPauseState.accumulatedPauseMillis
         var lastTickSecond = -1
         var done = false
@@ -269,13 +276,12 @@ internal fun GuessingPlayScreen(
                 continue
             }
             withFrameNanos {
-                val elapsedMs = elapsedGameplayMillis(
-                    startedAtMillis = timerStartedAt,
-                    nowMillis = SystemClock.elapsedRealtime(),
-                    accumulatedPauseMillis = quitPauseState.accumulatedPauseMillis,
-                    pauseMillisAtStart = pauseMillisAtStart,
-                )
-                val remaining = (durationMs - elapsedMs).coerceAtLeast(0L)
+                val pausedSinceStart = (
+                    quitPauseState.accumulatedPauseMillis - pauseMillisAtStart
+                ).coerceAtLeast(0L)
+                val remaining = (
+                    deadline + pausedSinceStart - SystemClock.elapsedRealtime()
+                ).coerceAtLeast(0L)
                 remainingMs = remaining
                 val sec = ((remaining + 999) / 1000).toInt()
                 if (sec != lastTickSecond) {
@@ -558,7 +564,7 @@ internal fun GuessingPlayScreen(
             visible = quitPauseState.dialogVisible,
             title = "Quit guessing game?",
             message = "Your score in this game will be lost.",
-            onStay = { quitPauseState.stay() },
+            onStay = { onTimerResumed(quitPauseState.stay()) },
             onHideForQuit = { quitPauseState.hideForQuit() },
             onQuit = onQuit,
         )

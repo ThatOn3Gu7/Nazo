@@ -79,10 +79,12 @@ import quiz.thaton3app.nazo.daily.DailyChallenge
 import quiz.thaton3app.nazo.daily.DailyStore
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.data.Question
+import quiz.thaton3app.nazo.data.QuizEngine
 import quiz.thaton3app.nazo.data.QuizStats
 import quiz.thaton3app.nazo.data.backup.BackupScheduler
 import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.data.remote.Connectivity
+import quiz.thaton3app.nazo.data.remote.ModelFallbackPolicy
 import quiz.thaton3app.nazo.data.remote.QuizCache
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.data.settings.BackupPrefs
@@ -105,6 +107,10 @@ import quiz.thaton3app.nazo.modes.guessing_game.GuessingPlayScreen
 import quiz.thaton3app.nazo.modes.guessing_game.GuessingResultsScreen
 import quiz.thaton3app.nazo.records.RecordsStore
 import quiz.thaton3app.nazo.reminders.ReminderScheduler
+import quiz.thaton3app.nazo.session.ActiveGuessSession
+import quiz.thaton3app.nazo.session.ActiveQuizSession
+import quiz.thaton3app.nazo.session.ActiveSessionStore
+import quiz.thaton3app.nazo.session.SavedGuessPhase
 import quiz.thaton3app.nazo.session.SessionMemory
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.AiMissingDialog
@@ -367,6 +373,8 @@ private data class GenerationRequest(
     val model: String,
     /** True when this request is the automatic one-shot retry with another model. */
     val isFallback: Boolean = false,
+    val fallbackFromModel: String? = null,
+    val fallbackCause: String? = null,
 )
 
 /**
@@ -388,6 +396,22 @@ private fun openExternalUrl(context: Context, url: String) {
 @Composable
 fun NazoApp(launchDailyChallenge: Boolean = false) {
     val context = LocalContext.current
+    val activeSessionStore = remember { ActiveSessionStore(context.applicationContext) }
+    // SharedPreferences, rather than a saved-instance-state Bundle, carries the
+    // exact generated payload safely across process death without risking the
+    // Binder transaction limit. The store rejects corrupt/expired snapshots.
+    val restoredSession = remember { activeSessionStore.load() }
+    val restoredQuiz = restoredSession as? ActiveQuizSession
+    val restoredGuess = restoredSession as? ActiveGuessSession
+    val restoredAtEpochMs = remember { System.currentTimeMillis() }
+    val restoredAtElapsedMs = remember { SystemClock.elapsedRealtime() }
+    fun remainingFrom(snapshotRemainingMs: Long, savedAtEpochMs: Long): Long =
+        ActiveSessionStore.remainingAfterRestore(
+            snapshotRemainingMs,
+            savedAtEpochMs,
+            restoredAtEpochMs,
+        )
+
     val apiKeyStore = remember { ApiKeyStore(context) }
     val themePrefs = remember { ThemePreferences(context) }
     val statsStore = remember { QuizStatsStore(context.applicationContext) }
@@ -403,7 +427,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // Daily challenge (Phase 5): flag marks the in-flight quiz as today's
     // daily; the earned bonus is surfaced on the results screen.
     val dailyStore = remember { DailyStore(context.applicationContext) }
-    var isDailyQuiz by remember { mutableStateOf(false) }
+    var isDailyQuiz by remember { mutableStateOf(restoredQuiz?.daily ?: false) }
     var lastDailyBonus by remember { mutableIntStateOf(0) }
     // Sound effects (Phase 7): opt-in, persisted in the Sounds store.
     var soundEnabled by remember { mutableStateOf(Sounds.isEnabled(context)) }
@@ -661,7 +685,18 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // Navigation back-stack: `navigationStack` is the source of truth for where we are and
     // where "back" should return to. Both the system back (gesture / hardware button) and the
     // in-app back arrows pop this stack, so a user always returns to the screen they came from.
-    val navigationStack = remember { mutableStateListOf<Screen>(Screen.Home) }
+    val restoredDestination = when {
+        restoredQuiz?.destination == ActiveQuizSession.Destination.VERSUS_HANDOFF -> Screen.VersusHandoff
+        restoredQuiz != null -> Screen.Quiz
+        restoredGuess != null -> Screen.GuessingGame
+        else -> null
+    }
+    val navigationStack = remember {
+        mutableStateListOf<Screen>().apply {
+            add(Screen.Home)
+            restoredDestination?.let(::add)
+        }
+    }
     val currentScreen = navigationStack.last()
     // +1 pushes toward deeper content (new screen enters from the right), -1
     // returns toward Home (target enters from the left). Predictive back keeps
@@ -842,6 +877,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         navigationStack.add(Screen.Home)
     }
 
+    // System/back-arrow exits from active gameplay are explicit quits just like
+    // the screens' close buttons. Clear synchronously so a completed back
+    // gesture followed by immediate process death cannot resurrect the run.
+    fun goBackClearingActiveSession() {
+        activeSessionStore.clear()
+        goBack()
+    }
+
     // Leaving Home cancels the "press back again to exit" flag; it also auto-resets after 2s.
     LaunchedEffect(currentScreen) {
         if (currentScreen != Screen.Home) backPressedOnce = false
@@ -928,7 +971,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             } else if (showAiMissingDialog) {
                 // Preserve the existing non-dismissible AI configuration dialog.
             } else if (navigationStack.size > 1) {
-                goBack()
+                if (currentScreen == Screen.Quiz ||
+                    currentScreen == Screen.VersusHandoff ||
+                    currentScreen == Screen.GuessingGame
+                ) {
+                    goBackClearingActiveSession()
+                } else {
+                    goBack()
+                }
             } else {
                 // Home keeps Nazo's existing double-back-to-exit behavior.
                 if (backPressedOnce) {
@@ -943,21 +993,49 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             if (!canPreview) predictiveBackTarget = null
         }
     }
-    var questions by remember { mutableStateOf(emptyList<Question>()) }
-    var userAnswers by remember { mutableStateOf<List<String?>>(emptyList()) }
-    var currentQuestionIndex by remember { mutableIntStateOf(0) }
-    var score by remember { mutableIntStateOf(0) }
-    var quizDifficulty by remember { mutableStateOf("Medium") }
-    var quizStartedAt by remember { mutableLongStateOf(0L) }
+    var questions by remember { mutableStateOf(restoredQuiz?.questions ?: emptyList()) }
+    var userAnswers by remember { mutableStateOf(restoredQuiz?.userAnswers ?: emptyList()) }
+    var currentQuestionIndex by remember {
+        mutableIntStateOf(restoredQuiz?.currentQuestionIndex ?: 0)
+    }
+    var score by remember { mutableIntStateOf(restoredQuiz?.score ?: 0) }
+    var quizDifficulty by remember { mutableStateOf(restoredQuiz?.difficulty ?: "Medium") }
+    val restoredQuizDowntimeMs = restoredQuiz?.let {
+        (restoredAtEpochMs - it.savedAtEpochMs).coerceAtLeast(0L)
+    } ?: 0L
+    var quizElapsedBaseMs by remember {
+        mutableLongStateOf((restoredQuiz?.quizElapsedMs ?: 0L) + restoredQuizDowntimeMs)
+    }
+    var quizStartedAt by remember {
+        mutableLongStateOf(if (restoredQuiz != null) restoredAtElapsedMs else 0L)
+    }
+    var pendingQuizAnswer by remember { mutableStateOf(restoredQuiz?.pendingAnswer) }
+    var pendingQuizTimeUp by remember { mutableStateOf(restoredQuiz?.pendingTimeUp ?: false) }
+    var questionDeadline by remember {
+        mutableLongStateOf(
+            restoredQuiz?.let {
+                restoredAtElapsedMs + remainingFrom(it.questionRemainingMs, it.savedAtEpochMs)
+            } ?: 0L
+        )
+    }
     // Completion time is a result snapshot, not a value recalculated from the
     // current clock. Predictive-back seeking recomposes both screens on every
     // progress frame, so deriving elapsed time in Results made a cancelled
     // preview visibly restart the finished quiz's timer.
     var quizFinishedAt by remember { mutableLongStateOf(0L) }
 
+    fun restartQuestionClock() {
+        val seconds = QuizEngine.specFor(quizDifficulty).secondsPerQuestion
+        questionDeadline = SystemClock.elapsedRealtime() + seconds * 1_000L
+        pendingQuizAnswer = null
+        pendingQuizTimeUp = false
+    }
+
     fun restartQuizClock() {
+        quizElapsedBaseMs = 0L
         quizStartedAt = SystemClock.elapsedRealtime()
         quizFinishedAt = 0L
+        restartQuestionClock()
     }
 
     fun freezeQuizClock() {
@@ -977,19 +1055,27 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
 
     // ---- Question-based game modes (share the quiz screen/flow) ----
     // "normal" (incl. daily & practice) | "survival" | "blitz" | "versus".
-    var quizMode by remember { mutableStateOf("normal") }
+    var quizMode by remember { mutableStateOf(restoredQuiz?.mode ?: "normal") }
     // Survival: 3 lives; the run ends on the 3rd wrong answer. Batches of 5
     // keep getting appended (AI when available, local bank otherwise).
-    var survivalWrongs by remember { mutableIntStateOf(0) }
+    var survivalWrongs by remember { mutableIntStateOf(restoredQuiz?.survivalWrongs ?: 0) }
     var survivalFetching by remember { mutableStateOf(false) }
-    // Blitz: one global 60-second deadline (epoch ms).
-    var blitzDeadline by remember { mutableStateOf(0L) }
+    // Blitz: one global 60-second deadline (monotonic while this process lives).
+    var blitzDeadline by remember {
+        mutableLongStateOf(
+            restoredQuiz?.takeIf { it.mode == "blitz" }?.let {
+                restoredAtElapsedMs + remainingFrom(it.blitzRemainingMs, it.savedAtEpochMs)
+            } ?: 0L
+        )
+    }
     // Versus: which player is at the phone (1 or 2) + Player 1's final score.
-    var versusStage by remember { mutableIntStateOf(1) }
-    var versusP1Score by remember { mutableIntStateOf(0) }
+    var versusStage by remember { mutableIntStateOf(restoredQuiz?.versusStage ?: 1) }
+    var versusP1Score by remember { mutableIntStateOf(restoredQuiz?.versusP1Score ?: 0) }
     // P1's picks, frozen at the handoff so the head-to-head review can show
     // both players side by side.
-    var versusP1Answers by remember { mutableStateOf<List<String?>>(emptyList()) }
+    var versusP1Answers by remember {
+        mutableStateOf<List<String?>>(restoredQuiz?.versusP1Answers ?: emptyList())
+    }
 
     // ---- Guessing Game (modes/guessing_game) ----
     // Home-screen mode preset is hoisted here too (like the quiz presets) so the
@@ -1003,21 +1089,39 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         )
     }
     var guessRounds by rememberSaveable { mutableIntStateOf(3) }
-    var guessTopic by remember { mutableStateOf("") }
-    var guessDifficulty by remember { mutableStateOf("Medium") }
-    var guessPhase by remember { mutableStateOf<GuessPhase>(GuessPhase.Idle) }
+    var guessTopic by remember { mutableStateOf(restoredGuess?.topic ?: "") }
+    var guessDifficulty by remember { mutableStateOf(restoredGuess?.difficulty ?: "Medium") }
+    var guessPhase by remember {
+        mutableStateOf<GuessPhase>(
+            when (val phase = restoredGuess?.phase) {
+                SavedGuessPhase.Preparing -> GuessPhase.Preparing(restoredGuess.round)
+                is SavedGuessPhase.Playing -> GuessPhase.Playing(phase.payload, phase.imageUrl)
+                is SavedGuessPhase.Error -> GuessPhase.Error(phase.message, phase.offline)
+                null -> GuessPhase.Idle
+            }
+        )
+    }
     // "blur" | "pixel" — the guessing game's image reveal style (Appearance).
     var guessRevealStyle by remember { mutableStateOf(themePrefs.guessRevealStyle) }
     // Whether the guessing game auto-crops mystery images to the character's
     // face + upper body (Appearance → Guessing Game).
     var guessAutoCrop by remember { mutableStateOf(themePrefs.guessAutoCrop) }
-    var guessRound by remember { mutableIntStateOf(1) }
-    var guessTotalRounds by remember { mutableIntStateOf(3) }
-    var guessScore by remember { mutableIntStateOf(0) }
-    var guessResults by remember { mutableStateOf<List<GuessRoundResult>>(emptyList()) }
+    var guessRound by remember { mutableIntStateOf(restoredGuess?.round ?: 1) }
+    var guessTotalRounds by remember { mutableIntStateOf(restoredGuess?.totalRounds ?: 3) }
+    var guessScore by remember { mutableIntStateOf(restoredGuess?.score ?: 0) }
+    var guessResults by remember {
+        mutableStateOf<List<GuessRoundResult>>(restoredGuess?.results ?: emptyList())
+    }
     // Outcome of the CURRENT round (null until the player answers or time runs
     // out) — drives the in-place reveal on the play screen.
-    var guessRoundResult by remember { mutableStateOf<GuessRoundResult?>(null) }
+    var guessRoundResult by remember { mutableStateOf(restoredGuess?.roundResult) }
+    var guessRoundDeadline by remember {
+        mutableLongStateOf(
+            restoredGuess?.takeIf { it.roundTimerStarted }?.let {
+                restoredAtElapsedMs + remainingFrom(it.roundRemainingMs, it.savedAtEpochMs)
+            } ?: 0L
+        )
+    }
     // Targets already played this game, so the AI keeps picking something new.
     // (Round-target anti-repeat moved to session/SessionMemory.guessAvoidList()
     // — it now spans ALL guessing games this launch, not just one game, and
@@ -1057,7 +1161,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // instantly can still be held long enough for the spinner to be seen.
     var loadingShownAt by remember { mutableStateOf(0L) }
     var generationRequest by remember { mutableStateOf<GenerationRequest?>(null) }
-    var aiGenerated by remember { mutableStateOf(false) }
+    var aiGenerated by remember { mutableStateOf(restoredQuiz?.aiGenerated ?: false) }
     // Cache keys (provider:model:topic:difficulty:count) for AI question-sets that have already
     // been ANSWERED this session. If a regeneration hits a cache entry that's in here, we bypass
     // the cache and pull a fresh set from the API — so "Generate AI quiz" again doesn't repeat
@@ -1122,6 +1226,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         score = 0
         aiGenerated = false
         generationState = GenerationState.Idle
+        restartQuestionClock()
         quizProgressionGate.startSession()
         if (navigationStack.last() == Screen.Loading) replace(Screen.Quiz) else navigate(Screen.Quiz)
     }
@@ -1141,13 +1246,25 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 score = 0
                 aiGenerated = true
                 generationState = GenerationState.Idle
+                restartQuestionClock()
                 quizProgressionGate.startSession()
+                if (req.isFallback) {
+                    Toast.makeText(
+                        context,
+                        "${req.fallbackFromModel ?: "The selected model"} failed; using ${req.model} for this quiz.",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
                 if (navigationStack.last() == Screen.Loading) replace(Screen.Quiz) else navigate(Screen.Quiz)
                 return
             }
         }
         generationState = GenerationState.Loading(
-            "${req.provider} • ${req.model}" + if (req.isFallback) " (auto-retry)" else ""
+            if (req.isFallback) {
+                "Trying one alternate model • ${req.provider} • ${req.model}"
+            } else {
+                "${req.provider} • ${req.model}"
+            }
         )
         // Only (re)start the dwell clock when the spinner is actually appearing.
         // The auto-fallback re-enters here mid-flight; restarting it there would
@@ -1185,26 +1302,50 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     score = 0
                     aiGenerated = true
                     generationState = GenerationState.Idle
+                    restartQuestionClock()
                     quizProgressionGate.startSession()
+                    if (req.isFallback) {
+                        Toast.makeText(
+                            context,
+                            "${req.fallbackFromModel ?: "The selected model"} failed; using ${req.model} for this quiz.",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
                     replace(Screen.Quiz)
                 }
                 .onFailure { e ->
                     if (token != generationToken) return@onFailure
-                    // Retry-with-fallback: on the FIRST failure, silently try
-                    // once more with the next model configured for this
-                    // provider before surfacing an error screen.
-                    if (!req.isFallback) {
-                        val altModel = apiKeyStore.getModels(req.provider)
-                            .map { it.id }
-                            .firstOrNull { it != req.model }
-                        if (altModel != null) {
-                            val retry = req.copy(model = altModel, isFallback = true)
-                            generationRequest = retry
-                            launchGeneration(retry)
-                            return@onFailure
-                        }
+                    val failureMessage = e.message ?: "Something went wrong."
+                    // One alternate MODEL on the same provider is useful only
+                    // when the selected model is missing or returned an
+                    // unusable payload. Auth, billing/quota, rate-limit,
+                    // network, request and provider failures are surfaced
+                    // immediately: changing models cannot safely fix them and
+                    // would create an unexpected extra request.
+                    val altModel = ModelFallbackPolicy.selectAlternate(
+                        currentModel = req.model,
+                        availableModels = apiKeyStore.getModels(req.provider).map { it.id },
+                        failure = e,
+                        alternateAlreadyAttempted = req.isFallback,
+                    )
+                    if (altModel != null) {
+                        val retry = req.copy(
+                            model = altModel,
+                            isFallback = true,
+                            fallbackFromModel = req.model,
+                            fallbackCause = failureMessage,
+                        )
+                        generationRequest = retry
+                        launchGeneration(retry)
+                        return@onFailure
                     }
-                    val msg = e.message ?: "Something went wrong."
+                    val msg = if (req.isFallback) {
+                        "${req.fallbackFromModel ?: "The selected model"} failed: " +
+                            "${req.fallbackCause ?: "unknown error"}\n" +
+                            "Alternate ${req.model} also failed: $failureMessage"
+                    } else {
+                        failureMessage
+                    }
                     awaitMinimumLoading()
                     // Re-check: the user may have cancelled during the dwell.
                     if (token != generationToken) return@onFailure
@@ -1355,6 +1496,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     fun finishSurvival() {
         if (quizMode != "survival") return // double-fire guard
         quizMode = "survival-done" // also blocks any in-flight top-up from appending
+        activeSessionStore.clear()
         val answered = questions.take(userAnswers.size)
         val finishedAnswers = userAnswers
         val finishedDifficulty = quizDifficulty
@@ -1414,6 +1556,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     fun finishBlitz() {
         if (quizMode != "blitz") return // double-fire guard (time-up races an answer)
         quizMode = "blitz-done"
+        activeSessionStore.clear()
         val answered = questions.take(userAnswers.size)
         val finishedAnswers = userAnswers
         val beforeStats = quizStats
@@ -1499,7 +1642,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // onboarding, and not when today's daily is already cleared (Home then shows
     // the completed card as usual).
     LaunchedEffect(Unit) {
-        if (launchDailyChallenge && !showOnboarding && !dailyStore.isCompletedToday()) {
+        if (restoredSession == null && launchDailyChallenge &&
+            !showOnboarding && !dailyStore.isCompletedToday()
+        ) {
             startDailyChallenge()
         }
     }
@@ -1539,11 +1684,13 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             if (currentQuestionIndex >= questions.size - 3) survivalTopUp()
             if (currentQuestionIndex < questions.lastIndex) {
                 currentQuestionIndex++
+                restartQuestionClock()
             } else {
                 // Horizon caught up with us — try an instant local fill.
                 appendLocalSurvivalBatch()
                 if (currentQuestionIndex < questions.lastIndex) {
                     currentQuestionIndex++
+                    restartQuestionClock()
                 } else {
                     finishSurvival() // pool truly exhausted
                 }
@@ -1555,6 +1702,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         if (quizMode == "blitz") {
             if (currentQuestionIndex < questions.lastIndex) {
                 currentQuestionIndex++
+                restartQuestionClock()
             } else {
                 finishBlitz()
             }
@@ -1565,6 +1713,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         if (quizMode == "versus") {
             if (currentQuestionIndex < questions.lastIndex) {
                 currentQuestionIndex++
+                restartQuestionClock()
             } else if (versusStage == 1) {
                 versusP1Score = score
                 versusP1Answers = userAnswers
@@ -1575,9 +1724,12 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 currentQuestionIndex = 0
                 score = 0
                 versusStage = 2
+                pendingQuizAnswer = null
+                pendingQuizTimeUp = false
                 replace(Screen.VersusHandoff)
             } else {
                 // Party mode: intentionally NO stats/records writes.
+                activeSessionStore.clear()
                 replace(Screen.VersusResults)
             }
             return
@@ -1585,7 +1737,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
 
         if (currentQuestionIndex < questions.lastIndex) {
             currentQuestionIndex++
+            restartQuestionClock()
         } else {
+            activeSessionStore.clear()
             // Mark this AI question-set as "already answered this session" so a later
             // regeneration with the same params bypasses the cache and fetches fresh ones.
             if (aiGenerated) {
@@ -1706,6 +1860,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     // Player already tapped Next — the preparing screen is
                     // showing; hand the finished round over directly.
                     guessRoundResult = null
+                    guessRoundDeadline = 0L
                     guessPhase = GuessPhase.Playing(payload, url)
                     // Keep the chain alive: this round was built by the
                     // prefetch, not beginGuessRoundJob, so kick ITS next
@@ -1746,6 +1901,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
      */
     fun beginGuessRoundJob(provider: String, key: String, model: String) {
         guessRoundResult = null
+        guessRoundDeadline = 0L
         guessPhase = GuessPhase.Preparing(guessRound)
         guessPreparingAt = SystemClock.elapsedRealtime()
         val startedRound = guessRound
@@ -1841,6 +1997,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         guessScore = 0
         guessResults = emptyList()
         guessRoundResult = null
+        guessRoundDeadline = 0L
         guessProgressionGate.startSession()
         if (navigationStack.last() != Screen.GuessingGame) navigate(Screen.GuessingGame)
         prepareGuessRound()
@@ -1882,6 +2039,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             // Game over — drop any lingering prefetch state (defensive: the
             // last round never kicks one, but a stale job must not outlive
             // the game).
+            activeSessionStore.clear()
             clearGuessPrefetch()
             // Game complete — fold the result into the shared stats, exactly
             // like a finished quiz (level/XP, streak, difficulty, topics).
@@ -1913,12 +2071,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         } else {
             guessRound++
             guessRoundResult = null
+            guessRoundDeadline = 0L
             val prebuilt = guessPrefetch
             guessPrefetch = null
             if (prebuilt != null && prebuilt.round == guessRound) {
                 // The background job already built this round while the
                 // player was playing the last one — straight into the game,
                 // no preparing screen.
+                guessRoundDeadline = 0L
                 guessPhase = GuessPhase.Playing(prebuilt.payload, prebuilt.url)
                 // Keep the prefetch chain alive for the round AFTER this one
                 // (guarded: skips on the last round / a missing provider /
@@ -1935,6 +2095,124 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 // No prefetch in flight (skipped — provider not configured,
                 // last-round guard, or a failed build) — generate now.
                 prepareGuessRound()
+            }
+        }
+    }
+
+    // Resume asynchronous work that cannot itself survive process death. Exact
+    // already-generated quiz questions / guessing payloads came from the
+    // checkpoint above; only a round that was still Preparing is regenerated.
+    LaunchedEffect(restoredSession) {
+        when (restoredSession) {
+            is ActiveQuizSession -> {
+                quizProgressionGate.startSession()
+                restoredSession.questions
+                    .take(restoredSession.currentQuestionIndex)
+                    .forEach { SessionMemory.recordQuestion(it.text) }
+            }
+            is ActiveGuessSession -> {
+                guessProgressionGate.startSession()
+                restoredSession.results.forEach {
+                    SessionMemory.recordGuessTarget(it.target)
+                    it.aliases.forEach(SessionMemory::recordGuessTarget)
+                }
+                when {
+                    restoredSession.phase == SavedGuessPhase.Preparing -> prepareGuessRound()
+                    restoredSession.phase is SavedGuessPhase.Playing &&
+                        restoredSession.roundResult == null -> kickGuessPrefetch(guessRound)
+                }
+            }
+            null -> Unit
+        }
+    }
+
+    // Persist only authoritative gameplay state. Decorative animation, open
+    // dialogs, hints, image bitmaps and prefetch jobs are intentionally absent.
+    LaunchedEffect(
+        currentScreen,
+        questions,
+        userAnswers,
+        currentQuestionIndex,
+        score,
+        quizDifficulty,
+        quizMode,
+        aiGenerated,
+        isDailyQuiz,
+        pendingQuizAnswer,
+        pendingQuizTimeUp,
+        questionDeadline,
+        survivalWrongs,
+        blitzDeadline,
+        versusStage,
+        versusP1Score,
+        versusP1Answers,
+        guessTopic,
+        guessDifficulty,
+        guessTotalRounds,
+        guessRound,
+        guessScore,
+        guessResults,
+        guessRoundResult,
+        guessPhase,
+        guessRoundDeadline,
+    ) {
+        val nowElapsed = SystemClock.elapsedRealtime()
+        val nowEpoch = System.currentTimeMillis()
+        when {
+            (currentScreen == Screen.Quiz || currentScreen == Screen.VersusHandoff) &&
+                questions.isNotEmpty() && quizMode !in setOf("survival-done", "blitz-done") -> {
+                val elapsed = quizElapsedBaseMs +
+                    (nowElapsed - quizStartedAt).coerceAtLeast(0L)
+                activeSessionStore.save(
+                    ActiveQuizSession(
+                        savedAtEpochMs = nowEpoch,
+                        destination = if (currentScreen == Screen.VersusHandoff) {
+                            ActiveQuizSession.Destination.VERSUS_HANDOFF
+                        } else {
+                            ActiveQuizSession.Destination.QUIZ
+                        },
+                        mode = quizMode,
+                        questions = questions,
+                        userAnswers = userAnswers,
+                        currentQuestionIndex = currentQuestionIndex,
+                        score = score,
+                        difficulty = quizDifficulty,
+                        aiGenerated = aiGenerated,
+                        daily = isDailyQuiz,
+                        pendingAnswer = pendingQuizAnswer,
+                        pendingTimeUp = pendingQuizTimeUp,
+                        questionRemainingMs = (questionDeadline - nowElapsed).coerceAtLeast(0L),
+                        quizElapsedMs = elapsed,
+                        survivalWrongs = survivalWrongs,
+                        blitzRemainingMs = (blitzDeadline - nowElapsed).coerceAtLeast(0L),
+                        versusStage = versusStage,
+                        versusP1Score = versusP1Score,
+                        versusP1Answers = versusP1Answers,
+                    )
+                )
+            }
+            currentScreen == Screen.GuessingGame && guessPhase != GuessPhase.Idle -> {
+                val savedPhase = when (val phase = guessPhase) {
+                    is GuessPhase.Playing -> SavedGuessPhase.Playing(phase.payload, phase.imageUrl)
+                    is GuessPhase.Preparing -> SavedGuessPhase.Preparing
+                    is GuessPhase.Error -> SavedGuessPhase.Error(phase.message, phase.isOffline)
+                    GuessPhase.Idle -> return@LaunchedEffect
+                }
+                activeSessionStore.save(
+                    ActiveGuessSession(
+                        savedAtEpochMs = nowEpoch,
+                        topic = guessTopic,
+                        difficulty = guessDifficulty,
+                        totalRounds = guessTotalRounds,
+                        round = guessRound,
+                        score = guessScore,
+                        results = guessResults,
+                        roundResult = guessRoundResult,
+                        phase = savedPhase,
+                        roundTimerStarted = guessRoundDeadline > 0L,
+                        roundRemainingMs = (guessRoundDeadline - nowElapsed).coerceAtLeast(0L),
+                    )
+                )
             }
         }
     }
@@ -2295,6 +2573,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             stage = if (quizMode == "versus") versusStage else 0,
                             questionIndex = currentQuestionIndex,
                         ),
+                        questionDeadlineMs = questionDeadline,
+                        restoredAnswer = pendingQuizAnswer,
+                        restoredTimeUp = pendingQuizTimeUp,
                         totalQuestions = questions.size,
                         currentScore = score,
                         difficulty = quizDifficulty,
@@ -2309,6 +2590,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         // not at the Next tap — the chip drops at once and the
                         // fatal question's button can say "Finish Quiz".
                         onLifeLost = { if (quizMode == "survival") survivalWrongs++ },
+                        onQuestionGraded = { selected, timeUp ->
+                            pendingQuizAnswer = selected
+                            pendingQuizTimeUp = timeUp
+                        },
                         onNextQuestion = { ticket, isCorrect, selected ->
                             answer(ticket, isCorrect, selected)
                         },
@@ -2319,15 +2604,24 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             // question/Blitz countdowns.
                             if (quizStartedAt > 0L && quizFinishedAt == 0L) {
                                 quizStartedAt += pausedMillis
+                                questionDeadline += pausedMillis
+                                if (quizMode == "blitz") blitzDeadline += pausedMillis
                             }
                         },
-                        onCloseClick = { goHome() },
+                        onCloseClick = {
+                            activeSessionStore.clear()
+                            goHome()
+                        },
                     )
 
                     Screen.Results -> QuizCompleteScreen(
                         score = score,
                         totalQuestions = questions.size,
-                        timeSpent = formatQuizElapsed(quizStartedAt, quizFinishedAt),
+                        timeSpent = formatQuizElapsed(
+                            quizStartedAt,
+                            quizFinishedAt,
+                            quizElapsedBaseMs,
+                        ),
                         difficulty = quizDifficulty,
                         bestPercent = quizPrevBest,
                         isNewRecord = quizNewRecord,
@@ -2351,7 +2645,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     Screen.VersusHandoff -> VersusHandoffScreen(
                         p1Score = versusP1Score,
                         totalQuestions = questions.size,
-                        onPlayer2Ready = { replace(Screen.Quiz) },
+                        onPlayer2Ready = {
+                            restartQuestionClock()
+                            replace(Screen.Quiz)
+                        },
                     )
 
                     Screen.VersusResults -> VersusResultsScreen(
@@ -2418,6 +2715,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         difficultyLabel = guessDifficulty,
                         round = guessRound,
                         progressionTicket = guessProgressionGate.ticket(guessRound),
+                        roundDeadlineMs = guessRoundDeadline,
                         totalRounds = guessTotalRounds,
                         score = guessScore,
                         phase = guessPhase,
@@ -2434,7 +2732,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             guessJob?.cancel()
                             clearGuessPrefetch()
                             guessPhase = GuessPhase.Idle
+                            activeSessionStore.clear()
                             goHome()
+                        },
+                        onRoundTimerStarted = { deadline ->
+                            if (guessRoundDeadline == 0L) guessRoundDeadline = deadline
+                        },
+                        onTimerResumed = { pausedMillis ->
+                            if (guessRoundDeadline > 0L) guessRoundDeadline += pausedMillis
                         },
                         onRoundComplete = { correct, answerText, remainingMs ->
                             guessRoundComplete(correct, answerText, remainingMs)
@@ -2918,12 +3223,18 @@ private fun AvatarOverlayLayer(
     )
 }
 
-internal fun formatQuizElapsed(startedAt: Long, finishedAt: Long): String {
+internal fun formatQuizElapsed(
+    startedAt: Long,
+    finishedAt: Long,
+    elapsedBeforeStartMs: Long = 0L,
+): String {
     if (startedAt <= 0L || finishedAt <= 0L) return "0m 0s"
-    // Both values come from elapsedRealtime(), not currentTimeMillis(): this
-    // stays monotonic across wall-clock edits. Crucially, finishedAt is captured
-    // once when the run ends, so navigation recomposition can never advance it.
-    val secs = ((finishedAt - startedAt).coerceAtLeast(0L) / 1000L).toInt()
+    // The live span comes from elapsedRealtime(), not currentTimeMillis(). A
+    // restored process contributes its checkpointed prefix separately, so a
+    // reboot/process restart cannot make an AI quiz's result clock restart.
+    val elapsed = elapsedBeforeStartMs.coerceAtLeast(0L) +
+        (finishedAt - startedAt).coerceAtLeast(0L)
+    val secs = (elapsed / 1000L).toInt()
     return "${secs / 60}m ${secs % 60}s"
 }
 

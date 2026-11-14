@@ -7,6 +7,10 @@ then archived below; there should be no per-version release-note files.
 
 ## Next release
 
+- 2026-11-04 — Active quizzes, Survival, Blitz, Versus handoff and Guessing games now recover essential progress after Android kills the app process, including exact AI content and adjusted timers; completed, explicitly quit, corrupt and sessions older than six hours are not resumed.
+- 2026-11-04 — AI authentication, billing, quota/rate-limit, network, request and provider failures no longer cause silent extra model calls; only unavailable models and unusable responses may make one clearly reported same-provider alternate-model attempt.
+- 2026-11-04 — Official tag builds now fail inside Gradle unless the tag matches the app version and every signing input is present, blocking unsigned release publication while retaining unsigned PR compile checks.
+- 2026-11-04 — Added regression coverage for active-session round trips and expiry, timer reconstruction, AI fallback categories and release tag/signing guards.
 - 2026-11-04 — Fixed the post-update What's New sheet for beta and RC builds by deriving its gate and content from the newest in-app changelog entry, with regression coverage for pre-release entries.
 - 2026-11-04 — Fixed live MP4 avatars appearing as two layers on Home and Profile: the persistent video obeys the avatar slot's scroll/system-bar clipping and yields to its in-tree poster during stretch overscroll, preserving the responsive stretch without splitting the circle.
 - 2026-11-04 — Quit confirmations now pause and precisely resume per-question, Survival, Versus, Blitz and Guessing timers; confirmed exits stay paused through dialog dismissal, and quiz result time excludes canceled-exit pauses.

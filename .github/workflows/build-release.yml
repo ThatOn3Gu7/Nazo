@@ -77,56 +77,70 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      # If this step fails (compose/kotlin/build error), the job stops here
-      # and NO release is created for this tag.
-      - name: Build (compile + assemble)
+      # Official tag builds fail closed: all four signing inputs are mandatory.
+      # The Gradle release guard independently checks these inputs and verifies
+      # that github.ref_name exactly matches Android's versionName.
+      - name: Build signed APKs (compile + assemble)
         id: build
         env:
+          SIGNING_KEY_BASE64: ${{ secrets.SIGNING_KEY_BASE64 }}
           STORE_PWD: ${{ secrets.SIGNING_STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           KEY_PWD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
-          if [ -n "${{ secrets.SIGNING_KEY_BASE64 }}" ]; then
-            echo "${{ secrets.SIGNING_KEY_BASE64 }}" | base64 -d > keystore.jks
-            ./gradlew assembleRelease assembleDebug \
-              -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/keystore.jks" \
-              -Pandroid.injected.signing.store.password="$STORE_PWD" \
-              -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
-              -Pandroid.injected.signing.key.password="$KEY_PWD"
-            rm -f keystore.jks
-          else
-            ./gradlew assembleRelease assembleDebug
+          if [ -z "$SIGNING_KEY_BASE64" ] || [ -z "$STORE_PWD" ] || \
+             [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PWD" ]; then
+            echo "::error::All Android signing secrets are required for a tagged release."
+            exit 1
           fi
+          printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > keystore.jks
+          if [ ! -s keystore.jks ]; then
+            echo "::error::The decoded signing keystore is empty."
+            exit 1
+          fi
+          trap 'rm -f keystore.jks' EXIT
+          ./gradlew assembleRelease assembleDebug \
+            -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/keystore.jks" \
+            -Pandroid.injected.signing.store.password="$STORE_PWD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PWD"
 
-      - name: Stage APKs with descriptive names
+      # Verify every APK matched by the source artifact wildcard before copying
+      # anything into the publication directory. An unsigned or unexpected APK
+      # fails the job, so softprops/action-gh-release can never publish it.
+      - name: Verify APK signatures
+        run: |
+          mapfile -t SOURCE_APKS < <(find app/build/outputs/apk -type f -name '*.apk' -print | sort)
+          if [ "${#SOURCE_APKS[@]}" -ne 2 ]; then
+            echo "::error::Expected exactly release and debug APKs; found ${#SOURCE_APKS[@]}."
+            printf '%s\n' "${SOURCE_APKS[@]}"
+            exit 1
+          fi
+          APKSIGNER=$(find "$ANDROID_SDK_ROOT/build-tools" -type f -name apksigner -print | sort -V | tail -1)
+          if [ -z "$APKSIGNER" ]; then
+            echo "::error::Android apksigner was not found."
+            exit 1
+          fi
+          for apk in "${SOURCE_APKS[@]}"; do
+            "$APKSIGNER" verify --verbose --print-certs "$apk"
+          done
+
+      - name: Stage exact APKs with descriptive names
         id: apk
         run: |
-          VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
-          if [ -z "$VERSION" ]; then VERSION=$(echo "${{ github.ref_name }}" | sed 's/^v//'); fi
+          VERSION=${GITHUB_REF_NAME#v}
           mkdir -p apks
-          cp app/build/outputs/apk/release/*.apk "apks/Nazo-release-$VERSION.apk"
-          cp app/build/outputs/apk/debug/*.apk "apks/Nazo-debug-$VERSION.apk"
+          cp app/build/outputs/apk/release/app-release.apk "apks/Nazo-release-$VERSION.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "apks/Nazo-debug-$VERSION.apk"
 
-      # Hand-written notes win when they exist.
-      #
-      # RELEASE_NOTES_<version>.md in the repo root is used verbatim. The
-      # generator turns commit subjects into notes, which is fine for a tidy
-      # release but useless when a version's history is mostly failed attempts
-      # at one bug — the player-facing summary then has to be written by hand.
-      # Falls back to the generator when no such file exists.
+      # The generator extracts this tag's handwritten block from the one living
+      # RELEASE_NOTES.md ledger and fails when the matching block is absent.
       - name: Generate release notes
         id: notes
         run: |
-          VERSION=$(echo "${{ github.ref_name }}" | sed 's/^v//')
-          HAND="RELEASE_NOTES_$VERSION.md"
-          if [ -f "$HAND" ]; then
-            echo "Using hand-written notes from $HAND"
-            cp "$HAND" release_notes.md
-          else
-            PREV=$(git tag --sort=-creatordate | sed -n '2p')
-            if [ -z "$PREV" ]; then RANGE=""; else RANGE="$PREV..HEAD"; fi
-            python3 .github/scripts/gen_release_notes.py "$RANGE" > release_notes.md
-          fi
+          PREV=$(git tag --sort=-creatordate | sed -n '2p')
+          if [ -z "$PREV" ]; then RANGE=""; else RANGE="$PREV..HEAD"; fi
+          python3 .github/scripts/gen_release_notes.py "$RANGE" > release_notes.md
           cat release_notes.md
 
       - name: Create GitHub Release
