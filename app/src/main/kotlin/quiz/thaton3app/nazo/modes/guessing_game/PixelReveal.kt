@@ -89,7 +89,8 @@ private fun flattenAlpha(source: Bitmap): Bitmap {
  * The pixelation works by downscaling the bitmap with bilinear filtering (so
  * each small pixel averages its source region) and then drawing the small
  * bitmap back up with [FilterQuality.None] (nearest neighbour), which gives
- * each block a hard edge. The bitmaps for each level are NOT recycled eagerly —
+ * each block a hard edge. [smoothUpscale] instead uses high-quality filtering
+ * for the pre-API-31 blur substitute. The bitmaps for each level are NOT recycled eagerly —
  * Compose's draw layer may still be referencing the previous frame's bitmap
  * during animation transitions. They become unreachable as soon as the round
  * state changes and the GC collects them.
@@ -99,6 +100,8 @@ internal fun PixelatedImage(
     bitmap: Bitmap,
     cellSize: Int,
     modifier: Modifier,
+    /** Bilinear upscale for the pre-API-31 blur substitute; pixel mode stays crisp. */
+    smoothUpscale: Boolean = false,
 ) {
     val displayBitmap = remember(bitmap, cellSize) {
         if (cellSize <= 1) {
@@ -125,6 +128,10 @@ internal fun PixelatedImage(
         contentScale = ContentScale.Crop,
         // Nearest neighbour on the upscale is what makes the pixel blocks
         // hard-edged. When fully sharp, use bilinear for a clean photo look.
-        filterQuality = if (cellSize <= 1) FilterQuality.Medium else FilterQuality.None,
+        filterQuality = when {
+            cellSize <= 1 -> FilterQuality.Medium
+            smoothUpscale -> FilterQuality.High
+            else -> FilterQuality.None
+        },
     )
 }

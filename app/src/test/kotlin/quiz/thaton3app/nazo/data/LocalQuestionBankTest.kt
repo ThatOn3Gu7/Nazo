@@ -146,4 +146,29 @@ class LocalQuestionBankTest {
             )
         }
     }
+
+    @Test
+    fun unmatchedNonblankTopicNeverFallsBackToEntireBank() {
+        val qs = LocalQuestionBank.getQuestions(
+            count = 10,
+            topic = "Definitely Not A Nazo Franchise 987654",
+        )
+
+        assertTrue("an unknown topic must return an explicit miss", qs.isEmpty())
+    }
+
+    @Test
+    fun blankTopicStillIntentionallyDrawsFromTheWholeBank() {
+        val qs = LocalQuestionBank.getQuestions(count = 10, topic = "   ")
+
+        assertEquals(10, qs.size)
+    }
+
+    @Test
+    fun legitimatePartialTopicMatchStillWorks() {
+        val qs = LocalQuestionBank.getQuestions(count = 12, topic = "Jujutsu")
+
+        assertTrue(qs.isNotEmpty())
+        assertTrue(qs.all { it.anime.contains("Jujutsu", ignoreCase = true) })
+    }
 }
