@@ -129,46 +129,52 @@ internal object ActiveSessionJson {
     private const val MAX_TEXT = 20_000
     private const val MAX_TIMER_MS = ActiveSessionStore.MAX_AGE_MS
 
-    fun encode(snapshot: ActiveSessionSnapshot): String = JSONObject().apply {
-        put("version", VERSION)
-        put("savedAt", snapshot.savedAtEpochMs)
+    fun encode(snapshot: ActiveSessionSnapshot): String {
         when (snapshot) {
-            is ActiveQuizSession -> {
-                put("kind", "quiz")
-                put("destination", snapshot.destination.name)
-                put("mode", snapshot.mode)
-                put("questions", JSONArray().apply { snapshot.questions.forEach { put(questionJson(it)) } })
-                put("answers", nullableStrings(snapshot.userAnswers))
-                put("index", snapshot.currentQuestionIndex)
-                put("score", snapshot.score)
-                put("difficulty", snapshot.difficulty)
-                put("ai", snapshot.aiGenerated)
-                put("daily", snapshot.daily)
-                put("pendingAnswer", snapshot.pendingAnswer ?: JSONObject.NULL)
-                put("pendingTimeUp", snapshot.pendingTimeUp)
-                put("questionRemainingMs", snapshot.questionRemainingMs)
-                put("quizElapsedMs", snapshot.quizElapsedMs)
-                put("survivalWrongs", snapshot.survivalWrongs)
-                put("blitzRemainingMs", snapshot.blitzRemainingMs)
-                put("versusStage", snapshot.versusStage)
-                put("versusP1Score", snapshot.versusP1Score)
-                put("versusP1Answers", nullableStrings(snapshot.versusP1Answers))
-            }
-            is ActiveGuessSession -> {
-                put("kind", "guess")
-                put("topic", snapshot.topic)
-                put("difficulty", snapshot.difficulty)
-                put("totalRounds", snapshot.totalRounds)
-                put("round", snapshot.round)
-                put("score", snapshot.score)
-                put("results", JSONArray().apply { snapshot.results.forEach { put(resultJson(it)) } })
-                put("roundResult", snapshot.roundResult?.let(::resultJson) ?: JSONObject.NULL)
-                put("roundTimerStarted", snapshot.roundTimerStarted)
-                put("roundRemainingMs", snapshot.roundRemainingMs)
-                put("phase", phaseJson(snapshot.phase))
-            }
+            is ActiveQuizSession -> validateQuiz(snapshot)
+            is ActiveGuessSession -> validateGuess(snapshot)
         }
-    }.toString()
+        return JSONObject().apply {
+            put("version", VERSION)
+            put("savedAt", snapshot.savedAtEpochMs)
+            when (snapshot) {
+                is ActiveQuizSession -> {
+                    put("kind", "quiz")
+                    put("destination", snapshot.destination.name)
+                    put("mode", snapshot.mode)
+                    put("questions", JSONArray().apply { snapshot.questions.forEach { put(questionJson(it)) } })
+                    put("answers", nullableStrings(snapshot.userAnswers))
+                    put("index", snapshot.currentQuestionIndex)
+                    put("score", snapshot.score)
+                    put("difficulty", snapshot.difficulty)
+                    put("ai", snapshot.aiGenerated)
+                    put("daily", snapshot.daily)
+                    put("pendingAnswer", snapshot.pendingAnswer ?: JSONObject.NULL)
+                    put("pendingTimeUp", snapshot.pendingTimeUp)
+                    put("questionRemainingMs", snapshot.questionRemainingMs)
+                    put("quizElapsedMs", snapshot.quizElapsedMs)
+                    put("survivalWrongs", snapshot.survivalWrongs)
+                    put("blitzRemainingMs", snapshot.blitzRemainingMs)
+                    put("versusStage", snapshot.versusStage)
+                    put("versusP1Score", snapshot.versusP1Score)
+                    put("versusP1Answers", nullableStrings(snapshot.versusP1Answers))
+                }
+                is ActiveGuessSession -> {
+                    put("kind", "guess")
+                    put("topic", snapshot.topic)
+                    put("difficulty", snapshot.difficulty)
+                    put("totalRounds", snapshot.totalRounds)
+                    put("round", snapshot.round)
+                    put("score", snapshot.score)
+                    put("results", JSONArray().apply { snapshot.results.forEach { put(resultJson(it)) } })
+                    put("roundResult", snapshot.roundResult?.let(::resultJson) ?: JSONObject.NULL)
+                    put("roundTimerStarted", snapshot.roundTimerStarted)
+                    put("roundRemainingMs", snapshot.roundRemainingMs)
+                    put("phase", phaseJson(snapshot.phase))
+                }
+            }
+        }.toString()
+    }
 
     fun decode(raw: String): ActiveSessionSnapshot {
         val o = JSONObject(raw)
