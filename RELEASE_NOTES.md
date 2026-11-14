@@ -10,6 +10,7 @@ then archived below; there should be no per-version release-note files.
 - 2026-11-04 — Fixed the post-update What's New sheet for beta and RC builds by deriving its gate and content from the newest in-app changelog entry, with regression coverage for pre-release entries.
 - 2026-11-04 — Fixed live MP4 avatars appearing as two layers on Home and Profile: the persistent video obeys the avatar slot's scroll/system-bar clipping and yields to its in-tree poster during stretch overscroll, preserving the responsive stretch without splitting the circle.
 - 2026-11-04 — Quit confirmations now pause and precisely resume per-question, Survival, Versus, Blitz and Guessing timers; confirmed exits stay paused through dialog dismissal, and quiz result time excludes canceled-exit pauses.
+- 2026-11-04 — Hardened backup and gameplay state: corrupt quiz statistics recover safely and cannot be restored, cover removal stays inside app-owned storage, Keystore-bound API keys remain local and preserved, and rapid Next/Finish taps cannot skip or record results twice.
 
 ## Release archive
 

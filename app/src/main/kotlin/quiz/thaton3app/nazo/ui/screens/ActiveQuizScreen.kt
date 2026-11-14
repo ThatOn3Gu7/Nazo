@@ -82,6 +82,7 @@ import quiz.thaton3app.nazo.hints.HintEngine
 import quiz.thaton3app.nazo.hints.HintPill
 import quiz.thaton3app.nazo.hints.HintRevealPill
 import quiz.thaton3app.nazo.sound.Sounds
+import quiz.thaton3app.nazo.ui.QuizProgressionTicket
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoQuitDialog
 import quiz.thaton3app.nazo.ui.components.elapsedGameplayMillis
@@ -157,9 +158,10 @@ internal fun correctAnswerPulseScale(progress: Float): Float {
 }
 
 @Composable
-fun ActiveQuizScreen(
+internal fun ActiveQuizScreen(
     question: Question,
     currentQuestionIndex: Int,
+    progressionTicket: QuizProgressionTicket,
     totalQuestions: Int,
     /** Read-only score used by mode chrome; grading remains owned by the host. */
     currentScore: Int = 0,
@@ -180,7 +182,7 @@ fun ActiveQuizScreen(
     // before the player advances — so the lost heart is redacted immediately
     // and the button can say "Finish Quiz" on the fatal question.
     onLifeLost: () -> Unit = {},
-    onNextQuestion: (Boolean, String?) -> Unit,
+    onNextQuestion: (QuizProgressionTicket, Boolean, String?) -> Unit,
     /** Excludes a completed quit-dialog pause from the host's elapsed clock. */
     onTimerResumed: (pausedMillis: Long) -> Unit = {},
     onCloseClick: () -> Unit,
@@ -360,7 +362,7 @@ fun ActiveQuizScreen(
                     }
                     lastSample = now
                 }
-                onNextQuestion(wasCorrect, picked)
+                onNextQuestion(progressionTicket, wasCorrect, picked)
                 selectedAnswer = null
             }
         }
@@ -869,7 +871,7 @@ fun ActiveQuizScreen(
                                         indication = LocalIndication.current,
                                     ) {
                                         Haptics.light(context)
-                                        onNextQuestion(isCorrect, shownAnswer)
+                                        onNextQuestion(progressionTicket, isCorrect, shownAnswer)
                                         selectedAnswer = null // Reset for next question
                                     }
                                     .padding(vertical = 16.dp),

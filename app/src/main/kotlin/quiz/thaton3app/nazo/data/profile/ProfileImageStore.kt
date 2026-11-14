@@ -15,8 +15,11 @@ import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 import kotlin.math.min
 import java.net.HttpURLConnection
+import java.net.URI as JavaUri
+import java.net.URISyntaxException
 import java.net.URL
 
 /**
@@ -1154,17 +1157,69 @@ object ProfileImageStore {
         }
 
     /**
-     * Best-effort delete of the stored cover behind [uri] when the user
-     * removes it. A missing file (already gone, or a restored path from
-     * another device whose bytes were never carried) is not an error — the
-     * banner simply falls back to the placeholder gradient either way.
+     * Best-effort delete of an app-owned cover when the user removes it.
+     *
+     * Backup versions before cover payload support can supply a stale or
+     * attacker-edited `profile_cover_uri`, so `file://` alone is not proof of
+     * ownership. The URI and both paths are canonicalized and the candidate
+     * must be a genuine descendant of this install's cover directory. A
+     * missing/rejected file is not an error — the banner still falls back to
+     * the placeholder gradient.
      */
-    fun deleteCover(uri: String?) {
-        val path = uri
-            ?.takeIf { it.startsWith("file://") }
-            ?.let { Uri.parse(it).path }
-            ?: return
-        runCatching { File(path).delete() }
+    fun deleteCover(context: Context, uri: String?): Boolean =
+        deleteCoverFile(coverDir(context), uri)
+
+    /** Context-free seam for the canonical containment policy and JVM tests. */
+    internal fun deleteCoverFile(coverDirectory: File, uri: String?): Boolean {
+        val file = resolveOwnedCoverFile(coverDirectory, uri) ?: return false
+        if (!file.isFile) return false
+        return try {
+            file.delete()
+        } catch (_: SecurityException) {
+            false
+        }
+    }
+
+    internal fun resolveOwnedCoverFile(coverDirectory: File, uri: String?): File? {
+        if (uri.isNullOrBlank()) return null
+        val parsed = try {
+            JavaUri(uri)
+        } catch (_: URISyntaxException) {
+            return null
+        }
+        if (!parsed.scheme.equals("file", ignoreCase = true) ||
+            parsed.rawAuthority != null || parsed.rawQuery != null || parsed.rawFragment != null
+        ) {
+            return null
+        }
+
+        val root = try {
+            coverDirectory.canonicalFile
+        } catch (_: IOException) {
+            return null
+        } catch (_: SecurityException) {
+            return null
+        }
+        val candidate = try {
+            File(parsed).canonicalFile
+        } catch (_: IllegalArgumentException) {
+            return null
+        } catch (_: IOException) {
+            return null
+        } catch (_: SecurityException) {
+            return null
+        }
+        if (candidate == root) return null
+
+        // Compare canonical File components, not string prefixes. This rejects
+        // ../ traversal, prefix siblings (profile_covers_evil), and symlinks
+        // inside the cover directory that resolve to an outside target.
+        var parent = candidate.parentFile
+        while (parent != null) {
+            if (parent == root) return candidate
+            parent = parent.parentFile
+        }
+        return null
     }
 
     // -----------------------------------------------------------------------

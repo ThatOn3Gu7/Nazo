@@ -967,6 +967,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // Lives above AnimatedContent so reconstructing Results as Review's back
     // target cannot replay completion sounds, confetti, haptics, or entrances.
     val quizCompleteEntranceGate = remember { QuizCompleteEntranceGate() }
+    // State-layer guards: callbacks can be dispatched twice before a button's
+    // next disabled/removed frame, so progression itself owns idempotence.
+    val quizProgressionGate = remember { QuizProgressionGate() }
+    val guessProgressionGate = remember { GuessProgressionGate() }
     // Transient summary for the game that just ended. It is derived from the
     // same stores as Statistics/Profile and deliberately never persisted.
     var lastProgressionReward by remember { mutableStateOf<ProgressionReward?>(null) }
@@ -1118,6 +1122,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         score = 0
         aiGenerated = false
         generationState = GenerationState.Idle
+        quizProgressionGate.startSession()
         if (navigationStack.last() == Screen.Loading) replace(Screen.Quiz) else navigate(Screen.Quiz)
     }
 
@@ -1136,6 +1141,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 score = 0
                 aiGenerated = true
                 generationState = GenerationState.Idle
+                quizProgressionGate.startSession()
                 if (navigationStack.last() == Screen.Loading) replace(Screen.Quiz) else navigate(Screen.Quiz)
                 return
             }
@@ -1179,6 +1185,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     score = 0
                     aiGenerated = true
                     generationState = GenerationState.Idle
+                    quizProgressionGate.startSession()
                     replace(Screen.Quiz)
                 }
                 .onFailure { e ->
@@ -1264,6 +1271,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         isDailyQuiz = true
         quizMode = "normal"
         restartQuizClock()
+        quizProgressionGate.startSession()
         navigate(Screen.Quiz)
     }
 
@@ -1286,6 +1294,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         isDailyQuiz = false
         quizMode = "normal"
         restartQuizClock()
+        quizProgressionGate.startSession()
         navigate(Screen.Quiz)
     }
 
@@ -1448,6 +1457,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         aiGenerated = false
         generationState = GenerationState.Idle
         blitzDeadline = SystemClock.elapsedRealtime() + 60_000L
+        quizProgressionGate.startSession()
         navigate(Screen.Quiz)
     }
 
@@ -1494,10 +1504,12 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         }
     }
 
-    fun answer(isCorrect: Boolean, selected: String?) {
+    fun answer(ticket: QuizProgressionTicket, isCorrect: Boolean, selected: String?) {
         // A finished run's screen can still fire one queued answer during the
         // exit transition (blitz auto-advance, double-tap) — ignore it.
         if (quizMode == "blitz-done" || quizMode == "survival-done") return
+        val currentStage = if (quizMode == "versus") versusStage else 0
+        if (!quizProgressionGate.tryConsume(ticket, currentStage, currentQuestionIndex)) return
         // Anti-repeat: the moment a question is answered (right OR wrong)
         // it's remembered — for this launch (SessionMemory) AND across
         // launches (QuestionHistoryStore). Quitting mid-quiz still counts
@@ -1829,6 +1841,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         guessScore = 0
         guessResults = emptyList()
         guessRoundResult = null
+        guessProgressionGate.startSession()
         if (navigationStack.last() != Screen.GuessingGame) navigate(Screen.GuessingGame)
         prepareGuessRound()
     }
@@ -1858,8 +1871,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         guessResults = guessResults + result
     }
 
-    fun guessNext() {
+    fun guessNext(ticket: GuessProgressionTicket) {
         val last = guessResults.lastOrNull() ?: return
+        if (last.round != guessRound || guessRoundResult?.round != guessRound) return
+        if (!guessProgressionGate.tryConsume(ticket, guessRound)) return
         // All rounds are always played — a miss reveals the answer and moves
         // on; the game ends once the last round is finished.
         val finished = last.round >= guessTotalRounds
@@ -2276,6 +2291,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     Screen.Quiz -> ActiveQuizScreen(
                         question = questions[currentQuestionIndex],
                         currentQuestionIndex = currentQuestionIndex,
+                        progressionTicket = quizProgressionGate.ticket(
+                            stage = if (quizMode == "versus") versusStage else 0,
+                            questionIndex = currentQuestionIndex,
+                        ),
                         totalQuestions = questions.size,
                         currentScore = score,
                         difficulty = quizDifficulty,
@@ -2290,7 +2309,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         // not at the Next tap — the chip drops at once and the
                         // fatal question's button can say "Finish Quiz".
                         onLifeLost = { if (quizMode == "survival") survivalWrongs++ },
-                        onNextQuestion = { isCorrect, selected -> answer(isCorrect, selected) },
+                        onNextQuestion = { ticket, isCorrect, selected ->
+                            answer(ticket, isCorrect, selected)
+                        },
                         onTimerResumed = { pausedMillis ->
                             // Results use this host-level monotonic span. Shift
                             // its origin so time spent deciding in the quit
@@ -2396,6 +2417,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         topic = guessTopic,
                         difficultyLabel = guessDifficulty,
                         round = guessRound,
+                        progressionTicket = guessProgressionGate.ticket(guessRound),
                         totalRounds = guessTotalRounds,
                         score = guessScore,
                         phase = guessPhase,
@@ -2417,7 +2439,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onRoundComplete = { correct, answerText, remainingMs ->
                             guessRoundComplete(correct, answerText, remainingMs)
                         },
-                        onNextRound = { guessNext() },
+                        onNextRound = { ticket -> guessNext(ticket) },
                     )
 
                     Screen.GuessingResults -> GuessingResultsScreen(
