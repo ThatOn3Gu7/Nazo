@@ -7,7 +7,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.data.remote.providerById
-import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
@@ -142,7 +141,7 @@ Hard rules:
                 }
 
                 if (code !in 200..299) {
-                    throw IOException(ApiClient.friendlyHttpError(code, endpoint.kind))
+                    throw ApiClient.httpFailure(code, endpoint.kind)
                 }
 
                 val content = ApiClient.extractContent(endpoint.kind, raw)

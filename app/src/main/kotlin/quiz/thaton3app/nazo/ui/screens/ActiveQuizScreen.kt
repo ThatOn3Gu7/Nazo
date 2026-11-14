@@ -85,7 +85,6 @@ import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.QuizProgressionTicket
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoQuitDialog
-import quiz.thaton3app.nazo.ui.components.elapsedGameplayMillis
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.components.rememberGameplayQuitPauseState
 import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
@@ -162,6 +161,9 @@ internal fun ActiveQuizScreen(
     question: Question,
     currentQuestionIndex: Int,
     progressionTicket: QuizProgressionTicket,
+    questionDeadlineMs: Long,
+    restoredAnswer: String?,
+    restoredTimeUp: Boolean,
     totalQuestions: Int,
     /** Read-only score used by mode chrome; grading remains owned by the host. */
     currentScore: Int = 0,
@@ -182,13 +184,14 @@ internal fun ActiveQuizScreen(
     // before the player advances — so the lost heart is redacted immediately
     // and the button can say "Finish Quiz" on the fatal question.
     onLifeLost: () -> Unit = {},
+    onQuestionGraded: (selected: String?, timeUp: Boolean) -> Unit = { _, _ -> },
     onNextQuestion: (QuizProgressionTicket, Boolean, String?) -> Unit,
     /** Excludes a completed quit-dialog pause from the host's elapsed clock. */
     onTimerResumed: (pausedMillis: Long) -> Unit = {},
     onCloseClick: () -> Unit,
 ) {
-    var selectedAnswer by remember { mutableStateOf<String?>(null) }
-    var isTimeUp by remember { mutableStateOf(false) }
+    var selectedAnswer by remember { mutableStateOf(restoredAnswer) }
+    var isTimeUp by remember { mutableStateOf(restoredTimeUp) }
     // Frozen grade record, keyed by question index. The question body reads its
     // grade from HERE, not from the live vars above: when the Next button (or
     // blitz auto-advance) resets the live state and the next question slides
@@ -206,6 +209,19 @@ internal fun ActiveQuizScreen(
         comboStreak = nextQuizComboStreak(comboStreak, correct)
         comboByIndex[index] = comboStreak
     }
+    // The host persists a revealed-but-not-yet-advanced question. Seed that
+    // authoritative grade synchronously on first composition after restore so
+    // neither a rotation nor process death flashes an unanswered frame.
+    var stateQuestionIndex by remember { mutableIntStateOf(-1) }
+    if (stateQuestionIndex != currentQuestionIndex) {
+        stateQuestionIndex = currentQuestionIndex
+        selectedAnswer = restoredAnswer
+        isTimeUp = restoredTimeUp
+        if (restoredAnswer != null || restoredTimeUp) {
+            gradedByIndex[currentQuestionIndex] = GradedAnswer(restoredAnswer, restoredTimeUp)
+            recordVisualGrade(currentQuestionIndex, restoredAnswer == question.correctAnswer)
+        }
+    }
 
     val isBlitz = blitzDeadlineMs != null
     val presentation = gameplayPresentation(
@@ -217,7 +233,12 @@ internal fun ActiveQuizScreen(
     // Blitz's first frame should already read as the global 60-second sprint;
     // the monotonic deadline effect below remains the authoritative clock.
     var remainingSeconds by remember {
-        mutableIntStateOf(if (isBlitz) 60 else secondsPerQuestion)
+        val deadline = if (isBlitz) blitzDeadlineMs ?: 0L else questionDeadlineMs
+        mutableIntStateOf(
+            ((deadline - SystemClock.elapsedRealtime() + 999L) / 1_000L)
+                .coerceIn(0L, if (isBlitz) 60L else secondsPerQuestion.toLong())
+                .toInt()
+        )
     }
     val context = LocalContext.current
     val reduceMotion = rememberSystemReduceMotion()
@@ -243,8 +264,6 @@ internal fun ActiveQuizScreen(
     // In BLITZ mode this effect only resets the per-question state — the
     // clock is the single global deadline handled below.
     LaunchedEffect(currentQuestionIndex) {
-        selectedAnswer = null
-        isTimeUp = false
         hiddenOptions = emptySet()
         letterHint = null
         // Keep only the previous question's frozen grade (still sliding out)
@@ -255,29 +274,28 @@ internal fun ActiveQuizScreen(
         comboByIndex.keys
             .filter { it < currentQuestionIndex - 1 }
             .forEach { comboByIndex.remove(it) }
-        if (isBlitz) return@LaunchedEffect
-        remainingSeconds = secondsPerQuestion
+        if (isBlitz || selectedAnswer != null || isTimeUp) return@LaunchedEffect
+        remainingSeconds = (
+            (questionDeadlineMs - SystemClock.elapsedRealtime() + 999L) / 1_000L
+        ).coerceIn(0L, secondsPerQuestion.toLong()).toInt()
 
         // Do not start a new question's clock underneath an already-open quit
         // confirmation (for example, a transition settling on the same frame).
         while (quitPauseState.timerPaused) delay(50)
-        val timerStartedAt = SystemClock.elapsedRealtime()
         val pauseMillisAtStart = quitPauseState.accumulatedPauseMillis
-        var lastDisplayedSecond = secondsPerQuestion
+        var lastDisplayedSecond = remainingSeconds
 
         while (remainingSeconds > 0 && selectedAnswer == null) {
             if (quitPauseState.timerPaused) {
                 delay(50)
                 continue
             }
-            val elapsed = elapsedGameplayMillis(
-                startedAtMillis = timerStartedAt,
-                nowMillis = SystemClock.elapsedRealtime(),
-                accumulatedPauseMillis = quitPauseState.accumulatedPauseMillis,
-                pauseMillisAtStart = pauseMillisAtStart,
-            )
+            val pausedSinceStart = (
+                quitPauseState.accumulatedPauseMillis - pauseMillisAtStart
+            ).coerceAtLeast(0L)
             val nextSecond = (
-                (secondsPerQuestion * 1_000L - elapsed + 999L) / 1_000L
+                (questionDeadlineMs + pausedSinceStart - SystemClock.elapsedRealtime() + 999L) /
+                    1_000L
             ).coerceIn(0L, secondsPerQuestion.toLong()).toInt()
             if (nextSecond != lastDisplayedSecond) {
                 remainingSeconds = nextSecond
@@ -306,6 +324,7 @@ internal fun ActiveQuizScreen(
             // for the exit transition.
             gradedByIndex[currentQuestionIndex] = GradedAnswer(selected = null, timeUp = true)
             recordVisualGrade(currentQuestionIndex, correct = false)
+            onQuestionGraded(null, true)
             onLifeLost()
         }
     }
@@ -315,6 +334,7 @@ internal fun ActiveQuizScreen(
     // exactly once when it crosses zero.
     if (blitzDeadlineMs != null) {
         LaunchedEffect(blitzDeadlineMs) {
+            val pauseMillisAtStart = quitPauseState.accumulatedPauseMillis
             while (true) {
                 if (quitPauseState.timerPaused) {
                     delay(50)
@@ -323,8 +343,8 @@ internal fun ActiveQuizScreen(
                 // Monotonic clock — matches how blitzDeadlineMs is produced
                 // in NazoApp. Every completed confirmation pause extends the
                 // effective deadline by exactly that duration.
-                val effectiveDeadline =
-                    blitzDeadlineMs + quitPauseState.accumulatedPauseMillis
+                val effectiveDeadline = blitzDeadlineMs +
+                    (quitPauseState.accumulatedPauseMillis - pauseMillisAtStart).coerceAtLeast(0L)
                 val left = ((effectiveDeadline - SystemClock.elapsedRealtime() + 999) / 1000L)
                     .coerceAtLeast(0L).toInt()
                 if (left != remainingSeconds) {
@@ -772,6 +792,7 @@ internal fun ActiveQuizScreen(
                                 gradedByIndex[slot.index] =
                                     GradedAnswer(selected = optionText, timeUp = false)
                                 recordVisualGrade(slot.index, wasCorrect)
+                                onQuestionGraded(optionText, false)
                             }
                         },
                     )

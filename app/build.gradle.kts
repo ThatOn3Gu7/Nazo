@@ -56,6 +56,43 @@ android {
     }
 }
 
+// Official releases are tag-triggered, while PR CI also assembles an unsigned
+// release APK as a compile check. Keep that useful PR behavior, but fail closed
+// inside the build itself when GitHub is building a tag: the tag must match the
+// app version and every signing input must be present. This is a second line of
+// defence beneath build-release.yml, so a missing secret can never fall through
+// to a publishable unsigned APK.
+val releaseSigningProperties = listOf(
+    "android.injected.signing.store.file",
+    "android.injected.signing.store.password",
+    "android.injected.signing.key.alias",
+    "android.injected.signing.key.password",
+)
+val releaseKeystore = providers.gradleProperty(releaseSigningProperties.first()).orNull.orEmpty()
+val releaseCredentialsPresent = releaseSigningProperties.all {
+    !providers.gradleProperty(it).orNull.isNullOrBlank()
+}
+val validateGithubRelease by tasks.registering(Exec::class) {
+    notCompatibleWithConfigurationCache(
+        "Release validation intentionally reads GitHub's runtime environment variables"
+    )
+    workingDir(rootProject.projectDir)
+    commandLine(
+        "python3",
+        rootProject.file(".github/scripts/validate_release_build.py").absolutePath,
+        "--version",
+        android.defaultConfig.versionName.orEmpty(),
+        "--version-code",
+        android.defaultConfig.versionCode.toString(),
+        "--keystore",
+        releaseKeystore,
+    )
+    if (releaseCredentialsPresent) args("--credentials-present")
+}
+tasks.matching { it.name == "assembleRelease" }.configureEach {
+    dependsOn(validateGithubRelease)
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     // Branded cold start: system splash screen (backward-compatible to API 26)

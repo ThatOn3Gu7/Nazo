@@ -136,5 +136,8 @@ class NazoNavigationTransitionTest {
         assertEquals("0m 0s", formatQuizElapsed(0L, finishedAt))
         assertEquals("0m 0s", formatQuizElapsed(startedAt, 0L))
         assertEquals("0m 0s", formatQuizElapsed(finishedAt, startedAt))
+        // A process-restored run contributes its checkpointed prefix exactly
+        // once, then continues on the new monotonic span.
+        assertEquals("1m 35s", formatQuizElapsed(startedAt, finishedAt, 30_000L))
     }
 }
