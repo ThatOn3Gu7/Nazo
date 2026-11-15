@@ -312,6 +312,26 @@ internal fun avatarOverlayBoundsMatchWinner(
 ): Boolean = ready && winner != null && boundsOwner == winner
 
 /**
+ * Keeps the persistent AndroidView attached while removing its native host from
+ * the active screen's hit-test area. Making only the TextureView INVISIBLE is
+ * not sufficient on every Compose/Android combination because its AndroidView
+ * holder can retain the old avatar bounds and consume touches over new content.
+ */
+internal fun avatarOverlayPlacement(
+    geometryReady: Boolean,
+    visibleOffset: IntOffset,
+    width: Int,
+    height: Int,
+): IntOffset = if (geometryReady) {
+    visibleOffset
+} else {
+    IntOffset(
+        x = -width.coerceAtLeast(1) - 1,
+        y = -height.coerceAtLeast(1) - 1,
+    )
+}
+
+/**
  * Converts an ancestor-clipped window rect into TextureView-local pixels.
  *
  * The full avatar remains laid out at [fullBounds] so video crop/scale does not
@@ -546,6 +566,7 @@ internal fun PersistentAvatarVideo(
     // from appearing during the hidden 42dp <-> 132dp native-view rebase.
     val effectiveAlpha = if (shown && boundsMatchWinner && frameRendered) alpha else 0f
     val localClip = avatarOverlayLocalClip(lastBounds, lastVisibleBounds)
+    val geometryReady = shown && boundsMatchWinner && localClip != IntRect.Zero
     val fullLocalClip = IntRect(
         left = 0,
         top = 0,
@@ -576,9 +597,14 @@ internal fun PersistentAvatarVideo(
                     // the node's size to the slot's own size — 42 dp Home and
                     // 132 dp Profile both match exactly.
                     .offset {
-                        IntOffset(
-                            x = (lastBounds.left - origin.x + slideX).roundToInt(),
-                            y = (lastBounds.top - origin.y).roundToInt(),
+                        avatarOverlayPlacement(
+                            geometryReady = geometryReady,
+                            visibleOffset = IntOffset(
+                                x = (lastBounds.left - origin.x + slideX).roundToInt(),
+                                y = (lastBounds.top - origin.y).roundToInt(),
+                            ),
+                            width = lastBounds.size.width.roundToInt(),
+                            height = lastBounds.size.height.roundToInt(),
                         )
                     }
                     .layout { measurable, _ ->
@@ -656,10 +682,9 @@ internal fun PersistentAvatarVideo(
                     },
                     update = { view ->
                         // Alpha=0 does not remove a native view from hit testing.
-                        // INVISIBLE does: keep the TextureView attached (and its
-                        // SurfaceTexture alive), but remove its hit region whenever
-                        // there is no visible avatar anchor to represent.
-                        val geometryReady = shown && boundsMatchWinner && localClip != IntRect.Zero
+                        // Keep the TextureView attached (and its SurfaceTexture
+                        // alive), but make the child invisible and place its native
+                        // host offscreen whenever no avatar anchor is active.
                         view.visibility = if (geometryReady) View.VISIBLE else View.INVISIBLE
                         // AndroidView is hosted at app scope, outside the
                         // anchor's scroll clip. Reapply that exact clip to the

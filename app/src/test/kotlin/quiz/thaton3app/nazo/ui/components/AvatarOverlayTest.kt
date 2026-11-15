@@ -2,6 +2,7 @@ package quiz.thaton3app.nazo.ui.components
 
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
@@ -374,6 +375,33 @@ class AvatarOverlayTest {
                 winner = AvatarAnchorId.Profile,
                 ready = true,
             )
+        )
+    }
+
+    @Test
+    fun inactiveNativeOverlayMovesItsHostFullyOffscreen() {
+        assertEquals(
+            IntOffset(x = -43, y = -43),
+            avatarOverlayPlacement(
+                geometryReady = false,
+                visibleOffset = IntOffset(x = 980, y = 40),
+                width = 42,
+                height = 42,
+            ),
+        )
+    }
+
+    @Test
+    fun activeNativeOverlayKeepsItsAvatarPlacement() {
+        val visible = IntOffset(x = 980, y = 40)
+        assertEquals(
+            visible,
+            avatarOverlayPlacement(
+                geometryReady = true,
+                visibleOffset = visible,
+                width = 42,
+                height = 42,
+            ),
         )
     }
 

@@ -115,6 +115,8 @@ private enum class KeyStatus(val label: String) {
     ERROR("Key Error"),
 }
 
+internal const val AI_PROVIDER_SAVE_BUTTON_HEIGHT_DP = 46
+
 private data class ProviderUiState(
     val id: String,
     val name: String,
@@ -911,6 +913,7 @@ private fun ApiKeyField(value: String, onValueChange: (String) -> Unit) {
 private fun SaveButton(onClick: () -> Unit) {
     NazoPrimaryButton(
         onClick = onClick,
+        modifier = Modifier.height(AI_PROVIDER_SAVE_BUTTON_HEIGHT_DP.dp),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
     ) {
         Text(
