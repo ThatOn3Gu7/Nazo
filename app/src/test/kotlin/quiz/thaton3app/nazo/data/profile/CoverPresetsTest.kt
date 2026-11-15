@@ -26,15 +26,14 @@ class CoverPresetsTest {
             "photo_petal", "photo_geometry", "photo_dunes",
             "photo_forest", "photo_glacier", "photo_reef", "photo_cosmic",
             "photo_lavender", "photo_foliage", "photo_ice", "photo_coast",
-            "gradient_aurora", "gradient_sunset", "gradient_tides",
-            "gradient_grove", "gradient_ocean_current",
+            "gradient_ocean_current",
         )))
     }
 
     @Test
     fun collectionsAreSplitByKind() {
         assertEquals(14, CoverPresets.IMAGES.size)
-        assertEquals(5, CoverPresets.GRADIENTS.size)
+        assertEquals(1, CoverPresets.GRADIENTS.size)
         assertEquals(CoverPresets.ALL.size, CoverPresets.IMAGES.size + CoverPresets.GRADIENTS.size)
         CoverPresets.IMAGES.forEach { preset ->
             assertEquals(CoverPresetKind.IMAGE, preset.kind)
@@ -72,10 +71,6 @@ class CoverPresetsTest {
     @Test
     fun gradientPalettesMatchTheirDesignedPersonalities() {
         val expected = mapOf(
-            "gradient_aurora" to listOf(0x0A1A2FL, 0x1FA97AL, 0x2ED8C0L, 0x8FF3E4L),
-            "gradient_sunset" to listOf(0x2A0F3FL, 0xC1386BL, 0xF07B54L, 0xF7C56AL),
-            "gradient_tides" to listOf(0x07203BL, 0x1573A8L, 0x3FC3D8L, 0x9BEAF4L),
-            "gradient_grove" to listOf(0x0A1F14L, 0x147A4EL, 0x2FBF87L, 0xA8F0CFL),
             "gradient_ocean_current" to listOf(0x04182DL, 0x0B527FL, 0x20AFC2L, 0xB1F6EFL),
         )
         assertEquals(expected.keys, CoverPresets.GRADIENTS.map { it.id }.toSet())
@@ -85,23 +80,20 @@ class CoverPresetsTest {
     }
 
     @Test
-    fun onlyTheSnakeLikeDeepBlueGradientUsesTheOceanRenderer() {
-        val styles = CoverPresets.GRADIENTS.associate { it.id to it.gradientStyle }
-        assertEquals(CoverGradientStyle.RIBBONS, styles["gradient_aurora"])
-        assertEquals(CoverGradientStyle.RIBBONS, styles["gradient_sunset"])
-        assertEquals(CoverGradientStyle.RIBBONS, styles["gradient_tides"])
-        assertEquals(CoverGradientStyle.RIBBONS, styles["gradient_grove"])
-        assertEquals(CoverGradientStyle.OCEAN_SWELL, styles["gradient_ocean_current"])
-        assertEquals(2, styles.values.toSet().size)
+    fun oceanCurrentUsesTheOceanRenderer() {
+        val preset = CoverPresets.GRADIENTS.single()
+        assertEquals("gradient_ocean_current", preset.id)
+        assertEquals(CoverGradientStyle.OCEAN_SWELL, preset.gradientStyle)
     }
 
     @Test
     fun byIdLooksUpAndFailsSafe() {
-        val preset = CoverPresets.byId("gradient_grove")
+        val preset = CoverPresets.byId("gradient_ocean_current")
         assertEquals(CoverPresetKind.GRADIENT, preset?.kind)
-        assertEquals("Grove", preset?.label)
-        // Unknown / null ids fall back to "no preset" instead of throwing —
-        // a downgrade or a removed preset can never brick the cover.
+        assertEquals("Ocean current", preset?.label)
+        // Unknown, retired, and null ids fall back to "no preset" instead of
+        // throwing — stale preferences can never brick the cover.
+        assertNull(CoverPresets.byId("gradient_grove"))
         assertNull(CoverPresets.byId(null))
         assertNull(CoverPresets.byId("photo_from_the_future"))
     }
@@ -133,9 +125,9 @@ class CoverPresetsTest {
     @Test
     fun presetStillWinsOverStoredVideo() {
         val uri = "file:///data/user/0/nazo/files/profile_covers/cover_42.mp4"
-        val visual = resolveCoverVisual(galleryUri = uri, presetId = "gradient_aurora")
+        val visual = resolveCoverVisual(galleryUri = uri, presetId = "gradient_ocean_current")
         assertTrue(visual is CoverVisual.Preset)
-        assertEquals("gradient_aurora", (visual as CoverVisual.Preset).preset.id)
+        assertEquals("gradient_ocean_current", (visual as CoverVisual.Preset).preset.id)
     }
 
     @Test
@@ -188,12 +180,12 @@ class CoverPresetsTest {
     fun unavailableAutomaticFallsBackToPreservedManualCover() {
         val visual = resolveCoverVisual(
             galleryUri = "file:///covers/manual.jpg",
-            presetId = "gradient_grove",
+            presetId = "gradient_ocean_current",
             automaticEnabled = true,
             automaticArtifact = null,
         )
         assertTrue(visual is CoverVisual.Preset)
-        assertEquals("gradient_grove", (visual as CoverVisual.Preset).preset.id)
+        assertEquals("gradient_ocean_current", (visual as CoverVisual.Preset).preset.id)
     }
 
     @Test
