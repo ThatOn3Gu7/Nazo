@@ -25,15 +25,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,9 +47,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.Image
 import kotlinx.coroutines.launch
@@ -61,7 +62,6 @@ import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
-import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 import java.io.File
 
@@ -73,19 +73,32 @@ import java.io.File
  * the callers only supply where the image came from.
  *
  * Draft lifecycle: [draftFile] is the temporary download backing a URL image.
- * It is deleted on every exit that is not an accept — dismiss, back, or the
- * composable leaving the tree (which covers the user navigating away). Gallery
- * picks pass null, since there is no temporary file and the original must never
- * be touched.
+ * Accept deletes it here after persistence; the caller deletes it on a real
+ * dismiss while retaining it through configuration changes. Gallery picks pass
+ * null, since there is no temporary file and the original must never be touched.
  */
+internal fun profileImagePreviewSizeDp(
+    screenWidthDp: Int,
+    screenHeightDp: Int,
+): Int {
+    val availableWidth = (screenWidthDp - 40).coerceAtLeast(1)
+    val landscape = screenWidthDp > screenHeightDp
+    val heightBound = (
+        screenHeightDp.coerceAtLeast(1) * if (landscape) 44 else 42
+    ) / 100
+    val absoluteCeiling = if (landscape) 320 else 420
+    return minOf(availableWidth, heightBound.coerceAtLeast(1), absoluteCeiling)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfileImagePreviewDialog(
+fun ProfileImagePreviewSheet(
     source: ProfileImageSource,
     draftFile: File?,
     onDismiss: () -> Unit,
     onAccepted: (String) -> Unit,
     /**
-     * Screen name that owns this dialog, used to namespace the retained crop
+     * Screen name that owns this sheet, used to namespace the retained crop
      * state so it is pruned when the user leaves that screen. See
      * RetainedState.kt.
      */
@@ -113,7 +126,7 @@ fun ProfileImagePreviewDialog(
 
     // Which image the user is currently cropping, rather than a bare boolean.
     //
-    // Rotation re-creates this dialog, so a `remember(source)` flag dropped the
+    // Rotation re-creates this sheet, so a `remember(source)` flag dropped the
     // user out of the crop step. Retaining the SOURCE IDENTITY instead of a
     // boolean keeps both behaviours: it survives the re-creation, and it still
     // resets automatically when a different image is opened, which is what
@@ -146,9 +159,9 @@ fun ProfileImagePreviewDialog(
     }
 
     // NOTE: the draft used to be deleted from an onDispose here. That is wrong
-    // now the dialog can be re-created by a rotation: the swap disposed this
+    // now the sheet can be re-created by a rotation: the swap disposed this
     // composable with accepted == false and deleted the temp file out from
-    // under a dialog that was about to come straight back.
+    // under a sheet that was about to come straight back.
     //
     // Deletion therefore belongs to the CALLER, which owns the draft and is the
     // only thing that knows the difference between "the user backed out" and
@@ -219,92 +232,45 @@ fun ProfileImagePreviewDialog(
         else -> PreviewStage.Static
     }
 
-    AlertDialog(
+    val configuration = LocalConfiguration.current
+    val previewSize = profileImagePreviewSizeDp(
+        screenWidthDp = configuration.screenWidthDp,
+        screenHeightDp = configuration.screenHeightDp,
+    ).dp
+    // Do not let a swipe hide the sheet while a save is in flight. The caller
+    // removes it after success, just as it did for the former dialog.
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { target -> target != SheetValue.Hidden || !saving },
+    )
+
+    NazoModalSheet(
         onDismissRequest = { if (!saving) onDismiss() },
-        title = {
-            Text(
-                text = if (cropping) "Crop picture" else "Preview",
-                fontWeight = FontWeight.Bold,
-                color = NazoTextPrimary,
+        sheetState = sheetState,
+    ) {
+        NazoSheetColumn {
+            NazoSheetHeader(
+                icon = Icons.Rounded.AccountCircle,
+                title = if (cropping) "Crop picture" else "Preview picture",
+                subtitle = when {
+                    // Validation failures: a short heading belongs in the
+                    // header; the full explanation remains in the preview.
+                    animatedFailure != null -> AvatarMedia.failureHeading(animatedFailure!!)
+                    videoMessage != null -> AvatarMedia.failureHeading(videoMessage!!)
+                    loadFailed -> "That image couldn't be opened."
+                    cropping -> "Drag the square to frame what will be visible."
+                    else -> "This is how your picture will look."
+                },
             )
-        },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = when {
-                        // Validation failures: a SHORT heading on top; the full
-                        // explanation lives once, inside the preview area.
-                        animatedFailure != null -> AvatarMedia.failureHeading(animatedFailure!!)
-                        videoMessage != null -> AvatarMedia.failureHeading(videoMessage!!)
-                        loadFailed -> "That image couldn't be opened."
-                        cropping -> "Pinch to zoom and drag to reposition. The circle shows what will be visible."
-                        else -> "This is how your picture will look."
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = NazoTextSecondary,
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(Modifier.height(16.dp))
-
-                AnimatedContent(
-                    targetState = stage,
-                    transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(120)) },
-                    label = "profile_preview",
-                ) { shown ->
-                    // AnimatedContent's scope is a Box, so the branches must
-                    // supply their own layout.
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        when (shown) {
-                            is PreviewStage.Rejected -> PreviewMessage(
-                                icon = true,
-                                text = shown.message,
-                            )
-
-                            PreviewStage.Failed -> PreviewMessage(
-                                icon = true,
-                                text = "We couldn't read that image.",
-                            )
-
-                            PreviewStage.Loading -> PreviewMessage(icon = false, text = "Loading…")
-
-                            PreviewStage.Cropping ->
-                                if (current != null && cropState != null) {
-                                    ProfileImageCropper(bitmap = current, state = cropState)
-                                }
-
-                            PreviewStage.Static ->
-                                if (current != null) SquarePreview(current)
-
-                            is PreviewStage.Animated -> AnimatedAvatarPreview(
-                                info = shown.info,
-                                source = source,
-                                playback = playback,
-                                onFailed = { message -> animatedFailure = message },
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            // One action bar instead of splitting buttons between
-            // confirmButton and dismissButton: AlertDialog lays those out as a
-            // FlowRow, so with three actions they wrapped and drifted around.
-            // Everything lives here, in a fixed order, and dismissButton is
-            // left unset.
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                NazoSecondaryButton(
-                    onClick = {
+            Spacer(Modifier.height(16.dp))
+            val actions: @Composable (Modifier) -> Unit = { modifier ->
+                ProfileImagePreviewActions(
+                    cropping = cropping,
+                    hasStaticImage = current != null,
+                    hasAnimatedMedia = animatedInfo != null,
+                    saving = saving,
+                    modifier = modifier,
+                    onSecondary = {
                         if (cropping) {
                             // Leave the crop step, keeping the image.
                             cropState?.reset()
@@ -313,45 +279,8 @@ fun ProfileImagePreviewDialog(
                             onDismiss()
                         }
                     },
-                    enabled = !saving,
-                    muted = true,
-                    // Weighted flank buttons + single-line labels: in a narrow
-                    // dialog the row used to crush "Accept" until its last
-                    // letter wrapped ("Accep\nt") and broke the row height.
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(if (cropping) "Back" else "Cancel", maxLines = 1)
-                }
-
-                if (!cropping && current != null) {
-                    Spacer(Modifier.width(4.dp))
-                    val cropInteraction = remember { MutableInteractionSource() }
-                    val cropShape = rememberNazoRoundedCornerMorphShape(
-                        interactionSource = cropInteraction,
-                        restingCorner = 16.dp,
-                        pressedCorner = 8.dp,
-                        enabled = !saving,
-                    )
-                    TextButton(
-                        onClick = { croppingSource = sourceKey },
-                        enabled = !saving,
-                        interactionSource = cropInteraction,
-                        modifier = Modifier.clip(cropShape),
-                    ) {
-                        Icon(
-                            Icons.Filled.Crop,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = NazoPrimary,
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text("Crop", color = NazoPrimary, maxLines = 1)
-                    }
-                }
-
-                Spacer(Modifier.width(8.dp))
-                NazoPrimaryButton(
-                    onClick = {
+                    onCrop = { croppingSource = sourceKey },
+                    onAccept = {
                         when {
                             cropping -> {
                                 val result = cropState?.cropToBitmap()
@@ -363,24 +292,173 @@ fun ProfileImagePreviewDialog(
                             else -> current?.let { accept(it, alreadySquare = false) }
                         }
                     },
-                    // Animated previews are ready to accept the moment the
-                    // probe succeeded (animatedInfo), independently of bitmap.
-                    enabled = (current != null || animatedInfo != null) && !saving,
-                    modifier = Modifier.weight(1f),
+                )
+            }
+            val preview: @Composable (Modifier) -> Unit = { modifier ->
+                ProfileImagePreviewContent(
+                    stage = stage,
+                    current = current,
+                    cropState = cropState,
+                    source = source,
+                    playback = playback,
+                    previewSize = previewSize,
+                    onAnimatedFailure = { message -> animatedFailure = message },
+                    modifier = modifier,
+                )
+            }
+
+            if (configuration.screenWidthDp > configuration.screenHeightDp) {
+                // Landscape uses the abundant horizontal room so the preview
+                // and actions stay together within the shorter sheet.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (saving) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = NazoOnPrimary,
-                        )
-                    } else {
-                        Text(if (cropping) "Done" else "Accept", maxLines = 1)
-                    }
+                    preview(Modifier.weight(0.42f))
+                    actions(Modifier.weight(0.58f))
+                }
+            } else {
+                preview(Modifier.fillMaxWidth())
+                Spacer(Modifier.height(16.dp))
+                actions(Modifier.fillMaxWidth())
+            }
+            Spacer(Modifier.height(6.dp))
+        }
+    }
+
+}
+
+@Composable
+private fun ProfileImagePreviewContent(
+    stage: PreviewStage,
+    current: Bitmap?,
+    cropState: CropState?,
+    source: ProfileImageSource,
+    playback: AvatarPlayback,
+    previewSize: Dp,
+    onAnimatedFailure: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AnimatedContent(
+        targetState = stage,
+        transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(120)) },
+        label = "profile_preview",
+        modifier = modifier,
+    ) { shown ->
+        // The preview is width-led in portrait, but height-capped in landscape
+        // so the controls remain nearby instead of following an oversized square.
+        Box(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier.size(previewSize),
+                contentAlignment = Alignment.Center,
+            ) {
+                when (shown) {
+                    is PreviewStage.Rejected -> PreviewMessage(
+                        icon = true,
+                        text = shown.message,
+                    )
+
+                    PreviewStage.Failed -> PreviewMessage(
+                        icon = true,
+                        text = "We couldn't read that image.",
+                    )
+
+                    PreviewStage.Loading -> PreviewMessage(icon = false, text = "Loading…")
+
+                    PreviewStage.Cropping ->
+                        if (current != null && cropState != null) {
+                            ProfileImageCropper(bitmap = current, state = cropState)
+                        }
+
+                    PreviewStage.Static ->
+                        if (current != null) SquarePreview(current)
+
+                    is PreviewStage.Animated -> AnimatedAvatarPreview(
+                        info = shown.info,
+                        source = source,
+                        playback = playback,
+                        onFailed = onAnimatedFailure,
+                    )
                 }
             }
-        },
-    )
+        }
+    }
+}
+
+@Composable
+private fun ProfileImagePreviewActions(
+    cropping: Boolean,
+    hasStaticImage: Boolean,
+    hasAnimatedMedia: Boolean,
+    saving: Boolean,
+    onSecondary: () -> Unit,
+    onCrop: () -> Unit,
+    onAccept: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // Keep one predictable action row in both orientations. Weighted edge
+    // actions protect the labels on narrow portrait windows.
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        NazoSecondaryButton(
+            onClick = onSecondary,
+            enabled = !saving,
+            muted = true,
+            modifier = Modifier.weight(1f),
+        ) {
+            Text(if (cropping) "Back" else "Cancel", maxLines = 1)
+        }
+
+        if (!cropping && hasStaticImage) {
+            Spacer(Modifier.width(4.dp))
+            val cropInteraction = remember { MutableInteractionSource() }
+            val cropShape = rememberNazoRoundedCornerMorphShape(
+                interactionSource = cropInteraction,
+                restingCorner = 16.dp,
+                pressedCorner = 8.dp,
+                enabled = !saving,
+            )
+            TextButton(
+                onClick = onCrop,
+                enabled = !saving,
+                interactionSource = cropInteraction,
+                modifier = Modifier.clip(cropShape),
+            ) {
+                Icon(
+                    Icons.Filled.Crop,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = NazoPrimary,
+                )
+                Spacer(Modifier.width(6.dp))
+                Text("Crop", color = NazoPrimary, maxLines = 1)
+            }
+        }
+
+        Spacer(Modifier.width(8.dp))
+        NazoPrimaryButton(
+            onClick = onAccept,
+            enabled = (hasStaticImage || hasAnimatedMedia) && !saving,
+            modifier = Modifier.weight(1f),
+        ) {
+            if (saving) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = NazoOnPrimary,
+                )
+            } else {
+                Text(if (cropping) "Done" else "Accept", maxLines = 1)
+            }
+        }
+    }
 }
 
 @Composable
@@ -403,7 +481,7 @@ private fun SquarePreview(bitmap: Bitmap) {
 }
 
 /**
- * Which preview the dialog is currently showing. Replaces the original
+ * Which preview the sheet is currently showing. Replaces the original
  * `Triple(hasBitmap, cropping, loadFailed)` so AnimatedContent can cross-fade
  * between static, crop, animated and the two distinct failure kinds.
  */
@@ -429,7 +507,7 @@ private fun ProfileImageSource.asUriString(): String = when (this) {
  * Square looping preview for an animated pick — muted looping video (letter-
  * boxed, matching the old full-size viewer's "show exactly what is saved"
  * semantics) or the animated image itself. The play icon underneath shows
- * until the first frame lands; a playback failure reports back so the dialog
+ * until the first frame lands; a playback failure reports back so the sheet
  * can swap to the rejection message.
  */
 @Composable

@@ -5,7 +5,7 @@ import quiz.thaton3app.nazo.ui.components.CoverBackgroundSheet
 import quiz.thaton3app.nazo.ui.components.TransitioningCoverArtwork
 import quiz.thaton3app.nazo.ui.components.ProfileCoverPreviewDialog
 import quiz.thaton3app.nazo.ui.components.ProfileCoverVideoPreviewDialog
-import quiz.thaton3app.nazo.ui.components.ProfileImagePreviewDialog
+import quiz.thaton3app.nazo.ui.components.ProfileImagePreviewSheet
 import quiz.thaton3app.nazo.data.profile.AutomaticCoverState
 import quiz.thaton3app.nazo.data.profile.AutomaticCoverStore
 import quiz.thaton3app.nazo.data.profile.CoverVisual
@@ -441,9 +441,9 @@ fun ProfileScreen(
 
     // The image being previewed/cropped, and the temp file behind it (URL only).
     // Retained so a rotation does not throw away an edit in progress. The draft
-    // FILE is now deleted here rather than from the dialog's onDispose, because
+    // FILE is now deleted here rather than from the sheet's onDispose, because
     // only this side can tell "the user backed out" (onDismiss) apart from "the
-    // layout swapped shape" (dispose) -- see ProfileImagePreviewDialog.
+    // layout swapped shape" (dispose) -- see ProfileImagePreviewSheet.
     var pendingSource by rememberRetained<ProfileImageSource?>("Profile.pendingSource") { null }
     var pendingDraft by rememberRetained<File?>("Profile.pendingDraft") { null }
 
@@ -460,7 +460,7 @@ fun ProfileScreen(
     // OpenDocument, which dropped the user into a file manager.
     //
     // ImageAndVideo (was ImageOnly) so animated avatars can be picked: the
-    // preview dialog sniffs the bytes and routes GIF/MP4 down the animated
+    // preview sheet sniffs the bytes and routes GIF/MP4 down the animated
     // path while photos keep the exact crop flow they have today. Unsupported
     // videos are rejected there with a specific message.
     val galleryLauncher = rememberLauncherForActivityResult(
@@ -1619,7 +1619,7 @@ fun ProfileScreen(
     // images arrive here already downloaded to a draft file.
     val activeSource = pendingSource
     if (activeSource != null) {
-        ProfileImagePreviewDialog(
+        ProfileImagePreviewSheet(
             source = activeSource,
             draftFile = pendingDraft,
             onDismiss = {
@@ -1629,7 +1629,7 @@ fun ProfileScreen(
                 pendingDraft = null
             },
             onAccepted = { savedUri ->
-                // The dialog already consumed and discarded the draft.
+                // The sheet already consumed and discarded the draft.
                 onProfilePictureChange(savedUri)
                 pendingSource = null
                 pendingDraft = null

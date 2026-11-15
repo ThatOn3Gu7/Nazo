@@ -52,7 +52,7 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 
 /**
  * Preview-then-accept step for a cover (banner) pick — the lean counterpart
- * to [ProfileImagePreviewDialog] for the agreed Phase-2 scope: gallery-only,
+ * to [ProfileImagePreviewSheet] for the agreed Phase-2 scope: gallery-only,
  * static-only, and NO crop tool. The frame renders at the exact banner
  * aspect ratio the Profile screen will use ([coverPreviewAspectRatio]) with
  * `ContentScale.Crop`, so Accept is WYSIWYG: what is framed here is what
