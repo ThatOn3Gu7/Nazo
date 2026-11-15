@@ -1,7 +1,9 @@
 package quiz.thaton3app.nazo.ui.screens
 
+import quiz.thaton3app.nazo.R
 import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -70,7 +72,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.res.painterResource
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -120,31 +124,39 @@ internal const val AI_PROVIDER_SAVE_BUTTON_HEIGHT_DP = 46
 private data class ProviderUiState(
     val id: String,
     val name: String,
-    val avatarLetter: String,
+    @DrawableRes val logoRes: Int,
+    val logoTint: Color? = null,
     val status: KeyStatus,
     val apiKey: String = "",
     val model: String = "",
     val models: List<ModelInfo> = emptyList(),
 )
 
+// Brand colors published with the corresponding marks. OpenCode stays
+// theme-adaptive because its official mark is monochrome black/white.
+private val GeminiBrand = Color(0xFF8E75B2)
+private val OpenRouterBrand = Color(0xFF94A3B8)
+
 // Clean initial empty state for all providers
 private fun defaultProviders() = listOf(
     ProviderUiState(
         id = "gemini",
         name = "Google Gemini",
-        avatarLetter = "G",
+        logoRes = R.drawable.ic_provider_gemini,
+        logoTint = GeminiBrand,
         status = KeyStatus.NOT_CONFIGURED,
     ),
     ProviderUiState(
         id = "openrouter",
         name = "OpenRouter",
-        avatarLetter = "R",
+        logoRes = R.drawable.ic_provider_openrouter,
+        logoTint = OpenRouterBrand,
         status = KeyStatus.NOT_CONFIGURED,
     ),
     ProviderUiState(
         id = "opencode",
         name = "OpenCode Zen",
-        avatarLetter = "Z",
+        logoRes = R.drawable.ic_provider_opencode,
         status = KeyStatus.NOT_CONFIGURED,
     ),
 )
@@ -376,18 +388,19 @@ private fun ProviderCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f),
             ) {
+                val logoTint = provider.logoTint ?: NazoTextPrimary
                 Box(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
-                        .background(NazoPillUnselected),
+                        .background(logoTint.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = provider.avatarLetter,
-                        color = NazoTextPrimary,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.bodyLarge,
+                    Icon(
+                        painter = painterResource(provider.logoRes),
+                        contentDescription = null,
+                        tint = logoTint,
+                        modifier = Modifier.size(24.dp),
                     )
                 }
                 Spacer(Modifier.width(14.dp))
