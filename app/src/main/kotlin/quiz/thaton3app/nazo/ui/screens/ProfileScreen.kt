@@ -6,6 +6,7 @@ import quiz.thaton3app.nazo.ui.components.TransitioningCoverArtwork
 import quiz.thaton3app.nazo.ui.components.ProfileCoverPreviewDialog
 import quiz.thaton3app.nazo.ui.components.ProfileCoverVideoPreviewDialog
 import quiz.thaton3app.nazo.ui.components.ProfileImagePreviewSheet
+import quiz.thaton3app.nazo.ui.components.ProfilePictureViewerSheet
 import quiz.thaton3app.nazo.data.profile.AutomaticCoverState
 import quiz.thaton3app.nazo.data.profile.AutomaticCoverStore
 import quiz.thaton3app.nazo.data.profile.CoverVisual
@@ -63,7 +64,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -74,7 +74,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.R
 import quiz.thaton3app.nazo.data.QuizStats
@@ -84,12 +83,9 @@ import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.data.profile.AvatarMedia
-import quiz.thaton3app.nazo.ui.components.AnimatedAvatarImage
-import quiz.thaton3app.nazo.ui.components.AvatarVideoView
 import quiz.thaton3app.nazo.ui.components.AvatarAnchorId
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
 import quiz.thaton3app.nazo.ui.components.SafeRemoteImage
-import quiz.thaton3app.nazo.ui.components.rememberAvatarPlayback
 import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.ui.theme.*
@@ -1134,127 +1130,13 @@ fun ProfileScreen(
         )
     }
 
-    // Press-and-hold preview of the avatar. The stored picture is already
-    // square, so ContentScale.Fit shows exactly what is saved -- including the
-    // edges the circular avatar crops off, which is the point of a preview.
-    // Sized off the SHORTER screen edge so it fits landscape as well as
-    // portrait. Tapping outside or pressing back closes it; nothing here can
-    // change the picture, it is a viewer only.
+    // Read-only, uncropped viewer for the currently saved avatar. It shares
+    // the same sheet presentation as the picker and edit preview.
     if (showAvatarPreview && !profilePictureUri.isNullOrBlank()) {
-        val uri = profilePictureUri.orEmpty()
-        val previewSize = (
-            minOf(configuration.screenWidthDp, configuration.screenHeightDp) * 0.62f
-            ).dp.coerceIn(160.dp, 320.dp)
-        // Animated avatars play in the viewer too: muted looping video
-        // (letterboxed — same "show exactly what is saved" semantics as the
-        // Fit image) or the GIF animating through Coil, both behind the same
-        // visibility/foreground gate as the circles.
-        val previewPlayback = rememberAvatarPlayback()
-        var previewVideoFailed by remember(uri) { mutableStateOf(false) }
-        Dialog(onDismissRequest = { showAvatarPreview = false }) {
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = NazoSurface,
-                modifier = Modifier.clip(RoundedCornerShape(24.dp)),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(previewSize)
-                        .onGloballyPositioned(previewPlayback::onPositioned),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    // Visible way out — the viewer previously closed only by
-                    // tapping outside or Back, which nothing advertised.
-                    val closeInteraction = remember { MutableInteractionSource() }
-                    val closeShape = rememberNazoPillCornerMorphShape(
-                        interactionSource = closeInteraction,
-                        pressedCornerPercent = 28f,
-                    )
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(8.dp)
-                            .size(32.dp)
-                            .clip(closeShape)
-                            .background(NazoSurfaceVariant, closeShape)
-                            .clickable(
-                                interactionSource = closeInteraction,
-                                indication = LocalIndication.current,
-                            ) { showAvatarPreview = false },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = "Close preview",
-                            tint = NazoTextPrimary,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                    when {
-                        uri.startsWith("emoji:") -> Text(
-                            text = uri.removePrefix("emoji:"),
-                            fontSize = (previewSize.value * 0.5f).sp,
-                            textAlign = TextAlign.Center,
-                        )
-
-                        AvatarMedia.displayKind(uri) == AvatarMedia.DisplayKind.Video ->
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                if (previewVideoFailed) {
-                                    Text(
-                                        "Couldn\u2019t load this picture",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = NazoTextSecondary,
-                                        textAlign = TextAlign.Center,
-                                    )
-                                } else {
-                                    AvatarVideoView(
-                                        uri = uri,
-                                        fit = true,
-                                        playback = previewPlayback,
-                                        modifier = Modifier.fillMaxSize(),
-                                        onFailed = { previewVideoFailed = true },
-                                    )
-                                }
-                            }
-
-                        else -> AnimatedAvatarImage(
-                            url = uri,
-                            contentDescription = "Profile picture preview",
-                            playback = previewPlayback,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Fit,
-                            placeholder = {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(28.dp),
-                                        strokeWidth = 2.dp,
-                                    )
-                                }
-                            },
-                            errorContent = {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        "Couldn\u2019t load this picture",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = NazoTextSecondary,
-                                        textAlign = TextAlign.Center,
-                                    )
-                                }
-                            },
-                        )
-                    }
-                }
-            }
-        }
+        ProfilePictureViewerSheet(
+            uri = profilePictureUri.orEmpty(),
+            onDismiss = { showAvatarPreview = false },
+        )
     }
 
     if (showPictureDialog) {
