@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  OpenCode brand mark. Vector path from Simple Icons 16.37.0 (CC0-1.0), sourced
+  from anomalyco/opencode packages/identity/mark.svg (MIT). Theme tint is applied
+  by the provider UI so the monochrome mark remains visible in light and dark mode.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M22 24H2V0h20zM17 4.8H7v14.4h10z" />
+</vector>
