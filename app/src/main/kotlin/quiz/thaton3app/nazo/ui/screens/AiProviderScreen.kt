@@ -217,11 +217,28 @@ fun AiProviderScreen(
         }
     }
 
+    fun saveChanges() {
+        providers.forEach { provider ->
+            apiKeyStore.saveKey(provider.id, provider.apiKey)
+            apiKeyStore.saveModel(provider.id, provider.model)
+            apiKeyStore.saveModels(provider.id, provider.models)
+        }
+        onSaved()
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
     ) {
+        ScreenHeader(
+            title = "AI & Model Configuration",
+            onBackClick = onBackClick,
+            onSaveClick = ::saveChanges,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 20.dp, top = 20.dp, end = 20.dp),
+        )
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -230,8 +247,6 @@ fun AiProviderScreen(
                 .navigationBarsPadding()
                 .padding(bottom = 12.dp)
         ) {
-            Spacer(Modifier.height(28.dp))
-            ScreenHeader(title = "AI & Model Configuration", onBackClick = onBackClick)
             Spacer(Modifier.height(20.dp))
             providers.forEachIndexed { index, provider ->
                 ProviderCard(
@@ -255,28 +270,27 @@ fun AiProviderScreen(
                 )
                 Spacer(Modifier.height(14.dp))
             }
-            Spacer(Modifier.height(6.dp))
-            SaveButton(onClick = {
-                providers.forEach { p ->
-                    apiKeyStore.saveKey(p.id, p.apiKey)
-                    apiKeyStore.saveModel(p.id, p.model)
-                    apiKeyStore.saveModels(p.id, p.models)
-                }
-                onSaved()
-            })
             Spacer(Modifier.height(16.dp))
         }
     }
 }
 
 @Composable
-private fun ScreenHeader(title: String, onBackClick: () -> Unit) {
+private fun ScreenHeader(
+    title: String,
+    onBackClick: () -> Unit,
+    onSaveClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val interactionSource = remember { MutableInteractionSource() }
     val shape = rememberNazoPillCornerMorphShape(
         interactionSource = interactionSource,
         pressedCornerPercent = 28f,
     )
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         IconButton(
             onClick = rememberHapticBack(onBackClick),
             interactionSource = interactionSource,
@@ -288,7 +302,15 @@ private fun ScreenHeader(title: String, onBackClick: () -> Unit) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NazoTextSecondary, modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(12.dp))
-        Text(text = title, style = MaterialTheme.typography.titleLarge, color = NazoTextPrimary)
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge,
+            color = NazoTextPrimary,
+            maxLines = 2,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(8.dp))
+        SaveButton(onClick = onSaveClick)
     }
 }
 
@@ -887,17 +909,13 @@ private fun ApiKeyField(value: String, onValueChange: (String) -> Unit) {
 
 @Composable
 private fun SaveButton(onClick: () -> Unit) {
-    // Shared primary-button shape/radius; the 56dp height keeps the screen's
-    // strong final action.
     NazoPrimaryButton(
         onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
     ) {
         Text(
-            text = "Save Changes",
-            style = MaterialTheme.typography.bodyLarge,
+            text = "SAVE",
+            style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold,
         )
     }
