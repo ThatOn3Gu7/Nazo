@@ -28,7 +28,6 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.MailOutline
 import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -58,6 +57,34 @@ import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoSurface
 import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
+
+internal data class LeadDeveloperProject(
+    val title: String,
+    val detail: String,
+)
+
+/** Current, non-archived highlights from https://github.com/ThatOn3Gu7. */
+internal val LEAD_DEVELOPER_PROJECTS = listOf(
+    LeadDeveloperProject(
+        title = "TwinPane",
+        detail = "A lightweight dual-pane terminal file manager for Android (Termux) and Linux.",
+    ),
+    LeadDeveloperProject(
+        title = "Shouze",
+        detail = "An offline-first anime and manga tracker for Android with two-way AniList " +
+            "sync. Search, track, and sync your library anywhere.",
+    ),
+    LeadDeveloperProject(
+        title = "ShakeIT",
+        detail = "A lightweight Android flashlight utility that lets you toggle the torch by " +
+            "shaking your phone.",
+    ),
+    LeadDeveloperProject(
+        title = "ghapk",
+        detail = "A LazyGit-style terminal UI for browsing GitHub Actions runs, viewing workflow " +
+            "YAMLs, auto-scoring, downloading, and installing APKs.",
+    ),
+)
 
 /**
  * Credits: the lead developer, then everyone else who contributed, then the
@@ -271,16 +298,12 @@ private fun LeadDeveloperCard(onOpenUrl: (String) -> Unit) {
                 color = NazoPrimary,
                 fontWeight = FontWeight.Bold,
             )
-            ProjectRow(
-                title = "ProjectR",
-                detail = "A modular Bash setup assistant that installs, inspects and backs " +
-                    "up 240+ tools across Linux, macOS and Termux.",
-            )
-            ProjectRow(
-                title = "UtilityKit",
-                detail = "65 standalone Bash utilities — files, network, git — behind one " +
-                    "interactive dashboard.",
-            )
+            LEAD_DEVELOPER_PROJECTS.forEach { project ->
+                ProjectRow(
+                    title = project.title,
+                    detail = project.detail,
+                )
+            }
         }
     }
 }
@@ -307,7 +330,7 @@ private fun AvatarMonogram() {
 private fun ProjectRow(title: String, detail: String) {
     Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
         Icon(
-            Icons.Filled.Terminal,
+            Icons.Filled.Code,
             contentDescription = null,
             tint = NazoPrimary,
             modifier = Modifier
