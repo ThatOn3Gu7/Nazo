@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.data.backup.BackupScheduler
 import quiz.thaton3app.nazo.data.settings.BackupPrefs
@@ -77,6 +78,11 @@ private sealed interface OpStatus {
     data class Done(override val label: String) : OpStatus
     data class Failed(override val label: String) : OpStatus
 }
+
+internal const val AUTO_BACKUP_READ_STATUS_MIN_MS = 2_000L
+
+internal fun remainingAutoBackupReadStatusMillis(elapsedMillis: Long): Long =
+    (AUTO_BACKUP_READ_STATUS_MIN_MS - elapsedMillis.coerceAtLeast(0L)).coerceAtLeast(0L)
 
 @Composable
 fun BackupRestoreScreen(
@@ -293,15 +299,27 @@ fun BackupRestoreScreen(
                         enabled = opStatus !is OpStatus.Busy,
                         onClick = {
                             scope.launch {
+                                val statusStartedAtNanos = System.nanoTime()
                                 opStatus = OpStatus.Busy("Reading auto-backup…")
                                 val contents = BackupRepository.inspectPath(context, autoBackupPath)
                                 if (contents != null) {
                                     restoreUri = null
                                     restoreFromAuto = true
                                     restorePreview = contents
+
+                                    // A small local backup can be parsed before the banner's
+                                    // entrance animation finishes, causing a confusing layout
+                                    // flicker. Keep successful reads visible long enough to be
+                                    // understood; genuinely slow reads add no artificial delay.
+                                    val elapsedMillis =
+                                        (System.nanoTime() - statusStartedAtNanos) / 1_000_000L
+                                    delay(remainingAutoBackupReadStatusMillis(elapsedMillis))
+
                                     opStatus = null
                                     showRestoreConfirm = true
                                 } else {
+                                    // Replacing Busy with Failed keeps the banner's space stable,
+                                    // so an invalid or missing backup does not need the delay.
                                     opStatus = OpStatus.Failed("No usable auto-backup yet")
                                 }
                             }
