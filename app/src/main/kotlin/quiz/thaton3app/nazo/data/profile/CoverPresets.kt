@@ -31,8 +31,8 @@ enum class CoverPresetKind {
 }
 
 /**
- * Rendering personality for procedural gradient covers. RIBBONS is the
- * original renderer and remains the default for the four shipped presets.
+ * Rendering personality for procedural gradient covers. RIBBONS remains the
+ * baseline style; OCEAN_SWELL powers the currently available animated preset.
  */
 enum class CoverGradientStyle {
     RIBBONS,
@@ -157,42 +157,7 @@ object CoverPresets {
         ),
 
         // --- Animated gradients (procedural, lifecycle-aware rendering) ---
-        // Four stops each, dark → light: the renderer interpolates
-        // continuously around this ring (never indexes it discretely).
-        CoverPreset(
-            id = "gradient_aurora",
-            kind = CoverPresetKind.GRADIENT,
-            label = "Aurora",
-            gradientColors = listOf(0x0A1A2F, 0x1FA97A, 0x2ED8C0, 0x8FF3E4),
-            gradientSpeed = 0.9f,
-            gradientSeed = 0,
-        ),
-        CoverPreset(
-            id = "gradient_sunset",
-            kind = CoverPresetKind.GRADIENT,
-            label = "Sunset",
-            gradientColors = listOf(0x2A0F3F, 0xC1386B, 0xF07B54, 0xF7C56A),
-            gradientSpeed = 1.0f,
-            gradientSeed = 1,
-        ),
-        CoverPreset(
-            id = "gradient_tides",
-            kind = CoverPresetKind.GRADIENT,
-            label = "Tides",
-            gradientColors = listOf(0x07203B, 0x1573A8, 0x3FC3D8, 0x9BEAF4),
-            gradientSpeed = 0.8f,
-            gradientSeed = 2,
-        ),
-        CoverPreset(
-            id = "gradient_grove",
-            kind = CoverPresetKind.GRADIENT,
-            label = "Grove",
-            gradientColors = listOf(0x0A1F14, 0x147A4E, 0x2FBF87, 0xA8F0CF),
-            gradientSpeed = 1.1f,
-            gradientSeed = 3,
-        ),
-
-        // The sole additional animation: deep-blue, flowing snake-like waves.
+        // The sole current animation: deep-blue, flowing snake-like waves.
         CoverPreset(
             id = "gradient_ocean_current",
             kind = CoverPresetKind.GRADIENT,

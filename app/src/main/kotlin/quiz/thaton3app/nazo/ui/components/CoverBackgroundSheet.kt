@@ -145,19 +145,6 @@ internal fun CoverBackgroundSheet(
             )
             Spacer(Modifier.height(16.dp))
 
-            // --- AUTOMATIC --------------------------------------------------
-            SheetSectionLabel("AUTOMATIC")
-            AutomaticCoverTile(
-                state = automaticState,
-                selected = automaticEnabled,
-                bannerRatio = bannerRatio,
-                onClick = {
-                    Haptics.soft(context)
-                    onSelectAutomatic()
-                },
-            )
-            Spacer(Modifier.height(16.dp))
-
             // --- YOUR MEDIA -------------------------------------------------
             // The stored app-owned photo/video remains one first-class option,
             // even while a preset is active. Replacement actions are explicit
@@ -276,6 +263,21 @@ internal fun CoverBackgroundSheet(
                     },
                 )
             }
+
+            // --- AUTOMATIC --------------------------------------------------
+            // Manual media stays first because it is the most direct action;
+            // automatic matching follows as an alternative derived from the avatar.
+            Spacer(Modifier.height(16.dp))
+            SheetSectionLabel("AUTOMATIC")
+            AutomaticCoverTile(
+                state = automaticState,
+                selected = automaticEnabled,
+                bannerRatio = bannerRatio,
+                onClick = {
+                    Haptics.soft(context)
+                    onSelectAutomatic()
+                },
+            )
 
             // --- BUILT-IN PHOTOS --------------------------------------------
             Spacer(Modifier.height(16.dp))
