@@ -38,8 +38,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberOverscrollEffect
 import androidx.compose.foundation.rememberScrollState
@@ -77,7 +75,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import kotlin.random.Random
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.R
 import quiz.thaton3app.nazo.data.QuizStats
@@ -347,7 +344,7 @@ private fun CoverEditButton(onClick: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
     username: String,
@@ -1261,308 +1258,36 @@ fun ProfileScreen(
     }
 
     if (showPictureDialog) {
-        var avatarTab by remember { mutableStateOf(0) }
-        var nonce by remember { mutableStateOf("") }
-        var dynamicResults by remember {
-            mutableStateOf<Map<DynamicAvatarSource, AvatarSourceResult>>(emptyMap())
-        }
-        var loadingSource by remember { mutableStateOf<DynamicAvatarSource?>(null) }
-
-        val staticTabs = remember(nonce) { AvatarPickerSources.staticCategories(nonce) }
-        val tabs = staticTabs + AvatarPickerSources.dynamicSources.map { source ->
-            source.tabTitle to (dynamicResults[source]?.items ?: emptyList())
-        }
-        val safeTab = avatarTab.coerceIn(0, tabs.lastIndex)
-        val selectedDynamicSource = AvatarPickerSources.sourceForTab(safeTab, staticTabs.size)
-        val selectedDynamicResult = selectedDynamicSource?.let(dynamicResults::get)
-        val loadingDynamic = loadingSource != null
-
-        fun refreshAvatars() {
-            nonce = Random.nextLong(100_000, 999_999).toString()
-            selectedDynamicSource?.let { source ->
-                dynamicResults = dynamicResults - source
-            }
-        }
-
-        // Privacy: opening the picker (Emoji is the default tab) performs no
-        // network requests. Each remote API is contacted only when the player
-        // deliberately opens that source's tab, and one unavailable source
-        // does not delay or remove any of the others.
-        LaunchedEffect(selectedDynamicSource, nonce) {
-            val source = selectedDynamicSource ?: return@LaunchedEffect
-            if (dynamicResults[source] != null) return@LaunchedEffect
-            loadingSource = source
-            try {
-                dynamicResults = dynamicResults + (source to AvatarPickerSources.fetch(source))
-            } finally {
-                if (loadingSource == source) loadingSource = null
-            }
-        }
-
-        // LANDSCAPE SPACING ONLY -- portrait is untouched.
-        //
-        // A landscape phone gives this dialog roughly 330dp of height, but the
-        // portrait layout asks for about 500dp (title, description, tab row,
-        // the two spacers, a fixed 260dp avatar grid and the action row). The
-        // AlertDialog text slot is the only flexible part, so it absorbed the
-        // whole overflow: the grid collapsed to well under one row of avatars
-        // and the whole thing bunched up against the buttons.
-        //
-        // Fix: in landscape the CONTENT scrolls as a whole and the grid drops
-        // its fixed cap, so nothing has to be squeezed to fit and every control
-        // keeps its natural size. Portrait keeps the original behaviour (header
-        // and tabs pinned, only the grid scrolls) -- the two scrollers are
-        // mutually exclusive, so they can never fight.
-        val contentScroll = rememberScrollState()
-        val gridScroll = rememberScrollState()
-
-        AlertDialog(
-            onDismissRequest = { showPictureDialog = false },
-            title = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Change profile picture", modifier = Modifier.weight(1f))
-                    val refreshInteraction = remember { MutableInteractionSource() }
-                    val refreshShape = rememberNazoPillCornerMorphShape(
-                        interactionSource = refreshInteraction,
-                        pressedCornerPercent = 28f,
-                    )
-                    IconButton(
-                        onClick = { refreshAvatars() },
-                        interactionSource = refreshInteraction,
-                        modifier = Modifier.clip(refreshShape),
-                    ) {
-                        if (loadingDynamic) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Filled.Refresh,
-                                contentDescription = "Refresh pictures"
-                            )
-                        }
-                    }
-                }
+        ProfilePictureSheet(
+            hasCurrentPicture = !profilePictureUri.isNullOrBlank(),
+            onDismiss = { showPictureDialog = false },
+            onSelectPreset = { value ->
+                onProfilePictureChange(value)
+                showPictureDialog = false
             },
-            text = {
-                // The header and tabs stay put; only the avatar grid scrolls.
-                // Nesting a scroller inside a scrolling Column would make the
-                // two fight, so the outer Column must NOT scroll.
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .then(
-                            if (isLandscape) Modifier.verticalScroll(contentScroll)
-                            else Modifier
-                        )
-                ) {
-                    Text(
-                        "Pick a default avatar, or upload your own photo, GIF or video. Tap refresh for a new batch.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = NazoTextSecondary
-                    )
-                    Spacer(Modifier.height(if (isLandscape) 12.dp else 16.dp))
-                    PrimaryScrollableTabRow(
-                        selectedTabIndex = safeTab,
-                        containerColor = Color.Transparent,
-                        edgePadding = 8.dp,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        tabs.forEachIndexed { index, (name, _) ->
-                            Tab(
-                                selected = safeTab == index,
-                                onClick = { avatarTab = index },
-                                text = { Text(name, style = MaterialTheme.typography.labelLarge) }
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(if (isLandscape) 16.dp else 24.dp))
-                    // Some categories (Anime, Pixel) return far more presets
-                    // than the others, which stretched the dialog to the full
-                    // screen height. Capping it keeps every tab the same size
-                    // and lets the long ones scroll in place.
-                    FlowRow(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .then(
-                                if (isLandscape) Modifier
-                                else Modifier
-                                    .heightIn(max = 260.dp)
-                                    .verticalScroll(gridScroll)
-                            ),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        tabs[safeTab].second.forEach { preset ->
-                            val presetKey = when (preset) {
-                                is AvatarPreset.Emoji -> "emoji:${preset.symbol}"
-                                is AvatarPreset.Generated -> preset.url
-                            }
-                            key(presetKey) {
-                                val presetInteraction = remember { MutableInteractionSource() }
-                                val presetShape = rememberNazoPillCornerMorphShape(
-                                    interactionSource = presetInteraction,
-                                    pressedCornerPercent = 28f,
-                                )
-                                Surface(
-                                    modifier = Modifier
-                                        .padding(horizontal = 8.dp)
-                                        .size(64.dp)
-                                        .clip(presetShape)
-                                        .clickable(
-                                            interactionSource = presetInteraction,
-                                            indication = LocalIndication.current,
-                                        ) {
-                                            val value = when (preset) {
-                                                is AvatarPreset.Emoji -> "emoji:${preset.symbol}"
-                                                is AvatarPreset.Generated -> preset.url
-                                            }
-                                            onProfilePictureChange(value)
-                                            showPictureDialog = false
-                                        },
-                                    color = NazoSurfaceVariant,
-                                    shape = presetShape
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        when (preset) {
-                                            is AvatarPreset.Emoji -> Text(
-                                                text = preset.symbol,
-                                                style = MaterialTheme.typography.headlineMedium
-                                            )
-                                            is AvatarPreset.Generated -> SafeRemoteImage(
-                                                url = preset.url,
-                                                contentDescription = null,
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentScale = ContentScale.Crop,
-                                                placeholder = {
-                                                    Box(
-                                                        modifier = Modifier.fillMaxSize(),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        CircularProgressIndicator(
-                                                            modifier = Modifier.size(20.dp),
-                                                            strokeWidth = 2.dp
-                                                        )
-                                                    }
-                                                },
-                                                errorContent = {
-                                                    Box(
-                                                        modifier = Modifier.fillMaxSize(),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Filled.Refresh,
-                                                            contentDescription = null,
-                                                            modifier = Modifier.size(20.dp),
-                                                            tint = NazoTextSecondary
-                                                        )
-                                                    }
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (loadingDynamic && selectedDynamicSource == loadingSource) {
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            "Loading ${selectedDynamicSource?.tabTitle?.lowercase() ?: "avatars"}…",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = NazoTextSecondary,
-                        )
-                    } else if (selectedDynamicResult?.unavailable == true) {
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            "This avatar source is unavailable right now. Try refresh or choose another tab.",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = NazoTextSecondary,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    if (!profilePictureUri.isNullOrBlank()) {
-                        Spacer(Modifier.height(12.dp))
-                        // The full-size viewer used to be reachable only by an
-                        // undisclosed press-and-hold; this is its visible route.
-                        val viewInteraction = remember { MutableInteractionSource() }
-                        val viewShape = rememberNazoRoundedCornerMorphShape(
-                            interactionSource = viewInteraction,
-                            restingCorner = 16.dp,
-                            pressedCorner = 8.dp,
-                        )
-                        TextButton(
-                            onClick = {
-                                showPictureDialog = false
-                                showAvatarPreview = true
-                            },
-                            interactionSource = viewInteraction,
-                            modifier = Modifier.fillMaxWidth().clip(viewShape),
-                        ) {
-                            Text("View current picture full size", color = NazoPrimary)
-                        }
-                    }
-                }
+            onViewCurrent = {
+                showPictureDialog = false
+                showAvatarPreview = true
             },
-            confirmButton = {
-                // One row of equal-width actions rather than a FlowRow that
-                // wrapped Remove onto its own line. Each source button is
-                // outlined; Remove is a filled red container so a destructive
-                // action reads as destructive.
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    NazoSecondaryButton(
-                        onClick = {
-                            showPictureDialog = false
-                            showUrlDialog = true
-                        },
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
-                    ) {
-                        Text("URL", maxLines = 1)
-                    }
-
-                    NazoSecondaryButton(
-                        onClick = {
-                            showPictureDialog = false
-                            galleryLauncher.launch(
-                                PickVisualMediaRequest(
-                                    // Videos included so MP4 avatars can be
-                                    // picked; the preview dialog validates the
-                                    // bytes and rejects anything unsupported.
-                                    ActivityResultContracts.PickVisualMedia.ImageAndVideo
-                                )
-                            )
-                        },
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
-                    ) {
-                        Text("Gallery", maxLines = 1)
-                    }
-
-                    if (!profilePictureUri.isNullOrBlank()) {
-                        NazoDangerButton(
-                            onClick = {
-                                // Destructive from here (a custom photo must be
-                                // re-added by hand) — one confirmation first.
-                                showRemoveConfirm = true
-                            },
-                            modifier = Modifier.weight(1f),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
-                        ) {
-                            Text("Remove", maxLines = 1)
-                        }
-                    }
-                }
-            }
+            onOpenUrl = {
+                showPictureDialog = false
+                showUrlDialog = true
+            },
+            onOpenGallery = {
+                showPictureDialog = false
+                galleryLauncher.launch(
+                    PickVisualMediaRequest(
+                        // Images, GIFs and MP4 avatars still share the existing
+                        // validation/preview flow after the system picker.
+                        ActivityResultContracts.PickVisualMedia.ImageAndVideo
+                    )
+                )
+            },
+            onRemove = {
+                // Keep the sheet mounted behind the destructive confirmation;
+                // Cancel therefore returns to the same picker state.
+                showRemoveConfirm = true
+            },
         )
     }
 
