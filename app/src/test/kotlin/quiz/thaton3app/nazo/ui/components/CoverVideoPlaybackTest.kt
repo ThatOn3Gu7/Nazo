@@ -1,5 +1,6 @@
 package quiz.thaton3app.nazo.ui.components
 
+import quiz.thaton3app.nazo.data.profile.CoverPresetKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -54,6 +55,14 @@ class CoverVideoPlaybackTest {
                 activeSequence = 1,
             )
         )
+    }
+
+    @Test
+    fun selectorOnlyPlaysTheSelectedVideoPreset() {
+        assertTrue(coverPresetVideoShouldPlay(CoverPresetKind.VIDEO, selected = true))
+        assertFalse(coverPresetVideoShouldPlay(CoverPresetKind.VIDEO, selected = false))
+        assertFalse(coverPresetVideoShouldPlay(CoverPresetKind.IMAGE, selected = true))
+        assertFalse(coverPresetVideoShouldPlay(CoverPresetKind.GRADIENT, selected = true))
     }
 
     @Test

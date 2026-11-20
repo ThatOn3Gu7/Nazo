@@ -26,43 +26,70 @@ class CoverPresetsTest {
             "photo_petal", "photo_geometry", "photo_dunes",
             "photo_forest", "photo_glacier", "photo_reef", "photo_cosmic",
             "photo_lavender", "photo_foliage", "photo_ice", "photo_coast",
-            "gradient_ocean_current",
+            "gradient_static_emerald_tide", "gradient_static_frosted_blush",
+            "gradient_static_golden_hour", "gradient_ocean_current",
+            "gradient_video_blue_sky", "gradient_video_emerald_night",
+            "gradient_video_glassy_wisteria", "gradient_video_flower_god",
+            "gradient_video_itachi", "gradient_video_leaf_ninja",
+            "gradient_video_otaku", "gradient_video_soul_king",
+            "gradient_video_untitled_blend", "gradient_video_wang",
         )))
     }
 
     @Test
-    fun collectionsAreSplitByKind() {
+    fun collectionsAreSplitByPresentationGroupAndMediaKind() {
         assertEquals(14, CoverPresets.IMAGES.size)
-        assertEquals(1, CoverPresets.GRADIENTS.size)
-        assertEquals(CoverPresets.ALL.size, CoverPresets.IMAGES.size + CoverPresets.GRADIENTS.size)
+        assertEquals(3, CoverPresets.STATIC_GRADIENTS.size)
+        assertEquals(11, CoverPresets.GRADIENTS.size)
+        assertEquals(
+            CoverPresets.ALL.size,
+            CoverPresets.IMAGES.size +
+                CoverPresets.STATIC_GRADIENTS.size + CoverPresets.GRADIENTS.size,
+        )
         CoverPresets.IMAGES.forEach { preset ->
+            assertEquals(CoverPresetCollection.PHOTO, preset.collection)
             assertEquals(CoverPresetKind.IMAGE, preset.kind)
             assertNotEquals(0, preset.imageRes)
+        }
+        CoverPresets.STATIC_GRADIENTS.forEach { preset ->
+            assertEquals(CoverPresetCollection.STATIC_GRADIENT, preset.collection)
+            assertEquals(CoverPresetKind.IMAGE, preset.kind)
+            assertNotEquals(0, preset.imageRes)
+            assertNotEquals(0, preset.thumbnailRes)
+            assertEquals(0, preset.videoRes)
+        }
+
+        val procedural = CoverPresets.GRADIENTS.filter { it.kind == CoverPresetKind.GRADIENT }
+        val videos = CoverPresets.GRADIENTS.filter { it.kind == CoverPresetKind.VIDEO }
+        assertEquals(1, procedural.size)
+        assertEquals(10, videos.size)
+        videos.forEach { preset ->
+            assertEquals(CoverPresetCollection.ANIMATED_GRADIENT, preset.collection)
+            assertNotEquals(0, preset.videoRes)
+            assertNotEquals(0, preset.thumbnailRes)
+            assertEquals(0, preset.imageRes)
             assertTrue(preset.gradientColors.isEmpty())
             assertTrue(preset.label.isNotBlank())
         }
-        CoverPresets.GRADIENTS.forEach { preset ->
-            assertEquals(CoverPresetKind.GRADIENT, preset.kind)
+
+        procedural.forEach { preset ->
             assertEquals(0, preset.imageRes)
-            // A gradient needs at least three stops to sweep through…
+            assertEquals(0, preset.videoRes)
+            // A procedural gradient needs at least three stops to sweep through…
             assertTrue("gradient ${preset.id} needs ≥3 colors", preset.gradientColors.size >= 3)
             // …and every stop is an opaque 0xRRGGBB value.
             preset.gradientColors.forEach { argb ->
                 assertTrue("color out of RGB range in ${preset.id}", argb in 0x0L..0xFFFFFFL)
             }
-            // Dark first: every renderer starts from a deep base and builds
-            // toward its luminous highlight.
             val luminance = { argb: Long ->
                 0.299 * ((argb shr 16) and 0xFF) +
                     0.587 * ((argb shr 8) and 0xFF) +
                     0.114 * (argb and 0xFF)
             }
-            val first = luminance(preset.gradientColors.first())
-            val last = luminance(preset.gradientColors.last())
             assertTrue(
-                "gradient ${preset.id} should start darker than it ends " +
-                    "($first ≥ $last)",
-                first < last,
+                "gradient ${preset.id} should start darker than it ends",
+                luminance(preset.gradientColors.first()) <
+                    luminance(preset.gradientColors.last()),
             )
             assertTrue("speed must be positive for ${preset.id}", preset.gradientSpeed > 0f)
         }
@@ -73,17 +100,61 @@ class CoverPresetsTest {
         val expected = mapOf(
             "gradient_ocean_current" to listOf(0x04182DL, 0x0B527FL, 0x20AFC2L, 0xB1F6EFL),
         )
-        assertEquals(expected.keys, CoverPresets.GRADIENTS.map { it.id }.toSet())
-        CoverPresets.GRADIENTS.forEach { preset ->
+        val procedural = CoverPresets.GRADIENTS.filter {
+            it.kind == CoverPresetKind.GRADIENT
+        }
+        assertEquals(expected.keys, procedural.map { it.id }.toSet())
+        procedural.forEach { preset ->
             assertEquals("palette for ${preset.id}", expected[preset.id], preset.gradientColors)
         }
     }
 
     @Test
     fun oceanCurrentUsesTheOceanRenderer() {
-        val preset = CoverPresets.GRADIENTS.single()
+        val preset = CoverPresets.GRADIENTS.single {
+            it.kind == CoverPresetKind.GRADIENT
+        }
         assertEquals("gradient_ocean_current", preset.id)
         assertEquals(CoverGradientStyle.OCEAN_SWELL, preset.gradientStyle)
+    }
+
+    @Test
+    fun allThirteenNazoAssetsGradientsAreAccountedForWithoutDuplicates() {
+        val imported = CoverPresets.STATIC_GRADIENTS + CoverPresets.GRADIENTS.filter {
+            it.kind == CoverPresetKind.VIDEO
+        }
+        val expectedIds = setOf(
+            "gradient_static_emerald_tide",
+            "gradient_static_frosted_blush",
+            "gradient_static_golden_hour",
+            "gradient_video_blue_sky",
+            "gradient_video_emerald_night",
+            "gradient_video_glassy_wisteria",
+            "gradient_video_flower_god",
+            "gradient_video_itachi",
+            "gradient_video_leaf_ninja",
+            "gradient_video_otaku",
+            "gradient_video_soul_king",
+            "gradient_video_untitled_blend",
+            "gradient_video_wang",
+        )
+        assertEquals(expectedIds, imported.map { it.id }.toSet())
+        assertEquals(13, imported.size)
+        assertEquals(imported.size, imported.map { it.label }.toSet().size)
+
+        CoverPresets.STATIC_GRADIENTS.forEach { preset ->
+            assertNull(preset.videoUri("quiz.thaton3app.nazo"))
+        }
+
+        val videos = imported.filter { it.kind == CoverPresetKind.VIDEO }
+        assertEquals(videos.size, videos.map { it.videoRes }.toSet().size)
+        assertEquals(videos.size, videos.map { it.thumbnailRes }.toSet().size)
+        videos.forEach { preset ->
+            assertEquals(
+                "android.resource://quiz.thaton3app.nazo/${preset.videoRes}",
+                preset.videoUri("quiz.thaton3app.nazo"),
+            )
+        }
     }
 
     @Test
@@ -105,6 +176,18 @@ class CoverPresetsTest {
         val visual = resolveCoverVisual(galleryUri = "file:///covers/mine.jpg", presetId = "photo_ocean")
         assertTrue(visual is CoverVisual.Preset)
         assertEquals("photo_ocean", (visual as CoverVisual.Preset).preset.id)
+    }
+
+    @Test
+    fun bundledVideoGradientResolvesWithoutConsumingCustomMedia() {
+        val visual = resolveCoverVisual(
+            galleryUri = "file:///covers/mine.jpg",
+            presetId = "gradient_video_blue_sky",
+        )
+        assertTrue(visual is CoverVisual.Preset)
+        visual as CoverVisual.Preset
+        assertEquals(CoverPresetKind.VIDEO, visual.preset.kind)
+        assertTrue(visual.preset.videoUri("quiz.thaton3app.nazo")!!.startsWith("android.resource://"))
     }
 
     @Test

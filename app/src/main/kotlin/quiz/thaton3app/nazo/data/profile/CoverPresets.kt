@@ -1,6 +1,7 @@
 package quiz.thaton3app.nazo.data.profile
 
 import androidx.annotation.DrawableRes
+import androidx.annotation.RawRes
 import quiz.thaton3app.nazo.R
 
 /**
@@ -26,8 +27,15 @@ enum class CoverPresetKind {
     /** A premade animated gradient drawn procedurally (no bitmaps, no video). */
     GRADIENT,
 
-    // A future bundled-video collection would add VIDEO here; custom videos
-    // are CoverVisual.Video and therefore do not alter the preset registry.
+    /** A bundled, muted looping MP4 rendered by the shared cover video host. */
+    VIDEO,
+}
+
+/** Which visual group owns a preset in the cover-selection sheet. */
+enum class CoverPresetCollection {
+    PHOTO,
+    STATIC_GRADIENT,
+    ANIMATED_GRADIENT,
 }
 
 /**
@@ -44,7 +52,10 @@ enum class CoverGradientStyle {
  *
  * @param id stable persisted key (e.g. `"photo_aurora"`).
  * @param label user-facing name shown in the selection sheet.
+ * @param collection visual group in the cover-selection sheet.
  * @param imageRes drawable resource for [CoverPresetKind.IMAGE]; 0 otherwise.
+ * @param videoRes raw MP4 resource for [CoverPresetKind.VIDEO]; 0 otherwise.
+ * @param thumbnailRes optional lightweight selector preview; 0 uses [imageRes].
  * @param gradientColors opaque `0xRRGGBB` stops for [CoverPresetKind.GRADIENT]
  *   (2+ colors, dark → light for the drifting glow to pick from); 0 otherwise.
  * @param gradientSpeed relative animation pace; 1f is the base slow drift.
@@ -55,12 +66,24 @@ data class CoverPreset(
     val id: String,
     val kind: CoverPresetKind,
     val label: String,
+    val collection: CoverPresetCollection = when (kind) {
+        CoverPresetKind.IMAGE -> CoverPresetCollection.PHOTO
+        CoverPresetKind.GRADIENT,
+        CoverPresetKind.VIDEO -> CoverPresetCollection.ANIMATED_GRADIENT
+    },
     @DrawableRes val imageRes: Int = 0,
+    @RawRes val videoRes: Int = 0,
+    @DrawableRes val thumbnailRes: Int = 0,
     val gradientColors: List<Long> = emptyList(),
     val gradientSpeed: Float = 1f,
     val gradientSeed: Int = 0,
     val gradientStyle: CoverGradientStyle = CoverGradientStyle.RIBBONS,
 )
+
+/** Android resource URI consumed by MediaPlayer/MediaMetadataRetriever. */
+internal fun CoverPreset.videoUri(packageName: String): String? =
+    videoRes.takeIf { kind == CoverPresetKind.VIDEO && it != 0 }
+        ?.let { resourceId -> "android.resource://$packageName/$resourceId" }
 
 /** The bundled collections, in sheet display order. */
 object CoverPresets {
@@ -156,6 +179,32 @@ object CoverPresets {
             imageRes = R.drawable.cover_preset_coast,
         ),
 
+        // --- Static gradient artwork from Nazo-Assets ---------------------
+        CoverPreset(
+            id = "gradient_static_emerald_tide",
+            kind = CoverPresetKind.IMAGE,
+            label = "Emerald Tide",
+            collection = CoverPresetCollection.STATIC_GRADIENT,
+            imageRes = R.drawable.cover_gradient_emerald_tide,
+            thumbnailRes = R.drawable.cover_gradient_emerald_tide_thumb,
+        ),
+        CoverPreset(
+            id = "gradient_static_frosted_blush",
+            kind = CoverPresetKind.IMAGE,
+            label = "Frosted Blush",
+            collection = CoverPresetCollection.STATIC_GRADIENT,
+            imageRes = R.drawable.cover_gradient_frosted_blush,
+            thumbnailRes = R.drawable.cover_gradient_frosted_blush_thumb,
+        ),
+        CoverPreset(
+            id = "gradient_static_golden_hour",
+            kind = CoverPresetKind.IMAGE,
+            label = "Golden Hour",
+            collection = CoverPresetCollection.STATIC_GRADIENT,
+            imageRes = R.drawable.cover_gradient_golden_hour,
+            thumbnailRes = R.drawable.cover_gradient_golden_hour_thumb,
+        ),
+
         // --- Animated gradients (procedural, lifecycle-aware rendering) ---
         // The sole current animation: deep-blue, flowing snake-like waves.
         CoverPreset(
@@ -167,13 +216,95 @@ object CoverPresets {
             gradientSeed = 5,
             gradientStyle = CoverGradientStyle.OCEAN_SWELL,
         ),
+
+        // Nazo-Assets MP4 loops. Static thumbnails keep the selector cheap;
+        // only the selected tile and the real banner request a live decoder.
+        CoverPreset(
+            id = "gradient_video_blue_sky",
+            kind = CoverPresetKind.VIDEO,
+            label = "Blue Sky",
+            videoRes = R.raw.cover_gradient_blue_sky,
+            thumbnailRes = R.drawable.cover_gradient_blue_sky_thumb,
+        ),
+        CoverPreset(
+            id = "gradient_video_emerald_night",
+            kind = CoverPresetKind.VIDEO,
+            label = "Emerald Night",
+            videoRes = R.raw.cover_gradient_emerald_night,
+            thumbnailRes = R.drawable.cover_gradient_emerald_night_thumb,
+        ),
+        CoverPreset(
+            id = "gradient_video_glassy_wisteria",
+            kind = CoverPresetKind.VIDEO,
+            label = "Glassy Wisteria",
+            videoRes = R.raw.cover_gradient_glassy_wisteria,
+            thumbnailRes = R.drawable.cover_gradient_glassy_wisteria_thumb,
+        ),
+        CoverPreset(
+            id = "gradient_video_flower_god",
+            kind = CoverPresetKind.VIDEO,
+            label = "Flower God",
+            videoRes = R.raw.cover_gradient_flower_god,
+            thumbnailRes = R.drawable.cover_gradient_flower_god_thumb,
+        ),
+        CoverPreset(
+            id = "gradient_video_itachi",
+            kind = CoverPresetKind.VIDEO,
+            label = "Itachi",
+            videoRes = R.raw.cover_gradient_itachi,
+            thumbnailRes = R.drawable.cover_gradient_itachi_thumb,
+        ),
+        CoverPreset(
+            id = "gradient_video_leaf_ninja",
+            kind = CoverPresetKind.VIDEO,
+            label = "Leaf Ninja",
+            videoRes = R.raw.cover_gradient_leaf_ninja,
+            thumbnailRes = R.drawable.cover_gradient_leaf_ninja_thumb,
+        ),
+        CoverPreset(
+            id = "gradient_video_otaku",
+            kind = CoverPresetKind.VIDEO,
+            label = "Otaku",
+            videoRes = R.raw.cover_gradient_otaku,
+            thumbnailRes = R.drawable.cover_gradient_otaku_thumb,
+        ),
+        CoverPreset(
+            id = "gradient_video_soul_king",
+            kind = CoverPresetKind.VIDEO,
+            label = "Soul King",
+            videoRes = R.raw.cover_gradient_soul_king,
+            thumbnailRes = R.drawable.cover_gradient_soul_king_thumb,
+        ),
+        CoverPreset(
+            id = "gradient_video_untitled_blend",
+            kind = CoverPresetKind.VIDEO,
+            label = "Untitled Blend",
+            videoRes = R.raw.cover_gradient_untitled_blend,
+            thumbnailRes = R.drawable.cover_gradient_untitled_blend_thumb,
+        ),
+        CoverPreset(
+            id = "gradient_video_wang",
+            kind = CoverPresetKind.VIDEO,
+            label = "King (王)",
+            videoRes = R.raw.cover_gradient_wang,
+            thumbnailRes = R.drawable.cover_gradient_wang_thumb,
+        ),
     )
 
-    /** Static photo presets, in sheet order. */
-    val IMAGES: List<CoverPreset> = ALL.filter { it.kind == CoverPresetKind.IMAGE }
+    /** Bundled static-photo presets, in sheet order. */
+    val IMAGES: List<CoverPreset> = ALL.filter {
+        it.collection == CoverPresetCollection.PHOTO
+    }
 
-    /** Animated gradient presets, in sheet order. */
-    val GRADIENTS: List<CoverPreset> = ALL.filter { it.kind == CoverPresetKind.GRADIENT }
+    /** Bundled static-gradient JPEGs, in sheet order. */
+    val STATIC_GRADIENTS: List<CoverPreset> = ALL.filter {
+        it.collection == CoverPresetCollection.STATIC_GRADIENT
+    }
+
+    /** Procedural and MP4 animated gradients, in sheet order. */
+    val GRADIENTS: List<CoverPreset> = ALL.filter {
+        it.collection == CoverPresetCollection.ANIMATED_GRADIENT
+    }
 
     /**
      * Lookup by persisted id. Unknown / null ids return null, which the
@@ -208,7 +339,7 @@ sealed interface CoverVisual {
         val avatarUri: String,
     ) : CoverVisual
 
-    /** A bundled preset (static image or animated gradient). */
+    /** A bundled preset (static image, procedural gradient, or MP4 loop). */
     data class Preset(val preset: CoverPreset) : CoverVisual
 }
 

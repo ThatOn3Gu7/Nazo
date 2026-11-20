@@ -59,12 +59,18 @@ import quiz.thaton3app.nazo.data.profile.CoverPresetKind
 import quiz.thaton3app.nazo.data.profile.CoverVisual
 import quiz.thaton3app.nazo.data.profile.CoverPresets
 import quiz.thaton3app.nazo.data.profile.CoverVideoMedia
+import quiz.thaton3app.nazo.data.profile.videoUri
 import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
 import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
+
+internal fun coverPresetVideoShouldPlay(
+    kind: CoverPresetKind,
+    selected: Boolean,
+): Boolean = kind == CoverPresetKind.VIDEO && selected
 
 /**
  * The unified cover-selection sheet: an avatar-matched automatic background,
@@ -73,10 +79,10 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
  * WYSIWYG math as the gallery
  * preview dialog) and applied on tap.
  *
- * Follows the Background-effects sheet pattern exactly: Nazo modal sheet,
- * one shared frame clock drives every live gradient preview while the sheet
- * is open (frozen to the first frame under system "Remove animations"),
- * selecting applies instantly and keeps the sheet open for comparison.
+ * Follows the Background-effects sheet pattern: Nazo modal sheet, one shared
+ * frame clock drives procedural previews, while bundled MP4s use still
+ * thumbnails and only the selected tile borrows the single cover video host.
+ * Selecting applies instantly and keeps the sheet open for comparison.
  *
  * Pure presentation — persistence and precedence live in
  * `resolveCoverVisual` / `ProfilePreferences`; the caller wires selection,
@@ -283,6 +289,34 @@ internal fun CoverBackgroundSheet(
             Spacer(Modifier.height(16.dp))
             SheetSectionLabel("BUILT-IN PHOTOS")
             CoverPresets.IMAGES.chunked(2).forEach { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    row.forEach { preset ->
+                        CoverPresetTile(
+                            preset = preset,
+                            selected = !automaticEnabled && presetId == preset.id,
+                            bannerRatio = bannerRatio,
+                            time = time,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                Haptics.soft(context)
+                                onSelectPreset(preset.id)
+                            },
+                        )
+                    }
+                    if (row.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+            }
+
+            // --- STATIC GRADIENTS -------------------------------------------
+            Spacer(Modifier.height(6.dp))
+            SheetSectionLabel("STATIC GRADIENTS")
+            CoverPresets.STATIC_GRADIENTS.chunked(2).forEach { row ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -581,9 +615,9 @@ private fun SelectedBadge(modifier: Modifier = Modifier) {
 }
 
 /**
- * One banner-shaped option tile: photo (crop, like the real banner) or a
- * live gradient preview, plus selection border/badge. The whole tile is one
- * TalkBack target labelled by the preset name.
+ * One banner-shaped option tile: image, procedural animation, or a static MP4
+ * thumbnail (the selected MP4 alone plays live), plus selection border/badge.
+ * The whole tile is one TalkBack target labelled by the preset name.
  */
 @Composable
 private fun CoverPresetTile(
@@ -594,6 +628,7 @@ private fun CoverPresetTile(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val context = LocalContext.current
     val interactionSource = remember { MutableInteractionSource() }
     val shape = rememberNazoRoundedCornerMorphShape(
         interactionSource = interactionSource,
@@ -618,12 +653,15 @@ private fun CoverPresetTile(
             ),
     ) {
         when (preset.kind) {
-            CoverPresetKind.IMAGE -> Image(
-                painter = painterResource(preset.imageRes),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
+            CoverPresetKind.IMAGE -> {
+                val previewRes = preset.thumbnailRes.takeIf { it != 0 } ?: preset.imageRes
+                Image(
+                    painter = painterResource(previewRes),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
             CoverPresetKind.GRADIENT -> {
                 // Same draw function the real banner uses, driven by the
                 // sheet's shared clock (or frozen under reduce-motion).
@@ -638,6 +676,46 @@ private fun CoverPresetTile(
                         seed = preset.gradientSeed,
                         style = preset.gradientStyle,
                     )
+                }
+            }
+            CoverPresetKind.VIDEO -> {
+                // Every tile uses a bundled still. Only the selected tile owns
+                // the shared live surface, so ten choices never mean ten decoders.
+                Image(
+                    painter = painterResource(preset.thumbnailRes),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                val videoUri = remember(preset.videoRes, context.packageName) {
+                    preset.videoUri(context.packageName)
+                }
+                if (coverPresetVideoShouldPlay(preset.kind, selected) && videoUri != null) {
+                    CoverVideoBackground(
+                        uri = videoUri,
+                        playbackAllowed = true,
+                        priority = CoverVideoPriority.SHEET_PREVIEW,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.42f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.PlayArrow,
+                                contentDescription = null,
+                                tint = Color.White,
+                            )
+                        }
+                    }
                 }
             }
         }

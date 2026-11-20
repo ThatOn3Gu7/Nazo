@@ -31,6 +31,7 @@ import coil.request.ImageRequest
 import coil.request.SuccessResult
 import quiz.thaton3app.nazo.data.profile.CoverPresetKind
 import quiz.thaton3app.nazo.data.profile.CoverVisual
+import quiz.thaton3app.nazo.data.profile.videoUri
 
 /**
  * The live TextureView owns a matching video layer only while it is actually
@@ -249,8 +250,8 @@ internal fun TransitioningCoverArtwork(
 
     val outgoingVisual = outgoing
     val incomingVisual = incoming
-    val outgoingVideo = outgoingVisual?.videoSpec()
-    val incomingVideo = incomingVisual.videoSpec()
+    val outgoingVideo = outgoingVisual?.videoSpec(context)
+    val incomingVideo = incomingVisual.videoSpec(context)
     val videoToVideo = outgoingVideo != null && incomingVideo != null
     // For video -> video, let the old live loop finish the fade while the new
     // prepared poster comes in. Only after settling does the persistent plane
@@ -260,7 +261,7 @@ internal fun TransitioningCoverArtwork(
 
     Box(modifier = modifier) {
         outgoingVisual?.let { oldVisual ->
-            val oldVideo = oldVisual.videoSpec()
+            val oldVideo = oldVisual.videoSpec(context)
             // A deferred live surface cannot own the visual yet: keep the
             // cached poster in the artwork stack until the TextureView is allowed.
             val oldVideoUsesLivePlane = oldVideo != null && coverVideoUsesLivePlane(
@@ -377,9 +378,12 @@ internal fun TransitioningCoverArtwork(
 
 private data class CoverVideoSpec(val uri: String, val avatarUri: String?)
 
-private fun CoverVisual.videoSpec(): CoverVideoSpec? = when (this) {
+private fun CoverVisual.videoSpec(context: Context): CoverVideoSpec? = when (this) {
     is CoverVisual.Video -> CoverVideoSpec(uri, avatarUri = null)
     is CoverVisual.AutomaticVideo -> CoverVideoSpec(uri, avatarUri)
+    is CoverVisual.Preset -> preset.videoUri(context.packageName)?.let { uri ->
+        CoverVideoSpec(uri, avatarUri = null)
+    }
     else -> null
 }
 
@@ -419,6 +423,10 @@ private fun CoverArtworkLayer(
                 modifier = modifier,
                 animationAllowed = animationAllowed,
             )
+            CoverPresetKind.VIDEO -> if (videoAsPoster) {
+                val uri = visual.preset.videoUri(LocalContext.current.packageName)
+                if (uri != null) CoverVideoPoster(uri = uri, modifier = modifier)
+            }
         }
         CoverVisual.Default -> Unit
     }
@@ -449,7 +457,9 @@ internal suspend fun prepareCoverArtwork(context: Context, visual: CoverVisual):
     is CoverVisual.AutomaticImage -> prepareCoverImage(context, visual.uri)
     is CoverVisual.Video -> CoverVideoHost.warmPoster(context, visual.uri) != null
     is CoverVisual.AutomaticVideo -> CoverVideoHost.warmPoster(context, visual.uri) != null
-    is CoverVisual.Preset,
+    is CoverVisual.Preset -> visual.preset.videoUri(context.packageName)?.let { uri ->
+        CoverVideoHost.warmPoster(context, uri) != null
+    } ?: true
     CoverVisual.Default -> true
 }
 
