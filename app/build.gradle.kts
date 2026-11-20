@@ -24,6 +24,12 @@ android {
         buildConfig = true
     }
 
+    // Bundled cover loops are opened through android.resource:// file
+    // descriptors by MediaPlayer and MediaMetadataRetriever.
+    androidResources {
+        noCompress += "mp4"
+    }
+
     // Size pipeline for RELEASE builds only — the debug build is untouched.
     // Behavior-neutral for this app: no reflection, no JNI, no dynamic
     // resource lookups (verified by grep), so R8 full mode + resource
