@@ -43,6 +43,56 @@ class UpdateCheckerTest {
     }
 
     @Test
+    fun githubRequestsAlwaysDeclareAValidClientAndApiVersion() {
+        val headers = githubUpdateRequestHeaders("application/vnd.github+json")
+
+        assertEquals("application/vnd.github+json", headers["Accept"])
+        assertTrue(headers["User-Agent"].orEmpty().startsWith("Nazo-Android"))
+        assertEquals("2022-11-28", headers["X-GitHub-Api-Version"])
+        assertEquals("identity", headers["Accept-Encoding"])
+    }
+
+    @Test
+    fun latestRedirectProvidesARateLimitIndependentStableFallback() {
+        val release = parseStableReleaseRedirect(
+            repo = "ThatOn3Gu7/Nazo",
+            location = "https://github.com/ThatOn3Gu7/Nazo/releases/tag/v14.0.1",
+        )
+
+        assertEquals("v14.0.1", release?.tag)
+        assertEquals("https://github.com/ThatOn3Gu7/Nazo/releases/tag/v14.0.1", release?.htmlUrl)
+        assertEquals(
+            "https://github.com/ThatOn3Gu7/Nazo/releases/download/v14.0.1/" +
+                "Nazo-release-14.0.1.apk",
+            release?.apkUrl,
+        )
+        assertEquals(-1L, release?.apkSizeBytes)
+        assertFalse(release?.prerelease ?: true)
+    }
+
+    @Test
+    fun latestRedirectRejectsForeignMalformedAndPrereleaseLocations() {
+        assertNull(
+            parseStableReleaseRedirect(
+                "ThatOn3Gu7/Nazo",
+                "https://example.com/ThatOn3Gu7/Nazo/releases/tag/v14.0.1",
+            )
+        )
+        assertNull(
+            parseStableReleaseRedirect(
+                "ThatOn3Gu7/Nazo",
+                "https://github.com/ThatOn3Gu7/Nazo/releases/tag/not-a-version",
+            )
+        )
+        assertNull(
+            parseStableReleaseRedirect(
+                "ThatOn3Gu7/Nazo",
+                "https://github.com/ThatOn3Gu7/Nazo/releases/tag/v15.0-beta01",
+            )
+        )
+    }
+
+    @Test
     fun stableChannelExcludesPrereleasesWhileOptInIncludesThem() {
         val releases = listOf(
             release("v14.0-beta02", prerelease = true),

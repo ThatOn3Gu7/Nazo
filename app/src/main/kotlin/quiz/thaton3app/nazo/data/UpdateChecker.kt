@@ -6,12 +6,28 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
+import java.net.URLDecoder
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 // GitHub repo for THIS app (used by the About-screen update check). Mirrors the
 // structure of the reference project's UpdateChecker, but is self-contained: it only
 // relies on HttpURLConnection + org.json, both already used elsewhere in the app.
 const val GITHUB_REPO = "ThatOn3Gu7/Nazo"
+
+private const val GITHUB_API_VERSION = "2022-11-28"
+private const val UPDATE_USER_AGENT = "Nazo-Android-UpdateChecker"
+
+/** GitHub rejects requests without a valid User-Agent on some Android stacks. */
+internal fun githubUpdateRequestHeaders(accept: String): Map<String, String> = mapOf(
+    "Accept" to accept,
+    "User-Agent" to UPDATE_USER_AGENT,
+    "X-GitHub-Api-Version" to GITHUB_API_VERSION,
+    // Avoid depending on OEM-specific transparent gzip behavior.
+    "Accept-Encoding" to "identity",
+)
 
 // Markers written by .github/scripts/gen_release_notes.py around the curated,
 // player-facing part of the notes. They are HTML comments, so GitHub shows
@@ -49,32 +65,106 @@ suspend fun fetchLatestRelease(
     repo: String = GITHUB_REPO,
     includePrereleases: Boolean = false,
 ): GitHubRelease? = withContext(Dispatchers.IO) {
-    try {
-        val endpoint = if (includePrereleases) {
-            "https://api.github.com/repos/$repo/releases?per_page=30"
-        } else {
-            "https://api.github.com/repos/$repo/releases/latest"
-        }
+    val endpoint = if (includePrereleases) {
+        "https://api.github.com/repos/$repo/releases?per_page=30"
+    } else {
+        "https://api.github.com/repos/$repo/releases/latest"
+    }
+    val apiRelease = runCatching {
         val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            setRequestProperty("Accept", "application/vnd.github+json")
-            connectTimeout = 10000
-            readTimeout = 10000
+            configureGithubRequest("application/vnd.github+json")
         }
         try {
-            if (conn.responseCode != 200) return@withContext null
-            val text = conn.inputStream.bufferedReader().use { it.readText() }
-            if (includePrereleases) {
-                parseReleaseList(text, includePrereleases = true)
+            if (conn.responseCode != HttpURLConnection.HTTP_OK) {
+                null
             } else {
-                parseGitHubRelease(text)?.takeUnless { it.prerelease }
+                val text = conn.inputStream.bufferedReader().use { it.readText() }
+                if (includePrereleases) {
+                    parseReleaseList(text, includePrereleases = true)
+                } else {
+                    parseGitHubRelease(text)?.takeUnless { it.prerelease }
+                }
             }
         } finally {
             conn.disconnect()
         }
-    } catch (_: Exception) {
-        null
+    }.getOrNull()
+
+    // Public API checks can be rejected when a carrier-grade NAT has exhausted
+    // GitHub's unauthenticated per-IP quota. The ordinary github.com latest
+    // redirect is not API-rate-limited and gives us enough information to offer
+    // the conventionally named signed APK. It intentionally falls back to the
+    // stable channel even when pre-releases are enabled: a stable answer is
+    // safer than reporting that update checks are completely unavailable.
+    apiRelease ?: fetchLatestStableFromRedirect(repo)
+}
+
+private fun HttpURLConnection.configureGithubRequest(accept: String) {
+    requestMethod = "GET"
+    githubUpdateRequestHeaders(accept).forEach { (name, value) ->
+        setRequestProperty(name, value)
     }
+    connectTimeout = 10_000
+    readTimeout = 10_000
+}
+
+private fun fetchLatestStableFromRedirect(repo: String): GitHubRelease? = runCatching {
+    val endpoint = "https://github.com/$repo/releases/latest"
+    val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+        instanceFollowRedirects = false
+        configureGithubRequest("text/html")
+    }
+    try {
+        val redirect = conn.responseCode in setOf(
+            HttpURLConnection.HTTP_MOVED_PERM,
+            HttpURLConnection.HTTP_MOVED_TEMP,
+            HttpURLConnection.HTTP_SEE_OTHER,
+            307,
+            308,
+        )
+        if (!redirect) null else parseStableReleaseRedirect(repo, conn.getHeaderField("Location"))
+    } finally {
+        conn.disconnect()
+    }
+}.getOrNull()
+
+/**
+ * Converts GitHub's `/releases/latest` redirect into a minimal stable release.
+ * Release assets follow the naming contract enforced by build-release.yml.
+ */
+internal fun parseStableReleaseRedirect(repo: String, location: String?): GitHubRelease? {
+    if (location.isNullOrBlank()) return null
+    val base = URI("https://github.com/$repo/releases/latest")
+    val uri = runCatching { base.resolve(location) }.getOrNull() ?: return null
+    if (!uri.scheme.equals("https", ignoreCase = true) ||
+        !uri.host.equals("github.com", ignoreCase = true)
+    ) {
+        return null
+    }
+
+    val prefix = "/$repo/releases/tag/"
+    val rawPath = uri.rawPath.orEmpty()
+    if (!rawPath.startsWith(prefix, ignoreCase = true)) return null
+    val encodedTag = rawPath.substring(prefix.length).substringBefore('/')
+    if (encodedTag.isBlank()) return null
+    val tag = runCatching {
+        URLDecoder.decode(encodedTag, StandardCharsets.UTF_8.name())
+    }.getOrNull()?.trim().orEmpty()
+    val parsed = parseVersion(tag) ?: return null
+    if (parsed.prerelease != null) return null
+
+    val version = tag.trimStart('v', 'V')
+    val safeTag = URLEncoder.encode(tag, StandardCharsets.UTF_8.name()).replace("+", "%20")
+    val safeVersion = URLEncoder.encode(version, StandardCharsets.UTF_8.name()).replace("+", "%20")
+    val releaseBase = "https://github.com/$repo/releases"
+    return GitHubRelease(
+        tag = tag,
+        htmlUrl = "$releaseBase/tag/$safeTag",
+        body = "",
+        apkUrl = "$releaseBase/download/$safeTag/Nazo-release-$safeVersion.apk",
+        apkSizeBytes = -1L,
+        prerelease = false,
+    )
 }
 
 /** Parses one GitHub release response. Drafts and malformed tags are ignored. */
