@@ -19,6 +19,7 @@ class NazoNavigationTransitionTest {
 
         assertTrue(policy.activeVisualWork)
         assertTrue(policy.liveCoverSurfaceAllowed)
+        assertTrue(policy.avatarAnimationAllowed)
         assertTrue(policy.coverVideoPlaybackAllowed)
     }
 
@@ -36,8 +37,9 @@ class NazoNavigationTransitionTest {
 
         assertFalse(policy.activeVisualWork)
         assertFalse(policy.liveCoverSurfaceAllowed)
-        // Playback is allowed in principle, but no live plane exists until the
-        // first settled frame, so the prepared poster remains the only layer.
+        assertFalse(policy.avatarAnimationAllowed)
+        // Cover playback is allowed in principle, but no live plane exists
+        // until the first settled frame, so the poster remains the only layer.
         assertTrue(policy.coverVideoPlaybackAllowed)
     }
 
@@ -52,6 +54,7 @@ class NazoNavigationTransitionTest {
 
         assertFalse(policy.activeVisualWork)
         assertFalse(policy.liveCoverSurfaceAllowed)
+        assertFalse(policy.avatarAnimationAllowed)
         assertTrue(policy.coverVideoPlaybackAllowed)
     }
 
@@ -66,11 +69,12 @@ class NazoNavigationTransitionTest {
 
         assertFalse(policy.activeVisualWork)
         assertTrue(policy.liveCoverSurfaceAllowed)
+        assertFalse(policy.avatarAnimationAllowed)
         assertFalse(policy.coverVideoPlaybackAllowed)
     }
 
     @Test
-    fun predictiveBackKeepsTheCurrentCoverSurfacePlaying() {
+    fun predictiveBackKeepsCurrentGifAndCoverVideoPlaying() {
         val policy = profileRenderPolicy(
             currentScreen = Screen.Profile,
             transitionCurrent = Screen.Profile,
@@ -78,10 +82,11 @@ class NazoNavigationTransitionTest {
             predictiveBackTarget = Screen.Home,
         )
 
-        // Decorative clocks can stand down during the scrub, but the already
-        // visible video must advance continuously until the gesture commits.
+        // Decorative clocks can stand down during the scrub, but already
+        // visible GIF/WebP and video media advance until the gesture commits.
         assertFalse(policy.activeVisualWork)
         assertTrue(policy.liveCoverSurfaceAllowed)
+        assertTrue(policy.avatarAnimationAllowed)
         assertTrue(policy.coverVideoPlaybackAllowed)
     }
 

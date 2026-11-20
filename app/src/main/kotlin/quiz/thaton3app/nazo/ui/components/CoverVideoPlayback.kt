@@ -96,10 +96,13 @@ internal fun coverVideoShouldPlay(
 internal fun normalizeCoverSyncPosition(positionMs: Int, durationMs: Int): Int =
     if (durationMs > 0) positionMs.coerceAtLeast(0) % durationMs else positionMs.coerceAtLeast(0)
 
-/** Modal previews must retain the one live cover surface over the banner behind them. */
+/**
+ * The visible banner wins over the picker sheet so opening the editor cannot
+ * freeze it. A dedicated full-screen preview dialog still owns the decoder.
+ */
 internal enum class CoverVideoPriority {
-    BANNER,
     SHEET_PREVIEW,
+    BANNER,
     DIALOG_PREVIEW,
 }
 
@@ -116,10 +119,11 @@ internal fun coverVideoTargetOutranks(
  *
  * This intentionally does not touch [AvatarVideoHost]. A video cover and video
  * avatar can therefore decode at the same time. The host owns at most one cover
- * MediaPlayer and hands it between the banner and modal previews. Explicit
- * preview priority prevents a banner recomposition from stealing the surface;
- * equal-priority targets still use newest registration. Returning from a modal
- * restores the still-composed banner target automatically.
+ * MediaPlayer and hands it between the banner and previews. The live banner
+ * outranks selection-sheet tiles so opening or scrolling the editor never
+ * pauses the applied cover; a dedicated preview dialog still outranks both.
+ * Equal-priority targets use newest registration, and removing the winner
+ * restores the best still-composed target automatically.
  *
  * A short no-surface grace period absorbs navigation animations and cancelled
  * predictive-back transitions. Real absence releases the decoder while keeping
