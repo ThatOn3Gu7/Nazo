@@ -114,10 +114,10 @@ fun ProfileAvatar(
      */
     paused: Boolean = false,
     /**
-     * False while this screen is entering/leaving. GIF/WebP decoding pauses so
-     * AnimatedContent never runs two animated avatar drawables at once. This is
-     * deliberately separate from [paused]: video anchors stay available to the
-     * persistent overlay during navigation and are not marked suppressed.
+     * False during ordinary screen entry/exit. An uncommitted predictive-back
+     * scrub keeps this true so the visible GIF/WebP does not freeze under the
+     * user's finger. This is deliberately separate from [paused]: video anchors
+     * stay available to the persistent overlay during navigation.
      */
     animationAllowed: Boolean = true,
     /**

@@ -30,12 +30,20 @@ class CoverVideoPlaybackTest {
     }
 
     @Test
-    fun modalPreviewOutranksBannerAndNewerTargetWinsEqualPriority() {
-        assertTrue(
+    fun bannerOutranksSheetDialogOutranksBannerAndNewestWinsTies() {
+        assertFalse(
             coverVideoTargetOutranks(
                 candidatePriority = CoverVideoPriority.SHEET_PREVIEW,
-                candidateSequence = 1,
+                candidateSequence = 99,
                 activePriority = CoverVideoPriority.BANNER,
+                activeSequence = 1,
+            )
+        )
+        assertTrue(
+            coverVideoTargetOutranks(
+                candidatePriority = CoverVideoPriority.BANNER,
+                candidateSequence = 1,
+                activePriority = CoverVideoPriority.SHEET_PREVIEW,
                 activeSequence = 99,
             )
         )

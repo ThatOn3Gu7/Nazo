@@ -194,20 +194,25 @@ sealed interface Screen {
 }
 
 /**
- * Profile's expensive visual work is tied to transition REST, not merely to the
- * navigation stack's destination. [AnimatedContent] composes both screens while
- * moving between them; starting gradient frame clocks, GIFs, and a cover decoder
- * in that overlap steals the exact frames needed by the screen animation.
+ * Profile's decorative visual work is tied to transition REST, not merely to
+ * the navigation stack's destination. [AnimatedContent] composes both screens
+ * while moving between them; starting gradient clocks and new media decoders
+ * during ordinary entry steals the frames needed by the screen animation.
  *
- * The live cover TextureView is a separate decision: keep an already-visible
- * outgoing/predictive surface attached, and keep playback running for an
- * uncommitted predictive scrub just like the persistent avatar player. Defer
- * creating a NEW surface during an ordinary Profile entry until the layout has
- * settled; the poster occupies identical bounds in the meantime.
+ * Already-visible media is a separate decision: keep an outgoing/predictive
+ * cover surface and GIF moving through an uncommitted scrub. Defer creating a
+ * NEW cover surface or starting a newly-entering GIF until ordinary Profile
+ * entry has settled; prepared still frames occupy their bounds in the meantime.
  */
 internal data class ProfileRenderPolicy(
     val activeVisualWork: Boolean,
     val liveCoverSurfaceAllowed: Boolean,
+    /**
+     * GIF/WebP playback follows the foreground Profile through an uncommitted
+     * predictive-back scrub. A new Profile still waits for entry settlement so
+     * navigation never starts a second animated drawable during overlap.
+     */
+    val avatarAnimationAllowed: Boolean,
     /**
      * Unlike decorative clocks, a playing cover is visible feedback. Keep it
      * live while Profile remains the foreground destination — including an
@@ -232,6 +237,7 @@ internal fun profileRenderPolicy(
     return ProfileRenderPolicy(
         activeVisualWork = atRest,
         liveCoverSurfaceAllowed = !ordinaryEntry,
+        avatarAnimationAllowed = currentScreen == Screen.Profile && !ordinaryEntry,
         coverVideoPlaybackAllowed = currentScreen == Screen.Profile,
     )
 }
@@ -2395,6 +2401,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             automaticCoverEnabled = automaticCoverEnabled,
                             automaticCoverState = automaticCoverState,
                             screenActive = profilePolicy.activeVisualWork,
+                            avatarAnimationAllowed = profilePolicy.avatarAnimationAllowed,
                             coverVideoSurfaceAllowed = profilePolicy.liveCoverSurfaceAllowed,
                             coverVideoPlaybackAllowed = profilePolicy.coverVideoPlaybackAllowed,
                             quizStats = quizStats,

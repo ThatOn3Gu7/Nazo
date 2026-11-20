@@ -81,8 +81,10 @@ internal fun coverPresetVideoShouldPlay(
  *
  * Follows the Background-effects sheet pattern: Nazo modal sheet, one shared
  * frame clock drives procedural previews, while bundled MP4s use still
- * thumbnails and only the selected tile borrows the single cover video host.
- * Selecting applies instantly and keeps the sheet open for comparison.
+ * thumbnails and only the selected tile requests the cover video host. The
+ * applied banner keeps priority when it is already a video, preventing the
+ * picker from freezing it. Selecting applies instantly and keeps the sheet
+ * open for comparison.
  *
  * Pure presentation — persistence and precedence live in
  * `resolveCoverVisual` / `ProfilePreferences`; the caller wires selection,
@@ -679,8 +681,9 @@ private fun CoverPresetTile(
                 }
             }
             CoverPresetKind.VIDEO -> {
-                // Every tile uses a bundled still. Only the selected tile owns
-                // the shared live surface, so ten choices never mean ten decoders.
+                // Every tile uses a bundled still. Only the selected tile asks
+                // for the shared live surface, and an applied video banner keeps
+                // priority, so ten choices never mean ten decoders or a frozen cover.
                 Image(
                     painter = painterResource(preset.thumbnailRes),
                     contentDescription = null,

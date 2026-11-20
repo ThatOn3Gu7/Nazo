@@ -2,6 +2,8 @@ package quiz.thaton3app.nazo.ui.screens
 
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -11,6 +13,30 @@ import org.junit.Test
  * heights. Pure math over [Dp] values — plain JVM tests.
  */
 class ProfileCoverTest {
+
+    @Test
+    fun coverPickerDoesNotPauseTheAppliedVideoBehindIt() {
+        // Opening the cover picker is represented by no blocking dialog: the
+        // sheet edits the live banner and must not be folded into this gate.
+        assertTrue(
+            profileCoverVideoShouldPlay(
+                navigationPlaybackAllowed = true,
+                blockingDialogVisible = false,
+            )
+        )
+        assertFalse(
+            profileCoverVideoShouldPlay(
+                navigationPlaybackAllowed = true,
+                blockingDialogVisible = true,
+            )
+        )
+        assertFalse(
+            profileCoverVideoShouldPlay(
+                navigationPlaybackAllowed = false,
+                blockingDialogVisible = false,
+            )
+        )
+    }
 
     @Test
     fun avatarOverhangIsExactlyTenPercentOfItsDiameter() {

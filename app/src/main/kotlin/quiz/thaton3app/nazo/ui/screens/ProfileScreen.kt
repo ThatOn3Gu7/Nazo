@@ -220,6 +220,12 @@ internal fun coverPreviewAspectRatio(
 internal fun coverPreviewTopExtensionDp(isLandscape: Boolean): Float =
     64f + (if (isLandscape) 8f else 16f)
 
+/** The cover picker is an editor, not a playback-blocking dialog. */
+internal fun profileCoverVideoShouldPlay(
+    navigationPlaybackAllowed: Boolean,
+    blockingDialogVisible: Boolean,
+): Boolean = navigationPlaybackAllowed && !blockingDialogVisible
+
 /**
  * The cover header itself: a large rounded rectangle drawn from the
  * resolved [CoverVisual] — the placeholder gradient, custom photo/video,
@@ -354,6 +360,11 @@ fun ProfileScreen(
     /** True only when Profile is the fully settled screen, never during overlap. */
     screenActive: Boolean = true,
     /**
+     * Keeps an already-visible GIF/WebP moving through predictive back, while
+     * ordinary Profile entry still waits for transition settlement.
+     */
+    avatarAnimationAllowed: Boolean = screenActive,
+    /**
      * False only for an ordinary Profile entry: show the prepared poster until
      * the screen settles, then create the live TextureView/decoder. Outgoing and
      * predictive transitions keep an existing surface attached.
@@ -450,6 +461,14 @@ fun ProfileScreen(
         showPictureDialog || showAvatarPreview || showUrlDialog ||
             showRemoveConfirm || pendingSource != null ||
             pendingCoverSource != null || showCoverSheet || showCoverRemoveConfirm
+    // The cover picker deliberately stays out of this gate. It edits the live
+    // banner, so pausing that banner as soon as the sheet opens hides the very
+    // feedback the user is choosing. Other preview/confirmation dialogs still
+    // pause it because their own media or destructive action owns attention.
+    val coverBehindBlockingDialogPaused =
+        showPictureDialog || showAvatarPreview || showUrlDialog ||
+            showRemoveConfirm || pendingSource != null ||
+            pendingCoverSource != null || showCoverRemoveConfirm
 
     // PickVisualMedia is the system photo picker: a gallery grid with no
     // storage permission and no filesystem browsing. It replaces
@@ -621,8 +640,10 @@ fun ProfileScreen(
                             screenHeightDp = configuration.screenHeightDp,
                         ) + coverTopExtension,
                         visual = coverVisual,
-                        videoPlaybackAllowed =
-                            coverVideoPlaybackAllowed && !avatarBehindDialogsPaused,
+                        videoPlaybackAllowed = profileCoverVideoShouldPlay(
+                            navigationPlaybackAllowed = coverVideoPlaybackAllowed,
+                            blockingDialogVisible = coverBehindBlockingDialogPaused,
+                        ),
                         liveVideoAllowed = coverVideoSurfaceAllowed,
                         transitionsAllowed = screenActive,
                         editButton = coverEditButton,
@@ -639,7 +660,7 @@ fun ProfileScreen(
                             onClick = { showPictureDialog = true },
                             onLongClick = avatarLongPress,
                             paused = avatarBehindDialogsPaused,
-                            animationAllowed = screenActive,
+                            animationAllowed = avatarAnimationAllowed,
                             videoOverlaySuppressed = videoAvatarOverscrolling,
                             anchorId = AvatarAnchorId.Profile,
                         )
@@ -771,8 +792,10 @@ fun ProfileScreen(
                         screenHeightDp = configuration.screenHeightDp,
                     ) + coverTopExtension,
                     visual = coverVisual,
-                    videoPlaybackAllowed =
-                        coverVideoPlaybackAllowed && !avatarBehindDialogsPaused,
+                    videoPlaybackAllowed = profileCoverVideoShouldPlay(
+                        navigationPlaybackAllowed = coverVideoPlaybackAllowed,
+                        blockingDialogVisible = coverBehindBlockingDialogPaused,
+                    ),
                     liveVideoAllowed = coverVideoSurfaceAllowed,
                     transitionsAllowed = screenActive,
                     editButton = coverEditButton,
@@ -790,7 +813,7 @@ fun ProfileScreen(
                         onClick = { showPictureDialog = true },
                         onLongClick = avatarLongPress,
                         paused = avatarBehindDialogsPaused,
-                        animationAllowed = screenActive,
+                        animationAllowed = avatarAnimationAllowed,
                         videoOverlaySuppressed = videoAvatarOverscrolling,
                         anchorId = AvatarAnchorId.Profile,
                     )
