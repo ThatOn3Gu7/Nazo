@@ -39,6 +39,24 @@ data class ChangelogEntry(
  */
 val NAZO_CHANGELOG: List<ChangelogEntry> = listOf(
     ChangelogEntry(
+        version = "14.0",
+        date = "4 Nov 2026",
+        changes = listOf(
+            "Profile picture and cover tools now use consistent Nazo sheets. Choosing, previewing and viewing profile media feels connected, while custom photos and videos remain available when switching between built-in covers.",
+            "The cover library gains 13 offline gradients: three static designs and ten animated loops, all available immediately without a network connection.",
+            "Animated profile media stays fluid. GIF avatars keep moving during predictive-back gestures, MP4 avatars remain aligned through scrolling and stretch overscroll, and an applied video cover keeps playing while its selection sheet is open.",
+            "Interrupted games can recover after Android kills the app. Quiz, Survival, Blitz, Versus handoff and Guessing restore their exact content, progress and adjusted timers; completed, explicitly quit, corrupt and sessions older than six hours stay closed.",
+            "Quit confirmations now pause the game honestly. Question, Survival, Blitz, Versus and Guessing timers resume precisely after cancellation, while confirmed exits and completed results cannot advance or record twice.",
+            "Offline topics no longer change scope silently. If a typed topic is not in the local bank, Nazo asks whether to change it or intentionally use the full collection.",
+            "Guessing images are safer and more compatible. Optional avatar sources load only when opened, unexpected hosts and failed providers stay isolated, DuckDuckGo fallback uses strict Safe Search plus local filtering, and Blur Reveal remains obscured on Android 8–11.",
+            "AI failures behave predictably. Authentication, billing, quota, network, request and provider errors no longer trigger hidden extra calls; only an unavailable model or unusable response can make one clearly reported same-provider retry.",
+            "Backup and profile state are handled more defensively. Corrupt statistics recover safely, unsafe restore data is rejected, cover deletion stays inside app-owned storage, and Keystore-bound API keys remain local and preserved.",
+            "The update experience is clearer. Download and GitHub actions share a clean row, check frequency uses Nazo's option sheet, and a default-off pre-release channel lets willing testers include beta and release-candidate builds without changing the stable experience for everyone else.",
+            "Provider and information screens are easier to read. AI providers gain recognizable brand marks and a reliably tappable save action, backup status no longer flickers, and Credits reflects the current developer projects.",
+            "Official downloads fail closed. Tagged builds must match the app version, include every signing input and pass signature verification; the in-app What's New entry follows the newest stable or pre-release changelog instead of disappearing on test builds.",
+        ),
+    ),
+    ChangelogEntry(
         version = "14.0-beta01",
         date = "12 Nov 2026",
         changes = listOf(
