@@ -26,12 +26,17 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.tappableElement
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -65,6 +70,32 @@ import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 
 enum class NazoTab { Home, Settings }
+
+/**
+ * Splits the bottom system inset around the docked navigation surface.
+ *
+ * Three-button navigation reports its occupied area as tappable: that part must
+ * sit OUTSIDE the app bar so neither its colour nor controls extend under the
+ * system buttons. Gesture navigation is non-tappable: only the app bar's
+ * content is inset, preserving the intentional full-bleed colour behind the
+ * gesture handle.
+ */
+internal data class NazoNavigationInsetLayers(
+    val outsideSurfacePx: Int,
+    val insideSurfacePx: Int,
+)
+
+internal fun nazoNavigationInsetLayers(
+    navigationBarPx: Int,
+    tappableElementPx: Int,
+): NazoNavigationInsetLayers {
+    val navigation = navigationBarPx.coerceAtLeast(0)
+    val outside = tappableElementPx.coerceIn(0, navigation)
+    return NazoNavigationInsetLayers(
+        outsideSurfacePx = outside,
+        insideSurfacePx = navigation - outside,
+    )
+}
 
 /**
  * Makes the bar's whole surface an opaque hit target.
@@ -201,6 +232,14 @@ fun NazoBottomNav(
         return
     }
 
+    val density = LocalDensity.current
+    val insetLayers = nazoNavigationInsetLayers(
+        navigationBarPx = WindowInsets.navigationBars.getBottom(density),
+        tappableElementPx = WindowInsets.tappableElement.getBottom(density),
+    )
+    val outsideSurface = with(density) { insetLayers.outsideSurfacePx.toDp() }
+    val insideSurface = with(density) { insetLayers.insideSurfacePx.toDp() }
+
     if (floating) {
         Row(
             modifier = modifier
@@ -224,14 +263,21 @@ fun NazoBottomNav(
         
         Row(
             modifier = modifier
+                // Keep the WHOLE bar above a tappable three-button navigation
+                // area. This padding must precede the background modifier or
+                // the bar's colour still paints underneath the system buttons.
+                .padding(bottom = outsideSurface)
                 // The docked bar spans the full width and is opaque, so nothing
                 // behind it should be reachable — see blockTouchThrough().
                 .blockTouchThrough()
                 .background(
-                    color = NazoNavBar, 
+                    color = NazoNavBar,
                     shape = RoundedCornerShape(topStart = cornerRadius, topEnd = cornerRadius)
                 )
-                .navigationBarsPadding()
+                // Gesture navigation has no tappable system-button area, so its
+                // smaller inset remains inside the surface: controls stay clear
+                // while the colour can continue behind the gesture handle.
+                .padding(bottom = insideSurface)
                 .padding(horizontal = cornerRadius + overhang)
                 .padding(top = 12.dp, bottom = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(32.dp),
@@ -257,6 +303,8 @@ private fun NazoNavRail(
     onHomeClick: () -> Unit,
     onSettingsClick: () -> Unit,
 ) {
+    val tappableNavigationInsets = WindowInsets.tappableElement
+    val gestureNavigationInsets = WindowInsets.navigationBars.exclude(tappableNavigationInsets)
     val shape = if (floating) {
         RoundedCornerShape(50)
     } else {
@@ -265,6 +313,9 @@ private fun NazoNavRail(
 
     Column(
         modifier = modifier
+            // On three-button landscape navigation, move the complete rail away
+            // from the tappable system area before painting its surface.
+            .windowInsetsPadding(tappableNavigationInsets)
             .then(if (floating) Modifier.padding(end = 12.dp) else Modifier)
             // Width of the widest item, so both can fill it equally.
             .then(if (floating) Modifier else Modifier.width(IntrinsicSize.Max))
@@ -284,8 +335,9 @@ private fun NazoNavRail(
                     Modifier
                 }
             )
-            // Keep clear of the gesture bar / cutout on the short edges.
-            .navigationBarsPadding()
+            // Non-tappable gesture insets stay inside the surface so labels and
+            // icons remain clear while the rail can still draw edge-to-edge.
+            .windowInsetsPadding(gestureNavigationInsets)
             .padding(
                 horizontal = if (floating) 6.dp else 8.dp,
                 vertical = if (floating) 6.dp else 10.dp,

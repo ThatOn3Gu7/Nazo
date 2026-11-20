@@ -8,6 +8,7 @@ then archived below; there should be no per-version release-note files.
 ## Next release
 
 - 2026-11-04 — Update checks now identify Nazo explicitly to GitHub and fall back to GitHub's stable-release redirect when the public API is unavailable or its shared-IP rate limit is exhausted, instead of reporting a generic failure on otherwise working connections.
+- 2026-11-04 — The default docked navigation bar now sits completely above Android's tappable three-button controls in portrait and landscape, while gesture-navigation devices retain the intentional edge-to-edge surface behind the gesture handle.
 
 ## Release archive
 
