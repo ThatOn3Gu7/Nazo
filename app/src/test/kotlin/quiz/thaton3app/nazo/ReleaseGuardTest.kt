@@ -6,6 +6,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import quiz.thaton3app.nazo.data.NAZO_CHANGELOG
 
 /** End-to-end policy tests for the script Gradle runs before tag release assembly. */
 class ReleaseGuardTest {
@@ -20,8 +21,8 @@ class ReleaseGuardTest {
         }
         try {
             val result = runGuard(
-                tag = "v14.0-beta01",
-                version = "14.0-beta01",
+                tag = "v14.0",
+                version = "14.0",
                 keystore = keystore,
                 credentialsPresent = true,
             )
@@ -35,7 +36,7 @@ class ReleaseGuardTest {
     fun tagMustBeSupportedAndExactlyMatchVersionName() {
         val keystore = Files.createTempFile("nazo-release", ".jks").toFile().apply { writeText("x") }
         try {
-            val mismatch = runGuard("v14.0-beta02", "14.0-beta01", keystore, true)
+            val mismatch = runGuard("v14.0-beta02", "14.0", keystore, true)
             assertNotEquals(0, mismatch.code)
             assertTrue(mismatch.output.contains("does not match"))
 
@@ -50,8 +51,8 @@ class ReleaseGuardTest {
     @Test
     fun officialTagCannotBuildWithoutEverySigningInputAndKeystore() {
         val missingCredentials = runGuard(
-            tag = "v14.0-beta01",
-            version = "14.0-beta01",
+            tag = "v14.0",
+            version = "14.0",
             keystore = File(repoRoot, "missing-release-key.jks"),
             credentialsPresent = false,
         )
@@ -65,13 +66,28 @@ class ReleaseGuardTest {
     fun unsignedReleaseAssemblyRemainsAvailableForOrdinaryPrChecks() {
         val result = runGuard(
             tag = "arena/branch",
-            version = "14.0-beta01",
+            version = "14.0",
             keystore = File(repoRoot, "missing-release-key.jks"),
             credentialsPresent = false,
             refType = "branch",
         )
 
         assertEquals(result.output, 0, result.code)
+    }
+
+    @Test
+    fun stableGitHubNotesAndInAppChangelogUseTheSameHandwrittenPoints() {
+        val release = NAZO_CHANGELOG.first()
+        assertEquals("14.0", release.version)
+
+        val ledger = File(repoRoot, "RELEASE_NOTES.md").readText()
+        val start = "<!--NAZO_RELEASE_${release.version}_START-->"
+        val end = "<!--NAZO_RELEASE_${release.version}_END-->"
+        val body = ledger.substringAfter(start).substringBefore(end)
+
+        release.changes.forEach { point ->
+            assertTrue("GitHub notes are missing: $point", body.contains("- $point"))
+        }
     }
 
     private fun runGuard(

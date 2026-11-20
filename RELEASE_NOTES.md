@@ -7,20 +7,42 @@ then archived below; there should be no per-version release-note files.
 
 ## Next release
 
-- 2026-11-04 — Opening the avatar catalogue no longer calls every optional remote API; each source loads only when its tab is selected, rejects unexpected image hosts and leaves the other sources usable when one service fails.
-- 2026-11-04 — DuckDuckGo's last-resort image search now requests strict Safe Search throughout and locally rejects malformed, marked-explicit, non-HTTPS and unrelated results before downloading image bytes.
-- 2026-11-04 — Blur reveal now keeps mystery images obscured on Android 8–11 with a smooth downsampled compatibility effect while Android 12+ retains native blur and Pixel mode remains unchanged.
-- 2026-11-04 — Unknown local-quiz topics no longer silently draw from every franchise; Nazo now offers an explicit choice to change the topic or intentionally use the full bank.
-- 2026-11-04 — Active quizzes, Survival, Blitz, Versus handoff and Guessing games now recover essential progress after Android kills the app process, including exact AI content and adjusted timers; completed, explicitly quit, corrupt and sessions older than six hours are not resumed.
-- 2026-11-04 — AI authentication, billing, quota/rate-limit, network, request and provider failures no longer cause silent extra model calls; only unavailable models and unusable responses may make one clearly reported same-provider alternate-model attempt.
-- 2026-11-04 — Official tag builds now fail inside Gradle unless the tag matches the app version and every signing input is present, blocking unsigned release publication while retaining unsigned PR compile checks.
-- 2026-11-04 — Added regression coverage for active-session round trips and expiry, timer reconstruction, AI fallback categories and release tag/signing guards.
-- 2026-11-04 — Fixed the post-update What's New sheet for beta and RC builds by deriving its gate and content from the newest in-app changelog entry, with regression coverage for pre-release entries.
-- 2026-11-04 — Fixed live MP4 avatars appearing as two layers on Home and Profile: the persistent video obeys the avatar slot's scroll/system-bar clipping and yields to its in-tree poster during stretch overscroll, preserving the responsive stretch without splitting the circle.
-- 2026-11-04 — Quit confirmations now pause and precisely resume per-question, Survival, Versus, Blitz and Guessing timers; confirmed exits stay paused through dialog dismissal, and quiz result time excludes canceled-exit pauses.
-- 2026-11-04 — Hardened backup and gameplay state: corrupt quiz statistics recover safely and cannot be restored, cover removal stays inside app-owned storage, Keystore-bound API keys remain local and preserved, and rapid Next/Finish taps cannot skip or record results twice.
+No player-visible changes recorded yet.
 
 ## Release archive
+
+### Nazo 14.0 — 4 Nov 2026
+
+<!--NAZO_RELEASE_14.0_START-->
+<!--NAZO_NOTES_START-->
+# Nazo 14.0 — Motion That Remembers
+
+Version 14 makes Nazo safer, more recoverable and easier to personalize, while carrying the optional update channel from beta into a stable release.
+
+## A more complete Profile
+
+- Profile picture and cover tools now use consistent Nazo sheets. Choosing, previewing and viewing profile media feels connected, while custom photos and videos remain available when switching between built-in covers.
+- The cover library gains 13 offline gradients: three static designs and ten animated loops, all available immediately without a network connection.
+- Animated profile media stays fluid. GIF avatars keep moving during predictive-back gestures, MP4 avatars remain aligned through scrolling and stretch overscroll, and an applied video cover keeps playing while its selection sheet is open.
+
+## Safer, more resilient play
+
+- Interrupted games can recover after Android kills the app. Quiz, Survival, Blitz, Versus handoff and Guessing restore their exact content, progress and adjusted timers; completed, explicitly quit, corrupt and sessions older than six hours stay closed.
+- Quit confirmations now pause the game honestly. Question, Survival, Blitz, Versus and Guessing timers resume precisely after cancellation, while confirmed exits and completed results cannot advance or record twice.
+- Offline topics no longer change scope silently. If a typed topic is not in the local bank, Nazo asks whether to change it or intentionally use the full collection.
+- Guessing images are safer and more compatible. Optional avatar sources load only when opened, unexpected hosts and failed providers stay isolated, DuckDuckGo fallback uses strict Safe Search plus local filtering, and Blur Reveal remains obscured on Android 8–11.
+- AI failures behave predictably. Authentication, billing, quota, network, request and provider errors no longer trigger hidden extra calls; only an unavailable model or unusable response can make one clearly reported same-provider retry.
+- Backup and profile state are handled more defensively. Corrupt statistics recover safely, unsafe restore data is rejected, cover deletion stays inside app-owned storage, and Keystore-bound API keys remain local and preserved.
+
+## Updates and finishing work
+
+- The update experience is clearer. Download and GitHub actions share a clean row, check frequency uses Nazo's option sheet, and a default-off pre-release channel lets willing testers include beta and release-candidate builds without changing the stable experience for everyone else.
+- Provider and information screens are easier to read. AI providers gain recognizable brand marks and a reliably tappable save action, backup status no longer flickers, and Credits reflects the current developer projects.
+- Official downloads fail closed. Tagged builds must match the app version, include every signing input and pass signature verification; the in-app What's New entry follows the newest stable or pre-release changelog instead of disappearing on test builds.
+
+Existing profiles, settings, statistics, achievements, backups, provider configuration and saved custom media carry forward normally.
+<!--NAZO_NOTES_END-->
+<!--NAZO_RELEASE_14.0_END-->
 
 ### Nazo 14.0-beta01 — 2026-11-12
 
