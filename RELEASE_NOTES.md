@@ -7,7 +7,7 @@ then archived below; there should be no per-version release-note files.
 
 ## Next release
 
-No player-visible changes recorded yet.
+- 2026-11-04 — Update checks now identify Nazo explicitly to GitHub and fall back to GitHub's stable-release redirect when the public API is unavailable or its shared-IP rate limit is exhausted, instead of reporting a generic failure on otherwise working connections.
 
 ## Release archive
 
