@@ -39,7 +39,8 @@ class ThemePreferences(context: Context) {
         set(value) = prefs.edit().putString(KEY_APP_ICON, value).apply()
 
     /** Whether the bottom navigation bar floats as an elevated pill (true) or is a
-     *  solid bar that covers the system gesture area (false). */
+     *  solid bar (false). The solid surface may extend behind a gesture handle,
+     *  but always stays above tappable three-button system navigation. */
     var floatingNavBar: Boolean
         get() = prefs.getBoolean(KEY_FLOATING_NAV, false)
         set(value) = prefs.edit().putBoolean(KEY_FLOATING_NAV, value).apply()
