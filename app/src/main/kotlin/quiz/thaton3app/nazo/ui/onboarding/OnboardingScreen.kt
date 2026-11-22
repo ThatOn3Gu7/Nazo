@@ -108,6 +108,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import kotlin.math.absoluteValue
+import kotlin.random.Random
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.data.remote.ApiClient
@@ -190,6 +191,28 @@ private val FEATURE_PAGES = listOf(
 private const val PAGE_COUNT = 6
 private const val PAGE_SETUP = 4
 private const val PAGE_FIRST_GAME = 5
+
+/** Popular, well-stocked local topics used for onboarding suggestions and surprise starts. */
+internal val ONBOARDING_POPULAR_TOPICS = listOf(
+    "Naruto",
+    "One Piece",
+    "Attack on Titan",
+    "Dragon Ball",
+    "Demon Slayer",
+    "Jujutsu Kaisen",
+    "My Hero Academia",
+    "Death Note",
+)
+
+/**
+ * Keeps an entered topic, or chooses a popular anime when the first-game field
+ * is blank. The random draw happens only when Start is tapped, so recomposition
+ * cannot silently change which game will launch.
+ */
+internal fun resolveOnboardingFirstGameTopic(
+    topicInput: String,
+    random: Random = Random.Default,
+): String = topicInput.trim().ifEmpty { ONBOARDING_POPULAR_TOPICS.random(random) }
 
 private val PROVIDER_NAMES = mapOf(
     "gemini" to "Google Gemini",
@@ -507,23 +530,26 @@ fun OnboardingScreen(
                 val topic = topicInput.trim()
                 val buttonLabel = when {
                     !isLast -> "Next"
-                    topic.isNotEmpty() -> "Play Now · " + when (gameMode) {
+                    topic.isEmpty() -> "Play Now · Surprise Me"
+                    else -> "Play Now · " + when (gameMode) {
                         "GUESSING" -> "Guessing"
                         "SURVIVAL" -> "Survival"
                         "BLITZ" -> "Blitz"
                         "VERSUS" -> "Versus"
                         else -> "Quiz"
                     }
-                    else -> "Start Playing"
                 }
                 // Shared primary-button shape (NazoButtons vocabulary).
                 NazoPrimaryButton(
                     onClick = {
                         Haptics.light(context)
-                        when {
-                            !isLast -> scope.launch { pagerState.animateScrollToPage(page + 1) }
-                            topic.isNotEmpty() -> onPlayNow(gameMode, topic)
-                            else -> onFinish()
+                        if (!isLast) {
+                            scope.launch { pagerState.animateScrollToPage(page + 1) }
+                        } else {
+                            onPlayNow(
+                                gameMode,
+                                resolveOnboardingFirstGameTopic(topicInput),
+                            )
                         }
                     },
                     modifier = Modifier.weight(1f).height(58.dp),
@@ -1084,11 +1110,9 @@ private fun FirstGameSlide(
     val context = LocalContext.current
     val suggestions = remember {
         val all = LocalQuestionBank.suggestions()
-        val preferred = listOf(
-            "Naruto", "One Piece", "Attack on Titan", "Dragon Ball",
-            "Demon Slayer", "Jujutsu Kaisen", "My Hero Academia", "Death Note",
-        )
-        (preferred.filter { p -> all.any { it.equals(p, ignoreCase = true) } } + all)
+        (ONBOARDING_POPULAR_TOPICS.filter { popular ->
+            all.any { it.equals(popular, ignoreCase = true) }
+        } + all)
             .distinct()
             .take(8)
     }
@@ -1107,7 +1131,7 @@ private fun FirstGameSlide(
                 )
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "Pick a topic and jump right in — or just start exploring from Home.",
+                    text = "Pick a topic and jump right in — or leave it blank for a surprise from a popular anime.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = NazoTextSecondary,
                 )
@@ -1167,7 +1191,7 @@ private fun FirstGameSlide(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     placeholder = {
-                        Text("e.g. Naruto…", color = NazoTextSecondary.copy(alpha = 0.7f))
+                        Text("e.g. Naruto… or leave blank", color = NazoTextSecondary.copy(alpha = 0.7f))
                     },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { onDone() }),
