@@ -241,7 +241,7 @@ fun SettingsScreen(
                     subtitle = if (soundEnabled) {
                         "Tap a style to hear it. It applies to every sound in the app."
                     } else {
-                        "Turn on Sound effects above to hear these."
+                        "Tap a style to preview it. Sound effects stay off everywhere else."
                     },
                 )
                 Spacer(modifier = Modifier.height(16.dp))
@@ -255,7 +255,7 @@ fun SettingsScreen(
                             // Persist first, then audition, so the preview is
                             // the voice that was just selected.
                             onSoundThemeChange(theme)
-                            Sounds.preview(sheetContext)
+                            Sounds.preview(sheetContext, theme)
                         },
                     )
                     Spacer(modifier = Modifier.height(10.dp))

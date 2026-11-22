@@ -12,6 +12,7 @@ then archived below; there should be no per-version release-note files.
 - **Fixed** — Update checks now identify Nazo explicitly to GitHub and fall back to GitHub's stable-release redirect when the public API is unavailable or its shared-IP rate limit is exhausted, instead of reporting a generic failure on otherwise working connections.
 - **Fixed** — The default docked navigation bar now sits completely above Android's tappable three-button controls in portrait and landscape, while gesture-navigation devices retain the intentional edge-to-edge surface behind the gesture handle.
 - **Improved** — Android's three-button navigation area now has an opaque background matched to the active Nazo theme, preventing app content from showing through behind the system buttons.
+- **Improved** — Sound styles now play a one-off preview when selected even if Sound effects are switched off, while gameplay remains silent until effects are enabled.
 
 ## Release archive
 
