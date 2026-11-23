@@ -90,6 +90,10 @@ internal fun themeRevealRadius(width: Float, height: Float, progress: Float): Fl
 internal fun themeRevealUsesTargetSystemBars(progress: Float): Boolean =
     progress >= ThemeRevealSystemBarSwitchFraction
 
+/** Dark system icons are preferred whenever they have at least as much contrast as white. */
+internal fun shouldUseDarkSystemBarIcons(background: Color): Boolean =
+    contrastRatio(ContrastNearBlack, background) >= contrastRatio(ContrastNearWhite, background)
+
 /**
  * Keeps one live app composition. Accent-only changes continue to morph its
  * semantic palette. A light/dark polarity change instead captures the visible
