@@ -1,27 +1,39 @@
 package quiz.thaton3app.nazo.ui.theme
 
+import android.graphics.Bitmap
+import android.os.Handler
+import android.os.Looper
+import android.view.PixelCopy
+import android.view.Window
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import kotlin.coroutines.resume
+import kotlin.math.hypot
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 internal const val AccentPaletteTransitionDurationMs = 380
-internal const val LightDarkPaletteTransitionDurationMs = 480
+internal const val ThemeRevealDurationMs = 620
+internal const val ThemeRevealSystemBarSwitchFraction = 0.58f
 
 /** One rendered frame of an app-wide theme change. */
 internal data class NazoThemeTransitionFrame(
     val palette: NazoColors,
-    val contentAlpha: Float,
     val darkScheme: Boolean,
+    val systemBarPalette: NazoColors,
+    val revealSnapshot: Bitmap?,
+    val revealProgress: Float,
+    val revealFromRight: Boolean,
 )
 
 /**
@@ -63,127 +75,187 @@ internal fun interpolateNazoColors(
     ).enforceContrast()
 }
 
+/** Top-corner origin: dark enters from the right and light from the left. */
+internal fun themeRevealOrigin(width: Float, revealFromRight: Boolean): Offset =
+    Offset(x = if (revealFromRight) width else 0f, y = 0f)
+
+/** Radius required to reveal a full rectangular window from either top corner. */
+internal fun themeRevealRadius(width: Float, height: Float, progress: Float): Float =
+    hypot(width, height) * progress.coerceIn(0f, 1f)
+
 /**
- * Dark/light changes fade the composed controls through the animated window
- * background. This hides the unavoidable foreground-polarity swap: directly
- * blending dark text into light text would briefly make it gray on a gray
- * surface. Accent-only changes keep the content fully visible.
+ * System-bar icons are binary, so switch them after most of the upper edge has
+ * reached the target theme rather than flashing them at the start.
  */
-internal fun themeTransitionContentAlpha(
-    progress: Float,
-    startingAlpha: Float,
-    lightDarkChange: Boolean,
-): Float {
-    val p = progress.coerceIn(0f, 1f)
-    val start = startingAlpha.coerceIn(0f, 1f)
-    if (!lightDarkChange) {
-        val eased = FastOutSlowInEasing.transform(p)
-        return start + (1f - start) * eased
-    }
-
-    // Keep content fully hidden across the narrow interval where a single
-    // foreground color cannot satisfy both the light and dark surface family.
-    // The window background continues morphing underneath it.
-    val fadeOutEnd = 1f / 3f
-    val fadeInStart = 2f / 3f
-    return when {
-        p < fadeOutEnd -> start * (1f - smoothStep(p / fadeOutEnd))
-        p <= fadeInStart -> 0f
-        else -> smoothStep((p - fadeInStart) / (1f - fadeInStart))
-    }
-}
-
-internal fun themeTransitionDurationMs(lightDarkChange: Boolean): Int =
-    if (lightDarkChange) LightDarkPaletteTransitionDurationMs
-    else AccentPaletteTransitionDurationMs
-
-/** Dark system icons are preferred whenever they have at least as much contrast as white. */
-internal fun shouldUseDarkSystemBarIcons(background: Color): Boolean =
-    contrastRatio(ContrastNearBlack, background) >= contrastRatio(ContrastNearWhite, background)
-
-/** Smoothstep without overshoot, useful for an opacity that must stay in [0, 1]. */
-private fun smoothStep(value: Float): Float {
-    val x = value.coerceIn(0f, 1f)
-    return x * x * (3f - 2f * x)
-}
+internal fun themeRevealUsesTargetSystemBars(progress: Float): Boolean =
+    progress >= ThemeRevealSystemBarSwitchFraction
 
 /**
- * Keeps a single app composition alive while its palette changes underneath
- * it. A new selection interrupts from the currently rendered frame, so rapid
- * taps never jump back to an earlier palette.
+ * Keeps one live app composition. Accent-only changes continue to morph its
+ * semantic palette. A light/dark polarity change instead captures the visible
+ * window, applies the complete target palette underneath, and removes the old
+ * frame with an expanding corner reveal. The bitmap is visual-only: app state,
+ * media, dialogs and side effects are never duplicated.
+ *
+ * A target change during the reveal captures the currently displayed composite
+ * and starts again from that exact frame, avoiding jumps on rapid selections.
  */
 @Composable
 internal fun rememberNazoThemeTransition(
     targetPalette: NazoColors,
     targetDark: Boolean,
     reduceMotion: Boolean,
+    window: Window?,
 ): NazoThemeTransitionFrame {
     var renderedPalette by remember { mutableStateOf(targetPalette) }
-    var renderedContentAlpha by remember { mutableFloatStateOf(1f) }
     var renderedDarkScheme by remember { mutableStateOf(targetDark) }
-    var polarityTransitionInFlight by remember { mutableStateOf(false) }
+    var renderedSystemBarPalette by remember { mutableStateOf(targetPalette) }
+    var revealSnapshot by remember { mutableStateOf<Bitmap?>(null) }
+    var revealFromRight by remember { mutableStateOf(targetDark) }
     val progress = remember { Animatable(1f) }
 
-    LaunchedEffect(targetPalette, targetDark, reduceMotion) {
+    LaunchedEffect(targetPalette, targetDark, reduceMotion, window) {
         if (renderedPalette == targetPalette &&
             renderedDarkScheme == targetDark &&
-            renderedContentAlpha == 1f &&
-            !polarityTransitionInFlight
+            revealSnapshot == null
         ) {
+            renderedSystemBarPalette = targetPalette
             return@LaunchedEffect
         }
 
         if (reduceMotion) {
             progress.snapTo(1f)
+            revealSnapshot = null
             renderedPalette = targetPalette
-            renderedContentAlpha = 1f
             renderedDarkScheme = targetDark
-            polarityTransitionInFlight = false
+            renderedSystemBarPalette = targetPalette
             return@LaunchedEffect
         }
 
+        val needsPolarityReveal = renderedDarkScheme != targetDark || revealSnapshot != null
+        if (needsPolarityReveal) {
+            // The previous rendered palette and any in-flight reveal remain on
+            // screen while PixelCopy captures them. The target is not applied
+            // until the snapshot has been installed above the live app.
+            val snapshot = window?.let { captureWindowSnapshot(it) }
+            if (snapshot == null) {
+                // Capture failure is rare (usually a window with no buffer yet).
+                // Prefer a clean immediate switch over reintroducing the full-app
+                // opacity blink this reveal replaces.
+                progress.snapTo(1f)
+                revealSnapshot = null
+                renderedPalette = targetPalette
+                renderedDarkScheme = targetDark
+                renderedSystemBarPalette = targetPalette
+                return@LaunchedEffect
+            }
+
+            revealFromRight = targetDark
+            revealSnapshot = snapshot
+            progress.snapTo(0f)
+            // Frame callbacks run before composition. Two ticks guarantee the
+            // old-window snapshot has actually been placed before the live
+            // semantic palette changes underneath it.
+            withFrameNanos { }
+            withFrameNanos { }
+
+            renderedPalette = targetPalette
+            renderedDarkScheme = targetDark
+            // Likewise, do not open the circular hole until the target-theme
+            // app has completed at least one composition behind the snapshot.
+            withFrameNanos { }
+            withFrameNanos { }
+
+            progress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = ThemeRevealDurationMs,
+                    easing = FastOutSlowInEasing,
+                ),
+            ) {
+                if (themeRevealUsesTargetSystemBars(value)) {
+                    renderedSystemBarPalette = targetPalette
+                }
+            }
+
+            renderedPalette = targetPalette
+            renderedDarkScheme = targetDark
+            renderedSystemBarPalette = targetPalette
+            revealSnapshot = null
+            return@LaunchedEffect
+        }
+
+        // Accent-only: preserve the currently displayed intermediate palette
+        // as the next start so fast repeated swatch taps remain continuous.
         val startPalette = renderedPalette
-        val startAlpha = renderedContentAlpha
-        // If a mode transition is interrupted after its binary Material
-        // scheme has flipped, its palette can still be midway between
-        // polarities. Keep the protective fade active until a real endpoint.
-        val lightDarkChange = renderedDarkScheme != targetDark || polarityTransitionInFlight
-        polarityTransitionInFlight = lightDarkChange
         progress.snapTo(0f)
         progress.animateTo(
             targetValue = 1f,
             animationSpec = tween(
-                durationMillis = themeTransitionDurationMs(lightDarkChange),
-                easing = LinearEasing,
+                durationMillis = AccentPaletteTransitionDurationMs,
+                easing = FastOutSlowInEasing,
             ),
         ) {
-            val easedColorProgress = FastOutSlowInEasing.transform(value)
-            renderedPalette = interpolateNazoColors(
+            val framePalette = interpolateNazoColors(
                 start = startPalette,
                 end = targetPalette,
-                fraction = easedColorProgress,
+                fraction = value,
             )
-            renderedContentAlpha = themeTransitionContentAlpha(
-                progress = easedColorProgress,
-                startingAlpha = startAlpha,
-                lightDarkChange = lightDarkChange,
-            )
-            // Material defaults may differ between lightColorScheme and
-            // darkColorScheme. Flip that family only while content is hidden.
-            if (lightDarkChange && easedColorProgress >= 0.5f) {
-                renderedDarkScheme = targetDark
-            }
+            renderedPalette = framePalette
+            renderedSystemBarPalette = framePalette
         }
-
         renderedPalette = targetPalette
-        renderedContentAlpha = 1f
-        renderedDarkScheme = targetDark
-        polarityTransitionInFlight = false
+        renderedSystemBarPalette = targetPalette
     }
 
     return NazoThemeTransitionFrame(
         palette = renderedPalette,
-        contentAlpha = renderedContentAlpha,
         darkScheme = renderedDarkScheme,
+        systemBarPalette = renderedSystemBarPalette,
+        revealSnapshot = revealSnapshot,
+        revealProgress = progress.value,
+        revealFromRight = revealFromRight,
     )
+}
+
+/** PixelCopy includes the window's TextureView-backed media on API 26+. */
+private suspend fun captureWindowSnapshot(window: Window): Bitmap? {
+    repeat(2) { attempt ->
+        val width = window.decorView.width
+        val height = window.decorView.height
+        if (width <= 0 || height <= 0) return null
+
+        val snapshot = suspendCancellableCoroutine<Bitmap?> { continuation ->
+            val bitmap = try {
+                Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            } catch (_: OutOfMemoryError) {
+                continuation.resume(null)
+                return@suspendCancellableCoroutine
+            }
+            try {
+                @Suppress("DEPRECATION")
+                PixelCopy.request(
+                    window,
+                    bitmap,
+                    { result ->
+                        if (!continuation.isActive) {
+                            bitmap.recycle()
+                        } else if (result == PixelCopy.SUCCESS) {
+                            continuation.resume(bitmap)
+                        } else {
+                            bitmap.recycle()
+                            continuation.resume(null)
+                        }
+                    },
+                    Handler(Looper.getMainLooper()),
+                )
+            } catch (_: IllegalArgumentException) {
+                bitmap.recycle()
+                if (continuation.isActive) continuation.resume(null)
+            }
+        }
+        if (snapshot != null) return snapshot
+        if (attempt == 0) withFrameNanos { }
+    }
+    return null
 }

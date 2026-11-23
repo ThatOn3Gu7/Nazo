@@ -52,97 +52,34 @@ class NazoThemeTransitionTest {
     }
 
     @Test
-    fun modeTransitionsShowContentOnlyWhenItsPaletteHasSafeContrast() {
-        val transitions = buildList {
-            lightPalettes.forEach { start -> darkPalettes.forEach { end -> add(start to end) } }
-            darkPalettes.forEach { start -> lightPalettes.forEach { end -> add(start to end) } }
-        }
-        val failures = mutableListOf<String>()
-
-        transitions.forEachIndexed { transitionIndex, (start, end) ->
-            sampledFractions.forEach { fraction ->
-                val frameFailures = mutableListOf<String>()
-                collectContrastFailures(
-                    palette = interpolateNazoColors(start, end, fraction),
-                    tag = "mode transition $transitionIndex at $fraction",
-                    failures = frameFailures,
-                )
-                val alpha = themeTransitionContentAlpha(
-                    progress = fraction,
-                    startingAlpha = 1f,
-                    lightDarkChange = true,
-                )
-                if (frameFailures.isNotEmpty() && alpha != 0f) {
-                    failures += "visible at alpha $alpha: ${frameFailures.joinToString()}"
-                }
-            }
-        }
-
-        assertTrue(
-            "visible mode-transition contrast failures:\n${failures.take(40).joinToString("\n")}",
-            failures.isEmpty(),
-        )
+    fun themeRevealUsesOppositeTopCornersForLightAndDark() {
+        assertEquals(0f, themeRevealOrigin(width = 1080f, revealFromRight = false).x, 0.001f)
+        assertEquals(0f, themeRevealOrigin(width = 1080f, revealFromRight = false).y, 0.001f)
+        assertEquals(1080f, themeRevealOrigin(width = 1080f, revealFromRight = true).x, 0.001f)
+        assertEquals(0f, themeRevealOrigin(width = 1080f, revealFromRight = true).y, 0.001f)
     }
 
     @Test
-    fun darkLightFadeHidesOnlyTheForegroundPolaritySwap() {
-        assertEquals(1f, themeTransitionContentAlpha(0f, 1f, lightDarkChange = true), 0.001f)
-        assertEquals(0f, themeTransitionContentAlpha(0.4f, 1f, lightDarkChange = true), 0.001f)
-        assertEquals(0f, themeTransitionContentAlpha(0.5f, 1f, lightDarkChange = true), 0.001f)
-        assertEquals(0f, themeTransitionContentAlpha(0.6f, 1f, lightDarkChange = true), 0.001f)
-        assertEquals(1f, themeTransitionContentAlpha(1f, 1f, lightDarkChange = true), 0.001f)
-
-        listOf(0f, 0.25f, 0.5f, 0.75f, 1f).forEach { progress ->
-            assertEquals(
-                1f,
-                themeTransitionContentAlpha(progress, 1f, lightDarkChange = false),
-                0.001f,
-            )
-        }
+    fun themeRevealRadiusCoversTheFarthestCornerAndClampsProgress() {
+        assertEquals(0f, themeRevealRadius(300f, 400f, -1f), 0.001f)
+        assertEquals(250f, themeRevealRadius(300f, 400f, 0.5f), 0.001f)
+        assertEquals(500f, themeRevealRadius(300f, 400f, 1f), 0.001f)
+        assertEquals(500f, themeRevealRadius(300f, 400f, 2f), 0.001f)
     }
 
     @Test
-    fun interruptedFadeRecoversWithoutAnOpacityJump() {
-        assertEquals(
-            0.35f,
-            themeTransitionContentAlpha(
-                progress = 0f,
-                startingAlpha = 0.35f,
-                lightDarkChange = true,
-            ),
-            0.001f,
-        )
-        assertEquals(
-            0.35f,
-            themeTransitionContentAlpha(
-                progress = 0f,
-                startingAlpha = 0.35f,
-                lightDarkChange = false,
-            ),
-            0.001f,
-        )
-        assertEquals(
-            1f,
-            themeTransitionContentAlpha(
-                progress = 1f,
-                startingAlpha = 0.35f,
-                lightDarkChange = false,
-            ),
-            0.001f,
-        )
+    fun systemBarsSwitchOnceTheRevealOwnsMostOfTheTopEdge() {
+        assertFalse(themeRevealUsesTargetSystemBars(0f))
+        assertFalse(themeRevealUsesTargetSystemBars(ThemeRevealSystemBarSwitchFraction - 0.01f))
+        assertTrue(themeRevealUsesTargetSystemBars(ThemeRevealSystemBarSwitchFraction))
+        assertTrue(themeRevealUsesTargetSystemBars(1f))
     }
 
     @Test
-    fun transitionDurationsDistinguishAccentAndModeChanges() {
-        assertEquals(
-            AccentPaletteTransitionDurationMs,
-            themeTransitionDurationMs(lightDarkChange = false),
-        )
-        assertEquals(
-            LightDarkPaletteTransitionDurationMs,
-            themeTransitionDurationMs(lightDarkChange = true),
-        )
-        assertTrue(LightDarkPaletteTransitionDurationMs > AccentPaletteTransitionDurationMs)
+    fun revealHasRoomToReadWhileAccentMorphStaysResponsive() {
+        assertEquals(380, AccentPaletteTransitionDurationMs)
+        assertEquals(620, ThemeRevealDurationMs)
+        assertTrue(ThemeRevealDurationMs > AccentPaletteTransitionDurationMs)
     }
 
     @Test

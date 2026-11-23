@@ -1,9 +1,11 @@
 package quiz.thaton3app.nazo.ui.theme
 
 import android.app.Activity
+import android.graphics.Bitmap
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.view.WindowManager
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,10 +16,17 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
@@ -58,11 +67,14 @@ fun NazoTheme(
     reduceMotion: Boolean = false,
     content: @Composable () -> Unit,
 ) {
+    val view = LocalView.current
+    val window = if (!view.isInEditMode) (view.context as? Activity)?.window else null
     val targetPalette = resolveAccent(accentId, darkTheme)
     val themeFrame = rememberNazoThemeTransition(
         targetPalette = targetPalette,
         targetDark = darkTheme,
         reduceMotion = reduceMotion,
+        window = window,
     )
     val palette = themeFrame.palette
     // Publish the rendered (possibly intermediate) palette so every custom
@@ -116,10 +128,8 @@ fun NazoTheme(
         ),
     )
 
-    val view = LocalView.current
-    if (!view.isInEditMode) {
+    if (window != null) {
         SideEffect {
-            val window = (view.context as Activity).window
             // Edge-to-edge: let the app draw full-bleed (behind the status bar and into the
             // display cutout) so the startup popup's blur/scrim can reach the entire top,
             // including the camera cutout and status bar. Screens already apply system-bar
@@ -139,7 +149,7 @@ fun NazoTheme(
             // Back, Home, and Recents controls.
             @Suppress("DEPRECATION")
             window.navigationBarColor = if (navigationBarIsTappable) {
-                palette.navBar.toArgb()
+                themeFrame.systemBarPalette.navBar.toArgb()
             } else {
                 Color.Transparent.toArgb()
             }
@@ -152,11 +162,11 @@ fun NazoTheme(
             // Choose the higher-contrast polarity from the currently rendered
             // backdrop so the flip happens safely during the palette morph.
             insets.isAppearanceLightStatusBars =
-                shouldUseDarkSystemBarIcons(palette.background)
+                shouldUseDarkSystemBarIcons(themeFrame.systemBarPalette.background)
             val navigationBackdrop = if (navigationBarIsTappable) {
-                palette.navBar
+                themeFrame.systemBarPalette.navBar
             } else {
-                palette.background
+                themeFrame.systemBarPalette.background
             }
             insets.isAppearanceLightNavigationBars =
                 shouldUseDarkSystemBarIcons(navigationBackdrop)
@@ -167,16 +177,61 @@ fun NazoTheme(
         colorScheme = colorScheme,
         typography = NazoTypography,
     ) {
-        // For dark/light changes, the app's controls briefly fade through the
-        // matching animated window background while foreground polarity swaps.
-        // This keeps one live composition—no duplicated screens, media, or
-        // side effects—while avoiding a gray-on-gray midpoint.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer { alpha = themeFrame.contentAlpha },
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
             content()
+            themeFrame.revealSnapshot?.let { snapshot ->
+                ThemeRevealOverlay(
+                    snapshot = snapshot,
+                    progress = themeFrame.revealProgress,
+                    revealFromRight = themeFrame.revealFromRight,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Draws the captured old window above the one live app tree, then clears an
+ * expanding circle so the complete target theme is progressively exposed.
+ */
+@Composable
+private fun ThemeRevealOverlay(
+    snapshot: Bitmap,
+    progress: Float,
+    revealFromRight: Boolean,
+) {
+    val image = remember(snapshot) { snapshot.asImageBitmap() }
+    // Do not eagerly recycle a bitmap that reached a Compose draw layer: the
+    // renderer may still hold it for the preceding frame. Once this short-lived
+    // overlay is removed, ordinary Bitmap GC safely releases its pixel buffer.
+
+    Canvas(
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                // BlendMode.Clear must affect only this bitmap layer, never the
+                // newly themed live app underneath it.
+                compositingStrategy = CompositingStrategy.Offscreen
+            },
+    ) {
+        if (snapshot.isRecycled) return@Canvas
+        drawImage(
+            image = image,
+            srcOffset = IntOffset.Zero,
+            srcSize = IntSize(snapshot.width, snapshot.height),
+            dstOffset = IntOffset.Zero,
+            dstSize = IntSize(size.width.toInt(), size.height.toInt()),
+            filterQuality = FilterQuality.Low,
+        )
+        val origin = themeRevealOrigin(size.width, revealFromRight)
+        val radius = themeRevealRadius(size.width, size.height, progress)
+        if (radius > 0f) {
+            drawCircle(
+                color = Color.Transparent,
+                radius = radius + 1f,
+                center = origin,
+                blendMode = BlendMode.Clear,
+            )
         }
     }
 }
