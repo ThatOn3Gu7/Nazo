@@ -144,11 +144,20 @@ fun AppearanceScreen(
 ) {
     val context = LocalContext.current
     val reduceMotion = rememberSystemReduceMotion()
-
-    val isDark = when (currentMode) {
-        "dark" -> true
-        "light" -> false
-        else -> isSystemInDarkTheme()
+    val visualTheme = LocalNazoThemeVisualState.current
+    // Theme preferences update immediately, but the selector previews must stay
+    // on the captured source frame until the reveal installs its target tree.
+    // The screenshot mask then makes each swatch/card update exactly when the
+    // corner wave reaches it instead of before PixelCopy runs.
+    val visualMode = if (visualTheme.isProvided) visualTheme.themeMode else currentMode
+    val isDark = if (visualTheme.isProvided) {
+        visualTheme.darkTheme
+    } else {
+        when (currentMode) {
+            "dark" -> true
+            "light" -> false
+            else -> isSystemInDarkTheme()
+        }
     }
 
     var iconFollowsOsThemeChecked by remember { mutableStateOf(iconFollowsOsTheme) }
@@ -223,9 +232,10 @@ fun AppearanceScreen(
                 icon = Icons.Outlined.DesktopMac,
                 title = "System Default",
                 subtitle = "Follow device setting",
-                isSelected = currentMode == ThemeMode.System.mode,
+                isSelected = visualMode == ThemeMode.System.mode,
                 celestial = "cycle",
                 reduceMotion = reduceMotion,
+                pauseCelestial = visualTheme.modeChangePending,
                 onClick = { Haptics.soft(context); onModeChange(ThemeMode.System.mode) }
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -233,9 +243,10 @@ fun AppearanceScreen(
                 icon = Icons.Outlined.LightMode,
                 title = "Light",
                 subtitle = "Mint daylight surface",
-                isSelected = currentMode == ThemeMode.Light.mode,
+                isSelected = visualMode == ThemeMode.Light.mode,
                 celestial = "sun",
                 reduceMotion = reduceMotion,
+                pauseCelestial = visualTheme.modeChangePending,
                 onClick = { Haptics.soft(context); onModeChange(ThemeMode.Light.mode) }
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -243,9 +254,10 @@ fun AppearanceScreen(
                 icon = Icons.Outlined.ModeNight,
                 title = "Dark",
                 subtitle = "Deep forest surface",
-                isSelected = currentMode == ThemeMode.Dark.mode,
+                isSelected = visualMode == ThemeMode.Dark.mode,
                 celestial = "moon",
                 reduceMotion = reduceMotion,
+                pauseCelestial = visualTheme.modeChangePending,
                 onClick = { Haptics.soft(context); onModeChange(ThemeMode.Dark.mode) }
             )
 
@@ -866,6 +878,7 @@ private fun ThemeModeRow(
     reduceMotion: Boolean,
     onClick: () -> Unit,
     celestial: String = "", // "" | "sun" | "moon" | "cycle"
+    pauseCelestial: Boolean = false,
 ) {
     val backgroundColor = if (isSelected) NazoDarkCard else NazoSurface
     val contentColor = if (isSelected) Color.White else NazoTextPrimary
@@ -885,10 +898,10 @@ private fun ThemeModeRow(
     // the masking), and progress is read only in the draw phase.
     val transit = remember { Animatable(0f) }
     var wasSelected by remember { mutableStateOf(isSelected) }
-    LaunchedEffect(isSelected, reduceMotion) {
+    LaunchedEffect(isSelected, reduceMotion, pauseCelestial) {
         val becameSelected = isSelected && !wasSelected
         wasSelected = isSelected
-        if (celestial.isEmpty() || reduceMotion) {
+        if (celestial.isEmpty() || reduceMotion || pauseCelestial) {
             transit.snapTo(0f)
             return@LaunchedEffect
         }

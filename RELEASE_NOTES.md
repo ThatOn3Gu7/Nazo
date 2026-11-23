@@ -14,7 +14,7 @@ then archived below; there should be no per-version release-note files.
 - **Improved** — Android's three-button navigation area now has an opaque background matched to the active Nazo theme, preventing app content from showing through behind the system buttons.
 - **Improved** — Sound styles now play a one-off preview when selected even if Sound effects are switched off, while gameplay remains silent until effects are enabled.
 - **Fixed** — Starting the first onboarding game with an empty topic now launches with a randomized popular anime instead of silently leaving onboarding without a game.
-- **Improved** — Light and dark themes now sweep in from opposite top corners while accent palettes retain their smooth whole-app color morph, replacing abrupt flashes and full-screen fades.
+- **Improved** — Light and dark themes now sweep in from opposite top corners while accent palettes retain their smooth whole-app color morph; swatches and sun/moon selectors follow the wave without rapid-switch flicker or stuck animation frames.
 
 ## Release archive
 

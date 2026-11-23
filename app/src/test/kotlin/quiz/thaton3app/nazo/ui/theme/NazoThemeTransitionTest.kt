@@ -83,6 +83,14 @@ class NazoThemeTransitionTest {
     }
 
     @Test
+    fun selectorStateWaitsForBothModeAndResolvedPolarity() {
+        assertFalse(isThemeModeChangePending("light", "light", false, false))
+        assertTrue(isThemeModeChangePending("light", "dark", false, true))
+        assertTrue(isThemeModeChangePending("system", "light", false, false))
+        assertTrue(isThemeModeChangePending("system", "system", false, true))
+    }
+
+    @Test
     fun systemBarIconsChooseTheHigherContrastPolarity() {
         assertTrue(shouldUseDarkSystemBarIcons(Color.White))
         assertFalse(shouldUseDarkSystemBarIcons(Color.Black))

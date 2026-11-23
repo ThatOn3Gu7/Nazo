@@ -30,10 +30,12 @@ internal const val ThemeRevealSystemBarSwitchFraction = 0.58f
 internal data class NazoThemeTransitionFrame(
     val palette: NazoColors,
     val darkScheme: Boolean,
+    val themeMode: String,
     val systemBarPalette: NazoColors,
     val revealSnapshot: Bitmap?,
     val revealProgress: Float,
     val revealFromRight: Boolean,
+    val modeChangePending: Boolean,
 )
 
 /**
@@ -90,6 +92,13 @@ internal fun themeRevealRadius(width: Float, height: Float, progress: Float): Fl
 internal fun themeRevealUsesTargetSystemBars(progress: Float): Boolean =
     progress >= ThemeRevealSystemBarSwitchFraction
 
+internal fun isThemeModeChangePending(
+    renderedMode: String,
+    targetMode: String,
+    renderedDark: Boolean,
+    targetDark: Boolean,
+): Boolean = renderedMode != targetMode || renderedDark != targetDark
+
 /** Dark system icons are preferred whenever they have at least as much contrast as white. */
 internal fun shouldUseDarkSystemBarIcons(background: Color): Boolean =
     contrastRatio(ContrastNearBlack, background) >= contrastRatio(ContrastNearWhite, background)
@@ -108,19 +117,22 @@ internal fun shouldUseDarkSystemBarIcons(background: Color): Boolean =
 internal fun rememberNazoThemeTransition(
     targetPalette: NazoColors,
     targetDark: Boolean,
+    targetThemeMode: String,
     reduceMotion: Boolean,
     window: Window?,
 ): NazoThemeTransitionFrame {
     var renderedPalette by remember { mutableStateOf(targetPalette) }
     var renderedDarkScheme by remember { mutableStateOf(targetDark) }
+    var renderedThemeMode by remember { mutableStateOf(targetThemeMode) }
     var renderedSystemBarPalette by remember { mutableStateOf(targetPalette) }
     var revealSnapshot by remember { mutableStateOf<Bitmap?>(null) }
     var revealFromRight by remember { mutableStateOf(targetDark) }
     val progress = remember { Animatable(1f) }
 
-    LaunchedEffect(targetPalette, targetDark, reduceMotion, window) {
+    LaunchedEffect(targetPalette, targetDark, targetThemeMode, reduceMotion, window) {
         if (renderedPalette == targetPalette &&
             renderedDarkScheme == targetDark &&
+            renderedThemeMode == targetThemeMode &&
             revealSnapshot == null
         ) {
             renderedSystemBarPalette = targetPalette
@@ -132,12 +144,48 @@ internal fun rememberNazoThemeTransition(
             revealSnapshot = null
             renderedPalette = targetPalette
             renderedDarkScheme = targetDark
+            renderedThemeMode = targetThemeMode
             renderedSystemBarPalette = targetPalette
+            return@LaunchedEffect
+        }
+
+        val modeLabelOnlyChange = renderedPalette == targetPalette &&
+            renderedDarkScheme == targetDark &&
+            renderedThemeMode != targetThemeMode
+        if (modeLabelOnlyChange) {
+            // Dark↔System (or Light↔System) can select a different card without
+            // changing the resolved palette. Commit that card under any active
+            // snapshot and let the existing wave finish instead of restarting
+            // or leaving a half-drawn celestial body behind.
+            renderedThemeMode = targetThemeMode
+            if (revealSnapshot != null) {
+                val remainingDuration =
+                    (ThemeRevealDurationMs * (1f - progress.value)).toInt().coerceAtLeast(1)
+                progress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(
+                        durationMillis = remainingDuration,
+                        easing = FastOutSlowInEasing,
+                    ),
+                ) {
+                    if (themeRevealUsesTargetSystemBars(value)) {
+                        renderedSystemBarPalette = targetPalette
+                    }
+                }
+                renderedSystemBarPalette = targetPalette
+                revealSnapshot = null
+            }
             return@LaunchedEffect
         }
 
         val needsPolarityReveal = renderedDarkScheme != targetDark || revealSnapshot != null
         if (needsPolarityReveal) {
+            // First let Appearance observe modeChangePending and reset any
+            // running sun/moon transit. PixelCopy then captures stable source
+            // controls and source-mode swatches, not a half-updated selector.
+            withFrameNanos { }
+            withFrameNanos { }
+
             // The previous rendered palette and any in-flight reveal remain on
             // screen while PixelCopy captures them. The target is not applied
             // until the snapshot has been installed above the live app.
@@ -150,6 +198,7 @@ internal fun rememberNazoThemeTransition(
                 revealSnapshot = null
                 renderedPalette = targetPalette
                 renderedDarkScheme = targetDark
+                renderedThemeMode = targetThemeMode
                 renderedSystemBarPalette = targetPalette
                 return@LaunchedEffect
             }
@@ -165,6 +214,7 @@ internal fun rememberNazoThemeTransition(
 
             renderedPalette = targetPalette
             renderedDarkScheme = targetDark
+            renderedThemeMode = targetThemeMode
             // Likewise, do not open the circular hole until the target-theme
             // app has completed at least one composition behind the snapshot.
             withFrameNanos { }
@@ -184,6 +234,7 @@ internal fun rememberNazoThemeTransition(
 
             renderedPalette = targetPalette
             renderedDarkScheme = targetDark
+            renderedThemeMode = targetThemeMode
             renderedSystemBarPalette = targetPalette
             revealSnapshot = null
             return@LaunchedEffect
@@ -191,6 +242,7 @@ internal fun rememberNazoThemeTransition(
 
         // Accent-only: preserve the currently displayed intermediate palette
         // as the next start so fast repeated swatch taps remain continuous.
+        renderedThemeMode = targetThemeMode
         val startPalette = renderedPalette
         progress.snapTo(0f)
         progress.animateTo(
@@ -215,10 +267,17 @@ internal fun rememberNazoThemeTransition(
     return NazoThemeTransitionFrame(
         palette = renderedPalette,
         darkScheme = renderedDarkScheme,
+        themeMode = renderedThemeMode,
         systemBarPalette = renderedSystemBarPalette,
         revealSnapshot = revealSnapshot,
         revealProgress = progress.value,
         revealFromRight = revealFromRight,
+        modeChangePending = isThemeModeChangePending(
+            renderedMode = renderedThemeMode,
+            targetMode = targetThemeMode,
+            renderedDark = renderedDarkScheme,
+            targetDark = targetDark,
+        ),
     )
 }
 

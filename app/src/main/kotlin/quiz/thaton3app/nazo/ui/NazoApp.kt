@@ -2274,6 +2274,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     NazoTheme(
         darkTheme = isDark,
         accentId = accentName,
+        themeMode = themeMode,
         reduceMotion = reduceMotion,
     ) {
         Box(

@@ -15,8 +15,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
@@ -35,6 +37,28 @@ import androidx.core.view.WindowCompat
 // Theme now reacts to the user's Appearance-screen choices: a real dark "deep forest"
 // theme, plus a selectable accent that applies a full palette. Dynamic color (Material You)
 // is intentionally NOT wired up: the brief is to match the mockup's fixed palette.
+
+/**
+ * The visually applied mode can intentionally trail the saved target for a few
+ * frames while PixelCopy secures the reveal's source image. Appearance uses
+ * this value so its swatches and celestial selectors change underneath the
+ * wave instead of flickering before capture.
+ */
+internal data class NazoThemeVisualState(
+    val darkTheme: Boolean,
+    val themeMode: String,
+    val modeChangePending: Boolean,
+    val isProvided: Boolean,
+)
+
+internal val LocalNazoThemeVisualState = staticCompositionLocalOf {
+    NazoThemeVisualState(
+        darkTheme = false,
+        themeMode = "",
+        modeChangePending = false,
+        isProvided = false,
+    )
+}
 
 /** Insets kept as plain values so navigation-mode classification is unit-testable. */
 internal data class NazoInsetEdges(
@@ -64,6 +88,7 @@ internal fun hasTappableNavigationBar(
 fun NazoTheme(
     darkTheme: Boolean,
     accentId: String,
+    themeMode: String = if (darkTheme) "dark" else "light",
     reduceMotion: Boolean = false,
     content: @Composable () -> Unit,
 ) {
@@ -73,6 +98,7 @@ fun NazoTheme(
     val themeFrame = rememberNazoThemeTransition(
         targetPalette = targetPalette,
         targetDark = darkTheme,
+        targetThemeMode = themeMode,
         reduceMotion = reduceMotion,
         window = window,
     )
@@ -177,14 +203,23 @@ fun NazoTheme(
         colorScheme = colorScheme,
         typography = NazoTypography,
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            content()
-            themeFrame.revealSnapshot?.let { snapshot ->
-                ThemeRevealOverlay(
-                    snapshot = snapshot,
-                    progress = themeFrame.revealProgress,
-                    revealFromRight = themeFrame.revealFromRight,
-                )
+        CompositionLocalProvider(
+            LocalNazoThemeVisualState provides NazoThemeVisualState(
+                darkTheme = themeFrame.darkScheme,
+                themeMode = themeFrame.themeMode,
+                modeChangePending = themeFrame.modeChangePending,
+                isProvided = true,
+            ),
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                content()
+                themeFrame.revealSnapshot?.let { snapshot ->
+                    ThemeRevealOverlay(
+                        snapshot = snapshot,
+                        progress = themeFrame.revealProgress,
+                        revealFromRight = themeFrame.revealFromRight,
+                    )
+                }
             }
         }
     }
