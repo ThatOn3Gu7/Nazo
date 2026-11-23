@@ -4,7 +4,9 @@ import android.app.Activity
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.view.WindowManager
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.tappableElement
 import androidx.compose.material3.MaterialTheme
@@ -12,7 +14,9 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -51,13 +55,21 @@ internal fun hasTappableNavigationBar(
 fun NazoTheme(
     darkTheme: Boolean,
     accentId: String,
+    reduceMotion: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val palette = resolveAccent(accentId, darkTheme)
-    // Publish the active palette so every screen's `NazoXxx` accessor reflects it.
+    val targetPalette = resolveAccent(accentId, darkTheme)
+    val themeFrame = rememberNazoThemeTransition(
+        targetPalette = targetPalette,
+        targetDark = darkTheme,
+        reduceMotion = reduceMotion,
+    )
+    val palette = themeFrame.palette
+    // Publish the rendered (possibly intermediate) palette so every custom
+    // `NazoXxx` accessor and Material component advances in the same frame.
     setNazoColors(palette)
 
-    val colorScheme = if (darkTheme) {
+    val colorScheme = if (themeFrame.darkScheme) {
         darkColorScheme(
             primary = palette.primary,
             onPrimary = palette.onPrimary,
@@ -136,14 +148,35 @@ fun NazoTheme(
             // AnimatedContent crossfade (especially in forced-dark mode) — see handoff log.
             window.setBackgroundDrawable(ColorDrawable(palette.background.toArgb()))
             val insets = WindowCompat.getInsetsController(window, view)
-            insets.isAppearanceLightStatusBars = !darkTheme
-            insets.isAppearanceLightNavigationBars = !darkTheme
+            // Android's icon style is a boolean rather than an animatable color.
+            // Choose the higher-contrast polarity from the currently rendered
+            // backdrop so the flip happens safely during the palette morph.
+            insets.isAppearanceLightStatusBars =
+                shouldUseDarkSystemBarIcons(palette.background)
+            val navigationBackdrop = if (navigationBarIsTappable) {
+                palette.navBar
+            } else {
+                palette.background
+            }
+            insets.isAppearanceLightNavigationBars =
+                shouldUseDarkSystemBarIcons(navigationBackdrop)
         }
     }
 
     MaterialTheme(
         colorScheme = colorScheme,
         typography = NazoTypography,
-        content = content,
-    )
+    ) {
+        // For dark/light changes, the app's controls briefly fade through the
+        // matching animated window background while foreground polarity swaps.
+        // This keeps one live composition—no duplicated screens, media, or
+        // side effects—while avoiding a gray-on-gray midpoint.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = themeFrame.contentAlpha },
+        ) {
+            content()
+        }
+    }
 }

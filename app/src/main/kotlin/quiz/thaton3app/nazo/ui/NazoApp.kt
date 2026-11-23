@@ -2271,7 +2271,11 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         withFrameNanos { }
         incoming.scrollTo(settingsScrollTransferOffset(outgoing.value, incoming.maxValue))
     }
-    NazoTheme(darkTheme = isDark, accentId = accentName) {
+    NazoTheme(
+        darkTheme = isDark,
+        accentId = accentName,
+        reduceMotion = reduceMotion,
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()

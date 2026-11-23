@@ -50,6 +50,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -83,6 +84,7 @@ import quiz.thaton3app.nazo.ui.components.NazoSheetHeader
 import quiz.thaton3app.nazo.ui.components.NazoTab
 import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
+import quiz.thaton3app.nazo.ui.components.rememberSystemReduceMotion
 import quiz.thaton3app.nazo.ui.components.SPARKLE_METEORS
 import quiz.thaton3app.nazo.ui.components.SPARKLE_STYLES
 import quiz.thaton3app.nazo.ui.components.SPARKLE_TWINKLE
@@ -141,6 +143,7 @@ fun AppearanceScreen(
     onHomeClick: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val reduceMotion = rememberSystemReduceMotion()
 
     val isDark = when (currentMode) {
         "dark" -> true
@@ -222,6 +225,7 @@ fun AppearanceScreen(
                 subtitle = "Follow device setting",
                 isSelected = currentMode == ThemeMode.System.mode,
                 celestial = "cycle",
+                reduceMotion = reduceMotion,
                 onClick = { Haptics.soft(context); onModeChange(ThemeMode.System.mode) }
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -231,6 +235,7 @@ fun AppearanceScreen(
                 subtitle = "Mint daylight surface",
                 isSelected = currentMode == ThemeMode.Light.mode,
                 celestial = "sun",
+                reduceMotion = reduceMotion,
                 onClick = { Haptics.soft(context); onModeChange(ThemeMode.Light.mode) }
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -240,6 +245,7 @@ fun AppearanceScreen(
                 subtitle = "Deep forest surface",
                 isSelected = currentMode == ThemeMode.Dark.mode,
                 celestial = "moon",
+                reduceMotion = reduceMotion,
                 onClick = { Haptics.soft(context); onModeChange(ThemeMode.Dark.mode) }
             )
 
@@ -266,6 +272,7 @@ fun AppearanceScreen(
                     ColorAccentCircle(
                         previewColors = previewColors(defaultAccent.id, isDark),
                         isSelected = currentAccent == defaultAccent.id,
+                        reduceMotion = reduceMotion,
                         onClick = { Haptics.soft(context); onAccentChange(defaultAccent.id) }
                     )
                     VerticalDivider(
@@ -278,6 +285,7 @@ fun AppearanceScreen(
                         ColorAccentCircle(
                             previewColors = previewColors(accent.id, isDark),
                             isSelected = currentAccent == accent.id,
+                            reduceMotion = reduceMotion,
                             onClick = { Haptics.soft(context); onAccentChange(accent.id) }
                         )
                     }
@@ -581,6 +589,7 @@ fun AppearanceScreen(
                 title = "Blur",
                 subtitle = "The mystery image starts foggy and sharpens as time runs out",
                 isSelected = revealStyle == "blur",
+                reduceMotion = reduceMotion,
                 onClick = { Haptics.soft(context); onRevealStyleChange("blur") }
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -589,6 +598,7 @@ fun AppearanceScreen(
                 title = "Pixelate",
                 subtitle = "Starts as a blocky mosaic and resolves into the image",
                 isSelected = revealStyle == "pixel",
+                reduceMotion = reduceMotion,
                 onClick = { Haptics.soft(context); onRevealStyleChange("pixel") }
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -853,6 +863,7 @@ private fun ThemeModeRow(
     title: String,
     subtitle: String,
     isSelected: Boolean,
+    reduceMotion: Boolean,
     onClick: () -> Unit,
     celestial: String = "", // "" | "sun" | "moon" | "cycle"
 ) {
@@ -874,10 +885,13 @@ private fun ThemeModeRow(
     // the masking), and progress is read only in the draw phase.
     val transit = remember { Animatable(0f) }
     var wasSelected by remember { mutableStateOf(isSelected) }
-    LaunchedEffect(isSelected) {
+    LaunchedEffect(isSelected, reduceMotion) {
         val becameSelected = isSelected && !wasSelected
         wasSelected = isSelected
-        if (celestial.isEmpty()) return@LaunchedEffect
+        if (celestial.isEmpty() || reduceMotion) {
+            transit.snapTo(0f)
+            return@LaunchedEffect
+        }
         // ALWAYS clear any leftover mid-flight value first: rapid theme
         // switching cancels the previous run mid-animateTo, which would
         // otherwise leave the sun/moon frozen inside the deselected row.
@@ -972,13 +986,38 @@ private fun ThemeModeRow(
 private fun ColorAccentCircle(
     previewColors: List<Color>,
     isSelected: Boolean,
-    onClick: () -> Unit
+    reduceMotion: Boolean,
+    onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val indication = LocalIndication.current
     val shape = rememberNazoPillCornerMorphShape(interactionSource)
+    val selectionPulse = remember { Animatable(1f) }
+    var wasSelected by remember { mutableStateOf(isSelected) }
+    LaunchedEffect(isSelected, reduceMotion) {
+        val becameSelected = isSelected && !wasSelected
+        wasSelected = isSelected
+        selectionPulse.snapTo(1f)
+        if (becameSelected && !reduceMotion) {
+            selectionPulse.animateTo(
+                targetValue = 1f,
+                animationSpec = keyframes {
+                    durationMillis = 320
+                    1f at 0
+                    1.14f at 120
+                    1.06f at 220
+                    1f at 320
+                },
+            )
+        }
+    }
+
     Box(
         modifier = Modifier
+            .graphicsLayer {
+                scaleX = selectionPulse.value
+                scaleY = selectionPulse.value
+            }
             .size(48.dp)
             .clip(shape)
             .clickable(

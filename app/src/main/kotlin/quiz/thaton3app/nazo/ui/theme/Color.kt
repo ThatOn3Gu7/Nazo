@@ -2,6 +2,7 @@ package quiz.thaton3app.nazo.ui.theme
 
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
+import kotlin.math.abs
 
 // Nazo brand palette — sampled directly from pixel data in the approved mockups.
 // Do not eyeball-adjust these; if a screen needs a color not listed here,
@@ -150,9 +151,9 @@ private val REFERENCE_HUE = LightNazoColors.primary.toHsl().h
  * actually select (all 15 accents x light/dark). It changes a role ONLY when
  * that role fails its WCAG bar on the palette it belongs to:
  *
- *  - placeholder / success / error text -> >= 4.5:1 on the surfaces behind it;
- *  - textSecondary -> >= 4.5:1 on every surface it lands on (hue-shifted
- *    accents dipped under on badge/pill washes);
+ *  - primary, secondary, placeholder, success and error text -> >= 4.5:1
+ *    on the surfaces behind them;
+ *  - dark-card foreground roles -> >= 4.5:1 on both dark-card surfaces;
  *  - successBg / errorBg chips -> >= 4.5:1 behind their own semantic text;
  *  - primary as a control fill -> >= 3:1 on the surfaces it sits on (the
  *    dark themes' hue-shifted accents drifted below this);
@@ -164,26 +165,47 @@ private val REFERENCE_HUE = LightNazoColors.primary.toHsl().h
  * beat, so hue and saturation — Nazo's identity — never change. Roles that
  * already pass come out byte-identical.
  */
-private fun NazoColors.enforceContrast(): NazoColors {
+internal fun NazoColors.enforceContrast(): NazoColors {
     val textBackdrops = listOf(background, surface, surfaceVariant, navBar)
+    val primaryTextBackdrops = textBackdrops + listOf(badge, pillUnselected, statsCardBg)
     val secondaryBackdrops = textBackdrops + listOf(badge, pillUnselected)
+    val darkCardBackdrops = listOf(darkCard, darkCardAccent)
+    val textPrimary = withMinContrast(textPrimary, primaryTextBackdrops, 4.5f)
     val textPlaceholder = withMinContrast(textPlaceholder, textBackdrops, 4.5f)
     val textSecondary = withMinContrast(textSecondary, secondaryBackdrops, 4.5f)
+    val onDarkCard = withMinContrast(onDarkCard, darkCardBackdrops, 4.5f)
+    val onDarkCardMuted = withMinContrast(onDarkCardMuted, listOf(darkCard), 4.5f)
     val success = withMinContrast(success, textBackdrops, 4.5f)
     val error = withMinContrast(error, textBackdrops, 4.5f)
     val successBg = withMinContrast(successBg, listOf(success), 4.5f)
     val errorBg = withMinContrast(errorBg, listOf(error), 4.5f)
-    var primary = withMinContrast(primary, textBackdrops, 3f)
-    val onPrimary = readableTextOn(primary, minContrast = 4.5f, preferred = onPrimary)
-    // Mid-tone fills (the dark themes' bronze/slate accents) can leave both
-    // labels short of 4.5 — the fill then follows its chosen label the rest
-    // of the way, then re-checks its 3:1 control bar (both moves point the
-    // same direction in each mode, so this cannot oscillate).
-    primary = withMinContrast(primary, listOf(onPrimary), 4.5f)
-    primary = withMinContrast(primary, textBackdrops, 3f)
+    val controlSafePrimary = withMinContrast(primary, textBackdrops, 3f)
+    val preferredOnPrimary = readableTextOn(
+        fill = controlSafePrimary,
+        minContrast = 4.5f,
+        preferred = onPrimary,
+    )
+    // Mid-tone fills can leave both labels short of 4.5. Solve the label and
+    // control-surface requirements together so satisfying one cannot regress
+    // the other, including on an interpolated palette. Try both label
+    // polarities and retain the solution requiring the smallest fill shift.
+    val primarySolutions = listOf(preferredOnPrimary, ContrastNearWhite, ContrastNearBlack)
+        .distinct()
+        .mapNotNull { label ->
+            val requirements = textBackdrops.map { it to 3f } + (label to 4.5f)
+            val fill = withContrastRequirements(controlSafePrimary, requirements)
+            if (meetsContrastRequirements(fill, requirements)) fill to label else null
+        }
+    val (primary, onPrimary) = primarySolutions.minByOrNull { (fill, label) ->
+        abs(fill.toHsl().l - controlSafePrimary.toHsl().l) +
+            if (label == preferredOnPrimary) 0f else 0.0001f
+    } ?: (controlSafePrimary to preferredOnPrimary)
     return copy(
+        textPrimary = textPrimary,
         textPlaceholder = textPlaceholder,
         textSecondary = textSecondary,
+        onDarkCard = onDarkCard,
+        onDarkCardMuted = onDarkCardMuted,
         success = success,
         error = error,
         successBg = successBg,
@@ -194,27 +216,80 @@ private fun NazoColors.enforceContrast(): NazoColors {
 }
 
 /**
- * Nudges [color]'s lightness away from each backdrop in [backdrops] (keeping
- * hue/saturation) until [contrastRatio] clears [min] on all of them.
+ * Finds the nearest lightness that clears [min] against every backdrop while
+ * retaining the color's hue and saturation. Both darker and lighter solutions
+ * are considered: during a light/dark transition, continuing in the original
+ * direction can hit black or white before it becomes readable, so a one-way
+ * nudge is not sufficient.
  */
-private fun withMinContrast(color: Color, backdrops: List<Color>, min: Float): Color {
-    var c = color
-    for (bg in backdrops) {
-        val bgL = bg.toHsl().l
-        var guard = 0
-        while (contrastRatio(c, bg) < min && guard < 120) {
-            val hsl = c.toHsl()
-            val newL = if (hsl.l >= bgL) {
-                (hsl.l + 0.01f).coerceAtMost(1f)
-            } else {
-                (hsl.l - 0.01f).coerceAtLeast(0f)
-            }
-            if (newL == hsl.l) break
-            c = Hsl(hsl.h, hsl.s, newL).toColor()
-            guard++
-        }
+private fun withMinContrast(color: Color, backdrops: List<Color>, min: Float): Color =
+    withContrastRequirements(color, backdrops.map { it to min })
+
+private fun meetsContrastRequirements(
+    color: Color,
+    requirements: List<Pair<Color, Float>>,
+    margin: Float = 0f,
+): Boolean = requirements.all { (background, minimum) ->
+    contrastRatio(color, background) >= minimum + margin
+}
+
+private fun withContrastRequirements(
+    color: Color,
+    requirements: List<Pair<Color, Float>>,
+): Color {
+    // Preserve approved palette values byte-for-byte whenever they already
+    // clear the actual requirement. Corrected colors aim for a tiny buffer so
+    // HSL-to-8-bit quantization cannot leave them just below the threshold.
+    if (meetsContrastRequirements(color, requirements)) return color
+    val correctionMargin = 0.03f
+
+    val original = color.toHsl()
+    fun at(lightness: Float): Color = Hsl(original.h, original.s, lightness).toColor()
+    fun supportedMargin(endpoint: Color): Float? = when {
+        meetsContrastRequirements(endpoint, requirements, correctionMargin) -> correctionMargin
+        meetsContrastRequirements(endpoint, requirements) -> 0f
+        else -> null
     }
-    return c
+
+    var darkCandidate: Color? = null
+    val darkMargin = supportedMargin(at(0f))
+    if (darkMargin != null) {
+        var passing = 0f
+        var failing = original.l
+        repeat(14) {
+            val midpoint = (passing + failing) / 2f
+            if (meetsContrastRequirements(at(midpoint), requirements, darkMargin)) {
+                passing = midpoint
+            } else {
+                failing = midpoint
+            }
+        }
+        darkCandidate = at(passing)
+    }
+
+    var lightCandidate: Color? = null
+    val lightMargin = supportedMargin(at(1f))
+    if (lightMargin != null) {
+        var failing = original.l
+        var passing = 1f
+        repeat(14) {
+            val midpoint = (failing + passing) / 2f
+            if (meetsContrastRequirements(at(midpoint), requirements, lightMargin)) {
+                passing = midpoint
+            } else {
+                failing = midpoint
+            }
+        }
+        lightCandidate = at(passing)
+    }
+
+    return when {
+        darkCandidate == null -> lightCandidate ?: color
+        lightCandidate == null -> darkCandidate
+        original.l - darkCandidate.toHsl().l <= lightCandidate.toHsl().l - original.l ->
+            darkCandidate
+        else -> lightCandidate
+    }
 }
 
 private fun NazoColors.recolorToHue(targetHue: Float): NazoColors {
