@@ -493,7 +493,7 @@ private fun ResultBreakdownChapter(
             stats.forEachIndexed { index, stat ->
                 Box(modifier = Modifier.weight(1f)) {
                     val revealDelay = quizResultStatDelayMillis(index, motionAllowed)
-                    AnimatedVisibility(
+                    androidx.compose.animation.AnimatedVisibility(
                         visible = visible,
                         enter = fadeIn(
                             tween(
