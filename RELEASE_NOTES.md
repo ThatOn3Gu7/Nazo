@@ -17,6 +17,7 @@ then archived below; there should be no per-version release-note files.
 - **Improved** — Light and dark themes now sweep in from opposite top corners while accent palettes retain their smooth whole-app color morph; swatches and sun/moon selectors follow the wave without rapid-switch flicker or stuck animation frames.
 - **Added** — Starting a ready local-bank challenge now expands the tapped button into a readable launch portal before revealing the first question; AI-backed quizzes and Guessing go directly to their existing Loading or preparation screen, while Remove animations stays immediate.
 - **Added** — A 74-item product roadmap now preserves Nazo's recommended next improvements, effort and priority guidance, and ideas intentionally deferred for later.
+- **Improved** — The local launch portal now breathes through two counter-spinning wavy rings and collapses on one stable drawing layer, while the first question settles behind it before starting decorative motion for a smoother reveal.
 
 ## Release archive
 

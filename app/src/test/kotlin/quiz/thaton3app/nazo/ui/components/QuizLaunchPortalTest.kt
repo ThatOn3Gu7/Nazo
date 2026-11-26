@@ -69,4 +69,52 @@ class QuizLaunchPortalTest {
         // a 0.5x animator scale cannot halve the time available to read it.
         assertTrue(QuizLaunchPortalDwellMillis >= 700L)
     }
+
+    @Test
+    fun messageSettlesAtFullCoverAndCollapsesWithThePortal() {
+        assertEquals(0f, quizLaunchPortalMessageAlpha(0f), 0f)
+        assertEquals(1f, quizLaunchPortalMessageAlpha(1f), 0f)
+        assertTrue(quizLaunchPortalMessageAlpha(1.5f) in 0f..1f)
+        assertEquals(0f, quizLaunchPortalMessageAlpha(2f), 0f)
+    }
+
+    @Test
+    fun speakerRingsBreatheSpinAndReturnSeamlessly() {
+        val start = quizLaunchRingRadius(
+            baseRadius = 100f,
+            waveAmplitude = 8f,
+            waveCount = 5,
+            angleRadians = 0.37f,
+            phaseFraction = 0f,
+            direction = 1,
+        )
+        val moving = quizLaunchRingRadius(
+            baseRadius = 100f,
+            waveAmplitude = 8f,
+            waveCount = 5,
+            angleRadians = 0.37f,
+            phaseFraction = 0.2f,
+            direction = 1,
+        )
+        val fullTurn = quizLaunchRingRadius(
+            baseRadius = 100f,
+            waveAmplitude = 8f,
+            waveCount = 5,
+            angleRadians = 0.37f,
+            phaseFraction = 1f,
+            direction = 1,
+        )
+        val nextPoint = quizLaunchRingRadius(
+            baseRadius = 100f,
+            waveAmplitude = 8f,
+            waveCount = 5,
+            angleRadians = 0.9f,
+            phaseFraction = 0.2f,
+            direction = 1,
+        )
+
+        assertTrue(kotlin.math.abs(moving - start) > 0.1f)
+        assertTrue(kotlin.math.abs(nextPoint - moving) > 0.1f)
+        assertEquals(start, fullTurn, 0.0001f)
+    }
 }

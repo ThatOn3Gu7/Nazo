@@ -124,6 +124,11 @@ internal fun quizProgressFraction(questionIndex: Int, totalQuestions: Int): Floa
     if (totalQuestions <= 0) 0f
     else ((questionIndex + 1).toFloat() / totalQuestions).coerceIn(0f, 1f)
 
+internal fun quizDecorativeMotionAllowed(
+    reduceMotion: Boolean,
+    hostAllowsMotion: Boolean,
+): Boolean = !reduceMotion && hostAllowsMotion
+
 /** Normalized Material-Expressive wave. A full phase returns to the same rest shape. */
 internal fun quizProgressWaveOffset(
     position: Float,
@@ -167,6 +172,8 @@ internal fun ActiveQuizScreen(
     totalQuestions: Int,
     /** Read-only score used by mode chrome; grading remains owned by the host. */
     currentScore: Int = 0,
+    /** False only while an opaque launch portal is settling this first frame. */
+    decorativeMotionAllowed: Boolean = true,
     difficulty: String = "Medium",
     isAiGenerated: Boolean = false,
     // Survival mode: header shows lives instead of "x of y" / progress.
@@ -242,6 +249,7 @@ internal fun ActiveQuizScreen(
     }
     val context = LocalContext.current
     val reduceMotion = rememberSystemReduceMotion()
+    val motionAllowed = quizDecorativeMotionAllowed(reduceMotion, decorativeMotionAllowed)
     val quitPauseState = rememberGameplayQuitPauseState()
 
     // Lifelines (Phase 4): a small supply shared across the whole quiz (this
@@ -536,7 +544,7 @@ internal fun ActiveQuizScreen(
                     SurvivalStatusPanel(
                         livesLeft = livesLeft,
                         seconds = remainingSeconds,
-                        motionAllowed = !reduceMotion,
+                        motionAllowed = motionAllowed,
                     )
                 }
                 GameplayPresentation.BLITZ -> {
@@ -545,7 +553,7 @@ internal fun ActiveQuizScreen(
                         seconds = remainingSeconds,
                         score = currentScore,
                         questionNumber = currentQuestionIndex + 1,
-                        motionAllowed = !reduceMotion,
+                        motionAllowed = motionAllowed,
                     )
                 }
                 GameplayPresentation.VERSUS -> {
@@ -568,7 +576,7 @@ internal fun ActiveQuizScreen(
                     progress = quizProgressFraction(currentQuestionIndex, totalQuestions),
                     color = NazoPrimary,
                     trackColor = NazoSurface,
-                    motionAllowed = !reduceMotion,
+                    motionAllowed = motionAllowed,
                     modifier = Modifier.fillMaxWidth(),
                 )
             } else if (isBlitz) {
@@ -582,7 +590,7 @@ internal fun ActiveQuizScreen(
                     progress = (remainingSeconds * 1000f / blitzTotalMs).coerceIn(0f, 1f),
                     color = if (remainingSeconds <= 10) NazoError else NazoPrimary,
                     trackColor = NazoSurface,
-                    motionAllowed = !reduceMotion,
+                    motionAllowed = motionAllowed,
                     animationDurationMs = 200,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -703,7 +711,7 @@ internal fun ActiveQuizScreen(
                     AnimatedVisibility(
                         visible = isCorrect && comboLabel != null,
                         enter = fadeIn(tween(180)) + scaleIn(
-                            initialScale = if (reduceMotion) 1f else 0.88f,
+                            initialScale = if (motionAllowed) 0.88f else 1f,
                             animationSpec = tween(260, easing = FastOutSlowInEasing),
                         ),
                         exit = fadeOut(tween(120)),
@@ -713,7 +721,7 @@ internal fun ActiveQuizScreen(
                             ComboPill(
                                 label = comboLabel.orEmpty(),
                                 streak = shownCombo,
-                                motionAllowed = !reduceMotion,
+                                motionAllowed = motionAllowed,
                             )
                         }
                     }
@@ -768,7 +776,7 @@ internal fun ActiveQuizScreen(
                         borderColor = borderColor,
                         label = labels[index],
                         text = optionText,
-                        motionAllowed = !reduceMotion,
+                        motionAllowed = motionAllowed,
                         onClick = {
                             // Idempotence guard: `reveal` only flips on the
                             // next recomposition, so two taps landing in the
@@ -804,7 +812,7 @@ internal fun ActiveQuizScreen(
                 // Hidden in blitz: answers auto-advance on a 650ms beat instead.
                 AnimatedVisibility(
                     visible = reveal && !isBlitz,
-                    enter = if (reduceMotion) {
+                    enter = if (!motionAllowed) {
                         fadeIn(tween(100))
                     } else {
                         expandVertically(

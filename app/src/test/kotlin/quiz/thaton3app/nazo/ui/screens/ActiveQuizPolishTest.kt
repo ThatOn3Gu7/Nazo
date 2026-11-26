@@ -37,6 +37,13 @@ class ActiveQuizPolishTest {
     }
 
     @Test
+    fun decorativeQuizMotionWaitsForTheLaunchCoverAndReducedMotion() {
+        assertTrue(quizDecorativeMotionAllowed(reduceMotion = false, hostAllowsMotion = true))
+        assertTrue(!quizDecorativeMotionAllowed(reduceMotion = false, hostAllowsMotion = false))
+        assertTrue(!quizDecorativeMotionAllowed(reduceMotion = true, hostAllowsMotion = true))
+    }
+
+    @Test
     fun expressiveProgressWaveIsPeriodicAndReturnsToItsRestShape() {
         val wavelength = 20f
         assertEquals(0f, quizProgressWaveOffset(0f, wavelength, 0f), 0.0001f)

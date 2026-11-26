@@ -2644,6 +2644,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         restoredTimeUp = pendingQuizTimeUp,
                         totalQuestions = questions.size,
                         currentScore = score,
+                        // Build the first question under the opaque portal, but
+                        // do not run its decorative infinite clocks until the
+                        // collapse is gone and owns no competing frame-time work.
+                        decorativeMotionAllowed = pendingQuizLaunch == null,
                         difficulty = quizDifficulty,
                         isAiGenerated = aiGenerated,
                         endless = quizMode == "survival",
