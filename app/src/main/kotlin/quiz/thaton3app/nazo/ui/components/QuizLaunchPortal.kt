@@ -30,13 +30,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
@@ -47,7 +43,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlin.math.max
 import kotlin.math.roundToInt
-import kotlin.math.sqrt
 import kotlinx.coroutines.delay
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
@@ -133,37 +128,13 @@ internal fun quizLaunchPortalFrame(
     )
 }
 
-internal enum class QuizLaunchHandoffState { Idle, AwaitingQuestion, RevealingQuestion }
-internal enum class QuizLaunchHandoffEvent {
-    PortalStarted,
-    LoadingReached,
-    QuestionReached,
-    RevealFinished,
-    Cancelled,
-}
-
-/** Keeps generated launches alive across Loading without affecting direct launches. */
-internal fun nextQuizLaunchHandoff(
-    state: QuizLaunchHandoffState,
-    event: QuizLaunchHandoffEvent,
-): QuizLaunchHandoffState = when (event) {
-    QuizLaunchHandoffEvent.PortalStarted,
-    QuizLaunchHandoffEvent.RevealFinished,
-    QuizLaunchHandoffEvent.Cancelled -> QuizLaunchHandoffState.Idle
-
-    QuizLaunchHandoffEvent.LoadingReached -> QuizLaunchHandoffState.AwaitingQuestion
-    QuizLaunchHandoffEvent.QuestionReached -> if (state == QuizLaunchHandoffState.AwaitingQuestion) {
-        QuizLaunchHandoffState.RevealingQuestion
-    } else {
-        state
-    }
-}
+internal const val QuizLaunchPortalDwellMillis = 700L
 
 /**
  * One app-level portal, drawn over the one live navigation tree. The Home
  * button grows to cover the viewport; only once it is fully covered does the
- * host start generation/navigation underneath it. It then folds into the
- * centre to reveal Loading, a dialog, or an already-ready first question.
+ * host open the already-ready local challenge underneath it. It then holds
+ * long enough to read before folding into the centre to reveal the question.
  */
 @Composable
 internal fun QuizLaunchPortal(
@@ -182,13 +153,18 @@ internal fun QuizLaunchPortal(
             targetValue = 1f,
             animationSpec = tween(durationMillis = 460, easing = FastOutSlowInEasing),
         )
+        // Keep the fully-open message readable. This real-time dwell is not
+        // shortened by a device's animator-duration scale, so 0.5× animation
+        // settings cannot turn the portal into a one-frame flash. A true
+        // Remove animations setting bypasses the portal before composition.
+        delay(QuizLaunchPortalDwellMillis)
         if (!covered) {
             covered = true
             onCovered()
         }
-        // Give the newly selected destination one frame plus a small settling
-        // beat before uncovering it. This hides the ordinary navigation swap.
-        delay(90)
+        // Let the ready destination compose fully behind the opaque cover
+        // before its edges begin to uncover.
+        delay(50)
         progress.animateTo(
             targetValue = 2f,
             animationSpec = tween(durationMillis = 380, easing = LinearOutSlowInEasing),
@@ -296,72 +272,6 @@ internal fun QuizLaunchPortal(
                     textAlign = TextAlign.Center,
                 )
             }
-        }
-    }
-}
-
-/**
- * Generated quizzes arrive after the first portal has already handed off to
- * Loading. Reveal that eventual question out from Loading rather than treating
- * it as an unrelated navigation push.
- */
-@Composable
-internal fun QuizLaunchDestinationReveal(
-    active: Boolean,
-    onFinished: () -> Unit,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
-) {
-    val reveal = remember(active) { Animatable(if (active) 0f else 1f) }
-    var blocking by remember(active) { mutableStateOf(active) }
-
-    LaunchedEffect(active) {
-        if (active) {
-            reveal.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
-            )
-            blocking = false
-            onFinished()
-        }
-    }
-
-    Box(modifier = modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .drawWithContent {
-                    if (!active || reveal.value >= 1f) {
-                        drawContent()
-                    } else {
-                        val startRadius = 28.dp.toPx()
-                        val maxRadius = sqrt(size.width * size.width + size.height * size.height) / 2f
-                        val radius = mix(startRadius, maxRadius, reveal.value)
-                        val path = Path().apply {
-                            val centre = Offset(size.width / 2f, size.height / 2f)
-                            addOval(
-                                Rect(
-                                    left = centre.x - radius,
-                                    top = centre.y - radius,
-                                    right = centre.x + radius,
-                                    bottom = centre.y + radius,
-                                )
-                            )
-                        }
-                        clipPath(path) { this@drawWithContent.drawContent() }
-                    }
-                },
-        ) {
-            content()
-        }
-
-        if (blocking) {
-            val interaction = remember { MutableInteractionSource() }
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clickable(interactionSource = interaction, indication = null) {},
-            )
         }
     }
 }

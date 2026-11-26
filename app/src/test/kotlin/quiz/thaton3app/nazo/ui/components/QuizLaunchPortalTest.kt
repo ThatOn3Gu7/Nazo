@@ -1,6 +1,7 @@
 package quiz.thaton3app.nazo.ui.components
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class QuizLaunchPortalTest {
@@ -63,35 +64,9 @@ class QuizLaunchPortalTest {
     }
 
     @Test
-    fun generatedLaunchWaitsForQuestionButDirectLaunchDoesNot() {
-        var generated = nextQuizLaunchHandoff(
-            QuizLaunchHandoffState.Idle,
-            QuizLaunchHandoffEvent.PortalStarted,
-        )
-        generated = nextQuizLaunchHandoff(generated, QuizLaunchHandoffEvent.LoadingReached)
-        assertEquals(QuizLaunchHandoffState.AwaitingQuestion, generated)
-        generated = nextQuizLaunchHandoff(generated, QuizLaunchHandoffEvent.QuestionReached)
-        assertEquals(QuizLaunchHandoffState.RevealingQuestion, generated)
-        generated = nextQuizLaunchHandoff(generated, QuizLaunchHandoffEvent.RevealFinished)
-        assertEquals(QuizLaunchHandoffState.Idle, generated)
-
-        var direct = nextQuizLaunchHandoff(
-            QuizLaunchHandoffState.Idle,
-            QuizLaunchHandoffEvent.PortalStarted,
-        )
-        direct = nextQuizLaunchHandoff(direct, QuizLaunchHandoffEvent.QuestionReached)
-        assertEquals(QuizLaunchHandoffState.Idle, direct)
-    }
-
-    @Test
-    fun cancellingLoadingCannotLeakARevealIntoTheNextQuiz() {
-        var state = nextQuizLaunchHandoff(
-            QuizLaunchHandoffState.Idle,
-            QuizLaunchHandoffEvent.LoadingReached,
-        )
-        state = nextQuizLaunchHandoff(state, QuizLaunchHandoffEvent.Cancelled)
-        state = nextQuizLaunchHandoff(state, QuizLaunchHandoffEvent.QuestionReached)
-
-        assertEquals(QuizLaunchHandoffState.Idle, state)
+    fun fullCoverHasAReadableRealTimeDwell() {
+        // This is deliberately a coroutine delay rather than another tween, so
+        // a 0.5x animator scale cannot halve the time available to read it.
+        assertTrue(QuizLaunchPortalDwellMillis >= 700L)
     }
 }

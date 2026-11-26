@@ -15,7 +15,7 @@ then archived below; there should be no per-version release-note files.
 - **Improved** — Sound styles now play a one-off preview when selected even if Sound effects are switched off, while gameplay remains silent until effects are enabled.
 - **Fixed** — Starting the first onboarding game with an empty topic now launches with a randomized popular anime instead of silently leaving onboarding without a game.
 - **Improved** — Light and dark themes now sweep in from opposite top corners while accent palettes retain their smooth whole-app color morph; swatches and sun/moon selectors follow the wave without rapid-switch flicker or stuck animation frames.
-- **Added** — Starting a Home challenge now expands the tapped button into a full launch portal, hands generated quizzes into Loading, and reveals the ready first question; local and cached starts keep the same connected motion, while Remove animations stays immediate.
+- **Added** — Starting a ready local-bank challenge now expands the tapped button into a readable launch portal before revealing the first question; AI-backed quizzes and Guessing go directly to their existing Loading or preparation screen, while Remove animations stays immediate.
 - **Added** — A 74-item product roadmap now preserves Nazo's recommended next improvements, effort and priority guidance, and ideas intentionally deferred for later.
 
 ## Release archive

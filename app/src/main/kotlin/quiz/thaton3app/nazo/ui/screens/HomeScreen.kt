@@ -134,6 +134,18 @@ internal fun homeCountControls(mode: NazoMode): HomeCountControls = when (mode) 
 internal fun homePracticeVisible(mode: NazoMode, practiceCount: Int): Boolean =
     mode == NazoMode.QUIZ && practiceCount > 0
 
+/**
+ * The portal is a destination transition for challenges that are known to be
+ * ready from the local bank. AI-backed starts already have a meaningful
+ * Loading destination, and Guessing has its own preparation flow, so adding a
+ * second full-screen interstitial to either only creates visual queueing.
+ */
+internal fun homeLaunchUsesPortal(mode: NazoMode, offline: Boolean): Boolean = when (mode) {
+    NazoMode.BLITZ -> true // Always local, even while the app is online.
+    NazoMode.QUIZ, NazoMode.SURVIVAL, NazoMode.VERSUS -> offline
+    NazoMode.GUESSING -> false
+}
+
 internal fun challengeSummary(
     mode: NazoMode,
     difficulty: Difficulty,
@@ -388,6 +400,7 @@ fun HomeScreen(
 
         GenerateButton(
             sparkleStyle = sparkleStyle,
+            portalEnabled = homeLaunchUsesPortal(nazoMode, offline),
             onLaunchPortal = onLaunchPortal,
             label = when (nazoMode) {
                 NazoMode.GUESSING -> "Start Guessing Game"
@@ -2285,6 +2298,7 @@ private fun PracticeMissesButton(
 private fun GenerateButton(
     label: String,
     sparkleStyle: String,
+    portalEnabled: Boolean,
     onLaunchPortal: (QuizLaunchOrigin, String, () -> Unit) -> Unit,
     onClick: () -> Unit,
 ) {
@@ -2300,6 +2314,13 @@ private fun GenerateButton(
     val twinkle = remember { Animatable(0f) }
 
     fun enterLaunchPortal() {
+        if (!portalEnabled) {
+            // AI generation and Guessing already own a real loading/preparing
+            // destination. Keep the button acknowledgement, then enter that
+            // flow directly instead of flashing a second full-screen message.
+            onClick()
+            return
+        }
         val origin = portalOrigin
         if (origin == null) {
             // Layout coordinates are normally available long before a tap. If

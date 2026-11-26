@@ -12,7 +12,7 @@ A quick-reading backlog for future Nazo work. It keeps the full 74-idea set in o
 
 Build these in order because they form one clear journey from launch to learning:
 
-- **#1 Quiz-launch portal** — connect Home, Loading, and the first question. **Implemented in this change.**
+- **#1 Quiz-launch portal** — connect local-bank starts on Home to the first question without duplicating AI Loading. **Implemented.**
 - **#2 Answer choreography** — make every answer feel immediate and clear.
 - **#3 Animated results story** — turn completion into a satisfying summary.
 - **#4 Instant mistake rematch** — convert errors into one-tap practice.
@@ -22,7 +22,7 @@ Build these in order because they form one clear journey from launch to learning
 
 ## Best ideas
 
-1. **★ Quiz-launch portal** — **P0 · M** — Expand the tapped Start button into Loading, then reveal the first question.
+1. **★ Quiz-launch portal** — **P0 · M** — Expand a ready local-bank Start button into the first question; let AI use its dedicated Loading flow.
 2. **★ Answer choreography** — **P0 · M** — Give selection, grading, explanation, and Next one clean visual rhythm.
 3. **★ Animated results story** — **P0 · M** — Reveal score, accuracy, speed, XP, and rewards in a short sequence.
 4. **★ Instant mistake rematch** — **P0 · S** — Add a Results action that immediately quizzes only the missed questions.

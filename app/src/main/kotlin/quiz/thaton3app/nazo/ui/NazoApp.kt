@@ -126,12 +126,8 @@ import quiz.thaton3app.nazo.ui.components.prepareCoverArtwork
 import quiz.thaton3app.nazo.ui.components.LocalAvatarAnchorRegistry
 import quiz.thaton3app.nazo.ui.components.LocalTopicUnavailableDialog
 import quiz.thaton3app.nazo.ui.components.PersistentAvatarVideo
-import quiz.thaton3app.nazo.ui.components.QuizLaunchDestinationReveal
-import quiz.thaton3app.nazo.ui.components.QuizLaunchHandoffEvent
-import quiz.thaton3app.nazo.ui.components.QuizLaunchHandoffState
 import quiz.thaton3app.nazo.ui.components.QuizLaunchOrigin
 import quiz.thaton3app.nazo.ui.components.QuizLaunchPortal
-import quiz.thaton3app.nazo.ui.components.nextQuizLaunchHandoff
 import quiz.thaton3app.nazo.ui.components.avatarOverlayTransform
 import quiz.thaton3app.nazo.ui.components.resolveAvatarWinnerScreen
 import quiz.thaton3app.nazo.ui.components.FloatingParticlesBackground
@@ -928,30 +924,12 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     val activity = context as? Activity
     val reduceMotion = rememberSystemReduceMotion()
 
-    // The launch cover lives above the shared navigation tree, so Home,
-    // Loading and Quiz remain single live instances. Only the tiny hand-off
-    // state survives after the cover leaves, letting an AI-generated quiz
-    // reveal its eventual first question out of Loading.
+    // The local-bank launch cover lives above the shared navigation tree, so
+    // Home and Quiz remain single live instances. AI-backed starts bypass it
+    // and enter their existing Loading destination directly.
     var quizLaunchCounter by remember { mutableLongStateOf(0L) }
     var pendingQuizLaunch by remember { mutableStateOf<PendingQuizLaunch?>(null) }
-    var coveredQuizLaunchId by remember { mutableStateOf<Long?>(null) }
-    var quizLaunchHandoff by remember {
-        mutableStateOf(QuizLaunchHandoffState.Idle)
-    }
-
-    LaunchedEffect(currentScreen, coveredQuizLaunchId, pendingQuizLaunch?.id) {
-        quizLaunchHandoff = when {
-            coveredQuizLaunchId != null && currentScreen == Screen.Loading ->
-                nextQuizLaunchHandoff(quizLaunchHandoff, QuizLaunchHandoffEvent.LoadingReached)
-
-            pendingQuizLaunch == null &&
-                quizLaunchHandoff == QuizLaunchHandoffState.AwaitingQuestion &&
-                currentScreen == Screen.Quiz ->
-                nextQuizLaunchHandoff(quizLaunchHandoff, QuizLaunchHandoffEvent.QuestionReached)
-
-            else -> quizLaunchHandoff
-        }
-    }
+    var quizLaunchDestinationHiddenAt by remember { mutableLongStateOf(0L) }
 
     PredictiveBackHandler(enabled = true) { progress ->
         val backTarget = navigationStack.getOrNull(navigationStack.lastIndex - 1)
@@ -2374,17 +2352,13 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onProfileClick = { navigate(Screen.Profile) },
                         onStartQuiz = { topic, difficulty, count -> startQuiz(topic, difficulty, count) },
                         onLaunchPortal = { origin, label, launch ->
-                            quizLaunchHandoff = nextQuizLaunchHandoff(
-                                quizLaunchHandoff,
-                                QuizLaunchHandoffEvent.PortalStarted,
-                            )
-                            coveredQuizLaunchId = null
                             if (reduceMotion) {
                                 // Android Remove animations keeps the launch
                                 // immediate and uses ordinary static navigation.
                                 launch()
                             } else if (pendingQuizLaunch == null) {
                                 val id = ++quizLaunchCounter
+                                quizLaunchDestinationHiddenAt = 0L
                                 pendingQuizLaunch = PendingQuizLaunch(id, origin, label, launch)
                             }
                         },
@@ -2658,20 +2632,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onOpenUrl = { url -> openExternalUrl(context, url) },
                     )
 
-                    Screen.Quiz -> QuizLaunchDestinationReveal(
-                        active = quizLaunchHandoff == QuizLaunchHandoffState.RevealingQuestion ||
-                            (quizLaunchHandoff == QuizLaunchHandoffState.AwaitingQuestion &&
-                                pendingQuizLaunch == null),
-                        onFinished = {
-                            quizLaunchHandoff = nextQuizLaunchHandoff(
-                                quizLaunchHandoff,
-                                QuizLaunchHandoffEvent.RevealFinished,
-                            )
-                        },
-                    ) {
-                        ActiveQuizScreen(
-                            question = questions[currentQuestionIndex],
-                            currentQuestionIndex = currentQuestionIndex,
+                    Screen.Quiz -> ActiveQuizScreen(
+                        question = questions[currentQuestionIndex],
+                        currentQuestionIndex = currentQuestionIndex,
                         progressionTicket = quizProgressionGate.ticket(
                             stage = if (quizMode == "versus") versusStage else 0,
                             questionIndex = currentQuestionIndex,
@@ -2715,8 +2678,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             activeSessionStore.clear()
                             goHome()
                         },
-                        )
-                    }
+                    )
 
                     Screen.Results -> QuizCompleteScreen(
                         score = score,
@@ -2791,10 +2753,6 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             generationToken++
                             generationJob?.cancel()
                             generationState = GenerationState.Idle
-                            quizLaunchHandoff = nextQuizLaunchHandoff(
-                                quizLaunchHandoff,
-                                QuizLaunchHandoffEvent.Cancelled,
-                            )
                             goHome()
                         },
                         onHomeClick = { goHome() },
@@ -3138,20 +3096,35 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
 
             // Drawn after screens, navigation, media and launch-time dialogs:
             // this is one cover over the one live app tree, never a second app
-            // composition. The destination is selected only at full coverage.
+            // composition. Home only requests it for known local-bank starts.
             pendingQuizLaunch?.let { request ->
                 QuizLaunchPortal(
                     requestId = request.id,
                     origin = request.origin,
                     sourceLabel = request.label,
                     onCovered = {
+                        quizLaunchDestinationHiddenAt = SystemClock.elapsedRealtime()
                         request.launch()
-                        coveredQuizLaunchId = request.id
                     },
                     onFinished = {
                         if (pendingQuizLaunch?.id == request.id) {
+                            val hiddenMillis = (
+                                SystemClock.elapsedRealtime() - quizLaunchDestinationHiddenAt
+                            ).coerceAtLeast(0L)
+                            // Local timers start when the destination is built
+                            // under the opaque portal. Give that hidden slice
+                            // back so every mode begins at its honest full time.
+                            if (hiddenMillis > 0L) {
+                                if (quizStartedAt > 0L && quizFinishedAt == 0L) {
+                                    quizStartedAt += hiddenMillis
+                                }
+                                if (questionDeadline > 0L) questionDeadline += hiddenMillis
+                                if (quizMode == "blitz" && blitzDeadline > 0L) {
+                                    blitzDeadline += hiddenMillis
+                                }
+                            }
+                            quizLaunchDestinationHiddenAt = 0L
                             pendingQuizLaunch = null
-                            coveredQuizLaunchId = null
                         }
                     },
                 )

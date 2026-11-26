@@ -19,6 +19,26 @@ class HomeModeControlsTest {
     }
 
     @Test
+    fun portalBelongsToKnownLocalBankLaunchesOnly() {
+        // Offline question modes can reveal ready local content directly.
+        assertTrue(homeLaunchUsesPortal(NazoMode.QUIZ, offline = true))
+        assertTrue(homeLaunchUsesPortal(NazoMode.SURVIVAL, offline = true))
+        assertTrue(homeLaunchUsesPortal(NazoMode.VERSUS, offline = true))
+
+        // Their online path may need AI Loading, which is already the correct
+        // and informative destination; never queue the portal in front of it.
+        assertFalse(homeLaunchUsesPortal(NazoMode.QUIZ, offline = false))
+        assertFalse(homeLaunchUsesPortal(NazoMode.SURVIVAL, offline = false))
+        assertFalse(homeLaunchUsesPortal(NazoMode.VERSUS, offline = false))
+
+        // Blitz is always local. Guessing always has its own preparation flow.
+        assertTrue(homeLaunchUsesPortal(NazoMode.BLITZ, offline = false))
+        assertTrue(homeLaunchUsesPortal(NazoMode.BLITZ, offline = true))
+        assertFalse(homeLaunchUsesPortal(NazoMode.GUESSING, offline = false))
+        assertFalse(homeLaunchUsesPortal(NazoMode.GUESSING, offline = true))
+    }
+
+    @Test
     fun practiceBelongsOnlyToQuizWhenTheDeckIsNotEmpty() {
         assertTrue(homePracticeVisible(NazoMode.QUIZ, practiceCount = 1))
         assertFalse(homePracticeVisible(NazoMode.QUIZ, practiceCount = 0))
