@@ -48,10 +48,30 @@ class HomeModeControlsTest {
     }
 
     @Test
+    fun adaptiveDifficultyBelongsOnlyToQuiz() {
+        assertTrue(adaptiveDifficultyAvailable(NazoMode.QUIZ))
+        NazoMode.entries.filterNot { it == NazoMode.QUIZ }.forEach { mode ->
+            assertFalse(adaptiveDifficultyAvailable(mode))
+            assertEquals(
+                Difficulty.MEDIUM,
+                homeDifficultyForMode(mode, Difficulty.ADAPTIVE),
+            )
+        }
+        assertEquals(
+            Difficulty.ADAPTIVE,
+            homeDifficultyForMode(NazoMode.QUIZ, Difficulty.ADAPTIVE),
+        )
+    }
+
+    @Test
     fun challengeSummaryAlwaysReflectsTheVisibleModeSpecificChoice() {
         assertEquals(
             "Medium • 10 questions",
             challengeSummary(NazoMode.QUIZ, Difficulty.MEDIUM, 10, 3),
+        )
+        assertEquals(
+            "Adaptive • 5 questions",
+            challengeSummary(NazoMode.QUIZ, Difficulty.ADAPTIVE, 5, 3),
         )
         assertEquals(
             "Hard • 1 round",

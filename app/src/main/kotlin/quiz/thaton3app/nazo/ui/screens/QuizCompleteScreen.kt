@@ -117,6 +117,7 @@ internal fun quizResultHeading(
     modeLabel == "Survival" -> "Run over — you survived $score!"
     modeLabel == "Blitz" -> "Time's up!"
     difficulty == "Practice" -> "Practice Complete"
+    difficulty == "Adaptive" -> "Adaptive Quiz Complete"
     else -> "Quiz Complete"
 }
 
@@ -138,6 +139,8 @@ fun QuizCompleteScreen(
     isNewRecord: Boolean = false,
     daily: Boolean = false,
     dailyBonusXp: Int = 0,
+    adaptiveFinalDifficulty: String? = null,
+    adaptiveAdjustmentCount: Int = 0,
     progressionReward: ProgressionReward? = null,
     mistakeCount: Int = 0,
     // "Survival" | "Blitz" | null (normal quiz). Adjusts the heading and the
@@ -368,6 +371,17 @@ fun QuizCompleteScreen(
                         enter = fadeIn(tween(if (runEntranceSequence) 220 else 1)),
                     ) {
                         DailyLadderClearCard()
+                    }
+                } else if (adaptiveFinalDifficulty != null) {
+                    Spacer(Modifier.height(16.dp))
+                    AnimatedVisibility(
+                        visible = showStats,
+                        enter = fadeIn(tween(if (runEntranceSequence) 220 else 1)),
+                    ) {
+                        AdaptiveResultCard(
+                            finalDifficulty = adaptiveFinalDifficulty,
+                            adjustmentCount = adaptiveAdjustmentCount,
+                        )
                     }
                 }
 
@@ -623,6 +637,59 @@ private fun ResultBreakdownChapter(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AdaptiveResultCard(
+    finalDifficulty: String,
+    adjustmentCount: Int,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(NazoPrimary.copy(alpha = 0.09f))
+            .border(1.dp, NazoPrimary.copy(alpha = 0.28f), RoundedCornerShape(18.dp))
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(CircleShape)
+                .background(NazoPrimary.copy(alpha = 0.18f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.AutoAwesome,
+                contentDescription = null,
+                tint = NazoPrimary,
+                modifier = Modifier.size(21.dp),
+            )
+        }
+        Spacer(Modifier.width(11.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "ADAPTIVE CALIBRATION",
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoPrimary,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.8.sp,
+            )
+            Text(
+                text = "Final target: $finalDifficulty · $adjustmentCount " +
+                    if (adjustmentCount == 1) "adjustment" else "adjustments",
+                style = MaterialTheme.typography.bodyMedium,
+                color = NazoTextPrimary,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "Accuracy, pace, hints, and misses shaped the route.",
+                style = MaterialTheme.typography.bodySmall,
+                color = NazoTextSecondary,
+            )
         }
     }
 }

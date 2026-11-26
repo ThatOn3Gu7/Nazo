@@ -23,6 +23,8 @@ object QuizEngine {
         "Medium" to DifficultySpec("Medium", 30),
         "Hard" to DifficultySpec("Hard", 20),
         "Otaku Master" to DifficultySpec("Otaku Master", 10),
+        // Safe calibration fallback before Adaptive's first candidate is ready.
+        "Adaptive" to DifficultySpec("Adaptive", 30),
     )
 
     fun specFor(difficultyLabel: String): DifficultySpec =

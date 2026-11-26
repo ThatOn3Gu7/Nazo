@@ -6,6 +6,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
+import quiz.thaton3app.nazo.data.AdaptiveQuizState
+import quiz.thaton3app.nazo.data.AdaptiveReason
+import quiz.thaton3app.nazo.data.AdaptiveTier
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.settings.FakeSharedPreferences
 import quiz.thaton3app.nazo.modes.guessing_game.GuessPayload
@@ -72,6 +75,37 @@ class ActiveSessionStoreTest {
                 now + 2_000L,
             ),
         )
+    }
+
+    @Test
+    fun adaptiveControllerRoundTripPreservesItsNextTarget() {
+        val original = quiz().copy(
+            difficulty = "Adaptive",
+            adaptiveState = AdaptiveQuizState(
+                tier = AdaptiveTier.HARD,
+                strongStreak = 1,
+                recentMisses = 0,
+                shiftCount = 2,
+                reason = AdaptiveReason.StrongPace,
+            ),
+        )
+        val store = ActiveSessionStore(FakeSharedPreferences()) { now }
+
+        store.save(original)
+
+        assertEquals(original, store.load())
+    }
+
+    @Test
+    fun versionOneQuizSnapshotStillRestoresWithoutAdaptiveState() {
+        val prefs = FakeSharedPreferences()
+        val legacy = ActiveSessionJson.encode(quiz()).replace("\"version\":2", "\"version\":1")
+        prefs.edit().putString(ActiveSessionStore.KEY, legacy).commit()
+
+        val restored = ActiveSessionStore(prefs) { now }.load() as ActiveQuizSession
+
+        assertEquals("Hard", restored.difficulty)
+        assertNull(restored.adaptiveState)
     }
 
     @Test

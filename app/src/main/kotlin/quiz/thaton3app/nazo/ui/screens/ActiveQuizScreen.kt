@@ -236,6 +236,56 @@ private fun DailyLadderProgressPanel(
 }
 
 @Composable
+private fun AdaptiveDifficultyPanel(
+    currentDifficulty: String,
+    nextDifficulty: String,
+    message: String,
+    compact: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(NazoPrimary.copy(alpha = 0.08f))
+            .border(1.dp, NazoPrimary.copy(alpha = 0.22f), RoundedCornerShape(16.dp))
+            .padding(horizontal = 14.dp, vertical = if (compact) 8.dp else 10.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "✦ ADAPTIVE · $currentDifficulty",
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoPrimary,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.7.sp,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "TARGET $nextDifficulty",
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoTextSecondary,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+            )
+        }
+        if (!compact && message.isNotBlank()) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = NazoTextSecondary,
+                maxLines = 2,
+            )
+        }
+    }
+}
+
+@Composable
 internal fun ActiveQuizScreen(
     question: Question,
     currentQuestionIndex: Int,
@@ -249,6 +299,9 @@ internal fun ActiveQuizScreen(
     /** False only while an opaque launch portal is settling this first frame. */
     decorativeMotionAllowed: Boolean = true,
     difficulty: String = "Medium",
+    adaptive: Boolean = false,
+    adaptiveNextDifficulty: String = "Medium",
+    adaptiveMessage: String = "",
     isAiGenerated: Boolean = false,
     // Survival mode: header shows lives instead of "x of y" / progress.
     endless: Boolean = false,
@@ -265,7 +318,12 @@ internal fun ActiveQuizScreen(
     // before the player advances — so the lost heart is redacted immediately
     // and the button can say "Finish Quiz" on the fatal question.
     onLifeLost: () -> Unit = {},
-    onQuestionGraded: (selected: String?, timeUp: Boolean) -> Unit = { _, _ -> },
+    onQuestionGraded: (
+        selected: String?,
+        timeUp: Boolean,
+        hintUsed: Boolean,
+        remainingFraction: Float,
+    ) -> Unit = { _, _, _, _ -> },
     onNextQuestion: (QuizProgressionTicket, Boolean, String?) -> Unit,
     /** Excludes a completed quit-dialog pause from the host's elapsed clock. */
     onTimerResumed: (pausedMillis: Long) -> Unit = {},
@@ -445,7 +503,12 @@ internal fun ActiveQuizScreen(
             gradedByIndex[currentQuestionIndex] = GradedAnswer(selected = null, timeUp = true)
             recordVisualGrade(currentQuestionIndex, correct = false)
             beginAnswerChoreography(currentQuestionIndex)
-            onQuestionGraded(null, true)
+            onQuestionGraded(
+                null,
+                true,
+                hiddenOptions.isNotEmpty() || letterHint != null,
+                0f,
+            )
             onLifeLost()
         }
     }
@@ -683,6 +746,14 @@ internal fun ActiveQuizScreen(
                 Spacer(Modifier.height(chromeGap))
                 DailyLadderProgressPanel(
                     currentQuestionIndex = currentQuestionIndex,
+                    compact = landscape,
+                )
+            } else if (adaptive) {
+                Spacer(Modifier.height(chromeGap))
+                AdaptiveDifficultyPanel(
+                    currentDifficulty = difficulty,
+                    nextDifficulty = adaptiveNextDifficulty,
+                    message = adaptiveMessage,
                     compact = landscape,
                 )
             }
@@ -952,7 +1023,12 @@ internal fun ActiveQuizScreen(
                                     GradedAnswer(selected = optionText, timeUp = false)
                                 recordVisualGrade(slot.index, wasCorrect)
                                 beginAnswerChoreography(slot.index)
-                                onQuestionGraded(optionText, false)
+                                onQuestionGraded(
+                                    optionText,
+                                    false,
+                                    hiddenOptions.isNotEmpty() || letterHint != null,
+                                    remainingSeconds.toFloat() / secondsPerQuestion.coerceAtLeast(1),
+                                )
                             }
                         },
                     )

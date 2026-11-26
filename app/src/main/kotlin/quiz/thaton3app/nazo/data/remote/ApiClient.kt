@@ -6,6 +6,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
+import quiz.thaton3app.nazo.data.AdaptiveDifficulty
+import quiz.thaton3app.nazo.data.AdaptiveTier
 import quiz.thaton3app.nazo.data.Question
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -66,6 +68,7 @@ Hard rules:
 - Produce exactly the number of questions requested.
 - Each question object has exactly these keys:
   "theme"    : a short UPPERCASE sub-category tag (e.g. CHARACTERS, POWERS, STORY, WORLD, UNRESOLVED).
+  "difficulty": exactly Easy, Medium, Hard, or Otaku Master.
   "question" : the question text, clear and unambiguous.
   "options"  : an array of exactly 4 distinct, plausible strings.
   "correctAnswer" : the EXACT text of one of the 4 options (never "A"/"B"/an index).
@@ -123,7 +126,12 @@ Hard rules:
 
                 try {
                     val content = extractContent(endpoint.kind, raw)
-                    val questions = parseQuestions(content, topic, count)
+                    val questions = parseQuestions(
+                        raw = content,
+                        topic = topic,
+                        expectedCount = count,
+                        requestedDifficulty = difficulty,
+                    )
                     if (questions.isEmpty()) {
                         throw IllegalStateException("Provider returned no questions")
                     }
@@ -523,7 +531,12 @@ Hard rules:
      * error card with "Use local quiz" — instead of silently serving a short or
      * mis-scored quiz. No extra API requests are made here.
      */
-    internal fun parseQuestions(raw: String, topic: String, expectedCount: Int = 0): List<Question> {
+    internal fun parseQuestions(
+        raw: String,
+        topic: String,
+        expectedCount: Int = 0,
+        requestedDifficulty: String = "Medium",
+    ): List<Question> {
         val arr = extractQuestionArray(raw)
         val list = mutableListOf<Question>()
         for (i in 0 until arr.length()) {
@@ -544,6 +557,17 @@ Hard rules:
             // case/whitespace matching — NEVER guess. No match rejects the
             // question instead of promoting options.first() to "correct".
             val correctAnswer = options.firstOrNull { canon(it) == canon(rawCorrect) } ?: continue
+            val declaredDifficulty = AdaptiveTier.fromLabel(o.optString("difficulty", ""))
+            val questionDifficulty = if (AdaptiveDifficulty.isAdaptive(requestedDifficulty)) {
+                // Adaptive generation is only useful when every candidate says
+                // which tier it actually belongs to. Missing/unknown labels are
+                // rejected instead of silently pretending a question is Medium.
+                declaredDifficulty?.label ?: continue
+            } else {
+                AdaptiveTier.fromLabel(requestedDifficulty)?.label
+                    ?: declaredDifficulty?.label
+                    ?: AdaptiveTier.MEDIUM.label
+            }
 
             list += Question(
                 id = list.size + 1,
@@ -551,6 +575,7 @@ Hard rules:
                     o.optString("anime", o.optString("theme", "Anime"))
                 },
                 theme = o.optString("theme", "ANIME QUIZ").uppercase(),
+                difficulty = questionDifficulty,
                 text = questionText,
                 options = options,
                 correctAnswer = correctAnswer,
@@ -573,12 +598,17 @@ Hard rules:
         avoidQuestions: List<String> = emptyList(),
     ): String {
         val topicLine = if (topic.isNotBlank()) " about \"$topic\"" else " about any popular anime"
-        val diffLine = if (difficulty.isNotBlank()) " at \"$difficulty\" difficulty" else ""
+        val adaptive = AdaptiveDifficulty.isAdaptive(difficulty)
+        val diffLine = if (!adaptive && difficulty.isNotBlank()) " at \"$difficulty\" difficulty" else ""
         return buildString {
             append("Generate $count anime trivia questions$topicLine$diffLine. ")
+            if (adaptive) {
+                append("Build a balanced adaptive candidate set across Easy, Medium, Hard, and Otaku Master. ")
+                append("Label every item with its real difficulty so the app can choose the next tier live. ")
+            }
             append("Use exactly 4 answer options per question. ")
             append("Respond ONLY with the JSON array described in your instructions ")
-            append("(keys: theme, question, options, correctAnswer, explanation). ")
+            append("(keys: theme, difficulty, question, options, correctAnswer, explanation). ")
             append("Do not include any text outside the JSON array.")
             if (language != "English") append(" Write all question text and explanations in $language.")
             // Session anti-repeat (session/SessionMemory): the player already

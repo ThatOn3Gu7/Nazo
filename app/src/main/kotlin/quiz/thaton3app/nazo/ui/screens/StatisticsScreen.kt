@@ -130,7 +130,7 @@ private fun QuizStats.toStatsData(progression: PlayerProgress): StatsData {
         0
     }
 
-    val difficultyOrder = listOf("Easy", "Medium", "Hard", "Otaku Master")
+    val difficultyOrder = listOf("Easy", "Medium", "Hard", "Otaku Master", "Adaptive")
     val difficulty = difficultyOrder.map { label ->
         val played = difficultyPlays[label] ?: 0
         val answered = difficultyAnswered[label] ?: 0

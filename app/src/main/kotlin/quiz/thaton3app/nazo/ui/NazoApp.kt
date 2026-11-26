@@ -77,10 +77,14 @@ import quiz.thaton3app.nazo.progression.PlayerProgression
 import quiz.thaton3app.nazo.progression.ProgressionReward
 import quiz.thaton3app.nazo.daily.DailyChallenge
 import quiz.thaton3app.nazo.daily.DailyStore
+import quiz.thaton3app.nazo.data.AdaptiveAttempt
+import quiz.thaton3app.nazo.data.AdaptiveDifficulty
+import quiz.thaton3app.nazo.data.AdaptiveQuizState
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.QuizEngine
 import quiz.thaton3app.nazo.data.QuizStats
+import quiz.thaton3app.nazo.data.topicMastery
 import quiz.thaton3app.nazo.data.backup.BackupScheduler
 import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.data.remote.Connectivity
@@ -1037,6 +1041,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     }
     var score by remember { mutableIntStateOf(restoredQuiz?.score ?: 0) }
     var quizDifficulty by remember { mutableStateOf(restoredQuiz?.difficulty ?: "Medium") }
+    var adaptiveQuizState by remember {
+        mutableStateOf(restoredQuiz?.adaptiveState ?: AdaptiveQuizState())
+    }
+    fun activeQuestionDifficulty(): String = if (AdaptiveDifficulty.isAdaptive(quizDifficulty)) {
+        questions.getOrNull(currentQuestionIndex)?.difficulty ?: adaptiveQuizState.tier.label
+    } else {
+        quizDifficulty
+    }
     val restoredQuizDowntimeMs = restoredQuiz?.let {
         (restoredAtEpochMs - it.savedAtEpochMs).coerceAtLeast(0L)
     } ?: 0L
@@ -1062,7 +1074,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var quizFinishedAt by remember { mutableLongStateOf(0L) }
 
     fun restartQuestionClock() {
-        val seconds = QuizEngine.specFor(quizDifficulty).secondsPerQuestion
+        val seconds = QuizEngine.specFor(activeQuestionDifficulty()).secondsPerQuestion
         questionDeadline = SystemClock.elapsedRealtime() + seconds * 1_000L
         pendingQuizAnswer = null
         pendingQuizTimeUp = false
@@ -1230,7 +1242,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
 
     fun achievementsFor(stats: QuizStats) = AchievementEngine.compute(
         stats = stats,
-        hasPerfectQuiz = listOf("Easy", "Medium", "Hard", "Otaku Master", "Daily")
+        hasPerfectQuiz = listOf("Easy", "Medium", "Hard", "Otaku Master", "Adaptive", "Daily")
             .any { recordsStore.quizBestPercent(it) >= 100 },
         dailiesCompleted = dailyStore.completedCount(),
     )
@@ -1254,7 +1266,11 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         // bank, prefer questions the player hasn't answered this launch OR
         // in the recent past, and only top up with seen ones when the pool
         // is exhausted — a small topic must still fill a full quiz.
-        val pool = LocalQuestionBank.getQuestions(count * 4, topic, difficulty)
+        val pool = if (AdaptiveDifficulty.isAdaptive(difficulty)) {
+            LocalQuestionBank.getAdaptiveQuestions(count * 4, topic)
+        } else {
+            LocalQuestionBank.getQuestions(count * 4, topic, difficulty)
+        }
         if (pool.isEmpty()) {
             offlineDialogMode = null
             localTopicMiss = LocalTopicMissRequest(topic, difficulty, count, quizMode)
@@ -1264,7 +1280,16 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         val (seen, fresh) = pool.partition {
             SessionMemory.isQuestionSeen(it.text) || questionHistory.isSeen(it.text)
         }
-        questions = (fresh + seen).take(count)
+        val selected = (fresh + seen).take(count)
+        questions = if (AdaptiveDifficulty.isAdaptive(difficulty)) {
+            AdaptiveDifficulty.prioritizeNextQuestion(
+                questions = selected,
+                answeredQuestionIndex = -1,
+                target = adaptiveQuizState.tier,
+            )
+        } else {
+            selected
+        }
         userAnswers = emptyList()
         currentQuestionIndex = 0
         score = 0
@@ -1284,7 +1309,16 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 // Unseen questions first — a cached set may partially overlap
                 // with an abandoned run from earlier this session.
                 val (seen, fresh) = cached.partition { SessionMemory.isQuestionSeen(it.text) }
-                questions = (fresh + seen).take(cached.size).map { it.withShuffledOptions() }
+                val selected = (fresh + seen).take(cached.size).map { it.withShuffledOptions() }
+                questions = if (AdaptiveDifficulty.isAdaptive(req.difficulty)) {
+                    AdaptiveDifficulty.prioritizeNextQuestion(
+                        questions = selected,
+                        answeredQuestionIndex = -1,
+                        target = adaptiveQuizState.tier,
+                    )
+                } else {
+                    selected
+                }
                 userAnswers = emptyList()
                 currentQuestionIndex = 0
                 score = 0
@@ -1340,7 +1374,16 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     // Belt and braces: even with the prompt avoid list, put any
                     // question the player already answered this session last.
                     val (seen, fresh) = qs.partition { SessionMemory.isQuestionSeen(it.text) }
-                    questions = (fresh + seen).take(qs.size).map { it.withShuffledOptions() }
+                    val selected = (fresh + seen).take(qs.size).map { it.withShuffledOptions() }
+                    questions = if (AdaptiveDifficulty.isAdaptive(req.difficulty)) {
+                        AdaptiveDifficulty.prioritizeNextQuestion(
+                            questions = selected,
+                            answeredQuestionIndex = -1,
+                            target = adaptiveQuizState.tier,
+                        )
+                    } else {
+                        selected
+                    }
                     userAnswers = emptyList()
                     currentQuestionIndex = 0
                     score = 0
@@ -1405,6 +1448,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         themePrefs.lastMode = NazoMode.QUIZ.name
         isDailyQuiz = false
         quizMode = "normal"
+        adaptiveQuizState = if (AdaptiveDifficulty.isAdaptive(difficulty)) {
+            val masteryTopic = topic.trim().ifBlank { "Mixed topics" }
+            val topicMastery = quizStats.topicMastery().firstOrNull { mastery ->
+                mastery.topic.equals(masteryTopic, ignoreCase = true)
+            }
+            AdaptiveDifficulty.startingState(topicMastery)
+        } else {
+            AdaptiveQuizState()
+        }
         // Set BEFORE the offline early-return: this branch used to skip both
         // assignments, so offline quizzes inherited the PREVIOUS game's
         // difficulty (wrong timer/hints/stats/records) and a stale start time.
@@ -1805,6 +1857,13 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         }
 
         if (currentQuestionIndex < questions.lastIndex) {
+            if (AdaptiveDifficulty.isAdaptive(quizDifficulty)) {
+                questions = AdaptiveDifficulty.prioritizeNextQuestion(
+                    questions = questions,
+                    answeredQuestionIndex = currentQuestionIndex,
+                    target = adaptiveQuizState.tier,
+                )
+            }
             currentQuestionIndex++
             restartQuestionClock()
         } else {
@@ -2212,6 +2271,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         currentQuestionIndex,
         score,
         quizDifficulty,
+        adaptiveQuizState,
         quizMode,
         aiGenerated,
         isDailyQuiz,
@@ -2265,6 +2325,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         versusStage = versusStage,
                         versusP1Score = versusP1Score,
                         versusP1Answers = versusP1Answers,
+                        adaptiveState = adaptiveQuizState.takeIf {
+                            AdaptiveDifficulty.isAdaptive(quizDifficulty)
+                        },
                     )
                 )
             }
@@ -2676,7 +2739,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         // do not run its decorative infinite clocks until the
                         // collapse is gone and owns no competing frame-time work.
                         decorativeMotionAllowed = pendingQuizLaunch == null,
-                        difficulty = quizDifficulty,
+                        difficulty = activeQuestionDifficulty(),
+                        adaptive = AdaptiveDifficulty.isAdaptive(quizDifficulty),
+                        adaptiveNextDifficulty = adaptiveQuizState.tier.label,
+                        adaptiveMessage = AdaptiveDifficulty.statusMessage(adaptiveQuizState),
                         isAiGenerated = aiGenerated,
                         endless = quizMode == "survival",
                         livesLeft = 3 - survivalWrongs,
@@ -2688,7 +2754,20 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         // not at the Next tap — the chip drops at once and the
                         // fatal question's button can say "Finish Quiz".
                         onLifeLost = { if (quizMode == "survival") survivalWrongs++ },
-                        onQuestionGraded = { selected, timeUp ->
+                        onQuestionGraded = { selected, timeUp, hintUsed, remainingFraction ->
+                            val firstGrade = pendingQuizAnswer == null && !pendingQuizTimeUp
+                            if (firstGrade && AdaptiveDifficulty.isAdaptive(quizDifficulty)) {
+                                adaptiveQuizState = AdaptiveDifficulty.recordAttempt(
+                                    state = adaptiveQuizState,
+                                    attempt = AdaptiveAttempt(
+                                        correct = !timeUp &&
+                                            selected == questions[currentQuestionIndex].correctAnswer,
+                                        remainingFraction = remainingFraction,
+                                        usedHint = hintUsed,
+                                        timedOut = timeUp,
+                                    ),
+                                )
+                            }
                             pendingQuizAnswer = selected
                             pendingQuizTimeUp = timeUp
                         },
@@ -2730,6 +2809,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         isNewRecord = quizNewRecord,
                         daily = isDailyQuiz,
                         dailyBonusXp = lastDailyBonus,
+                        adaptiveFinalDifficulty = adaptiveQuizState.tier.label.takeIf {
+                            AdaptiveDifficulty.isAdaptive(quizDifficulty)
+                        },
+                        adaptiveAdjustmentCount = adaptiveQuizState.shiftCount,
                         progressionReward = lastProgressionReward,
                         mistakeCount = instantMistakeRematchQuestions(
                             questions,

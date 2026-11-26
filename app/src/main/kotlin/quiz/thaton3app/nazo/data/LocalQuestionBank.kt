@@ -1090,6 +1090,36 @@ object LocalQuestionBank {
     fun stablePool(): List<Question> = canonical
 
     /**
+     * Returns a balanced mixed-tier candidate deck for Adaptive Quiz mode.
+     * Medium, Easy, Hard, and Otaku Master are requested in a repeating cycle;
+     * when a narrow topic lacks one tier, the nearest available tier fills that
+     * slot. A nonblank unmatched topic remains an explicit miss.
+     */
+    fun getAdaptiveQuestions(count: Int, topic: String = ""): List<Question> {
+        if (count <= 0) return emptyList()
+        val base = if (topic.isBlank()) {
+            canonical
+        } else {
+            canonical.filter { it.matches(topic) }
+        }
+        if (base.isEmpty()) return emptyList()
+
+        val remaining = base.shuffled().toMutableList()
+        val picked = mutableListOf<Question>()
+        AdaptiveDifficulty.candidateTierSequence(count).forEach { target ->
+            if (remaining.isEmpty()) return@forEach
+            val bestIndex = remaining.indices.minWithOrNull(
+                compareBy<Int> { index ->
+                    val tier = AdaptiveTier.fromLabel(remaining[index].difficulty) ?: AdaptiveTier.MEDIUM
+                    kotlin.math.abs(tier.ordinal - target.ordinal)
+                }.thenBy { it },
+            ) ?: return@forEach
+            picked += remaining.removeAt(bestIndex)
+        }
+        return picked.map(Question::withShuffledOptions)
+    }
+
+    /**
      * Returns up to [count] questions, optionally filtered by a free-text [topic]
      * (matched against anime / theme / text) and biased toward the chosen
      * [difficulty] tier. The selected tier is served first (shuffled) and the

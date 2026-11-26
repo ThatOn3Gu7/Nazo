@@ -121,6 +121,7 @@ enum class Difficulty(val label: String) {
     MEDIUM("Medium"),
     HARD("Hard"),
     OTAKU_MASTER("Otaku Master"),
+    ADAPTIVE("Adaptive"),
 }
 
 internal enum class HomeCountControls { Questions, Rounds, None }
@@ -133,6 +134,13 @@ internal fun homeCountControls(mode: NazoMode): HomeCountControls = when (mode) 
 
 internal fun homePracticeVisible(mode: NazoMode, practiceCount: Int): Boolean =
     mode == NazoMode.QUIZ && practiceCount > 0
+
+internal fun adaptiveDifficultyAvailable(mode: NazoMode): Boolean = mode == NazoMode.QUIZ
+
+/** Adaptive is intentionally Quiz-only; other modes retain their authored rules. */
+internal fun homeDifficultyForMode(mode: NazoMode, difficulty: Difficulty): Difficulty =
+    if (!adaptiveDifficultyAvailable(mode) && difficulty == Difficulty.ADAPTIVE) Difficulty.MEDIUM
+    else difficulty
 
 /**
  * The portal is a destination transition for challenges that are known to be
@@ -535,7 +543,11 @@ fun HomeScreen(
                             onClick = {
                                 if (candidate != nazoMode) Haptics.light(context)
                                 dismissModeSheet {
-                                    if (candidate != nazoMode) onModeChange(candidate.name)
+                                    if (candidate != nazoMode) {
+                                        onModeChange(candidate.name)
+                                        val supported = homeDifficultyForMode(candidate, difficulty)
+                                        if (supported != difficulty) onDifficultyChange(supported.name)
+                                    }
                                 }
                             },
                         )
@@ -1968,10 +1980,11 @@ private fun ChallengeSetupCard(
         Spacer(Modifier.height(16.dp))
         ChallengeGroupLabel(
             title = "DIFFICULTY",
-            supporting = "Choose your pace",
+            supporting = if (adaptiveDifficultyAvailable(mode)) "Fixed or responsive" else "Choose your pace",
         )
         Spacer(Modifier.height(8.dp))
         ChallengeDifficultyRail(
+            mode = mode,
             selected = difficulty,
             onSelected = onDifficultySelected,
         )
@@ -2056,28 +2069,115 @@ private fun ChallengeGroupLabel(title: String, supporting: String) {
 
 @Composable
 private fun ChallengeDifficultyRail(
+    mode: NazoMode,
     selected: Difficulty,
     onSelected: (Difficulty) -> Unit,
 ) {
     val railShape = RoundedCornerShape(18.dp)
+    Column(modifier = Modifier.selectableGroup()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(railShape)
+                .background(NazoPillUnselected.copy(alpha = 0.58f), railShape)
+                .border(1.dp, NazoTextSecondary.copy(alpha = 0.10f), railShape)
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Difficulty.entries.filterNot { it == Difficulty.ADAPTIVE }.forEach { level ->
+                ChallengeDifficultyOption(
+                    difficulty = level,
+                    selected = selected == level,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onSelected(level) },
+                )
+            }
+        }
+        if (adaptiveDifficultyAvailable(mode)) {
+            Spacer(Modifier.height(8.dp))
+            AdaptiveDifficultyOption(
+                selected = selected == Difficulty.ADAPTIVE,
+                onClick = { onSelected(Difficulty.ADAPTIVE) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun AdaptiveDifficultyOption(
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 16.dp,
+        pressedCorner = 8.dp,
+    )
+    val container by animateColorAsState(
+        targetValue = if (selected) NazoPrimary else NazoPrimary.copy(alpha = 0.08f),
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "adaptiveDifficultyContainer",
+    )
+    val foreground by animateColorAsState(
+        targetValue = if (selected) NazoOnPrimary else NazoTextPrimary,
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "adaptiveDifficultyForeground",
+    )
+    val supporting by animateColorAsState(
+        targetValue = if (selected) NazoOnPrimary.copy(alpha = 0.82f) else NazoTextSecondary,
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "adaptiveDifficultySupporting",
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(railShape)
-            .background(NazoPillUnselected.copy(alpha = 0.58f), railShape)
-            .border(1.dp, NazoTextSecondary.copy(alpha = 0.10f), railShape)
-            .padding(4.dp)
-            .selectableGroup(),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+            .defaultMinSize(minHeight = 62.dp)
+            .clip(shape)
+            .background(container, shape)
+            .border(
+                1.dp,
+                if (selected) NazoPrimary else NazoPrimary.copy(alpha = 0.24f),
+                shape,
+            )
+            .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Difficulty.entries.forEach { level ->
-            ChallengeDifficultyOption(
-                difficulty = level,
-                selected = selected == level,
-                modifier = Modifier.weight(1f),
-                onClick = { onSelected(level) },
+        Icon(
+            imageVector = Icons.Filled.AutoAwesome,
+            contentDescription = null,
+            tint = if (selected) NazoOnPrimary else NazoPrimary,
+            modifier = Modifier.size(21.dp),
+        )
+        Spacer(Modifier.width(11.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Adaptive",
+                style = MaterialTheme.typography.labelLarge,
+                color = foreground,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "Responds to accuracy, pace, hints, and misses",
+                style = MaterialTheme.typography.labelSmall,
+                color = supporting,
+                maxLines = 2,
             )
         }
+        Text(
+            text = "AUTO",
+            style = MaterialTheme.typography.labelSmall,
+            color = supporting,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 0.8.sp,
+        )
     }
 }
 
@@ -2114,6 +2214,7 @@ private fun ChallengeDifficultyOption(
         Difficulty.MEDIUM -> Icons.Filled.TrackChanges
         Difficulty.HARD -> Icons.Filled.LocalFireDepartment
         Difficulty.OTAKU_MASTER -> Icons.Filled.WorkspacePremium
+        Difficulty.ADAPTIVE -> Icons.Filled.AutoAwesome
     }
 
     Column(

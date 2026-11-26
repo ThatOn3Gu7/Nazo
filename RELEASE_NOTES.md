@@ -23,6 +23,7 @@ then archived below; there should be no per-version release-note files.
 - **Added** — Results with wrong answers now lead with a one-tap mistake rematch that retries only the questions missed in that completed run, works without generation or a network connection, and keeps correctly retried questions graduating from Practice Your Misses.
 - **Added** — Progression & Insights now includes Topic Mastery: confidence grows from accuracy and repeated exposure, recent answers identify improving or slipping topics, and compact Strong, Improving, Needs work, and Building signals turn long-term learning into something visible without discarding existing statistics.
 - **Improved** — Daily Challenge is now a visible three-stage ladder: two Easy Warm-up questions lead into two Medium Climb questions and one Hard Summit, with the current stage shown throughout play and a definitive ladder-clear summary at the finish.
+- **Added** — Quiz now offers an Adaptive difficulty that starts from existing topic mastery, raises the target after sustained fast and accurate answers, eases it after misses or timeouts, accounts for hint use, and explains its current and final calibration without changing Daily or special-mode rules.
 
 ## Release archive
 

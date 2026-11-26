@@ -106,6 +106,15 @@ class QuizResultsStoryTest {
             ),
         )
         assertEquals("Play Another Quiz", quizResultReturnLabel(daily = false, modeLabel = null))
+        assertEquals(
+            "Adaptive Quiz Complete",
+            quizResultHeading(
+                daily = false,
+                modeLabel = null,
+                difficulty = "Adaptive",
+                score = 4,
+            ),
+        )
     }
 
     @Test

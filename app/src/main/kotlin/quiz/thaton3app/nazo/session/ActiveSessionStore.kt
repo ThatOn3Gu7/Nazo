@@ -5,6 +5,10 @@ import android.content.SharedPreferences
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
+import quiz.thaton3app.nazo.data.AdaptiveDifficulty
+import quiz.thaton3app.nazo.data.AdaptiveQuizState
+import quiz.thaton3app.nazo.data.AdaptiveReason
+import quiz.thaton3app.nazo.data.AdaptiveTier
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.modes.guessing_game.GuessPayload
 import quiz.thaton3app.nazo.modes.guessing_game.GuessRoundResult
@@ -34,6 +38,7 @@ data class ActiveQuizSession(
     val versusStage: Int,
     val versusP1Score: Int,
     val versusP1Answers: List<String?>,
+    val adaptiveState: AdaptiveQuizState? = null,
 ) : ActiveSessionSnapshot {
     enum class Destination { QUIZ, VERSUS_HANDOFF }
 }
@@ -124,7 +129,7 @@ class ActiveSessionStore internal constructor(
 }
 
 internal object ActiveSessionJson {
-    private const val VERSION = 1
+    private const val VERSION = 2
     private const val MAX_QUESTIONS = 200
     private const val MAX_TEXT = 20_000
     private const val MAX_TIMER_MS = ActiveSessionStore.MAX_AGE_MS
@@ -158,6 +163,7 @@ internal object ActiveSessionJson {
                     put("versusStage", snapshot.versusStage)
                     put("versusP1Score", snapshot.versusP1Score)
                     put("versusP1Answers", nullableStrings(snapshot.versusP1Answers))
+                    put("adaptive", snapshot.adaptiveState?.let(::adaptiveJson) ?: JSONObject.NULL)
                 }
                 is ActiveGuessSession -> {
                     put("kind", "guess")
@@ -178,17 +184,18 @@ internal object ActiveSessionJson {
 
     fun decode(raw: String): ActiveSessionSnapshot {
         val o = JSONObject(raw)
-        require(o.strictInt("version") == VERSION) { "Unsupported active-session version" }
+        val version = o.strictInt("version")
+        require(version in 1..VERSION) { "Unsupported active-session version" }
         val savedAt = o.strictLong("savedAt")
         require(savedAt > 0L) { "Invalid active-session timestamp" }
         return when (o.strictString("kind")) {
-            "quiz" -> decodeQuiz(o, savedAt).also(::validateQuiz)
+            "quiz" -> decodeQuiz(o, savedAt, version).also(::validateQuiz)
             "guess" -> decodeGuess(o, savedAt).also(::validateGuess)
             else -> throw IllegalArgumentException("Unknown active-session kind")
         }
     }
 
-    private fun decodeQuiz(o: JSONObject, savedAt: Long) = ActiveQuizSession(
+    private fun decodeQuiz(o: JSONObject, savedAt: Long, version: Int) = ActiveQuizSession(
         savedAtEpochMs = savedAt,
         destination = ActiveQuizSession.Destination.valueOf(o.strictString("destination")),
         mode = o.strictString("mode"),
@@ -208,6 +215,11 @@ internal object ActiveSessionJson {
         versusStage = o.strictInt("versusStage"),
         versusP1Score = o.strictInt("versusP1Score"),
         versusP1Answers = nullableStringList(o.strictArray("versusP1Answers")),
+        adaptiveState = if (version >= 2 && !o.isNull("adaptive")) {
+            adaptiveFromJson(o.strictObject("adaptive"))
+        } else {
+            null
+        },
     )
 
     private fun decodeGuess(o: JSONObject, savedAt: Long) = ActiveGuessSession(
@@ -233,6 +245,16 @@ internal object ActiveSessionJson {
         require(s.score == correctCount(s.questions, s.userAnswers))
         require(s.score in 0..s.userAnswers.size)
         require(s.difficulty.isNotBlank() && s.difficulty.length <= 100)
+        if (AdaptiveDifficulty.isAdaptive(s.difficulty)) {
+            require(s.mode == "normal" && !s.daily && s.adaptiveState != null)
+        } else {
+            require(s.adaptiveState == null)
+        }
+        s.adaptiveState?.let { adaptive ->
+            require(adaptive.strongStreak in 0..1)
+            require(adaptive.recentMisses in 0..3)
+            require(adaptive.shiftCount in 0..s.questions.size)
+        }
         require(s.pendingAnswer == null || s.pendingAnswer in s.questions[s.currentQuestionIndex].options)
         require(!(s.pendingTimeUp && s.pendingAnswer != null))
         require(s.questionRemainingMs in 0L..MAX_TIMER_MS)
@@ -288,6 +310,22 @@ internal object ActiveSessionJson {
         require(r.imageQuery.length <= MAX_TEXT && (r.answerText?.length ?: 0) <= MAX_TEXT)
         require(r.points >= 0 && r.remainingFraction in 0f..1f)
     }
+
+    private fun adaptiveJson(state: AdaptiveQuizState) = JSONObject().apply {
+        put("tier", state.tier.name)
+        put("strongStreak", state.strongStreak)
+        put("recentMisses", state.recentMisses)
+        put("shiftCount", state.shiftCount)
+        put("reason", state.reason.name)
+    }
+
+    private fun adaptiveFromJson(o: JSONObject) = AdaptiveQuizState(
+        tier = AdaptiveTier.valueOf(o.strictString("tier")),
+        strongStreak = o.strictInt("strongStreak"),
+        recentMisses = o.strictInt("recentMisses"),
+        shiftCount = o.strictInt("shiftCount"),
+        reason = AdaptiveReason.valueOf(o.strictString("reason")),
+    )
 
     private fun questionJson(q: Question) = JSONObject().apply {
         put("id", q.id); put("anime", q.anime); put("theme", q.theme); put("difficulty", q.difficulty)
