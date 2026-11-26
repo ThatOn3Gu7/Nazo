@@ -126,6 +126,12 @@ import quiz.thaton3app.nazo.ui.components.prepareCoverArtwork
 import quiz.thaton3app.nazo.ui.components.LocalAvatarAnchorRegistry
 import quiz.thaton3app.nazo.ui.components.LocalTopicUnavailableDialog
 import quiz.thaton3app.nazo.ui.components.PersistentAvatarVideo
+import quiz.thaton3app.nazo.ui.components.QuizLaunchDestinationReveal
+import quiz.thaton3app.nazo.ui.components.QuizLaunchHandoffEvent
+import quiz.thaton3app.nazo.ui.components.QuizLaunchHandoffState
+import quiz.thaton3app.nazo.ui.components.QuizLaunchOrigin
+import quiz.thaton3app.nazo.ui.components.QuizLaunchPortal
+import quiz.thaton3app.nazo.ui.components.nextQuizLaunchHandoff
 import quiz.thaton3app.nazo.ui.components.avatarOverlayTransform
 import quiz.thaton3app.nazo.ui.components.resolveAvatarWinnerScreen
 import quiz.thaton3app.nazo.ui.components.FloatingParticlesBackground
@@ -376,6 +382,13 @@ private data class LocalTopicMissRequest(
     val difficulty: String,
     val count: Int,
     val mode: String,
+)
+
+private data class PendingQuizLaunch(
+    val id: Long,
+    val origin: QuizLaunchOrigin,
+    val label: String,
+    val launch: () -> Unit,
 )
 
 private data class GenerationRequest(
@@ -914,6 +927,32 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
 
     val activity = context as? Activity
     val reduceMotion = rememberSystemReduceMotion()
+
+    // The launch cover lives above the shared navigation tree, so Home,
+    // Loading and Quiz remain single live instances. Only the tiny hand-off
+    // state survives after the cover leaves, letting an AI-generated quiz
+    // reveal its eventual first question out of Loading.
+    var quizLaunchCounter by remember { mutableLongStateOf(0L) }
+    var pendingQuizLaunch by remember { mutableStateOf<PendingQuizLaunch?>(null) }
+    var coveredQuizLaunchId by remember { mutableStateOf<Long?>(null) }
+    var quizLaunchHandoff by remember {
+        mutableStateOf(QuizLaunchHandoffState.Idle)
+    }
+
+    LaunchedEffect(currentScreen, coveredQuizLaunchId, pendingQuizLaunch?.id) {
+        quizLaunchHandoff = when {
+            coveredQuizLaunchId != null && currentScreen == Screen.Loading ->
+                nextQuizLaunchHandoff(quizLaunchHandoff, QuizLaunchHandoffEvent.LoadingReached)
+
+            pendingQuizLaunch == null &&
+                quizLaunchHandoff == QuizLaunchHandoffState.AwaitingQuestion &&
+                currentScreen == Screen.Quiz ->
+                nextQuizLaunchHandoff(quizLaunchHandoff, QuizLaunchHandoffEvent.QuestionReached)
+
+            else -> quizLaunchHandoff
+        }
+    }
+
     PredictiveBackHandler(enabled = true) { progress ->
         val backTarget = navigationStack.getOrNull(navigationStack.lastIndex - 1)
         // Preview only when the full-screen screen transition is on screen and
@@ -921,6 +960,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         // (double-back-to-exit), not behind the blocking dialogs, and not under
         // reduced motion (the preview is decorative; navigation is unaffected).
         val canPreview = backTarget != null &&
+            pendingQuizLaunch == null &&
             offlineDialogMode == null &&
             !showAiMissingDialog &&
             !showListDetail &&
@@ -979,8 +1019,13 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             }
 
             // Gesture completed (or a hardware/back-key press arrived with no
-            // gesture progress): run the same decision logic as always.
-            if (offlineDialogMode != null) {
+            // gesture progress): run the same decision logic as always. The
+            // sub-second launch portal has already claimed its action, so a
+            // back event during that cover is ignored rather than starting a
+            // quiz after Home has exited.
+            if (pendingQuizLaunch != null) {
+                Unit
+            } else if (offlineDialogMode != null) {
                 offlineDialogMode = null
             } else if (showAiMissingDialog) {
                 // Preserve the existing non-dismissible AI configuration dialog.
@@ -2328,6 +2373,21 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         profilePictureUri = profilePictureUri,
                         onProfileClick = { navigate(Screen.Profile) },
                         onStartQuiz = { topic, difficulty, count -> startQuiz(topic, difficulty, count) },
+                        onLaunchPortal = { origin, label, launch ->
+                            quizLaunchHandoff = nextQuizLaunchHandoff(
+                                quizLaunchHandoff,
+                                QuizLaunchHandoffEvent.PortalStarted,
+                            )
+                            coveredQuizLaunchId = null
+                            if (reduceMotion) {
+                                // Android Remove animations keeps the launch
+                                // immediate and uses ordinary static navigation.
+                                launch()
+                            } else if (pendingQuizLaunch == null) {
+                                val id = ++quizLaunchCounter
+                                pendingQuizLaunch = PendingQuizLaunch(id, origin, label, launch)
+                            }
+                        },
                         topic = homeTopic,
                         difficultyName = homeDifficultyName,
                         questionCount = homeQuestionCount,
@@ -2598,9 +2658,20 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onOpenUrl = { url -> openExternalUrl(context, url) },
                     )
 
-                    Screen.Quiz -> ActiveQuizScreen(
-                        question = questions[currentQuestionIndex],
-                        currentQuestionIndex = currentQuestionIndex,
+                    Screen.Quiz -> QuizLaunchDestinationReveal(
+                        active = quizLaunchHandoff == QuizLaunchHandoffState.RevealingQuestion ||
+                            (quizLaunchHandoff == QuizLaunchHandoffState.AwaitingQuestion &&
+                                pendingQuizLaunch == null),
+                        onFinished = {
+                            quizLaunchHandoff = nextQuizLaunchHandoff(
+                                quizLaunchHandoff,
+                                QuizLaunchHandoffEvent.RevealFinished,
+                            )
+                        },
+                    ) {
+                        ActiveQuizScreen(
+                            question = questions[currentQuestionIndex],
+                            currentQuestionIndex = currentQuestionIndex,
                         progressionTicket = quizProgressionGate.ticket(
                             stage = if (quizMode == "versus") versusStage else 0,
                             questionIndex = currentQuestionIndex,
@@ -2644,7 +2715,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             activeSessionStore.clear()
                             goHome()
                         },
-                    )
+                        )
+                    }
 
                     Screen.Results -> QuizCompleteScreen(
                         score = score,
@@ -2719,6 +2791,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             generationToken++
                             generationJob?.cancel()
                             generationState = GenerationState.Idle
+                            quizLaunchHandoff = nextQuizLaunchHandoff(
+                                quizLaunchHandoff,
+                                QuizLaunchHandoffEvent.Cancelled,
+                            )
                             goHome()
                         },
                         onHomeClick = { goHome() },
@@ -3055,6 +3131,27 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             startBlitz(topic = "", difficulty = request.difficulty)
                         } else {
                             runLocal(topic = "", difficulty = request.difficulty, count = request.count)
+                        }
+                    },
+                )
+            }
+
+            // Drawn after screens, navigation, media and launch-time dialogs:
+            // this is one cover over the one live app tree, never a second app
+            // composition. The destination is selected only at full coverage.
+            pendingQuizLaunch?.let { request ->
+                QuizLaunchPortal(
+                    requestId = request.id,
+                    origin = request.origin,
+                    sourceLabel = request.label,
+                    onCovered = {
+                        request.launch()
+                        coveredQuizLaunchId = request.id
+                    },
+                    onFinished = {
+                        if (pendingQuizLaunch?.id == request.id) {
+                            pendingQuizLaunch = null
+                            coveredQuizLaunchId = null
                         }
                     },
                 )

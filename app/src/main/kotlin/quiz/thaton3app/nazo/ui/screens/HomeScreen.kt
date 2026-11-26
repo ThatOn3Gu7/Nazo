@@ -70,6 +70,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
@@ -104,6 +106,7 @@ import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.rememberSystemReduceMotion
 import quiz.thaton3app.nazo.ui.components.AvatarAnchorId
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
+import quiz.thaton3app.nazo.ui.components.QuizLaunchOrigin
 import quiz.thaton3app.nazo.ui.components.SPARKLE_METEORS
 import quiz.thaton3app.nazo.ui.components.SPARKLE_TWINKLE
 import quiz.thaton3app.nazo.ui.components.drawMeteorShower
@@ -182,6 +185,8 @@ fun HomeScreen(
     profilePictureUri: String? = null,
     onProfileClick: () -> Unit = {},
     onStartQuiz: (topic: String, difficulty: String, count: Int) -> Unit,
+    /** Lets the app-level overlay cover navigation before this launch action runs. */
+    onLaunchPortal: (QuizLaunchOrigin, String, () -> Unit) -> Unit = { _, _, launch -> launch() },
     topic: String = "",
     difficultyName: String = Difficulty.MEDIUM.name,
     questionCount: Int = 5,
@@ -383,6 +388,7 @@ fun HomeScreen(
 
         GenerateButton(
             sparkleStyle = sparkleStyle,
+            onLaunchPortal = onLaunchPortal,
             label = when (nazoMode) {
                 NazoMode.GUESSING -> "Start Guessing Game"
                 NazoMode.SURVIVAL -> "Start Survival Run"
@@ -2276,16 +2282,34 @@ private fun PracticeMissesButton(
 }
 
 @Composable
-private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> Unit) {
+private fun GenerateButton(
+    label: String,
+    sparkleStyle: String,
+    onLaunchPortal: (QuizLaunchOrigin, String, () -> Unit) -> Unit,
+    onClick: () -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val reduceMotion = rememberSystemReduceMotion()
 
-    // Tap sequence: the sparkle twinkles, then navigation fires a beat later so
-    // the animation is actually seen. `launching` also guards against a second
-    // tap queueing a second quiz while the beat plays.
+    // Tap sequence: one quick sparkle acknowledges the press, then the root
+    // portal takes over the motion. `launching` also guards against a second
+    // tap queueing a second quiz during that hand-off.
     var launching by remember { mutableStateOf(false) }
+    var portalOrigin by remember { mutableStateOf<QuizLaunchOrigin?>(null) }
     val twinkle = remember { Animatable(0f) }
+
+    fun enterLaunchPortal() {
+        val origin = portalOrigin
+        if (origin == null) {
+            // Layout coordinates are normally available long before a tap. If
+            // they are not (for example during a rotation frame), never strand
+            // the user's action waiting for decorative motion.
+            onClick()
+        } else {
+            onLaunchPortal(origin, label, onClick)
+        }
+    }
 
     // The button used to give no visual feedback at all — only haptics — so a
     // press was invisible. Three layers now respond to touch:
@@ -2346,6 +2370,9 @@ private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> U
         modifier = Modifier
             .fillMaxWidth()
             .height(58.dp)
+            .onGloballyPositioned { coordinates ->
+                portalOrigin = QuizLaunchOrigin.from(coordinates.boundsInRoot())
+            }
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -2406,24 +2433,22 @@ private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> U
                 if (reduceMotion) {
                     // The action stays immediate under Remove animations; no
                     // decorative sheen, press transform, sparkle or delay.
-                    onClick()
+                    enterLaunchPortal()
                     launching = false
                     return@clickable
                 }
                 scope.launch {
                     twinkle.snapTo(0f)
-                    // ~420ms of twinkle, then a short beat so the animation
-                    // lands before the screen changes. Deliberately brief —
-                    // this is a flourish, not a loading screen.
-                    // Meteors need longer to cross the button than the stars
-                    // need to pulse, so the shower gets a wider window.
-                    val duration = if (sparkleStyle == SPARKLE_METEORS) 720 else 460
+                    // A compact acknowledgement is enough now that the portal
+                    // carries the launch itself. Meteors still get a slightly
+                    // wider window so their direction remains readable.
+                    val duration = if (sparkleStyle == SPARKLE_METEORS) 240 else 180
                     twinkle.animateTo(
                         targetValue = 1f,
                         animationSpec = tween(durationMillis = duration, easing = LinearEasing),
                     )
-                    delay(70)
-                    onClick()
+                    delay(30)
+                    enterLaunchPortal()
                     // Reset so returning Home shows a clean, untwinkled icon.
                     twinkle.snapTo(0f)
                     launching = false
