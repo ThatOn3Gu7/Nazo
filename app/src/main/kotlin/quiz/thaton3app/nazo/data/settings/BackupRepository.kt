@@ -21,10 +21,10 @@ import java.util.LinkedHashSet
  * JSON bundle and writes it to either an SAF [Uri] (manual backup, user-chosen
  * location) or a fixed app-external file (automatic backup).
  *
- * Included stores: quiz stats, profile, theme, and AI provider models. API-key
- * ciphertext is deliberately excluded: it is bound to one Android Keystore and
- * is neither portable nor useful in a backup. Restore therefore leaves the
- * destination install's current encrypted keys untouched. Internal
+ * Included stores: quiz stats, profile, theme, saved collections, and AI
+ * provider models. API-key ciphertext is deliberately excluded: it is bound
+ * to one Android Keystore and is neither portable nor useful in a backup.
+ * Restore therefore leaves the destination install's current encrypted keys untouched. Internal
  * update-checker stores are also excluded (not user data).
  *
  * SharedPreferences values are type-tagged on export so they round-trip exactly
@@ -68,6 +68,7 @@ object BackupRepository {
         "nazo_reminders",
         "nazo_qhistory",   // persistent question anti-repeat memory
         "nazo_missed",     // practice deck (missed questions)
+        "nazo_collections", // player-saved Home challenge setups
     )
     private const val PROFILE_PICTURE_KEY = "profile_picture_uri"
 
@@ -97,7 +98,8 @@ object BackupRepository {
 
     /** Stores that represent earned progress rather than settings. */
     private val PROGRESS_STORES = setOf(
-        "nazo_stats", "nazo_records", "nazo_daily", "nazo_qhistory", "nazo_missed", "nazo_profile",
+        "nazo_stats", "nazo_records", "nazo_daily", "nazo_qhistory", "nazo_missed",
+        "nazo_collections", "nazo_profile",
     )
 
     private fun labelFor(store: String): Pair<String, String> = when (store) {
@@ -111,6 +113,7 @@ object BackupRepository {
         "nazo_reminders" -> "Reminders" to "Scheduled practice notifications"
         "nazo_qhistory" -> "Question history" to "Anti-repeat memory of seen questions"
         "nazo_missed" -> "Practice deck" to "Questions you answered incorrectly"
+        "nazo_collections" -> "Quiz collections" to "Saved Home challenge setups"
         else -> store.removePrefix("nazo_").replaceFirstChar { it.uppercase() } to "App data"
     }
 

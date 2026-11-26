@@ -96,6 +96,9 @@ import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.data.QuizStats
+import quiz.thaton3app.nazo.data.settings.QuizCollection
+import quiz.thaton3app.nazo.data.settings.QuizCollectionPolicy
+import quiz.thaton3app.nazo.data.settings.QuizCollectionSetup
 import quiz.thaton3app.nazo.ui.components.NazoModalSheet
 import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
 import quiz.thaton3app.nazo.ui.components.NazoSheetHeader
@@ -172,6 +175,40 @@ internal fun challengeSummary(
     return "${difficulty.label} • $detail"
 }
 
+internal fun homeCollectionSetup(
+    topic: String,
+    mode: NazoMode,
+    difficulty: Difficulty,
+    questionCount: Int,
+    guessingRounds: Int,
+): QuizCollectionSetup = QuizCollectionSetup(
+    topic = topic,
+    mode = mode.name,
+    difficulty = difficulty.label,
+    amount = when (homeCountControls(mode)) {
+        HomeCountControls.Questions -> questionCount
+        HomeCountControls.Rounds -> guessingRounds
+        HomeCountControls.None -> 0
+    },
+)
+
+internal fun quizCollectionHeadline(collection: QuizCollection): String =
+    collection.topic.ifBlank { "Mixed anime" }
+
+internal fun quizCollectionDetail(collection: QuizCollection): String {
+    val mode = NazoMode.entries.firstOrNull { it.name == collection.mode }?.label ?: "Quiz"
+    val length = when (collection.mode) {
+        NazoMode.QUIZ.name, NazoMode.VERSUS.name ->
+            "${collection.amount} question${if (collection.amount == 1) "" else "s"}"
+        NazoMode.GUESSING.name ->
+            "${collection.amount} round${if (collection.amount == 1) "" else "s"}"
+        NazoMode.SURVIVAL.name -> "Endless"
+        NazoMode.BLITZ.name -> "60 seconds"
+        else -> ""
+    }
+    return listOf(mode, collection.difficulty, length).filter { it.isNotBlank() }.joinToString(" • ")
+}
+
 private val HOME_TOPIC_STARTERS = listOf(
     "Naruto",
     "One Piece",
@@ -217,6 +254,9 @@ fun HomeScreen(
     onModeChange: (String) -> Unit = {},
     guessingRounds: Int = 3,
     onGuessingRoundsChange: (Int) -> Unit = {},
+    quizCollections: List<QuizCollection> = emptyList(),
+    onSaveCollection: (QuizCollectionSetup) -> Unit = {},
+    onDeleteCollection: (QuizCollection) -> Unit = {},
     onStartGuessing: (topic: String, difficulty: String, rounds: Int) -> Unit = { _, _, _ -> },
     onStartSurvival: (topic: String, difficulty: String) -> Unit = { _, _ -> },
     onStartBlitz: (topic: String, difficulty: String) -> Unit = { _, _ -> },
@@ -237,6 +277,18 @@ fun HomeScreen(
 ) {
     val difficulty = Difficulty.valueOf(difficultyName)
     val nazoMode = NazoMode.entries.firstOrNull { it.name == mode } ?: NazoMode.QUIZ
+    val currentCollectionSetup = homeCollectionSetup(
+        topic = topic,
+        mode = nazoMode,
+        difficulty = difficulty,
+        questionCount = questionCount,
+        guessingRounds = guessingRounds,
+    )
+    val currentSetupSaved = quizCollections.any {
+        QuizCollectionPolicy.matches(it, currentCollectionSetup)
+    }
+    val collectionLimitReached = !currentSetupSaved &&
+        quizCollections.size >= QuizCollectionPolicy.MAX_COLLECTIONS
     val context = LocalContext.current
     val reduceMotion = rememberSystemReduceMotion()
     var showProviderSheet by remember { mutableStateOf(false) }
@@ -250,6 +302,23 @@ fun HomeScreen(
         launch: () -> Unit,
     ) {
         if (origin == null) launch() else onLaunchPortal(origin, label, launch)
+    }
+
+    fun applyCollection(collection: QuizCollection) {
+        val savedMode = NazoMode.entries.firstOrNull { it.name == collection.mode } ?: return
+        val savedDifficulty = Difficulty.entries.firstOrNull {
+            it.label.equals(collection.difficulty, ignoreCase = true)
+        } ?: return
+        val supportedDifficulty = homeDifficultyForMode(savedMode, savedDifficulty)
+        Haptics.light(context)
+        onModeChange(savedMode.name)
+        onTopicChange(collection.topic)
+        onDifficultyChange(supportedDifficulty.name)
+        when (homeCountControls(savedMode)) {
+            HomeCountControls.Questions -> onQuestionCountChange(collection.amount)
+            HomeCountControls.Rounds -> onGuessingRoundsChange(collection.amount)
+            HomeCountControls.None -> Unit
+        }
     }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -368,6 +437,18 @@ fun HomeScreen(
         // Top alignment spacer for landscape
         if (landscape) Spacer(Modifier.height(16.dp))
 
+        if (quizCollections.isNotEmpty()) {
+            QuizCollectionsShelf(
+                collections = quizCollections,
+                onApply = ::applyCollection,
+                onDelete = { collection ->
+                    Haptics.light(context)
+                    onDeleteCollection(collection)
+                },
+            )
+            Spacer(Modifier.height(16.dp))
+        }
+
         TopicInputCard(topic = topic, onTopicChange = onTopicChange)
 
         Spacer(Modifier.height(16.dp))
@@ -378,6 +459,14 @@ fun HomeScreen(
             questionCount = questionCount,
             guessingRounds = guessingRounds,
             reduceMotion = reduceMotion,
+            setupSaved = currentSetupSaved,
+            collectionLimitReached = collectionLimitReached,
+            onSaveSetup = {
+                if (!currentSetupSaved && !collectionLimitReached) {
+                    Haptics.light(context)
+                    onSaveCollection(currentCollectionSetup)
+                }
+            },
             onDifficultySelected = { level ->
                 if (difficulty != level) Haptics.light(context)
                 onDifficultyChange(level.name)
@@ -1901,12 +1990,204 @@ private fun TopicSuggestionChip(
 }
 
 @Composable
+private fun QuizCollectionsShelf(
+    collections: List<QuizCollection>,
+    onApply: (QuizCollection) -> Unit,
+    onDelete: (QuizCollection) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SectionLabel("COLLECTIONS")
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "${collections.size}/${QuizCollectionPolicy.MAX_COLLECTIONS} SAVED",
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoTextSecondary,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.6.sp,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            collections.forEach { collection ->
+                QuizCollectionCard(
+                    collection = collection,
+                    onApply = { onApply(collection) },
+                    onDelete = { onDelete(collection) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuizCollectionCard(
+    collection: QuizCollection,
+    onApply: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val interactionSource = remember(collection.id) { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 18.dp,
+        pressedCorner = 9.dp,
+    )
+    Column(
+        modifier = Modifier
+            .widthIn(min = 250.dp, max = 280.dp)
+            .defaultMinSize(minHeight = 126.dp)
+            .clip(shape)
+            .background(NazoSurface.copy(alpha = 0.82f), shape)
+            .border(1.dp, NazoPrimary.copy(alpha = 0.24f), shape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                role = Role.Button,
+                onClick = onApply,
+            )
+            .padding(start = 14.dp, top = 9.dp, end = 6.dp, bottom = 12.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Bookmark,
+                contentDescription = null,
+                tint = NazoPrimary,
+                modifier = Modifier.size(17.dp),
+            )
+            Spacer(Modifier.width(7.dp))
+            Text(
+                text = NazoMode.entries.firstOrNull { it.name == collection.mode }
+                    ?.label?.uppercase() ?: collection.mode.replace('_', ' '),
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoPrimary,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.8.sp,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(
+                onClick = onDelete,
+                modifier = Modifier.size(40.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Delete ${quizCollectionHeadline(collection)} collection",
+                    tint = NazoTextSecondary,
+                    modifier = Modifier.size(17.dp),
+                )
+            }
+        }
+        Text(
+            text = quizCollectionHeadline(collection),
+            style = MaterialTheme.typography.titleMedium,
+            color = NazoTextPrimary,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+        )
+        Spacer(Modifier.height(3.dp))
+        Text(
+            text = quizCollectionDetail(collection),
+            style = MaterialTheme.typography.bodySmall,
+            color = NazoTextSecondary,
+            fontWeight = FontWeight.Medium,
+            maxLines = 2,
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "LOAD SETUP",
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoPrimary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.7.sp,
+            )
+            Spacer(Modifier.width(3.dp))
+            Icon(
+                imageVector = Icons.Filled.ArrowForward,
+                contentDescription = null,
+                tint = NazoPrimary,
+                modifier = Modifier.size(15.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SaveSetupButton(
+    saved: Boolean,
+    limitReached: Boolean,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 13.dp,
+        pressedCorner = 7.dp,
+    )
+    Column(
+        modifier = Modifier
+            .defaultMinSize(minWidth = 58.dp, minHeight = 52.dp)
+            .clip(shape)
+            .background(
+                if (saved) NazoPrimary.copy(alpha = 0.12f) else NazoSurfaceVariant,
+                shape,
+            )
+            .clickable(
+                enabled = !saved && !limitReached,
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .padding(horizontal = 8.dp, vertical = 7.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            imageVector = if (saved) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+            contentDescription = when {
+                saved -> "Setup saved"
+                limitReached -> "Collection limit reached; delete a saved setup first"
+                else -> "Save setup to collections"
+            },
+            tint = if (limitReached) NazoTextSecondary else NazoPrimary,
+            modifier = Modifier.size(19.dp),
+        )
+        Spacer(Modifier.height(3.dp))
+        Text(
+            text = when {
+                saved -> "SAVED"
+                limitReached -> "FULL"
+                else -> "SAVE"
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = if (limitReached) NazoTextSecondary else NazoPrimary,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp,
+        )
+    }
+}
+
+@Composable
 private fun ChallengeSetupCard(
     mode: NazoMode,
     difficulty: Difficulty,
     questionCount: Int,
     guessingRounds: Int,
     reduceMotion: Boolean,
+    setupSaved: Boolean,
+    collectionLimitReached: Boolean,
+    onSaveSetup: () -> Unit,
     onDifficultySelected: (Difficulty) -> Unit,
     onQuestionCountSelected: (Int) -> Unit,
     onGuessingRoundsSelected: (Int) -> Unit,
@@ -1975,6 +2256,12 @@ private fun ChallengeSetupCard(
                     )
                 }
             }
+            Spacer(Modifier.width(8.dp))
+            SaveSetupButton(
+                saved = setupSaved,
+                limitReached = collectionLimitReached,
+                onClick = onSaveSetup,
+            )
         }
 
         Spacer(Modifier.height(16.dp))

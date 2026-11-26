@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import quiz.thaton3app.nazo.data.settings.QuizCollection
 import quiz.thaton3app.nazo.ui.mode.NazoMode
 
 /** Contracts for the mode-dependent groups whose visibility animates on Home. */
@@ -61,6 +62,45 @@ class HomeModeControlsTest {
             Difficulty.ADAPTIVE,
             homeDifficultyForMode(NazoMode.QUIZ, Difficulty.ADAPTIVE),
         )
+    }
+
+    @Test
+    fun collectionSetupKeepsOnlyTheCurrentModesMeaningfulLength() {
+        assertEquals(
+            15,
+            homeCollectionSetup("Naruto", NazoMode.QUIZ, Difficulty.HARD, 15, 3).amount,
+        )
+        assertEquals(
+            5,
+            homeCollectionSetup("Luffy", NazoMode.GUESSING, Difficulty.EASY, 15, 5).amount,
+        )
+        assertEquals(
+            0,
+            homeCollectionSetup("Bleach", NazoMode.BLITZ, Difficulty.MEDIUM, 10, 3).amount,
+        )
+    }
+
+    @Test
+    fun collectionLabelsExplainBlankTopicsAndEveryKindOfLength() {
+        fun collection(mode: String, amount: Int) = QuizCollection(
+            id = mode,
+            topic = "",
+            mode = mode,
+            difficulty = "Medium",
+            amount = amount,
+        )
+
+        assertEquals("Mixed anime", quizCollectionHeadline(collection("QUIZ", 10)))
+        assertEquals("Quiz • Medium • 10 questions", quizCollectionDetail(collection("QUIZ", 10)))
+        assertEquals(
+            "Guessing Game • Medium • 1 round",
+            quizCollectionDetail(collection("GUESSING", 1)),
+        )
+        assertEquals(
+            "Survival • Medium • Endless",
+            quizCollectionDetail(collection("SURVIVAL", 0)),
+        )
+        assertEquals("Blitz • Medium • 60 seconds", quizCollectionDetail(collection("BLITZ", 0)))
     }
 
     @Test

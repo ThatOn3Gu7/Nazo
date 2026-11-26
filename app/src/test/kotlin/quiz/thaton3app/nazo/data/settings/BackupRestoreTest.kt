@@ -104,6 +104,34 @@ class BackupRestoreTest {
     }
 
     @Test
+    fun savedQuizCollectionsRoundTripThroughPortableBackupData() {
+        val source = FakeSharedPreferences()
+        val saved = QuizCollectionStore(source).save(
+            QuizCollectionSetup(
+                topic = "Naruto",
+                mode = "QUIZ",
+                difficulty = "Adaptive",
+                amount = 10,
+            ),
+        )
+        val raw = source.getString(QuizCollectionStore.KEY, null)!!
+        val parsed = BackupRepository.parseAndValidate(
+            bundle(
+                stores = mapOf(
+                    QuizCollectionStore.PREFS_NAME to mapOf(
+                        QuizCollectionStore.KEY to tag("string", raw),
+                    ),
+                ),
+            ),
+        )
+        val target = FakeSharedPreferences()
+
+        BackupRepository.applyValidated({ target }, parsed.stores)
+
+        assertEquals(saved, QuizCollectionStore(target).get().single())
+    }
+
+    @Test
     fun parseAcceptsSchemaVersionsOneAndTwo() {
         val stores = mapOf("nazo_profile" to mapOf("username" to tag("string", "x")))
         // v1 = the pre-picture format every existing backup uses; v2 = current.

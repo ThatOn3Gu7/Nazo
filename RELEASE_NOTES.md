@@ -24,6 +24,7 @@ then archived below; there should be no per-version release-note files.
 - **Added** — Progression & Insights now includes Topic Mastery: confidence grows from accuracy and repeated exposure, recent answers identify improving or slipping topics, and compact Strong, Improving, Needs work, and Building signals turn long-term learning into something visible without discarding existing statistics.
 - **Improved** — Daily Challenge is now a visible three-stage ladder: two Easy Warm-up questions lead into two Medium Climb questions and one Hard Summit, with the current stage shown throughout play and a definitive ladder-clear summary at the finish.
 - **Added** — Quiz now offers an Adaptive difficulty that starts from existing topic mastery, raises the target after sustained fast and accurate answers, eases it after misses or timeouts, accounts for hint use, and explains its current and final calibration without changing Daily or special-mode rules.
+- **Added** — Home can now save up to eight favorite challenge collections across Quiz, Guessing, Survival, Blitz, and Versus, restore every meaningful setup field with one tap, remove outdated entries, deduplicate repeated saves, and carry the collection through backup and restore.
 
 ## Release archive
 

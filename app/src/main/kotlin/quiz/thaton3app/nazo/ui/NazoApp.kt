@@ -95,6 +95,9 @@ import quiz.thaton3app.nazo.data.settings.BackupPrefs
 import quiz.thaton3app.nazo.data.settings.MissedQuestionsStore
 import quiz.thaton3app.nazo.data.settings.ProfilePreferences
 import quiz.thaton3app.nazo.data.settings.QuestionHistoryStore
+import quiz.thaton3app.nazo.data.settings.QuizCollection
+import quiz.thaton3app.nazo.data.settings.QuizCollectionSetup
+import quiz.thaton3app.nazo.data.settings.QuizCollectionStore
 import quiz.thaton3app.nazo.data.settings.QuizStatsStore
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.data.profile.AutomaticCoverState
@@ -443,6 +446,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     val themePrefs = remember { ThemePreferences(context) }
     val statsStore = remember { QuizStatsStore(context.applicationContext) }
     var quizStats by remember { mutableStateOf(statsStore.get()) }
+    val quizCollectionStore = remember { QuizCollectionStore(context.applicationContext) }
+    var quizCollections by remember { mutableStateOf(quizCollectionStore.get()) }
     // Personal bests (Phase 4): separate tiny store; previous best is captured
     // right before a finished run is submitted so the results screens can show
     // either the "New Record!" badge or the standing best as a caption.
@@ -2463,6 +2468,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onModeChange = { homeMode = it; themePrefs.lastMode = it },
                         guessingRounds = guessRounds,
                         onGuessingRoundsChange = { guessRounds = it },
+                        quizCollections = quizCollections,
+                        onSaveCollection = { setup: QuizCollectionSetup ->
+                            quizCollectionStore.save(setup)
+                            quizCollections = quizCollectionStore.get()
+                        },
+                        onDeleteCollection = { collection: QuizCollection ->
+                            quizCollectionStore.delete(collection.id)
+                            quizCollections = quizCollectionStore.get()
+                        },
                         onStartGuessing = { topic, difficulty, rounds -> startGuessing(topic, difficulty, rounds) },
                         onStartSurvival = { topic, difficulty -> startSurvival(topic, difficulty) },
                         onStartBlitz = { topic, difficulty -> startBlitz(topic, difficulty) },
@@ -2675,6 +2689,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             missedStore.reload()
                             missedCount = missedStore.count()
                             quizStats = statsStore.get()
+                            quizCollections = quizCollectionStore.get()
                             profileName = profilePrefs.username
                             profilePictureUri = profilePrefs.profilePictureUri
                             coverPictureUri = profilePrefs.coverPictureUri
