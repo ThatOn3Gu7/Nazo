@@ -233,6 +233,16 @@ fun HomeScreen(
     val reduceMotion = rememberSystemReduceMotion()
     var showProviderSheet by remember { mutableStateOf(false) }
     var showModeSheet by remember { mutableStateOf(false) }
+    var dailyPortalOrigin by remember { mutableStateOf<QuizLaunchOrigin?>(null) }
+    var practicePortalOrigin by remember { mutableStateOf<QuizLaunchOrigin?>(null) }
+
+    fun launchReadyChallenge(
+        origin: QuizLaunchOrigin?,
+        label: String,
+        launch: () -> Unit,
+    ) {
+        if (origin == null) launch() else onLaunchPortal(origin, label, launch)
+    }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val modeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -303,7 +313,16 @@ fun HomeScreen(
             completed = dailyCompleted,
             lastScore = dailyScore,
             lastBonus = dailyBonus,
-            onPlay = onPlayDaily,
+            onPlay = {
+                launchReadyChallenge(
+                    origin = dailyPortalOrigin,
+                    label = "Play Daily Challenge",
+                    launch = onPlayDaily,
+                )
+            },
+            modifier = Modifier.onGloballyPositioned { coordinates ->
+                dailyPortalOrigin = QuizLaunchOrigin.from(coordinates.boundsInRoot())
+            },
         )
 
         Spacer(Modifier.height(16.dp))
@@ -391,7 +410,16 @@ fun HomeScreen(
                 Spacer(Modifier.height(14.dp))
                 PracticeMissesButton(
                     practiceCount = practiceCount,
-                    onClick = onStartPractice,
+                    onClick = {
+                        launchReadyChallenge(
+                            origin = practicePortalOrigin,
+                            label = "Practice your misses",
+                            launch = onStartPractice,
+                        )
+                    },
+                    modifier = Modifier.onGloballyPositioned { coordinates ->
+                        practicePortalOrigin = QuizLaunchOrigin.from(coordinates.boundsInRoot())
+                    },
                 )
             }
         }
@@ -2230,6 +2258,7 @@ private fun ChallengeCountOption(
 private fun PracticeMissesButton(
     practiceCount: Int,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val interactionSource = remember { MutableInteractionSource() }
@@ -2237,7 +2266,7 @@ private fun PracticeMissesButton(
     val expressivePress = rememberNazoExpressivePressState(interactionSource)
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
                 val cornerPercent = nazoExpressiveCornerPercent(expressivePress.progress)

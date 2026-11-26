@@ -111,7 +111,32 @@ private data class GradedAnswer(val selected: String?, val timeUp: Boolean)
 private data class QuestionSlot(val index: Int, val question: Question)
 
 private const val AnswerFeedbackDurationMs = 420
+internal const val AnswerExplanationDelayMs = 280L
+internal const val AnswerActionDelayMs = 600L
 private const val QuizProgressWavePeriodMs = 1_200
+
+internal enum class AnswerChoreographyStage { Choosing, Graded, Explained, ActionReady }
+
+internal fun answerExplanationVisible(stage: AnswerChoreographyStage): Boolean =
+    stage == AnswerChoreographyStage.Explained || stage == AnswerChoreographyStage.ActionReady
+
+internal fun answerActionVisible(stage: AnswerChoreographyStage): Boolean =
+    stage == AnswerChoreographyStage.ActionReady
+
+internal fun answerOptionRevealDelayMillis(
+    selected: Boolean,
+    correctAnswer: Boolean,
+): Int = when {
+    selected -> 0
+    correctAnswer -> 90
+    else -> 120
+}
+
+internal fun answerOptionEmphasis(
+    reveal: Boolean,
+    selected: Boolean,
+    correctAnswer: Boolean,
+): Float = if (reveal && !selected && !correctAnswer) 0.58f else 1f
 
 /** Pure gameplay-polish policies, kept deterministic and covered by JVM tests. */
 internal fun nextQuizComboStreak(currentStreak: Int, correct: Boolean): Int =
@@ -252,6 +277,40 @@ internal fun ActiveQuizScreen(
     val motionAllowed = quizDecorativeMotionAllowed(reduceMotion, decorativeMotionAllowed)
     val quitPauseState = rememberGameplayQuitPauseState()
 
+    // One visual sequence per newly graded question. Gameplay state is frozen
+    // immediately; this only separates the picked-answer response, explanation,
+    // and action so all three do not compete in the same frame.
+    var choreographyIndex by remember { mutableIntStateOf(-1) }
+    var choreographyStage by remember {
+        mutableStateOf(AnswerChoreographyStage.Choosing)
+    }
+    fun beginAnswerChoreography(index: Int) {
+        choreographyIndex = index
+        choreographyStage = if (motionAllowed) {
+            AnswerChoreographyStage.Graded
+        } else {
+            AnswerChoreographyStage.ActionReady
+        }
+    }
+    LaunchedEffect(choreographyIndex, motionAllowed) {
+        val index = choreographyIndex
+        if (index < 0 || choreographyStage == AnswerChoreographyStage.ActionReady) {
+            return@LaunchedEffect
+        }
+        if (!motionAllowed) {
+            choreographyStage = AnswerChoreographyStage.ActionReady
+            return@LaunchedEffect
+        }
+        choreographyStage = AnswerChoreographyStage.Graded
+        delay(AnswerExplanationDelayMs)
+        if (choreographyIndex != index) return@LaunchedEffect
+        choreographyStage = AnswerChoreographyStage.Explained
+        delay(AnswerActionDelayMs - AnswerExplanationDelayMs)
+        if (choreographyIndex == index) {
+            choreographyStage = AnswerChoreographyStage.ActionReady
+        }
+    }
+
     // Lifelines (Phase 4): a small supply shared across the whole quiz (this
     // composable stays alive for all questions), one use per question.
     // Easy/Medium: fades out 2 wrong options. Hard/Otaku: first-letter hint.
@@ -274,6 +333,10 @@ internal fun ActiveQuizScreen(
     LaunchedEffect(currentQuestionIndex) {
         hiddenOptions = emptySet()
         letterHint = null
+        if (choreographyIndex != currentQuestionIndex) {
+            choreographyIndex = -1
+            choreographyStage = AnswerChoreographyStage.Choosing
+        }
         // Keep only the previous question's frozen grade (still sliding out)
         // and this one's slot.
         gradedByIndex.keys
@@ -332,6 +395,7 @@ internal fun ActiveQuizScreen(
             // for the exit transition.
             gradedByIndex[currentQuestionIndex] = GradedAnswer(selected = null, timeUp = true)
             recordVisualGrade(currentQuestionIndex, correct = false)
+            beginAnswerChoreography(currentQuestionIndex)
             onQuestionGraded(null, true)
             onLifeLost()
         }
@@ -671,6 +735,13 @@ internal fun ActiveQuizScreen(
                 val reveal = graded != null
                 val isCorrect = shownAnswer == q.correctAnswer
                 val shownCombo = comboByIndex[slot.index] ?: 0
+                val answerStage = when {
+                    !reveal -> AnswerChoreographyStage.Choosing
+                    choreographyIndex == slot.index -> choreographyStage
+                    // Restored and outgoing graded questions should be fully
+                    // readable without replaying an entrance sequence.
+                    else -> AnswerChoreographyStage.ActionReady
+                }
                 TwoPaneQuizBody(
                     landscape = landscape,
                     question = {
@@ -744,6 +815,22 @@ internal fun ActiveQuizScreen(
                         animationSpec = tween(320),
                         label = "hintAlpha"
                     )
+                    val revealDelay = answerOptionRevealDelayMillis(
+                        selected = isThisSelected,
+                        correctAnswer = isThisCorrectAnswer,
+                    )
+                    val outcomeEmphasis by animateFloatAsState(
+                        targetValue = answerOptionEmphasis(
+                            reveal = reveal,
+                            selected = isThisSelected,
+                            correctAnswer = isThisCorrectAnswer,
+                        ),
+                        animationSpec = tween(
+                            durationMillis = if (motionAllowed) 180 else 0,
+                            delayMillis = if (motionAllowed && reveal) revealDelay else 0,
+                        ),
+                        label = "answerOutcomeEmphasis",
+                    )
 
                     val bgColor by animateColorAsState(
                         targetValue = when {
@@ -752,7 +839,10 @@ internal fun ActiveQuizScreen(
                             isThisSelected && !isThisCorrectAnswer -> NazoErrorBg
                             else -> NazoSurfaceVariant
                         },
-                        animationSpec = tween(220),
+                        animationSpec = tween(
+                            durationMillis = if (motionAllowed) 220 else 0,
+                            delayMillis = if (motionAllowed && reveal) revealDelay else 0,
+                        ),
                         label = "optionBg"
                     )
                     val borderColor by animateColorAsState(
@@ -762,7 +852,10 @@ internal fun ActiveQuizScreen(
                             isThisSelected && !isThisCorrectAnswer -> NazoError 
                             else -> Color.Transparent
                         },
-                        animationSpec = tween(220),
+                        animationSpec = tween(
+                            durationMillis = if (motionAllowed) 220 else 0,
+                            delayMillis = if (motionAllowed && reveal) revealDelay else 0,
+                        ),
                         label = "optionBorder"
                     )
 
@@ -771,7 +864,8 @@ internal fun ActiveQuizScreen(
                         isThisCorrectAnswer = isThisCorrectAnswer,
                         isThisSelected = isThisSelected,
                         isHiddenByHint = isHiddenByHint,
-                        hintAlpha = hintAlpha,
+                        hintAlpha = hintAlpha * outcomeEmphasis,
+                        revealDelayMillis = revealDelay,
                         backgroundColor = bgColor,
                         borderColor = borderColor,
                         label = labels[index],
@@ -800,6 +894,7 @@ internal fun ActiveQuizScreen(
                                 gradedByIndex[slot.index] =
                                     GradedAnswer(selected = optionText, timeUp = false)
                                 recordVisualGrade(slot.index, wasCorrect)
+                                beginAnswerChoreography(slot.index)
                                 onQuestionGraded(optionText, false)
                             }
                         },
@@ -811,7 +906,7 @@ internal fun ActiveQuizScreen(
                 // Explanation Card (shows after answering OR when time runs out).
                 // Hidden in blitz: answers auto-advance on a 650ms beat instead.
                 AnimatedVisibility(
-                    visible = reveal && !isBlitz,
+                    visible = reveal && !isBlitz && answerExplanationVisible(answerStage),
                     enter = if (!motionAllowed) {
                         fadeIn(tween(100))
                     } else {
@@ -887,40 +982,55 @@ internal fun ActiveQuizScreen(
                             )
                             Spacer(Modifier.height(20.dp))
 
-                            // Next Question Button
-                            val nextInteraction = remember { MutableInteractionSource() }
-                            val nextShape = rememberNazoPillCornerMorphShape(nextInteraction)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(nextShape)
-                                    .background(NazoPrimary, nextShape)
-                                    .clickable(
-                                        interactionSource = nextInteraction,
-                                        indication = LocalIndication.current,
-                                    ) {
-                                        Haptics.light(context)
-                                        onNextQuestion(progressionTicket, isCorrect, shownAnswer)
-                                        selectedAnswer = null // Reset for next question
-                                    }
-                                    .padding(vertical = 16.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
+                            // The explanation gets one readable beat before the
+                            // action arrives, completing pick → grade → learn → go.
+                            AnimatedVisibility(
+                                visible = answerActionVisible(answerStage),
+                                enter = if (motionAllowed) {
+                                    fadeIn(tween(180)) + expandVertically(
+                                        animationSpec = tween(220, easing = FastOutSlowInEasing),
+                                        expandFrom = Alignment.Top,
+                                    )
+                                } else {
+                                    fadeIn(tween(1))
+                                },
+                                exit = fadeOut(tween(100)),
                             ) {
-                                Text(
-                                    // The label must name the click that ENDS
-                                    // the run: the last question of a fixed
-                                    // quiz, or the fatal question of a survival
-                                    // run (its heart is redacted at grading, so
-                                    // livesLeft already reads 0 here).
-                                    if ((!endless && currentQuestionIndex == totalQuestions - 1) ||
-                                        (endless && livesLeft <= 0)
-                                    ) "Finish Quiz" else "Next Question",
-                                    color = NazoOnPrimary,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = NazoOnPrimary, modifier = Modifier.size(18.dp))
+                                // Next Question Button
+                                val nextInteraction = remember { MutableInteractionSource() }
+                                val nextShape = rememberNazoPillCornerMorphShape(nextInteraction)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(nextShape)
+                                        .background(NazoPrimary, nextShape)
+                                        .clickable(
+                                            interactionSource = nextInteraction,
+                                            indication = LocalIndication.current,
+                                        ) {
+                                            Haptics.light(context)
+                                            onNextQuestion(progressionTicket, isCorrect, shownAnswer)
+                                            selectedAnswer = null // Reset for next question
+                                        }
+                                        .padding(vertical = 16.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        // The label must name the click that ENDS
+                                        // the run: the last question of a fixed
+                                        // quiz, or the fatal question of a survival
+                                        // run (its heart is redacted at grading, so
+                                        // livesLeft already reads 0 here).
+                                        if ((!endless && currentQuestionIndex == totalQuestions - 1) ||
+                                            (endless && livesLeft <= 0)
+                                        ) "Finish Quiz" else "Next Question",
+                                        color = NazoOnPrimary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = NazoOnPrimary, modifier = Modifier.size(18.dp))
+                                }
                             }
                         }
                     }
@@ -1533,6 +1643,7 @@ private fun PremiumAnswerOption(
     isThisSelected: Boolean,
     isHiddenByHint: Boolean,
     hintAlpha: Float,
+    revealDelayMillis: Int,
     backgroundColor: Color,
     borderColor: Color,
     label: String,
@@ -1616,6 +1727,7 @@ private fun PremiumAnswerOption(
                 reveal = reveal,
                 isThisCorrectAnswer = isThisCorrectAnswer,
                 isThisSelected = isThisSelected,
+                revealDelayMillis = if (motionAllowed) revealDelayMillis else 0,
                 label = label,
             )
             Spacer(Modifier.width(16.dp))
@@ -1639,6 +1751,7 @@ private fun OptionCircle(
     reveal: Boolean,
     isThisCorrectAnswer: Boolean,
     isThisSelected: Boolean,
+    revealDelayMillis: Int,
     label: String,
 ) {
     // Also updated inner circle colors to match the dynamic theme variables perfectly
@@ -1649,7 +1762,7 @@ private fun OptionCircle(
             isThisSelected && !isThisCorrectAnswer -> NazoError
             else -> NazoBackground
         },
-        animationSpec = tween(220),
+        animationSpec = tween(220, delayMillis = if (reveal) revealDelayMillis else 0),
         label = "optionCircle"
     ).value
     
@@ -1663,20 +1776,20 @@ private fun OptionCircle(
         androidx.compose.animation.AnimatedVisibility(
             visible = !(reveal && (isThisCorrectAnswer || isThisSelected)),
             enter = fadeIn(tween(160)),
-            exit = fadeOut(tween(160))
+            exit = fadeOut(tween(160, delayMillis = revealDelayMillis))
         ) {
             Text(label, style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary, fontWeight = FontWeight.Bold)
         }
         androidx.compose.animation.AnimatedVisibility(
             visible = reveal && isThisCorrectAnswer,
-            enter = fadeIn(tween(240)),
+            enter = fadeIn(tween(240, delayMillis = revealDelayMillis)),
             exit = fadeOut(tween(120))
         ) {
             Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(16.dp))
         }
         androidx.compose.animation.AnimatedVisibility(
             visible = reveal && isThisSelected && !isThisCorrectAnswer,
-            enter = fadeIn(tween(240)),
+            enter = fadeIn(tween(240, delayMillis = revealDelayMillis)),
             exit = fadeOut(tween(120))
         ) {
             Icon(Icons.Filled.Close, null, tint = Color.White, modifier = Modifier.size(16.dp))

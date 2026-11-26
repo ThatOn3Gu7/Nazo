@@ -79,6 +79,14 @@ class QuizLaunchPortalTest {
     }
 
     @Test
+    fun portalMarkAndRingsKeepTheLargerVisualScale() {
+        assertTrue(QuizLaunchPortalMarkSizeDp >= 68)
+        assertTrue(QuizLaunchInnerRingRadiusFraction >= 0.20f)
+        assertTrue(QuizLaunchOuterRingRadiusFraction >= 0.34f)
+        assertTrue(QuizLaunchOuterRingRadiusFraction > QuizLaunchInnerRingRadiusFraction)
+    }
+
+    @Test
     fun speakerRingsBreatheSpinAndReturnSeamlessly() {
         val start = quizLaunchRingRadius(
             baseRadius = 100f,

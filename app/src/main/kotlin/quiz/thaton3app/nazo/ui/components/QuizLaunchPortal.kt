@@ -19,7 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
@@ -142,6 +142,9 @@ internal fun quizLaunchPortalFrame(
 }
 
 internal const val QuizLaunchPortalDwellMillis = 700L
+internal const val QuizLaunchPortalMarkSizeDp = 68
+internal const val QuizLaunchInnerRingRadiusFraction = 0.20f
+internal const val QuizLaunchOuterRingRadiusFraction = 0.34f
 private const val QuizLaunchRingPeriodMillis = 2_400
 private const val QuizLaunchRingSamples = 72
 
@@ -326,8 +329,8 @@ internal fun QuizLaunchPortal(
                             drawQuizLaunchRing(
                                 path = innerRingPath,
                                 centre = centre,
-                                baseRadius = portalSize * 0.17f,
-                                amplitude = portalSize * 0.018f,
+                                baseRadius = portalSize * QuizLaunchInnerRingRadiusFraction,
+                                amplitude = portalSize * 0.020f,
                                 waveCount = 5,
                                 phaseFraction = phase,
                                 direction = 1,
@@ -338,8 +341,8 @@ internal fun QuizLaunchPortal(
                             drawQuizLaunchRing(
                                 path = outerRingPath,
                                 centre = centre,
-                                baseRadius = portalSize * 0.29f,
-                                amplitude = portalSize * 0.022f,
+                                baseRadius = portalSize * QuizLaunchOuterRingRadiusFraction,
+                                amplitude = portalSize * 0.024f,
                                 waveCount = 6,
                                 phaseFraction = phase,
                                 direction = -1,
@@ -388,8 +391,8 @@ internal fun QuizLaunchPortal(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(54.dp)
-                        .clip(RoundedCornerShape(19.dp))
+                        .size(QuizLaunchPortalMarkSizeDp.dp)
+                        .clip(CircleShape)
                         .background(onPrimary.copy(alpha = 0.14f)),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -397,7 +400,7 @@ internal fun QuizLaunchPortal(
                         imageVector = Icons.Filled.PlayArrow,
                         contentDescription = null,
                         tint = onPrimary,
-                        modifier = Modifier.size(30.dp),
+                        modifier = Modifier.size(36.dp),
                     )
                 }
                 Spacer(Modifier.height(18.dp))

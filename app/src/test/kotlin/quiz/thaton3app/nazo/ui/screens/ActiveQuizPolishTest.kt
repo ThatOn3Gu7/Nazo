@@ -67,6 +67,41 @@ class ActiveQuizPolishTest {
     }
 
     @Test
+    fun answerChoreographyKeepsLearningAndActionInOrder() {
+        assertTrue(!answerExplanationVisible(AnswerChoreographyStage.Choosing))
+        assertTrue(!answerExplanationVisible(AnswerChoreographyStage.Graded))
+        assertTrue(answerExplanationVisible(AnswerChoreographyStage.Explained))
+        assertTrue(answerExplanationVisible(AnswerChoreographyStage.ActionReady))
+
+        assertTrue(!answerActionVisible(AnswerChoreographyStage.Explained))
+        assertTrue(answerActionVisible(AnswerChoreographyStage.ActionReady))
+        assertTrue(AnswerExplanationDelayMs < AnswerActionDelayMs)
+    }
+
+    @Test
+    fun answerOutcomeStagingPrioritizesThePickedAndCorrectOptions() {
+        assertEquals(0, answerOptionRevealDelayMillis(selected = true, correctAnswer = false))
+        assertEquals(90, answerOptionRevealDelayMillis(selected = false, correctAnswer = true))
+        assertEquals(120, answerOptionRevealDelayMillis(selected = false, correctAnswer = false))
+
+        assertEquals(
+            0.58f,
+            answerOptionEmphasis(reveal = true, selected = false, correctAnswer = false),
+            0f,
+        )
+        assertEquals(
+            1f,
+            answerOptionEmphasis(reveal = true, selected = false, correctAnswer = true),
+            0f,
+        )
+        assertEquals(
+            1f,
+            answerOptionEmphasis(reveal = false, selected = false, correctAnswer = false),
+            0f,
+        )
+    }
+
+    @Test
     fun answerFeedbackAlwaysReturnsToRest() {
         assertEquals(0f, wrongAnswerShakeOffset(0f), 0.0001f)
         assertEquals(0f, wrongAnswerShakeOffset(1f), 0.0001f)
