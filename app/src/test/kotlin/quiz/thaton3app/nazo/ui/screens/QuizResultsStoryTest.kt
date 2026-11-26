@@ -73,6 +73,12 @@ class QuizResultsStoryTest {
     }
 
     @Test
+    fun mistakeRematchActionUsesAClearSingularOrPluralLabel() {
+        assertEquals("Retry 1 Miss", mistakeRematchLabel(1))
+        assertEquals("Retry 3 Misses", mistakeRematchLabel(3))
+    }
+
+    @Test
     fun averagePaceUsesTheFrozenRunDuration() {
         assertEquals("12.4s/q", quizResultPaceLabel(elapsedMillis = 61_999L, answered = 5))
         assertEquals("0.1s/q", quizResultPaceLabel(elapsedMillis = 149L, answered = 1))

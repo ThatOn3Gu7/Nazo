@@ -15,7 +15,7 @@ Build these in order because they form one clear journey from launch to learning
 - **#1 Quiz-launch portal** — connect local-ready starts on Home—including Daily Challenge and Practice Your Misses—to the first question without duplicating AI Loading. **Implemented.**
 - **#2 Answer choreography** — make every answer feel immediate and clear. **Implemented.**
 - **#3 Animated results story** — turn completion into a satisfying summary. **Implemented.**
-- **#4 Instant mistake rematch** — convert errors into one-tap practice.
+- **#4 Instant mistake rematch** — convert errors into one-tap practice. **Implemented.**
 - **#5 Topic mastery foundation** — make long-term learning visible.
 
 ---

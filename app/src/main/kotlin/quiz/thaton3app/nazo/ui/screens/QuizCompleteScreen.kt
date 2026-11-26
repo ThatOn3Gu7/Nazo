@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FactCheck
 import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -95,6 +96,9 @@ internal fun quizResultPaceLabel(elapsedMillis: Long, answered: Int): String {
     return "${averageTenths / 10}.${averageTenths % 10}s/q"
 }
 
+internal fun mistakeRematchLabel(mistakeCount: Int): String =
+    if (mistakeCount == 1) "Retry 1 Miss" else "Retry $mistakeCount Misses"
+
 @Composable
 fun QuizCompleteScreen(
     score: Int,
@@ -106,6 +110,7 @@ fun QuizCompleteScreen(
     isNewRecord: Boolean = false,
     dailyBonusXp: Int = 0,
     progressionReward: ProgressionReward? = null,
+    mistakeCount: Int = 0,
     // "Survival" | "Blitz" | null (normal quiz). Adjusts the heading and the
     // personal-best caption: those modes track a COUNT (longest run / most
     // correct in 60s) in bestPercent's slot, not a percentage.
@@ -115,6 +120,7 @@ fun QuizCompleteScreen(
     /** Consumes the owner-level one-shot before any sound or delay can run. */
     onEntranceSequenceStarted: () -> Unit = {},
     onPlayAnother: () -> Unit,
+    onPracticeMistakes: () -> Unit,
     onReviewAnswers: () -> Unit,
     onSettingsClick: () -> Unit
 ) {
@@ -351,23 +357,81 @@ fun QuizCompleteScreen(
                     enter = slideInVertically(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow)) { 100 } + fadeIn()
                 ) {
                     Column {
-                        NazoPrimaryButton(
-                            onClick = onPlayAnother,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp),
-                        ) {
-                            Icon(Icons.Filled.Replay, contentDescription = null, tint = NazoOnPrimary, modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = when (modeLabel) {
-                                    "Survival" -> "Try Survival Again"
-                                    "Blitz" -> "Run Another Blitz"
-                                    else -> "Play Another Quiz"
+                        val playAgainLabel = when (modeLabel) {
+                            "Survival" -> "Try Survival Again"
+                            "Blitz" -> "Run Another Blitz"
+                            else -> "Play Another Quiz"
+                        }
+                        if (mistakeCount > 0) {
+                            // The most useful next action stays one tap away and
+                            // retries this run's mistakes, not the whole saved deck.
+                            NazoPrimaryButton(
+                                onClick = {
+                                    Haptics.light(context)
+                                    onPracticeMistakes()
                                 },
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(56.dp),
+                            ) {
+                                Icon(
+                                    Icons.Filled.School,
+                                    contentDescription = null,
+                                    tint = NazoOnPrimary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = mistakeRematchLabel(mistakeCount),
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+
+                            NazoSecondaryButton(
+                                onClick = onPlayAnother,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(56.dp),
+                                containerColor = NazoBackground,
+                                muted = true,
+                            ) {
+                                Icon(
+                                    Icons.Filled.Replay,
+                                    contentDescription = null,
+                                    tint = NazoTextPrimary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = playAgainLabel,
+                                    color = NazoTextPrimary,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        } else {
+                            NazoPrimaryButton(
+                                onClick = onPlayAnother,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(56.dp),
+                            ) {
+                                Icon(
+                                    Icons.Filled.Replay,
+                                    contentDescription = null,
+                                    tint = NazoOnPrimary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = playAgainLabel,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
                         }
 
                         Spacer(Modifier.height(12.dp))

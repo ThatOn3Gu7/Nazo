@@ -1483,6 +1483,26 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         navigate(Screen.Quiz)
     }
 
+    /** Immediately retries only the wrong answers from the result on screen. */
+    fun startMistakeRematch() {
+        val set = instantMistakeRematchQuestions(questions, userAnswers)
+        if (set.isEmpty()) return
+        questions = set.map(Question::withShuffledOptions)
+        userAnswers = emptyList()
+        currentQuestionIndex = 0
+        score = 0
+        aiGenerated = false
+        generationState = GenerationState.Idle
+        quizDifficulty = "Practice"
+        isDailyQuiz = false
+        quizMode = "normal"
+        restartQuizClock()
+        quizProgressionGate.startSession()
+        // Replace the completed result instead of stacking Quiz above it. The
+        // rematch's own completion can then replace Quiz and Back still goes Home.
+        replace(Screen.Quiz)
+    }
+
     // ---- Survival / Blitz / Versus (all reuse the quiz screen + answer flow) ----
 
     /** Appends a fresh batch of local-bank questions, skipping anything already loaded or seen. */
@@ -2702,6 +2722,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         isNewRecord = quizNewRecord,
                         dailyBonusXp = lastDailyBonus,
                         progressionReward = lastProgressionReward,
+                        mistakeCount = instantMistakeRematchQuestions(
+                            questions,
+                            userAnswers,
+                        ).size,
                         modeLabel = when (quizMode) {
                             "survival", "survival-done" -> "Survival"
                             "blitz", "blitz-done" -> "Blitz"
@@ -2713,6 +2737,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             quizCompleteEntranceGate.markEntranceStarted()
                         },
                         onPlayAnother = { goHome() },
+                        onPracticeMistakes = { startMistakeRematch() },
                         onReviewAnswers = { navigate(Screen.Review) },
                         onSettingsClick = { navigate(Screen.Settings) },
                     )
@@ -3355,6 +3380,16 @@ private fun AvatarOverlayLayer(
         blurBlocking = blurBlocking,
     )
 }
+
+internal fun instantMistakeRematchQuestions(
+    questions: List<Question>,
+    answers: List<String?>,
+): List<Question> = questions.asSequence()
+    .zip(answers.asSequence())
+    .filter { (question, answer) -> answer != question.correctAnswer }
+    .map { (question, _) -> question }
+    .distinctBy(Question::identity)
+    .toList()
 
 internal fun quizElapsedMillis(
     startedAt: Long,

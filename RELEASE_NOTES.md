@@ -20,6 +20,7 @@ then archived below; there should be no per-version release-note files.
 - **Improved** — The local launch portal now breathes through two larger counter-spinning wavy rings and collapses on one stable drawing layer, while the first question settles behind it before starting decorative motion for a smoother reveal.
 - **Improved** — Daily Challenge and Practice Your Misses now use the same direct-to-question launch portal, and answer feedback follows one restrained rhythm from the chosen option through grading and explanation to the Next action; Remove animations reveals the full result immediately.
 - **Improved** — Quiz, Survival, Blitz, Daily, and practice completions now tell a short results story: the score lands first, time, accuracy, and average pace follow, earned XP and milestones gather into one reward chapter, then the actions arrive; Remove animations shows the complete summary immediately.
+- **Added** — Results with wrong answers now lead with a one-tap mistake rematch that retries only the questions missed in that completed run, works without generation or a network connection, and keeps correctly retried questions graduating from Practice Your Misses.
 
 ## Release archive
 
