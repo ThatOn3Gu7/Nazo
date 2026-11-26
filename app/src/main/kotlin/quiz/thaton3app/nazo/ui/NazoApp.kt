@@ -2116,6 +2116,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
             val finishedTopic = guessTopic
             val finishedAnswered = guessResults.size
             val finishedCorrect = guessResults.count { it.correct }
+            val finishedOutcomes = guessResults.map { it.correct }
             val beforeStats = quizStats
             val beforeBonusXp = dailyStore.totalBonusXp()
             val beforeAchievements = achievementsFor(beforeStats)
@@ -2124,9 +2125,16 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 finishedTopic,
                 finishedAnswered,
                 finishedCorrect,
+                finishedOutcomes,
             )
             scope.launch {
-                statsStore.recordGuessing(finishedDifficulty, finishedTopic, finishedAnswered, finishedCorrect)
+                statsStore.recordGuessing(
+                    finishedDifficulty,
+                    finishedTopic,
+                    finishedAnswered,
+                    finishedCorrect,
+                    finishedOutcomes,
+                )
                 quizStats = statsStore.get()
                 // Home-screen widget shows streak + daily status — keep it live.
                 NazoWidgetProvider.refreshAll(context.applicationContext)

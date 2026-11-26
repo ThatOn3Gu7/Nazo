@@ -10,7 +10,7 @@ package quiz.thaton3app.nazo.data
  *  - total quizzes, questions answered, correct answers (overall accuracy)
  *  - current / best daily streak (epoch-day based, no java.time needed)
  *  - per-difficulty play count + correct/answered (accuracy per difficulty)
- *  - per-anime answered/correct (drives "top mastered anime")
+ *  - per-anime answered/correct plus a bounded recent outcome window for mastery
  *  - best consecutive-correct combo completed within one recorded quiz run
  */
 data class QuizStats(
@@ -26,6 +26,8 @@ data class QuizStats(
     val difficultyAnswered: Map<String, Int> = emptyMap(),
     val animeAnswered: Map<String, Int> = emptyMap(),
     val animeCorrect: Map<String, Int> = emptyMap(),
+    /** Last eight outcomes per topic, oldest to newest (`1` correct, `0` missed). */
+    val animeRecentOutcomes: Map<String, String> = emptyMap(),
 ) {
     fun record(
         difficulty: String,
@@ -45,6 +47,7 @@ data class QuizStats(
         val dAnswered = difficultyAnswered.toMutableMap()
         val aAnswered = animeAnswered.toMutableMap()
         val aCorrect = animeCorrect.toMutableMap()
+        val aRecent = animeRecentOutcomes.toMutableMap()
 
         dPlays[difficulty] = dPlays.getOrDefault(difficulty, 0) + 1
 
@@ -69,6 +72,10 @@ data class QuizStats(
             val anime = q.anime.ifBlank { "Unknown" }
             aAnswered[anime] = aAnswered.getOrDefault(anime, 0) + 1
             if (isCorrect) aCorrect[anime] = aCorrect.getOrDefault(anime, 0) + 1
+            aRecent[anime] = appendRecentOutcomes(
+                existing = aRecent[anime].orEmpty(),
+                outcomes = listOf(isCorrect),
+            )
         }
 
         return copy(
@@ -84,6 +91,7 @@ data class QuizStats(
             difficultyAnswered = dAnswered,
             animeAnswered = aAnswered,
             animeCorrect = aCorrect,
+            animeRecentOutcomes = aRecent,
         )
     }
 
@@ -99,6 +107,7 @@ data class QuizStats(
         topic: String,
         answered: Int,
         correct: Int,
+        outcomes: List<Boolean> = emptyList(),
     ): QuizStats {
         val today = localEpochDay()
 
@@ -113,6 +122,7 @@ data class QuizStats(
         val dAnswered = difficultyAnswered.toMutableMap()
         val aAnswered = animeAnswered.toMutableMap()
         val aCorrect = animeCorrect.toMutableMap()
+        val aRecent = animeRecentOutcomes.toMutableMap()
 
         dPlays[difficulty] = dPlays.getOrDefault(difficulty, 0) + 1
         dAnswered[difficulty] = dAnswered.getOrDefault(difficulty, 0) + answered
@@ -120,6 +130,13 @@ data class QuizStats(
         val anime = topic.ifBlank { "Unknown" }
         aAnswered[anime] = aAnswered.getOrDefault(anime, 0) + answered
         aCorrect[anime] = aCorrect.getOrDefault(anime, 0) + correct
+        val recordedOutcomes = outcomes.take(answered.coerceAtLeast(0))
+        if (recordedOutcomes.isNotEmpty()) {
+            aRecent[anime] = appendRecentOutcomes(
+                existing = aRecent[anime].orEmpty(),
+                outcomes = recordedOutcomes,
+            )
+        }
 
         return copy(
             totalQuizzes = totalQuizzes + 1,
@@ -133,6 +150,7 @@ data class QuizStats(
             difficultyAnswered = dAnswered,
             animeAnswered = aAnswered,
             animeCorrect = aCorrect,
+            animeRecentOutcomes = aRecent,
         )
     }
 
@@ -167,6 +185,15 @@ data class QuizStats(
 
     companion object {
         private const val DAY_MS = 86_400_000L
+        internal const val RECENT_TOPIC_OUTCOME_LIMIT = 8
+
+        private fun appendRecentOutcomes(
+            existing: String,
+            outcomes: List<Boolean>,
+        ): String = buildString {
+            append(existing.filter { it == '0' || it == '1' })
+            outcomes.forEach { append(if (it) '1' else '0') }
+        }.takeLast(RECENT_TOPIC_OUTCOME_LIMIT)
 
         /**
          * Epoch-day in the DEVICE's timezone, so "a new day" starts at local

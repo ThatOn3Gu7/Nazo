@@ -311,6 +311,7 @@ class BackupRestoreTest {
         assertEquals(4, restored.totalQuizzes)
         assertEquals(12, restored.totalCorrect)
         assertEquals(0, restored.bestCorrectCombo)
+        assertTrue(restored.animeRecentOutcomes.isEmpty())
     }
 
     @Test
@@ -323,6 +324,7 @@ class BackupRestoreTest {
             """{"totalQuizzes":1,"currentStreakDays":1,"bestStreakDays":1,"lastQuizEpochDay":-4}""",
             """{"difficultyAnswered":{"Easy":"many"}}""",
             """{"animeAnswered":{"Naruto":1.5}}""",
+            """{"totalQuestionsAnswered":1,"animeAnswered":{"Naruto":1},"animeRecentOutcomes":{"Naruto":"12"}}""",
         )
 
         corruptValues.forEach { corrupt ->
@@ -348,6 +350,7 @@ class BackupRestoreTest {
             """{"totalQuizzes":1,"currentStreakDays":1,"bestStreakDays":1,"lastQuizEpochDay":"today"}""",
             """{"totalQuizzes":1,"difficultyPlays":{"Easy":-1}}""",
             """{"totalQuizzes":1,"totalQuestionsAnswered":1,"animeAnswered":{"Naruto":1},"animeCorrect":{"Naruto":2}}""",
+            """{"totalQuestionsAnswered":2,"totalCorrect":1,"animeAnswered":{"Naruto":2},"animeCorrect":{"Naruto":1},"animeRecentOutcomes":{"Naruto":"11"}}""",
         )
 
         invalidValues.forEach { statsJson ->
@@ -389,6 +392,8 @@ class BackupRestoreTest {
             lastQuizEpochDay = QuizStats.localEpochDay(),
             difficultyPlays = mapOf("Easy" to 3),
             animeAnswered = mapOf("Naruto" to 4),
+            animeCorrect = mapOf("Naruto" to 3),
+            animeRecentOutcomes = mapOf("Naruto" to "1011"),
         )
         QuizStatsStore(source).save(fixture)
         val statsJson = source.getString("quiz_stats_v1", null)!!

@@ -78,8 +78,9 @@ class QuizStatsStore internal constructor(
         topic: String,
         answered: Int,
         correct: Int,
+        outcomes: List<Boolean> = emptyList(),
     ) {
-        save(get().recordGuessing(difficulty, topic, answered, correct))
+        save(get().recordGuessing(difficulty, topic, answered, correct, outcomes))
     }
 
     internal companion object {
@@ -111,6 +112,7 @@ internal object QuizStatsJson {
         put("difficultyAnswered", JSONObject(stats.difficultyAnswered))
         put("animeAnswered", JSONObject(stats.animeAnswered))
         put("animeCorrect", JSONObject(stats.animeCorrect))
+        put("animeRecentOutcomes", JSONObject(stats.animeRecentOutcomes))
     }.toString()
 
     fun decode(json: String): QuizStats {
@@ -130,6 +132,7 @@ internal object QuizStatsJson {
             difficultyAnswered = intMap(o, "difficultyAnswered"),
             animeAnswered = intMap(o, "animeAnswered"),
             animeCorrect = intMap(o, "animeCorrect"),
+            animeRecentOutcomes = stringMap(o, "animeRecentOutcomes"),
         )
         validate(stats)
         return stats
@@ -172,6 +175,22 @@ internal object QuizStatsJson {
                 "Quiz statistics map '$key' contains an invalid count"
             }
             result[name] = value.toInt()
+        }
+        return result
+    }
+
+    private fun stringMap(o: JSONObject, key: String): Map<String, String> {
+        if (!o.has(key)) return emptyMap()
+        val mapObject = o.get(key) as? JSONObject
+            ?: throw IllegalArgumentException("Quiz statistics field '$key' must be an object")
+        val result = LinkedHashMap<String, String>()
+        for (name in mapObject.keys().asSequence().toList()) {
+            require(name.isNotBlank()) { "Quiz statistics map '$key' contains a blank name" }
+            val value = mapObject.get(name) as? String
+                ?: throw IllegalArgumentException(
+                    "Quiz statistics field '$key.$name' must be a string"
+                )
+            result[name] = value
         }
         return result
     }
@@ -222,6 +241,17 @@ internal object QuizStatsJson {
             totalAnswered = stats.totalQuestionsAnswered,
             label = "Anime",
         )
+        require(stats.animeRecentOutcomes.all { (name, outcomes) ->
+            val answered = stats.animeAnswered.getOrDefault(name, 0)
+            val correct = stats.animeCorrect.getOrDefault(name, 0)
+            outcomes.length <= QuizStats.RECENT_TOPIC_OUTCOME_LIMIT &&
+                outcomes.all { it == '0' || it == '1' } &&
+                outcomes.length <= answered &&
+                outcomes.count { it == '1' } <= correct &&
+                outcomes.count { it == '0' } <= answered - correct
+        }) {
+            "Anime recent outcomes are invalid"
+        }
     }
 
     private fun validateBreakdown(
