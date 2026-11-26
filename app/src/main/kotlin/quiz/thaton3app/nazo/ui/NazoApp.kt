@@ -2728,6 +2728,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         ),
                         bestPercent = quizPrevBest,
                         isNewRecord = quizNewRecord,
+                        daily = isDailyQuiz,
                         dailyBonusXp = lastDailyBonus,
                         progressionReward = lastProgressionReward,
                         mistakeCount = instantMistakeRematchQuestions(

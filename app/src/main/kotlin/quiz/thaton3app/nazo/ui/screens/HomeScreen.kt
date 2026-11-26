@@ -316,7 +316,7 @@ fun HomeScreen(
             onPlay = {
                 launchReadyChallenge(
                     origin = dailyPortalOrigin,
-                    label = "Play Daily Challenge",
+                    label = "Play Daily Ladder",
                     launch = onPlayDaily,
                 )
             },

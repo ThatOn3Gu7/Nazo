@@ -139,9 +139,9 @@ class NazoWidgetProvider : AppWidgetProvider() {
             views.setTextViewText(
                 R.id.widget_daily,
                 if (done) {
-                    "Daily cleared ${daily.lastScore()}/${DailyChallenge.QUESTION_COUNT} ✓"
+                    "Daily ladder cleared ${daily.lastScore()}/${DailyChallenge.QUESTION_COUNT} ✓"
                 } else {
-                    "Daily Challenge ready →"
+                    "Daily ladder ready →"
                 },
             )
             views.setTextColor(

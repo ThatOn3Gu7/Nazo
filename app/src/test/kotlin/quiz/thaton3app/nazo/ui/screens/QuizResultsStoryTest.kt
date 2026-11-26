@@ -79,6 +79,36 @@ class QuizResultsStoryTest {
     }
 
     @Test
+    fun dailyLadderGetsADefinitiveFinishAndHomeAction() {
+        assertEquals("DAILY LADDER", quizResultEyebrow(daily = true, modeLabel = null))
+        assertEquals(
+            "Daily Ladder Cleared",
+            quizResultHeading(
+                daily = true,
+                modeLabel = null,
+                difficulty = "Daily",
+                score = 3,
+            ),
+        )
+        assertEquals("Back to Home", quizResultReturnLabel(daily = true, modeLabel = null))
+    }
+
+    @Test
+    fun ordinaryResultLabelsRemainUnchangedByTheDailyPath() {
+        assertEquals("FOCUSED QUIZ", quizResultEyebrow(daily = false, modeLabel = null))
+        assertEquals(
+            "Practice Complete",
+            quizResultHeading(
+                daily = false,
+                modeLabel = null,
+                difficulty = "Practice",
+                score = 2,
+            ),
+        )
+        assertEquals("Play Another Quiz", quizResultReturnLabel(daily = false, modeLabel = null))
+    }
+
+    @Test
     fun averagePaceUsesTheFrozenRunDuration() {
         assertEquals("12.4s/q", quizResultPaceLabel(elapsedMillis = 61_999L, answered = 5))
         assertEquals("0.1s/q", quizResultPaceLabel(elapsedMillis = 149L, answered = 1))

@@ -22,6 +22,7 @@ then archived below; there should be no per-version release-note files.
 - **Improved** — Quiz, Survival, Blitz, Daily, and practice completions now tell a short results story: the score lands first, time, accuracy, and average pace follow, earned XP and milestones gather into one reward chapter, then the actions arrive; Remove animations shows the complete summary immediately.
 - **Added** — Results with wrong answers now lead with a one-tap mistake rematch that retries only the questions missed in that completed run, works without generation or a network connection, and keeps correctly retried questions graduating from Practice Your Misses.
 - **Added** — Progression & Insights now includes Topic Mastery: confidence grows from accuracy and repeated exposure, recent answers identify improving or slipping topics, and compact Strong, Improving, Needs work, and Building signals turn long-term learning into something visible without discarding existing statistics.
+- **Improved** — Daily Challenge is now a visible three-stage ladder: two Easy Warm-up questions lead into two Medium Climb questions and one Hard Summit, with the current stage shown throughout play and a definitive ladder-clear summary at the finish.
 
 ## Release archive
 

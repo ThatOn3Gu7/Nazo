@@ -2,6 +2,7 @@ package quiz.thaton3app.nazo.daily
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import quiz.thaton3app.nazo.data.Question
@@ -96,6 +97,59 @@ class DailyChallengeTest {
                 1,
                 (counts["hard"] ?: 0) + (counts["otaku master"] ?: 0),
             )
+        }
+    }
+
+    // ------------------------------------------------------------- ladder
+
+    @Test
+    fun ladderDefinesOneFiveQuestionWarmUpClimbAndSummit() {
+        assertEquals(
+            listOf("Warm-up", "Climb", "Summit"),
+            DailyLadder.stages.map { it.title },
+        )
+        assertEquals(listOf(2, 2, 1), DailyLadder.stages.map { it.questionCount })
+        assertEquals(
+            DailyChallenge.QUESTION_COUNT,
+            DailyLadder.stages.sumOf { it.questionCount },
+        )
+    }
+
+    @Test
+    fun everyQuestionPositionMapsToItsVisibleStageAndDifficulty() {
+        val expectedStages = listOf(
+            DailyLadderStage.WARM_UP,
+            DailyLadderStage.WARM_UP,
+            DailyLadderStage.CLIMB,
+            DailyLadderStage.CLIMB,
+            DailyLadderStage.SUMMIT,
+        )
+        expectedStages.forEachIndexed { index, expected ->
+            val progress = DailyLadder.progressForQuestion(index)!!
+            assertEquals(expected, progress.stage)
+            assertEquals(index, progress.questionIndex)
+            assertEquals(expected.ordinal + 1, progress.stageNumber)
+            assertEquals(3, progress.totalStages)
+        }
+        assertEquals(1, DailyLadder.progressForQuestion(0)!!.questionInStage)
+        assertEquals(2, DailyLadder.progressForQuestion(1)!!.questionInStage)
+        assertEquals(1, DailyLadder.progressForQuestion(2)!!.questionInStage)
+        assertEquals(2, DailyLadder.progressForQuestion(3)!!.questionInStage)
+        assertEquals(1, DailyLadder.progressForQuestion(4)!!.questionInStage)
+        assertNull(DailyLadder.progressForQuestion(-1))
+        assertNull(DailyLadder.progressForQuestion(5))
+    }
+
+    @Test
+    fun generatedRunFollowsTheDifficultyPromisedByEachLadderStage() {
+        for (day in days) {
+            DailyChallenge.questionsFor(day).forEachIndexed { index, question ->
+                val stage = DailyLadder.stageForQuestion(index)!!
+                assertTrue(
+                    "${stage.title} cannot contain ${question.difficulty}",
+                    stage.acceptsDifficulty(question.difficulty),
+                )
+            }
         }
     }
 

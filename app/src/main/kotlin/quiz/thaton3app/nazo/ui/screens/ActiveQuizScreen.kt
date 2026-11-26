@@ -76,6 +76,8 @@ import kotlin.math.PI
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.delay
+import quiz.thaton3app.nazo.daily.DailyLadder
+import quiz.thaton3app.nazo.daily.DailyLadderRail
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.QuizEngine
 import quiz.thaton3app.nazo.hints.HintEngine
@@ -184,6 +186,53 @@ internal fun wrongAnswerShakeOffset(progress: Float): Float {
 internal fun correctAnswerPulseScale(progress: Float): Float {
     val p = progress.coerceIn(0f, 1f)
     return 1f + (sin(p * PI.toFloat()).coerceAtLeast(0f) * 0.018f)
+}
+
+/** Daily-only orientation: the hidden difficulty ramp becomes a visible path. */
+@Composable
+private fun DailyLadderProgressPanel(
+    currentQuestionIndex: Int,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+) {
+    val progress = DailyLadder.progressForQuestion(currentQuestionIndex) ?: return
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(NazoPrimary.copy(alpha = 0.08f))
+            .border(1.dp, NazoPrimary.copy(alpha = 0.22f), RoundedCornerShape(16.dp))
+            .padding(horizontal = 14.dp, vertical = if (compact) 8.dp else 11.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "STAGE ${progress.stageNumber} OF ${progress.totalStages} · ${progress.stage.title.uppercase()}",
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoPrimary,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.7.sp,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "${progress.questionInStage}/${progress.stage.questionCount} · ${progress.stage.difficultyLabel}",
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoTextSecondary,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
+        }
+        Spacer(Modifier.height(if (compact) 6.dp else 9.dp))
+        DailyLadderRail(
+            currentStage = progress.stage,
+            completed = false,
+            compact = compact,
+        )
+    }
 }
 
 @Composable
@@ -630,12 +679,19 @@ internal fun ActiveQuizScreen(
                 GameplayPresentation.QUIZ -> Unit
             }
 
-            Spacer(Modifier.height(chromeGap))
-            // Endless runs have no meaningful fraction — skip the bar. The
-            // custom bar is one Canvas: a Material-Expressive wave keeps
-            // travelling inside the completed portion while its endpoint stays
-            // fixed, and only the fill length advances with question progress.
-            if (!endless && !isBlitz) {
+            if (daily) {
+                Spacer(Modifier.height(chromeGap))
+                DailyLadderProgressPanel(
+                    currentQuestionIndex = currentQuestionIndex,
+                    compact = landscape,
+                )
+            }
+
+            // Endless runs have no meaningful fraction. Daily uses its explicit
+            // three-stage ladder instead of layering a second generic bar under it.
+            // Other finite quizzes keep the Material-Expressive wave.
+            if (!endless && !isBlitz && !daily) {
+                Spacer(Modifier.height(chromeGap))
                 PremiumQuizProgress(
                     progress = quizProgressFraction(currentQuestionIndex, totalQuestions),
                     color = NazoPrimary,
@@ -644,6 +700,7 @@ internal fun ActiveQuizScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
             } else if (isBlitz) {
+                Spacer(Modifier.height(chromeGap))
                 // Blitz has no question fraction but it does have one global
                 // clock — show THAT as the bar so the run's remaining time is
                 // readable at a glance, not only as a digit in the corner.
@@ -1022,9 +1079,13 @@ internal fun ActiveQuizScreen(
                                         // quiz, or the fatal question of a survival
                                         // run (its heart is redacted at grading, so
                                         // livesLeft already reads 0 here).
-                                        if ((!endless && currentQuestionIndex == totalQuestions - 1) ||
-                                            (endless && livesLeft <= 0)
-                                        ) "Finish Quiz" else "Next Question",
+                                        when {
+                                            daily && currentQuestionIndex == totalQuestions - 1 ->
+                                                "Clear Daily Ladder"
+                                            (!endless && currentQuestionIndex == totalQuestions - 1) ||
+                                                (endless && livesLeft <= 0) -> "Finish Quiz"
+                                            else -> "Next Question"
+                                        },
                                         color = NazoOnPrimary,
                                         fontWeight = FontWeight.Bold
                                     )

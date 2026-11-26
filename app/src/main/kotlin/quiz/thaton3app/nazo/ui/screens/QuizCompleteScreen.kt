@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import quiz.thaton3app.nazo.daily.DailyBonusChip
+import quiz.thaton3app.nazo.daily.DailyLadderClearCard
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.progression.ProgressionReward
 import quiz.thaton3app.nazo.records.NewRecordBadge
@@ -99,6 +100,33 @@ internal fun quizResultPaceLabel(elapsedMillis: Long, answered: Int): String {
 internal fun mistakeRematchLabel(mistakeCount: Int): String =
     if (mistakeCount == 1) "Retry 1 Miss" else "Retry $mistakeCount Misses"
 
+internal fun quizResultEyebrow(daily: Boolean, modeLabel: String?): String = when {
+    daily -> "DAILY LADDER"
+    modeLabel == "Survival" -> "SURVIVAL REPORT"
+    modeLabel == "Blitz" -> "60-SECOND REPORT"
+    else -> "FOCUSED QUIZ"
+}
+
+internal fun quizResultHeading(
+    daily: Boolean,
+    modeLabel: String?,
+    difficulty: String,
+    score: Int,
+): String = when {
+    daily -> "Daily Ladder Cleared"
+    modeLabel == "Survival" -> "Run over — you survived $score!"
+    modeLabel == "Blitz" -> "Time's up!"
+    difficulty == "Practice" -> "Practice Complete"
+    else -> "Quiz Complete"
+}
+
+internal fun quizResultReturnLabel(daily: Boolean, modeLabel: String?): String = when {
+    daily -> "Back to Home"
+    modeLabel == "Survival" -> "Try Survival Again"
+    modeLabel == "Blitz" -> "Run Another Blitz"
+    else -> "Play Another Quiz"
+}
+
 @Composable
 fun QuizCompleteScreen(
     score: Int,
@@ -108,6 +136,7 @@ fun QuizCompleteScreen(
     elapsedMillis: Long = 0L,
     bestPercent: Int = -1,
     isNewRecord: Boolean = false,
+    daily: Boolean = false,
     dailyBonusXp: Int = 0,
     progressionReward: ProgressionReward? = null,
     mistakeCount: Int = 0,
@@ -249,11 +278,7 @@ fun QuizCompleteScreen(
                 ) {
                     Column {
                         Text(
-                            text = when (modeLabel) {
-                                "Survival" -> "SURVIVAL REPORT"
-                                "Blitz" -> "60-SECOND REPORT"
-                                else -> "FOCUSED QUIZ"
-                            },
+                            text = quizResultEyebrow(daily = daily, modeLabel = modeLabel),
                             style = MaterialTheme.typography.labelSmall,
                             color = NazoPrimary,
                             fontWeight = FontWeight.Bold,
@@ -261,11 +286,12 @@ fun QuizCompleteScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = when (modeLabel) {
-                                "Survival" -> "Run over — you survived $score!"
-                                "Blitz" -> "Time's up!"
-                                else -> if (difficulty == "Practice") "Practice Complete" else "Quiz Complete"
-                            },
+                            text = quizResultHeading(
+                                daily = daily,
+                                modeLabel = modeLabel,
+                                difficulty = difficulty,
+                                score = score,
+                            ),
                             style = MaterialTheme.typography.headlineMedium,
                             color = NazoTextPrimary,
                             fontWeight = FontWeight.Bold
@@ -307,9 +333,10 @@ fun QuizCompleteScreen(
                             Spacer(Modifier.height(14.dp))
                             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                                 Text(
-                                    text = when (modeLabel) {
-                                        "Survival" -> "Longest run: $bestPercent correct"
-                                        "Blitz" -> "Best blitz: $bestPercent correct"
+                                    text = when {
+                                        daily -> "Best Daily ladder: $bestPercent%"
+                                        modeLabel == "Survival" -> "Longest run: $bestPercent correct"
+                                        modeLabel == "Blitz" -> "Best blitz: $bestPercent correct"
                                         else -> "Personal best on $difficulty: $bestPercent%"
                                     },
                                     style = MaterialTheme.typography.bodySmall,
@@ -331,7 +358,18 @@ fun QuizCompleteScreen(
                     elapsedMillis = elapsedMillis,
                     accuracy = accuracy,
                     difficulty = difficulty,
+                    daily = daily,
                 )
+
+                if (daily) {
+                    Spacer(Modifier.height(16.dp))
+                    AnimatedVisibility(
+                        visible = showStats,
+                        enter = fadeIn(tween(if (runEntranceSequence) 220 else 1)),
+                    ) {
+                        DailyLadderClearCard()
+                    }
+                }
 
                 if (hasRewards) {
                     Spacer(Modifier.height(20.dp))
@@ -357,11 +395,11 @@ fun QuizCompleteScreen(
                     enter = slideInVertically(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow)) { 100 } + fadeIn()
                 ) {
                     Column {
-                        val playAgainLabel = when (modeLabel) {
-                            "Survival" -> "Try Survival Again"
-                            "Blitz" -> "Run Another Blitz"
-                            else -> "Play Another Quiz"
-                        }
+                        val playAgainLabel = quizResultReturnLabel(
+                            daily = daily,
+                            modeLabel = modeLabel,
+                        )
+                        val playAgainIcon = if (daily) Icons.Outlined.Home else Icons.Filled.Replay
                         if (mistakeCount > 0) {
                             // The most useful next action stays one tap away and
                             // retries this run's mistakes, not the whole saved deck.
@@ -399,7 +437,7 @@ fun QuizCompleteScreen(
                                 muted = true,
                             ) {
                                 Icon(
-                                    Icons.Filled.Replay,
+                                    playAgainIcon,
                                     contentDescription = null,
                                     tint = NazoTextPrimary,
                                     modifier = Modifier.size(20.dp),
@@ -420,7 +458,7 @@ fun QuizCompleteScreen(
                                     .height(56.dp),
                             ) {
                                 Icon(
-                                    Icons.Filled.Replay,
+                                    playAgainIcon,
                                     contentDescription = null,
                                     tint = NazoOnPrimary,
                                     modifier = Modifier.size(20.dp),
@@ -460,16 +498,18 @@ fun QuizCompleteScreen(
                                 Haptics.light(context)
                                 ShareResultCard.share(
                                     context = context,
-                                    heading = when (modeLabel) {
-                                        "Survival" -> "Survival Run"
-                                        "Blitz" -> "60-Second Blitz"
+                                    heading = when {
+                                        daily -> "Daily Ladder"
+                                        modeLabel == "Survival" -> "Survival Run"
+                                        modeLabel == "Blitz" -> "60-Second Blitz"
                                         else -> "Quiz Complete"
                                     },
                                     headline = if (modeLabel != null) "$score" else "$accuracy%",
                                     headlineCaption = if (modeLabel != null) "correct" else "accuracy",
                                     stats = listOf(
                                         "Score" to "$score / $totalQuestions",
-                                        "Difficulty" to difficulty,
+                                        (if (daily) "Path" else "Difficulty") to
+                                            (if (daily) "Easy → Medium → Hard" else difficulty),
                                         "Time" to timeSpent,
                                     ),
                                     background = NazoBackground,
@@ -516,6 +556,7 @@ private fun ResultBreakdownChapter(
     elapsedMillis: Long,
     accuracy: Int,
     difficulty: String,
+    daily: Boolean,
 ) {
     val pace = quizResultPaceLabel(elapsedMillis, totalQuestions)
     val stats = when (modeLabel) {
@@ -542,7 +583,8 @@ private fun ResultBreakdownChapter(
             enter = fadeIn(tween(if (motionAllowed) 180 else 1)),
         ) {
             Text(
-                text = "RUN BREAKDOWN • ${difficulty.uppercase()}",
+                text = if (daily) "LADDER BREAKDOWN • 3 STAGES"
+                else "RUN BREAKDOWN • ${difficulty.uppercase()}",
                 style = MaterialTheme.typography.labelSmall,
                 color = NazoTextSecondary,
                 fontWeight = FontWeight.Bold,

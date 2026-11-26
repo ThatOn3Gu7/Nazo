@@ -17,6 +17,7 @@ Build these in order because they form one clear journey from launch to learning
 - **#3 Animated results story** — turn completion into a satisfying summary. **Implemented.**
 - **#4 Instant mistake rematch** — convert errors into one-tap practice. **Implemented.**
 - **#5 Topic mastery foundation** — make long-term learning visible. **Implemented.**
+- **#6 Smart Daily ladder** — turn the Daily into a visible Easy-to-Hard path with a clear finish. **Implemented.**
 
 ---
 
