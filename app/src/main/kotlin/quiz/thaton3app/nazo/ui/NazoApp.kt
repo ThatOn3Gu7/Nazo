@@ -2693,6 +2693,11 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             quizElapsedBaseMs,
                         ),
                         difficulty = quizDifficulty,
+                        elapsedMillis = quizElapsedMillis(
+                            quizStartedAt,
+                            quizFinishedAt,
+                            quizElapsedBaseMs,
+                        ),
                         bestPercent = quizPrevBest,
                         isNewRecord = quizNewRecord,
                         dailyBonusXp = lastDailyBonus,
@@ -3351,18 +3356,27 @@ private fun AvatarOverlayLayer(
     )
 }
 
+internal fun quizElapsedMillis(
+    startedAt: Long,
+    finishedAt: Long,
+    elapsedBeforeStartMs: Long = 0L,
+): Long {
+    if (startedAt <= 0L || finishedAt <= 0L) return 0L
+    // The live span comes from elapsedRealtime(), not currentTimeMillis(). A
+    // restored process contributes its checkpointed prefix separately, so a
+    // reboot/process restart cannot make an AI quiz's result clock restart.
+    return elapsedBeforeStartMs.coerceAtLeast(0L) +
+        (finishedAt - startedAt).coerceAtLeast(0L)
+}
+
 internal fun formatQuizElapsed(
     startedAt: Long,
     finishedAt: Long,
     elapsedBeforeStartMs: Long = 0L,
 ): String {
-    if (startedAt <= 0L || finishedAt <= 0L) return "0m 0s"
-    // The live span comes from elapsedRealtime(), not currentTimeMillis(). A
-    // restored process contributes its checkpointed prefix separately, so a
-    // reboot/process restart cannot make an AI quiz's result clock restart.
-    val elapsed = elapsedBeforeStartMs.coerceAtLeast(0L) +
-        (finishedAt - startedAt).coerceAtLeast(0L)
-    val secs = (elapsed / 1000L).toInt()
+    val secs = (
+        quizElapsedMillis(startedAt, finishedAt, elapsedBeforeStartMs) / 1000L
+    ).toInt()
     return "${secs / 60}m ${secs % 60}s"
 }
 

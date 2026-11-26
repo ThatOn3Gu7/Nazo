@@ -44,7 +44,56 @@ import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.components.ProgressionRewardBanner
 import quiz.thaton3app.nazo.ui.components.ShareResultCard
 import quiz.thaton3app.nazo.ui.components.isLandscape
+import quiz.thaton3app.nazo.ui.components.rememberSystemReduceMotion
 import quiz.thaton3app.nazo.ui.theme.*
+
+internal enum class QuizResultStoryStage {
+    Arriving,
+    Heading,
+    Score,
+    Breakdown,
+    Rewards,
+    Actions,
+}
+
+internal data class QuizResultStoryTimeline(
+    val headingAtMillis: Long,
+    val scoreAtMillis: Long,
+    val breakdownAtMillis: Long,
+    val rewardsAtMillis: Long,
+    val actionsAtMillis: Long,
+)
+
+internal fun quizResultStoryTimeline(hasRewards: Boolean): QuizResultStoryTimeline =
+    QuizResultStoryTimeline(
+        headingAtMillis = 80L,
+        scoreAtMillis = 200L,
+        breakdownAtMillis = 700L,
+        rewardsAtMillis = 980L,
+        actionsAtMillis = if (hasRewards) 1_280L else 1_060L,
+    )
+
+internal fun quizResultStoryShows(
+    current: QuizResultStoryStage,
+    target: QuizResultStoryStage,
+): Boolean = current.ordinal >= target.ordinal
+
+internal fun quizResultStoryInitialStage(
+    playEntranceSequence: Boolean,
+    reduceMotion: Boolean,
+): QuizResultStoryStage =
+    if (playEntranceSequence && !reduceMotion) QuizResultStoryStage.Arriving
+    else QuizResultStoryStage.Actions
+
+internal fun quizResultStatDelayMillis(index: Int, motionAllowed: Boolean): Int =
+    if (motionAllowed) index.coerceIn(0, 2) * 80 else 0
+
+internal fun quizResultPaceLabel(elapsedMillis: Long, answered: Int): String {
+    if (elapsedMillis <= 0L || answered <= 0) return "—"
+    val averageTenths = (elapsedMillis + answered.toLong() * 50L) /
+        (answered.toLong() * 100L)
+    return "${averageTenths / 10}.${averageTenths % 10}s/q"
+}
 
 @Composable
 fun QuizCompleteScreen(
@@ -52,6 +101,7 @@ fun QuizCompleteScreen(
     totalQuestions: Int,
     timeSpent: String,
     difficulty: String,
+    elapsedMillis: Long = 0L,
     bestPercent: Int = -1,
     isNewRecord: Boolean = false,
     dailyBonusXp: Int = 0,
@@ -72,62 +122,88 @@ fun QuizCompleteScreen(
     val accuracy = if (totalQuestions > 0) ((score.toFloat() / totalQuestions) * 100).toInt() else 0
     val isSuccess = accuracy >= 50
 
+    val reduceMotion = rememberSystemReduceMotion()
     // Capture this composition's role. The owner consumes the gate as soon as
     // the first effect starts; later recompositions of this same screen must
-    // continue that choreography, while a reconstructed back target starts in
-    // its settled static state.
-    val runEntranceSequence = remember { playEntranceSequence }
-
-    // Staggered visibility states. Review -> Results reconstructs this screen,
-    // so a non-entrance presentation must be complete on its very first frame.
-    var showHeader by remember { mutableStateOf(!runEntranceSequence) }
-    var showCard by remember { mutableStateOf(!runEntranceSequence) }
-    var showStats by remember { mutableStateOf(!runEntranceSequence) }
-    var showButtons by remember { mutableStateOf(!runEntranceSequence) }
+    // continue that story, while a reconstructed back target starts settled.
+    val ownsEntranceSequence = remember { playEntranceSequence }
+    val initialStoryStage = remember {
+        quizResultStoryInitialStage(ownsEntranceSequence, reduceMotion)
+    }
+    val runEntranceSequence = initialStoryStage == QuizResultStoryStage.Arriving
+    val hasRewards = isNewRecord || dailyBonusXp > 0 || progressionReward != null
+    val timeline = remember(hasRewards) { quizResultStoryTimeline(hasRewards) }
+    var storyStage by remember { mutableStateOf(initialStoryStage) }
     var triggerConfetti by remember { mutableStateOf(false) }
 
-    // Number roll states
+    val showHeader = quizResultStoryShows(storyStage, QuizResultStoryStage.Heading)
+    val showCard = quizResultStoryShows(storyStage, QuizResultStoryStage.Score)
+    val showStats = quizResultStoryShows(storyStage, QuizResultStoryStage.Breakdown)
+    val showRewards = quizResultStoryShows(storyStage, QuizResultStoryStage.Rewards)
+    val showButtons = quizResultStoryShows(storyStage, QuizResultStoryStage.Actions)
+
+    // Score and ring finish their count-up around the time the reward chapter
+    // arrives. A reconstructed or reduced-motion result starts at its real value.
+    val valueAnimationMillis = if (runEntranceSequence) 900 else 0
     val animatedAccuracy by animateIntAsState(
         targetValue = if (showCard) accuracy else 0,
-        animationSpec = tween(1500, easing = FastOutSlowInEasing),
+        animationSpec = tween(valueAnimationMillis, easing = FastOutSlowInEasing),
         label = "accuracy"
     )
-    
     val animatedScore by animateIntAsState(
         targetValue = if (showCard) score else 0,
-        animationSpec = tween(1500, easing = FastOutSlowInEasing),
+        animationSpec = tween(valueAnimationMillis, easing = FastOutSlowInEasing),
         label = "score"
     )
-
-    // Circular progress animation
     val progressAnim by animateFloatAsState(
         targetValue = if (showCard) accuracy.toFloat() / 100f else 0f,
-        animationSpec = tween(1500, easing = FastOutSlowInEasing, delayMillis = 200),
+        animationSpec = tween(
+            durationMillis = valueAnimationMillis,
+            easing = FastOutSlowInEasing,
+            delayMillis = if (runEntranceSequence) 100 else 0,
+        ),
         label = "progress"
     )
 
-    // Orchestrate entrances
     val context = LocalContext.current
     val celebrationStyle = remember { ThemePreferences(context).celebrationStyle }
     LaunchedEffect(Unit) {
-        if (!runEntranceSequence) return@LaunchedEffect
+        if (!ownsEntranceSequence) return@LaunchedEffect
         // Consume first: Results can now be rebuilt for an ordinary or
-        // predictive back preview without replaying any part of this sequence.
+        // predictive back preview without replaying any part of this story.
         onEntranceSequenceStarted()
         Sounds.complete(context) // opt-in, no-op when sounds are disabled
-        delay(100)
-        showHeader = true
-        delay(150)
-        showCard = true
+
+        if (!runEntranceSequence) {
+            // Remove animations makes the complete result available on frame
+            // one, while the user's enabled completion cues remain intact.
+            if (isSuccess) Sounds.celebration(context, celebrationStyle)
+            if (isNewRecord) {
+                Haptics.light(context)
+                Sounds.record(context)
+            }
+            return@LaunchedEffect
+        }
+
+        delay(timeline.headingAtMillis)
+        storyStage = QuizResultStoryStage.Heading
+        delay(timeline.scoreAtMillis - timeline.headingAtMillis)
+        storyStage = QuizResultStoryStage.Score
         if (isSuccess) {
             triggerConfetti = true
             // Per-variant cue queued after the completion arpeggio (opt-in).
             Sounds.celebration(context, celebrationStyle)
         }
-        delay(200)
-        showStats = true
-        delay(200)
-        showButtons = true
+        delay(timeline.breakdownAtMillis - timeline.scoreAtMillis)
+        storyStage = QuizResultStoryStage.Breakdown
+        delay(timeline.rewardsAtMillis - timeline.breakdownAtMillis)
+        storyStage = QuizResultStoryStage.Rewards
+        if (isNewRecord) {
+            Haptics.light(context)
+            Sounds.record(context)
+        }
+        delay(timeline.actionsAtMillis - timeline.rewardsAtMillis)
+        storyStage = QuizResultStoryStage.Actions
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -210,79 +286,60 @@ fun QuizCompleteScreen(
                         progressAnim = progressAnim,
                         isSuccess = isSuccess,
                         modeLabel = modeLabel,
+                        motionAllowed = !reduceMotion,
                     )
                 }
 
-                // Personal best (Phase 4): the record badge pops in with a bouncy
-                // scale once the card has landed; otherwise a quiet caption shows
-                // the standing best for this difficulty.
-                if (isNewRecord || bestPercent >= 0) {
-                    Spacer(Modifier.height(14.dp))
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        if (isNewRecord) {
-                            NewRecordBadge(animateEntrance = runEntranceSequence)
-                        } else {
-                            Text(
-                                text = when (modeLabel) {
-                                    "Survival" -> "Longest run: $bestPercent correct"
-                                    "Blitz" -> "Best blitz: $bestPercent correct"
-                                    else -> "Personal best on $difficulty: $bestPercent%"
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = NazoTextSecondary
-                            )
+                // A standing best is context for the score chapter. A newly
+                // earned record joins XP and bonuses in the later reward chapter.
+                if (!isNewRecord && bestPercent >= 0) {
+                    AnimatedVisibility(
+                        visible = showCard,
+                        enter = fadeIn(tween(180)),
+                    ) {
+                        Column {
+                            Spacer(Modifier.height(14.dp))
+                            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = when (modeLabel) {
+                                        "Survival" -> "Longest run: $bestPercent correct"
+                                        "Blitz" -> "Best blitz: $bestPercent correct"
+                                        else -> "Personal best on $difficulty: $bestPercent%"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = NazoTextSecondary
+                                )
+                            }
                         }
                     }
-                }
-
-                // Daily-challenge bonus (Phase 5): pops in a beat after the
-                // record badge so the celebrations read as a sequence.
-                if (dailyBonusXp > 0) {
-                    Spacer(Modifier.height(10.dp))
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        DailyBonusChip(
-                            bonusXp = dailyBonusXp,
-                            animateEntrance = runEntranceSequence,
-                        )
-                    }
-                }
-
-                progressionReward?.let { reward ->
-                    Spacer(Modifier.height(12.dp))
-                    ProgressionRewardBanner(
-                        reward = reward,
-                        animateEntrance = runEntranceSequence,
-                    )
                 }
 
                     },
                     stats = {
-                // Stats Row
-                AnimatedVisibility(
+                ResultBreakdownChapter(
                     visible = showStats,
-                    enter = slideInVertically(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow)) { 100 } + fadeIn()
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    motionAllowed = runEntranceSequence,
+                    modeLabel = modeLabel,
+                    totalQuestions = totalQuestions,
+                    timeSpent = timeSpent,
+                    elapsedMillis = elapsedMillis,
+                    accuracy = accuracy,
+                    difficulty = difficulty,
+                )
+
+                if (hasRewards) {
+                    Spacer(Modifier.height(20.dp))
+                    AnimatedVisibility(
+                        visible = showRewards,
+                        enter = slideInVertically(
+                            animationSpec = tween(240, easing = FastOutSlowInEasing),
+                        ) { height -> height / 4 } + fadeIn(tween(180)),
                     ) {
-                        when (modeLabel) {
-                            "Blitz" -> {
-                                StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.Timer, title = "Window", value = "60 sec")
-                                StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.Bolt, title = "Correct", value = "$score")
-                                StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.Speed, title = "Answered", value = "$totalQuestions")
-                            }
-                            "Survival" -> {
-                                StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.Timer, title = "Run time", value = timeSpent)
-                                StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.LocalFireDepartment, title = "Survived", value = "$score")
-                                StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.TrackChanges, title = "Accuracy", value = "$accuracy%")
-                            }
-                            else -> {
-                                StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.Timer, title = "Time", value = timeSpent)
-                                StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.TrackChanges, title = "Accuracy", value = "$accuracy%")
-                                StatCard(modifier = Modifier.weight(1f), icon = Icons.Outlined.Speed, title = "Difficulty", value = difficulty)
-                            }
-                        }
+                        ResultRewardsChapter(
+                            isNewRecord = isNewRecord,
+                            dailyBonusXp = dailyBonusXp,
+                            progressionReward = progressionReward,
+                        )
                     }
                 }
 
@@ -379,15 +436,136 @@ fun QuizCompleteScreen(
     }
 }
 
+private data class ResultStat(
+    val icon: ImageVector,
+    val title: String,
+    val value: String,
+)
+
+@Composable
+private fun ResultBreakdownChapter(
+    visible: Boolean,
+    motionAllowed: Boolean,
+    modeLabel: String?,
+    totalQuestions: Int,
+    timeSpent: String,
+    elapsedMillis: Long,
+    accuracy: Int,
+    difficulty: String,
+) {
+    val pace = quizResultPaceLabel(elapsedMillis, totalQuestions)
+    val stats = when (modeLabel) {
+        "Blitz" -> listOf(
+            ResultStat(Icons.Outlined.Timer, "Window", "60 sec"),
+            ResultStat(Icons.Outlined.TrackChanges, "Accuracy", "$accuracy%"),
+            ResultStat(Icons.Outlined.Speed, "Avg pace", pace),
+        )
+        "Survival" -> listOf(
+            ResultStat(Icons.Outlined.Timer, "Run time", timeSpent),
+            ResultStat(Icons.Outlined.TrackChanges, "Accuracy", "$accuracy%"),
+            ResultStat(Icons.Outlined.Speed, "Avg pace", pace),
+        )
+        else -> listOf(
+            ResultStat(Icons.Outlined.Timer, "Time", timeSpent),
+            ResultStat(Icons.Outlined.TrackChanges, "Accuracy", "$accuracy%"),
+            ResultStat(Icons.Outlined.Speed, "Avg pace", pace),
+        )
+    }
+
+    Column {
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(tween(if (motionAllowed) 180 else 1)),
+        ) {
+            Text(
+                text = "RUN BREAKDOWN • ${difficulty.uppercase()}",
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoTextSecondary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+                modifier = Modifier.padding(start = 4.dp, bottom = 10.dp),
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            stats.forEachIndexed { index, stat ->
+                Box(modifier = Modifier.weight(1f)) {
+                    val revealDelay = quizResultStatDelayMillis(index, motionAllowed)
+                    AnimatedVisibility(
+                        visible = visible,
+                        enter = fadeIn(
+                            tween(
+                                durationMillis = if (motionAllowed) 200 else 1,
+                                delayMillis = revealDelay,
+                            )
+                        ) + slideInVertically(
+                            animationSpec = tween(
+                                durationMillis = if (motionAllowed) 240 else 1,
+                                delayMillis = revealDelay,
+                                easing = FastOutSlowInEasing,
+                            )
+                        ) { height -> height / 4 },
+                    ) {
+                        StatCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            icon = stat.icon,
+                            title = stat.title,
+                            value = stat.value,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResultRewardsChapter(
+    isNewRecord: Boolean,
+    dailyBonusXp: Int,
+    progressionReward: ProgressionReward?,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            text = "REWARDS EARNED",
+            style = MaterialTheme.typography.labelSmall,
+            color = NazoTextSecondary,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+            modifier = Modifier.padding(start = 4.dp),
+        )
+        if (isNewRecord) {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                NewRecordBadge(animateEntrance = false)
+            }
+        }
+        if (dailyBonusXp > 0) {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                DailyBonusChip(
+                    bonusXp = dailyBonusXp,
+                    animateEntrance = false,
+                )
+            }
+        }
+        progressionReward?.let { reward ->
+            ProgressionRewardBanner(
+                reward = reward,
+                animateEntrance = false,
+            )
+        }
+    }
+}
+
 /**
  * Results layout.
  *
- * Portrait is the original stack: ring, record badge, stats row, buttons.
+ * Portrait tells the story top-to-bottom: score, breakdown, rewards, actions.
  *
- * Landscape puts the score ring (with the record badge and daily bonus beneath
- * it, inside the same pane) on the left, and the three stat cards plus the
- * action buttons on the right — so nothing is stretched and the whole result is
- * visible without scrolling on most devices.
+ * Landscape keeps the score chapter on the left and the breakdown, rewards,
+ * and actions on the right, so nothing is stretched and the full sequence
+ * remains readable without one extra-wide card.
  */
 @Composable
 private fun TwoPaneResults(
@@ -436,18 +614,25 @@ private fun ScoreCardContent(
     progressAnim: Float,
     isSuccess: Boolean,
     modeLabel: String?,
+    motionAllowed: Boolean,
 ) {
-    // Continuous floating animation for trophy (scoped here so it doesn't recompose the whole screen)
-    val floatInfinite = rememberInfiniteTransition(label = "float")
-    val floatOffset by floatInfinite.animateFloat(
-        initialValue = -6f,
-        targetValue = 6f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = EaseInOutSine),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "float"
-    )
+    // Keep the trophy alive after the story settles, but do not start an
+    // infinite animation clock when Android Remove animations is enabled.
+    val floatOffset = if (motionAllowed) {
+        val floatInfinite = rememberInfiniteTransition(label = "float")
+        val animatedOffset by floatInfinite.animateFloat(
+            initialValue = -6f,
+            targetValue = 6f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1500, easing = EaseInOutSine),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "float"
+        )
+        animatedOffset
+    } else {
+        0f
+    }
 
     val message = when (modeLabel) {
         "Survival" -> when {
