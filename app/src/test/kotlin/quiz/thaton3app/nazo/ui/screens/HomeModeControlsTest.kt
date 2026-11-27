@@ -104,6 +104,21 @@ class HomeModeControlsTest {
     }
 
     @Test
+    fun collectionTopicRevealIsProgressiveBoundedAndUnicodeSafe() {
+        val frames = collectionTopicRevealFrames("One Piece", maxFrames = 4)
+        assertEquals(4, frames.size)
+        assertEquals("One Piece", frames.last())
+        assertTrue(frames.zipWithNext().all { (first, second) -> first.length < second.length })
+
+        val unicode = collectionTopicRevealFrames("悟😀空", maxFrames = 8)
+        assertEquals(listOf("悟", "悟😀", "悟😀空"), unicode)
+
+        val bounded = collectionTopicRevealFrames("A".repeat(100), maxFrames = 24)
+        assertEquals(24, bounded.size)
+        assertEquals("A".repeat(100), bounded.last())
+    }
+
+    @Test
     fun challengeSummaryAlwaysReflectsTheVisibleModeSpecificChoice() {
         assertEquals(
             "Medium • 10 questions",

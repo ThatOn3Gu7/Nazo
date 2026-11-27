@@ -25,6 +25,7 @@ then archived below; there should be no per-version release-note files.
 - **Improved** — Daily Challenge is now a visible three-stage ladder: two Easy Warm-up questions lead into two Medium Climb questions and one Hard Summit, with the current stage shown throughout play and a definitive ladder-clear summary at the finish.
 - **Added** — Quiz now offers an Adaptive difficulty that starts from existing topic mastery, raises the target after sustained fast and accurate answers, eases it after misses or timeouts, accounts for hint use, and explains its current and final calibration without changing Daily or special-mode rules.
 - **Added** — Home can now save up to eight favorite challenge collections across Quiz, Guessing, Survival, Blitz, and Versus, restore every meaningful setup field with one tap, remove outdated entries, deduplicate repeated saves, and carry the collection through backup and restore.
+- **Improved** — Collection cards now enter, rearrange, and leave without abrupt layout jumps, while loading one visibly applies its mode, progressively types its topic, then selects difficulty and length instead of changing the entire setup in one frame.
 
 ## Release archive
 

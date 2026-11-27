@@ -36,6 +36,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberOverscrollEffect
 import androidx.compose.foundation.rememberScrollState
@@ -209,6 +211,35 @@ internal fun quizCollectionDetail(collection: QuizCollection): String {
     return listOf(mode, collection.difficulty, length).filter { it.isNotBlank() }.joinToString(" • ")
 }
 
+internal enum class CollectionLoadStep(val label: String) {
+    Mode("SETTING MODE"),
+    Topic("TYPING TOPIC"),
+    Difficulty("SETTING DIFFICULTY"),
+    Length("SETTING LENGTH"),
+}
+
+internal data class CollectionLoadProgress(
+    val collectionId: String,
+    val step: CollectionLoadStep,
+)
+
+/** Bounded, Unicode-safe frames for the staged topic typing effect. */
+internal fun collectionTopicRevealFrames(
+    topic: String,
+    maxFrames: Int = 24,
+): List<String> {
+    require(maxFrames > 0)
+    val codePoints = topic.codePoints().toArray()
+    if (codePoints.isEmpty()) return listOf("")
+    val frameCount = minOf(codePoints.size, maxFrames)
+    return (1..frameCount).map { frame ->
+        val visibleCount = (frame * codePoints.size + frameCount - 1) / frameCount
+        buildString {
+            repeat(visibleCount) { index -> appendCodePoint(codePoints[index]) }
+        }
+    }
+}
+
 private val HOME_TOPIC_STARTERS = listOf(
     "Naruto",
     "One Piece",
@@ -290,7 +321,14 @@ fun HomeScreen(
     val collectionLimitReached = !currentSetupSaved &&
         quizCollections.size >= QuizCollectionPolicy.MAX_COLLECTIONS
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
     val reduceMotion = rememberSystemReduceMotion()
+    val scope = rememberCoroutineScope()
+    var collectionLoadProgress by remember { mutableStateOf<CollectionLoadProgress?>(null) }
+    var lastVisibleCollections by remember { mutableStateOf(quizCollections) }
+    SideEffect {
+        if (quizCollections.isNotEmpty()) lastVisibleCollections = quizCollections
+    }
     var showProviderSheet by remember { mutableStateOf(false) }
     var showModeSheet by remember { mutableStateOf(false) }
     var dailyPortalOrigin by remember { mutableStateOf<QuizLaunchOrigin?>(null) }
@@ -305,25 +343,75 @@ fun HomeScreen(
     }
 
     fun applyCollection(collection: QuizCollection) {
+        if (collectionLoadProgress != null) return
         val savedMode = NazoMode.entries.firstOrNull { it.name == collection.mode } ?: return
         val savedDifficulty = Difficulty.entries.firstOrNull {
             it.label.equals(collection.difficulty, ignoreCase = true)
         } ?: return
         val supportedDifficulty = homeDifficultyForMode(savedMode, savedDifficulty)
+        fun applyLength() {
+            when (homeCountControls(savedMode)) {
+                HomeCountControls.Questions -> onQuestionCountChange(collection.amount)
+                HomeCountControls.Rounds -> onGuessingRoundsChange(collection.amount)
+                HomeCountControls.None -> Unit
+            }
+        }
+
         Haptics.light(context)
-        onModeChange(savedMode.name)
-        onTopicChange(collection.topic)
-        onDifficultyChange(supportedDifficulty.name)
-        when (homeCountControls(savedMode)) {
-            HomeCountControls.Questions -> onQuestionCountChange(collection.amount)
-            HomeCountControls.Rounds -> onGuessingRoundsChange(collection.amount)
-            HomeCountControls.None -> Unit
+        focusManager.clearFocus()
+        if (reduceMotion) {
+            onModeChange(savedMode.name)
+            onTopicChange(collection.topic)
+            onDifficultyChange(supportedDifficulty.name)
+            applyLength()
+            return
+        }
+
+        collectionLoadProgress = CollectionLoadProgress(
+            collection.id,
+            CollectionLoadStep.Mode,
+        )
+        scope.launch {
+            try {
+                onModeChange(savedMode.name)
+                delay(240)
+
+                collectionLoadProgress = CollectionLoadProgress(
+                    collection.id,
+                    CollectionLoadStep.Topic,
+                )
+                onTopicChange("")
+                val topicFrames = collectionTopicRevealFrames(collection.topic)
+                val frameDelay = (520L / topicFrames.size.coerceAtLeast(1)).coerceIn(18L, 48L)
+                topicFrames.forEach { frame ->
+                    onTopicChange(frame)
+                    delay(frameDelay)
+                }
+                delay(80)
+
+                collectionLoadProgress = CollectionLoadProgress(
+                    collection.id,
+                    CollectionLoadStep.Difficulty,
+                )
+                onDifficultyChange(supportedDifficulty.name)
+                delay(240)
+
+                if (homeCountControls(savedMode) != HomeCountControls.None) {
+                    collectionLoadProgress = CollectionLoadProgress(
+                        collection.id,
+                        CollectionLoadStep.Length,
+                    )
+                    applyLength()
+                    delay(180)
+                }
+            } finally {
+                collectionLoadProgress = null
+            }
         }
     }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val modeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val scope = rememberCoroutineScope()
 
     // Smooth dismiss helpers let each slide-down finish before its sheet unmounts.
     fun dismissSheet(onComplete: () -> Unit = {}) {
@@ -437,16 +525,48 @@ fun HomeScreen(
         // Top alignment spacer for landscape
         if (landscape) Spacer(Modifier.height(16.dp))
 
-        if (quizCollections.isNotEmpty()) {
-            QuizCollectionsShelf(
-                collections = quizCollections,
-                onApply = ::applyCollection,
-                onDelete = { collection ->
-                    Haptics.light(context)
-                    onDeleteCollection(collection)
-                },
-            )
-            Spacer(Modifier.height(16.dp))
+        val displayedCollections = if (quizCollections.isNotEmpty()) {
+            quizCollections
+        } else {
+            lastVisibleCollections
+        }
+        AnimatedVisibility(
+            visible = quizCollections.isNotEmpty(),
+            enter = if (reduceMotion) {
+                fadeIn(tween(90))
+            } else {
+                fadeIn(tween(180, easing = FastOutSlowInEasing)) +
+                    expandVertically(
+                        expandFrom = Alignment.Top,
+                        animationSpec = tween(300, easing = FastOutSlowInEasing),
+                    )
+            },
+            exit = if (reduceMotion) {
+                fadeOut(tween(70))
+            } else {
+                fadeOut(tween(150, easing = FastOutSlowInEasing)) +
+                    shrinkVertically(
+                        shrinkTowards = Alignment.Top,
+                        animationSpec = tween(280, easing = FastOutSlowInEasing),
+                    )
+            },
+            label = "quizCollectionsShelfVisibility",
+        ) {
+            Column(Modifier.fillMaxWidth()) {
+                QuizCollectionsShelf(
+                    collections = displayedCollections,
+                    motionAllowed = !reduceMotion,
+                    loadProgress = collectionLoadProgress,
+                    onApply = ::applyCollection,
+                    onDelete = { collection ->
+                        if (collectionLoadProgress == null) {
+                            Haptics.light(context)
+                            onDeleteCollection(collection)
+                        }
+                    },
+                )
+                Spacer(Modifier.height(16.dp))
+            }
         }
 
         TopicInputCard(topic = topic, onTopicChange = onTopicChange)
@@ -461,8 +581,9 @@ fun HomeScreen(
             reduceMotion = reduceMotion,
             setupSaved = currentSetupSaved,
             collectionLimitReached = collectionLimitReached,
+            collectionLoading = collectionLoadProgress != null,
             onSaveSetup = {
-                if (!currentSetupSaved && !collectionLimitReached) {
+                if (!currentSetupSaved && !collectionLimitReached && collectionLoadProgress == null) {
                     Haptics.light(context)
                     onSaveCollection(currentCollectionSetup)
                 }
@@ -527,12 +648,17 @@ fun HomeScreen(
             sparkleStyle = sparkleStyle,
             portalEnabled = homeLaunchUsesPortal(nazoMode, offline),
             onLaunchPortal = onLaunchPortal,
-            label = when (nazoMode) {
-                NazoMode.GUESSING -> "Start Guessing Game"
-                NazoMode.SURVIVAL -> "Start Survival Run"
-                NazoMode.BLITZ -> "Start 60-Second Blitz"
-                NazoMode.VERSUS -> "Start Versus Match"
-                else -> if (offline) "Generate Quiz" else "Generate AI Quiz"
+            enabled = collectionLoadProgress == null,
+            label = if (collectionLoadProgress != null) {
+                "Applying saved setup…"
+            } else {
+                when (nazoMode) {
+                    NazoMode.GUESSING -> "Start Guessing Game"
+                    NazoMode.SURVIVAL -> "Start Survival Run"
+                    NazoMode.BLITZ -> "Start 60-Second Blitz"
+                    NazoMode.VERSUS -> "Start Versus Match"
+                    else -> if (offline) "Generate Quiz" else "Generate AI Quiz"
+                }
             },
             onClick = {
                 when (nazoMode) {
@@ -1992,6 +2118,8 @@ private fun TopicSuggestionChip(
 @Composable
 private fun QuizCollectionsShelf(
     collections: List<QuizCollection>,
+    motionAllowed: Boolean,
+    loadProgress: CollectionLoadProgress?,
     onApply: (QuizCollection) -> Unit,
     onDelete: (QuizCollection) -> Unit,
 ) {
@@ -2011,17 +2139,23 @@ private fun QuizCollectionsShelf(
             )
         }
         Spacer(Modifier.height(8.dp))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            collections.forEach { collection ->
+            items(
+                items = collections,
+                key = { it.id },
+            ) { collection ->
                 QuizCollectionCard(
                     collection = collection,
+                    loadStep = loadProgress
+                        ?.takeIf { it.collectionId == collection.id }
+                        ?.step,
+                    enabled = loadProgress == null,
                     onApply = { onApply(collection) },
                     onDelete = { onDelete(collection) },
+                    modifier = if (motionAllowed) Modifier.animateItem() else Modifier,
                 )
             }
         }
@@ -2031,8 +2165,11 @@ private fun QuizCollectionsShelf(
 @Composable
 private fun QuizCollectionCard(
     collection: QuizCollection,
+    loadStep: CollectionLoadStep?,
+    enabled: Boolean,
     onApply: () -> Unit,
     onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val interactionSource = remember(collection.id) { MutableInteractionSource() }
     val shape = rememberNazoRoundedCornerMorphShape(
@@ -2041,13 +2178,14 @@ private fun QuizCollectionCard(
         pressedCorner = 9.dp,
     )
     Column(
-        modifier = Modifier
+        modifier = modifier
             .widthIn(min = 250.dp, max = 280.dp)
             .defaultMinSize(minHeight = 126.dp)
             .clip(shape)
             .background(NazoSurface.copy(alpha = 0.82f), shape)
             .border(1.dp, NazoPrimary.copy(alpha = 0.24f), shape)
             .clickable(
+                enabled = enabled,
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
                 role = Role.Button,
@@ -2077,6 +2215,7 @@ private fun QuizCollectionCard(
             )
             IconButton(
                 onClick = onDelete,
+                enabled = enabled,
                 modifier = Modifier.size(40.dp),
             ) {
                 Icon(
@@ -2103,21 +2242,34 @@ private fun QuizCollectionCard(
             maxLines = 2,
         )
         Spacer(Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "LOAD SETUP",
-                style = MaterialTheme.typography.labelSmall,
-                color = NazoPrimary,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.7.sp,
-            )
-            Spacer(Modifier.width(3.dp))
-            Icon(
-                imageVector = Icons.Filled.ArrowForward,
-                contentDescription = null,
-                tint = NazoPrimary,
-                modifier = Modifier.size(15.dp),
-            )
+        AnimatedContent(
+            targetState = loadStep,
+            transitionSpec = {
+                (fadeIn(tween(120)) + slideInVertically(tween(150)) { it / 3 })
+                    .togetherWith(fadeOut(tween(90)) + slideOutVertically { -it / 3 })
+            },
+            label = "collectionLoadStep_${collection.id}",
+        ) { step ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = step?.label ?: "LOAD SETUP",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoPrimary,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.7.sp,
+                )
+                Spacer(Modifier.width(3.dp))
+                Icon(
+                    imageVector = if (step == null) {
+                        Icons.Filled.ArrowForward
+                    } else {
+                        Icons.Filled.AutoAwesome
+                    },
+                    contentDescription = null,
+                    tint = NazoPrimary,
+                    modifier = Modifier.size(15.dp),
+                )
+            }
         }
     }
 }
@@ -2126,6 +2278,7 @@ private fun QuizCollectionCard(
 private fun SaveSetupButton(
     saved: Boolean,
     limitReached: Boolean,
+    loading: Boolean,
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -2139,11 +2292,11 @@ private fun SaveSetupButton(
             .defaultMinSize(minWidth = 58.dp, minHeight = 52.dp)
             .clip(shape)
             .background(
-                if (saved) NazoPrimary.copy(alpha = 0.12f) else NazoSurfaceVariant,
+                if (saved && !loading) NazoPrimary.copy(alpha = 0.12f) else NazoSurfaceVariant,
                 shape,
             )
             .clickable(
-                enabled = !saved && !limitReached,
+                enabled = !saved && !limitReached && !loading,
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
                 role = Role.Button,
@@ -2154,8 +2307,13 @@ private fun SaveSetupButton(
         verticalArrangement = Arrangement.Center,
     ) {
         Icon(
-            imageVector = if (saved) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+            imageVector = when {
+                loading -> Icons.Filled.AutoAwesome
+                saved -> Icons.Filled.Bookmark
+                else -> Icons.Filled.BookmarkBorder
+            },
             contentDescription = when {
+                loading -> "Applying saved setup"
                 saved -> "Setup saved"
                 limitReached -> "Collection limit reached; delete a saved setup first"
                 else -> "Save setup to collections"
@@ -2166,6 +2324,7 @@ private fun SaveSetupButton(
         Spacer(Modifier.height(3.dp))
         Text(
             text = when {
+                loading -> "WAIT"
                 saved -> "SAVED"
                 limitReached -> "FULL"
                 else -> "SAVE"
@@ -2187,6 +2346,7 @@ private fun ChallengeSetupCard(
     reduceMotion: Boolean,
     setupSaved: Boolean,
     collectionLimitReached: Boolean,
+    collectionLoading: Boolean,
     onSaveSetup: () -> Unit,
     onDifficultySelected: (Difficulty) -> Unit,
     onQuestionCountSelected: (Int) -> Unit,
@@ -2260,6 +2420,7 @@ private fun ChallengeSetupCard(
             SaveSetupButton(
                 saved = setupSaved,
                 limitReached = collectionLimitReached,
+                loading = collectionLoading,
                 onClick = onSaveSetup,
             )
         }
@@ -2716,6 +2877,7 @@ private fun GenerateButton(
     label: String,
     sparkleStyle: String,
     portalEnabled: Boolean,
+    enabled: Boolean = true,
     onLaunchPortal: (QuizLaunchOrigin, String, () -> Unit) -> Unit,
     onClick: () -> Unit,
 ) {
@@ -2814,6 +2976,7 @@ private fun GenerateButton(
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
+                alpha = if (enabled) 1f else 0.72f
             }
             .shadow(
                 elevation = elevation,
@@ -2860,6 +3023,7 @@ private fun GenerateButton(
                 }
             }
             .clickable(
+                enabled = enabled,
                 interactionSource = interactionSource,
                 // The scale + brighten IS the feedback; a ripple on top would
                 // clash with the sheen.
