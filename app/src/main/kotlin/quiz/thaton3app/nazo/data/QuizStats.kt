@@ -12,6 +12,7 @@ package quiz.thaton3app.nazo.data
  *  - current / best daily streak (epoch-day based, no java.time needed)
  *  - per-difficulty play count + correct/answered (accuracy per difficulty)
  *  - per-anime answered/correct plus a bounded recent outcome window for mastery
+ *  - a bounded newest-first topic trail for personalized Home recommendations
  *  - best consecutive-correct combo completed within one recorded quiz run
  */
 data class QuizStats(
@@ -31,6 +32,8 @@ data class QuizStats(
     val animeCorrect: Map<String, Int> = emptyMap(),
     /** Last eight outcomes per topic, oldest to newest (`1` correct, `0` missed). */
     val animeRecentOutcomes: Map<String, String> = emptyMap(),
+    /** Most recently played known topics, newest first, for personalized Home actions. */
+    val recentTopics: List<String> = emptyList(),
 ) {
     fun record(
         difficulty: String,
@@ -97,6 +100,7 @@ data class QuizStats(
             animeAnswered = aAnswered,
             animeCorrect = aCorrect,
             animeRecentOutcomes = aRecent,
+            recentTopics = updateRecentTopics(recentTopics, questions.map(Question::anime)),
         )
     }
 
@@ -156,6 +160,7 @@ data class QuizStats(
             animeAnswered = aAnswered,
             animeCorrect = aCorrect,
             animeRecentOutcomes = aRecent,
+            recentTopics = updateRecentTopics(recentTopics, listOf(topic)),
         )
     }
 
@@ -191,6 +196,26 @@ data class QuizStats(
     companion object {
         private const val DAY_MS = 86_400_000L
         internal const val RECENT_TOPIC_OUTCOME_LIMIT = 8
+        internal const val RECENT_TOPIC_LIMIT = 6
+
+        private fun updateRecentTopics(
+            existing: List<String>,
+            playedTopics: List<String>,
+        ): List<String> {
+            val updated = existing.asSequence()
+                .map(String::trim)
+                .filter { it.isNotEmpty() && !it.equals("Unknown", ignoreCase = true) }
+                .distinctBy { it.lowercase() }
+                .take(RECENT_TOPIC_LIMIT)
+                .toMutableList()
+            playedTopics.forEach { rawTopic ->
+                val topic = rawTopic.trim()
+                if (topic.isEmpty() || topic.equals("Unknown", ignoreCase = true)) return@forEach
+                updated.removeAll { it.equals(topic, ignoreCase = true) }
+                updated.add(0, topic)
+            }
+            return updated.take(RECENT_TOPIC_LIMIT)
+        }
 
         private fun appendRecentOutcomes(
             existing: String,

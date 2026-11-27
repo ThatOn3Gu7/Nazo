@@ -2,6 +2,7 @@ package quiz.thaton3app.nazo.data.settings
 
 import android.content.Context
 import android.content.SharedPreferences
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import quiz.thaton3app.nazo.data.Question
@@ -115,6 +116,7 @@ internal object QuizStatsJson {
         put("animeAnswered", JSONObject(stats.animeAnswered))
         put("animeCorrect", JSONObject(stats.animeCorrect))
         put("animeRecentOutcomes", JSONObject(stats.animeRecentOutcomes))
+        put("recentTopics", JSONArray(stats.recentTopics))
     }.toString()
 
     fun decode(json: String): QuizStats {
@@ -136,6 +138,7 @@ internal object QuizStatsJson {
             animeAnswered = intMap(o, "animeAnswered"),
             animeCorrect = intMap(o, "animeCorrect"),
             animeRecentOutcomes = stringMap(o, "animeRecentOutcomes"),
+            recentTopics = stringList(o, "recentTopics"),
         )
         validate(stats)
         return stats
@@ -198,6 +201,18 @@ internal object QuizStatsJson {
         return result
     }
 
+    private fun stringList(o: JSONObject, key: String): List<String> {
+        if (!o.has(key)) return emptyList()
+        val array = o.get(key) as? JSONArray
+            ?: throw IllegalArgumentException("Quiz statistics field '$key' must be an array")
+        return List(array.length()) { index ->
+            array.get(index) as? String
+                ?: throw IllegalArgumentException(
+                    "Quiz statistics field '$key[$index]' must be a string"
+                )
+        }
+    }
+
     private fun validate(stats: QuizStats) {
         val scalarCounts = listOf(
             stats.totalQuizzes,
@@ -255,6 +270,13 @@ internal object QuizStatsJson {
                 outcomes.count { it == '0' } <= answered - correct
         }) {
             "Anime recent outcomes are invalid"
+        }
+        require(
+            stats.recentTopics.size <= QuizStats.RECENT_TOPIC_LIMIT &&
+                stats.recentTopics.all { it.isNotBlank() && it.length <= 1_000 } &&
+                stats.recentTopics.map { it.lowercase() }.distinct().size == stats.recentTopics.size
+        ) {
+            "Recent topics are invalid"
         }
     }
 

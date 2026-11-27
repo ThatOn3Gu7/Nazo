@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -93,7 +94,7 @@ import kotlin.math.sin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.R
-import quiz.thaton3app.nazo.daily.DailyChallengeCard
+import quiz.thaton3app.nazo.daily.DailyChallenge
 import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
@@ -117,6 +118,8 @@ import quiz.thaton3app.nazo.ui.components.SPARKLE_TWINKLE
 import quiz.thaton3app.nazo.ui.components.drawMeteorShower
 import quiz.thaton3app.nazo.ui.components.drawTwinklingStars
 import quiz.thaton3app.nazo.ui.components.isLandscape
+import quiz.thaton3app.nazo.ui.home.HomeFocusAction
+import quiz.thaton3app.nazo.ui.home.PersonalizedHomeFocus
 import quiz.thaton3app.nazo.ui.mode.NazoMode
 import quiz.thaton3app.nazo.ui.mode.modeIdentitySpec
 import quiz.thaton3app.nazo.ui.theme.*
@@ -137,8 +140,13 @@ internal fun homeCountControls(mode: NazoMode): HomeCountControls = when (mode) 
     NazoMode.SURVIVAL, NazoMode.BLITZ -> HomeCountControls.None
 }
 
-internal fun homePracticeVisible(mode: NazoMode, practiceCount: Int): Boolean =
-    mode == NazoMode.QUIZ && practiceCount > 0
+internal fun homePracticeVisible(
+    mode: NazoMode,
+    practiceCount: Int,
+    focusAction: HomeFocusAction? = null,
+): Boolean = mode == NazoMode.QUIZ &&
+    practiceCount > 0 &&
+    focusAction != HomeFocusAction.Practice
 
 internal fun adaptiveDifficultyAvailable(mode: NazoMode): Boolean = mode == NazoMode.QUIZ
 
@@ -298,6 +306,11 @@ fun HomeScreen(
     dailyCompleted: Boolean = false,
     dailyScore: Int = 0,
     dailyBonus: Int = 0,
+    personalizedFocus: PersonalizedHomeFocus = PersonalizedHomeFocus(
+        action = HomeFocusAction.Daily,
+        title = "Climb today's Daily Ladder",
+        reason = "Five questions with bonus XP.",
+    ),
     onPlayDaily: () -> Unit = {},
     streakDays: Int = 0,
     bestStreakDays: Int = 0,
@@ -331,7 +344,7 @@ fun HomeScreen(
     }
     var showProviderSheet by remember { mutableStateOf(false) }
     var showModeSheet by remember { mutableStateOf(false) }
-    var dailyPortalOrigin by remember { mutableStateOf<QuizLaunchOrigin?>(null) }
+    var focusPortalOrigin by remember { mutableStateOf<QuizLaunchOrigin?>(null) }
     var practicePortalOrigin by remember { mutableStateOf<QuizLaunchOrigin?>(null) }
 
     fun launchReadyChallenge(
@@ -340,6 +353,46 @@ fun HomeScreen(
         launch: () -> Unit,
     ) {
         if (origin == null) launch() else onLaunchPortal(origin, label, launch)
+    }
+
+    fun launchDailyFromFocus() {
+        if (collectionLoadProgress != null || dailyCompleted) return
+        launchReadyChallenge(
+            origin = focusPortalOrigin,
+            label = "Play Daily Ladder",
+            launch = onPlayDaily,
+        )
+    }
+
+    fun launchPersonalizedFocus() {
+        if (collectionLoadProgress != null) return
+        when (personalizedFocus.action) {
+            HomeFocusAction.Daily -> launchDailyFromFocus()
+            HomeFocusAction.Practice -> launchReadyChallenge(
+                origin = focusPortalOrigin,
+                label = "Practice your misses",
+                launch = onStartPractice,
+            )
+            HomeFocusAction.TopicQuiz -> {
+                val focusDifficulty = Difficulty.entries.firstOrNull {
+                    it.label.equals(personalizedFocus.difficulty, ignoreCase = true)
+                } ?: Difficulty.ADAPTIVE
+                onModeChange(NazoMode.QUIZ.name)
+                onTopicChange(personalizedFocus.topic)
+                onDifficultyChange(focusDifficulty.name)
+                onQuestionCountChange(personalizedFocus.questionCount)
+                launchReadyChallenge(
+                    origin = focusPortalOrigin.takeIf { offline },
+                    label = personalizedFocus.title,
+                ) {
+                    onStartQuiz(
+                        personalizedFocus.topic,
+                        focusDifficulty.label,
+                        personalizedFocus.questionCount,
+                    )
+                }
+            }
+        }
     }
 
     fun applyCollection(collection: QuizCollection) {
@@ -474,19 +527,17 @@ fun HomeScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        DailyChallengeCard(
-            completed = dailyCompleted,
-            lastScore = dailyScore,
-            lastBonus = dailyBonus,
-            onPlay = {
-                launchReadyChallenge(
-                    origin = dailyPortalOrigin,
-                    label = "Play Daily Ladder",
-                    launch = onPlayDaily,
-                )
-            },
+        PersonalizedHomeFocusCard(
+            focus = personalizedFocus,
+            dailyCompleted = dailyCompleted,
+            dailyScore = dailyScore,
+            dailyBonus = dailyBonus,
+            enabled = collectionLoadProgress == null,
+            motionAllowed = !reduceMotion,
+            onPrimaryClick = ::launchPersonalizedFocus,
+            onDailyClick = ::launchDailyFromFocus,
             modifier = Modifier.onGloballyPositioned { coordinates ->
-                dailyPortalOrigin = QuizLaunchOrigin.from(coordinates.boundsInRoot())
+                focusPortalOrigin = QuizLaunchOrigin.from(coordinates.boundsInRoot())
             },
         )
 
@@ -603,7 +654,11 @@ fun HomeScreen(
         )
 
         AnimatedVisibility(
-            visible = homePracticeVisible(nazoMode, practiceCount),
+            visible = homePracticeVisible(
+                mode = nazoMode,
+                practiceCount = practiceCount,
+                focusAction = personalizedFocus.action,
+            ),
             enter = if (reduceMotion) {
                 fadeIn(tween(90))
             } else {
@@ -2796,6 +2851,201 @@ private fun ChallengeCountOption(
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
         )
+    }
+}
+
+/**
+ * One stable Home slot for the recommendation policy. Daily stays one tap away
+ * when another action wins, avoiding another full-height section on long Home.
+ */
+@Composable
+private fun PersonalizedHomeFocusCard(
+    focus: PersonalizedHomeFocus,
+    dailyCompleted: Boolean,
+    dailyScore: Int,
+    dailyBonus: Int,
+    enabled: Boolean,
+    motionAllowed: Boolean,
+    onPrimaryClick: () -> Unit,
+    onDailyClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 22.dp,
+        pressedCorner = 11.dp,
+        enabled = enabled,
+    )
+    val accent = when (focus.action) {
+        HomeFocusAction.Daily -> NazoPrimary
+        HomeFocusAction.Practice -> MaterialTheme.colorScheme.tertiary
+        HomeFocusAction.TopicQuiz -> NazoPrimary
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                Brush.horizontalGradient(
+                    listOf(accent.copy(alpha = 0.18f), NazoSurface),
+                ),
+                shape,
+            )
+            .border(1.dp, accent.copy(alpha = 0.34f), shape)
+            .clickable(
+                enabled = enabled,
+                interactionSource = interactionSource,
+                indication = indication,
+            ) {
+                Haptics.light(context)
+                onPrimaryClick()
+            }
+            .animateContentSize(tween(if (motionAllowed) 260 else 1))
+            .padding(16.dp),
+    ) {
+        AnimatedContent(
+            targetState = focus,
+            transitionSpec = {
+                if (!motionAllowed) {
+                    fadeIn(tween(1)) togetherWith fadeOut(tween(1))
+                } else {
+                    (fadeIn(tween(180)) + slideInVertically(tween(240)) { it / 5 })
+                        .togetherWith(fadeOut(tween(130)) + slideOutVertically(tween(200)) { -it / 6 })
+                        .using(SizeTransform(clip = false))
+                }
+            },
+            label = "personalizedHomeFocus",
+        ) { recommendation ->
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(accent.copy(alpha = 0.18f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = when (recommendation.action) {
+                                HomeFocusAction.Daily -> Icons.Filled.Bolt
+                                HomeFocusAction.Practice -> Icons.Filled.School
+                                HomeFocusAction.TopicQuiz -> Icons.Filled.AutoAwesome
+                            },
+                            contentDescription = null,
+                            tint = accent,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = "NEXT FOR YOU",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = accent,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 1.1.sp,
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = recommendation.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = NazoTextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = recommendation.reason,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NazoTextSecondary,
+                            maxLines = 2,
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(accent.copy(alpha = 0.18f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.ArrowForward,
+                            contentDescription = when (recommendation.action) {
+                                HomeFocusAction.Daily -> "Play daily ladder"
+                                HomeFocusAction.Practice -> "Practice missed questions"
+                                HomeFocusAction.TopicQuiz -> "Start recommended quiz"
+                            },
+                            tint = accent,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(50.dp),
+                        color = accent.copy(alpha = 0.12f),
+                    ) {
+                        Text(
+                            text = when (recommendation.action) {
+                                HomeFocusAction.Daily -> "WARM-UP → CLIMB → SUMMIT"
+                                HomeFocusAction.Practice -> "OFFLINE PRACTICE"
+                                HomeFocusAction.TopicQuiz ->
+                                    "${recommendation.difficulty.uppercase()} · ${recommendation.questionCount} Q"
+                            },
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = accent,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    if (recommendation.action != HomeFocusAction.Daily) {
+                        val dailyInteraction = remember { MutableInteractionSource() }
+                        Surface(
+                            shape = RoundedCornerShape(50.dp),
+                            color = if (dailyCompleted) {
+                                NazoSuccess.copy(alpha = 0.12f)
+                            } else {
+                                NazoPrimary.copy(alpha = 0.12f)
+                            },
+                            modifier = Modifier.clickable(
+                                enabled = enabled && !dailyCompleted,
+                                interactionSource = dailyInteraction,
+                                indication = LocalIndication.current,
+                            ) {
+                                Haptics.light(context)
+                                onDailyClick()
+                            },
+                        ) {
+                            Text(
+                                text = if (dailyCompleted) {
+                                    "✓ Daily $dailyScore/${DailyChallenge.QUESTION_COUNT} · +$dailyBonus XP"
+                                } else {
+                                    "Daily ready"
+                                },
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (dailyCompleted) NazoSuccess else NazoPrimary,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

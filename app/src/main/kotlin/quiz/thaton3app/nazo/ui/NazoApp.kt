@@ -147,6 +147,7 @@ import quiz.thaton3app.nazo.ui.components.StartupMode
 import quiz.thaton3app.nazo.ui.components.WhatsNewSheet
 import quiz.thaton3app.nazo.ui.components.WhatsNewStore
 import quiz.thaton3app.nazo.ui.components.isLandscape
+import quiz.thaton3app.nazo.ui.home.personalizedHomeFocus
 import quiz.thaton3app.nazo.ui.launch.IntroOverlay
 import quiz.thaton3app.nazo.ui.mode.NazoMode
 import quiz.thaton3app.nazo.ui.onboarding.OnboardingPrefs
@@ -2566,6 +2567,11 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         dailyCompleted = dailyStore.isCompletedToday(),
                         dailyScore = dailyStore.lastScore(),
                         dailyBonus = dailyStore.lastBonus(),
+                        personalizedFocus = personalizedHomeFocus(
+                            stats = quizStats,
+                            dailyCompleted = dailyStore.isCompletedToday(),
+                            practiceCount = missedCount,
+                        ),
                         onPlayDaily = { startDailyChallenge() },
                         streakDays = quizStats.currentStreakDays,
                         bestStreakDays = quizStats.bestStreakDays,

@@ -27,6 +27,7 @@ then archived below; there should be no per-version release-note files.
 - **Added** — Home can now save up to eight favorite challenge collections across Quiz, Guessing, Survival, Blitz, and Versus, restore every meaningful setup field with one tap, remove outdated entries, deduplicate repeated saves, and carry the collection through backup and restore.
 - **Improved** — Collection cards now enter, rearrange, and leave without abrupt layout jumps, while loading one visibly applies its mode, progressively types its topic, then selects difficulty and length instead of changing the entire setup in one frame.
 - **Added** — Standard finite Quiz runs now reserve an elevated final Boss question, introduce it with a distinct finale state, and award a durable +20 XP clear bonus without inflating accuracy, records, question totals, or special-mode scoring; generated, cached, local, Adaptive, restored, and backed-up progression paths preserve the same contract.
+- **Added** — Home now surfaces one personalized “Next for you” action: protect a live streak with the Daily Ladder, retry outstanding misses, strengthen a recently weak topic, or continue a recent topic through a prepared five-question Adaptive run. Daily status remains one tap away when another action takes priority, duplicate practice actions collapse, and the existing Home length does not gain another full section.
 
 ## Release archive
 

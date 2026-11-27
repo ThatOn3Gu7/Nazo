@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import quiz.thaton3app.nazo.data.settings.QuizCollection
+import quiz.thaton3app.nazo.ui.home.HomeFocusAction
 import quiz.thaton3app.nazo.ui.mode.NazoMode
 
 /** Contracts for the mode-dependent groups whose visibility animates on Home. */
@@ -42,6 +43,13 @@ class HomeModeControlsTest {
     @Test
     fun practiceBelongsOnlyToQuizWhenTheDeckIsNotEmpty() {
         assertTrue(homePracticeVisible(NazoMode.QUIZ, practiceCount = 1))
+        assertFalse(
+            homePracticeVisible(
+                NazoMode.QUIZ,
+                practiceCount = 1,
+                focusAction = HomeFocusAction.Practice,
+            )
+        )
         assertFalse(homePracticeVisible(NazoMode.QUIZ, practiceCount = 0))
         NazoMode.entries.filterNot { it == NazoMode.QUIZ }.forEach { mode ->
             assertFalse(homePracticeVisible(mode, practiceCount = 12))

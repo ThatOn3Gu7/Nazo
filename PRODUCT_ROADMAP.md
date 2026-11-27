@@ -21,6 +21,7 @@ Build these in order because they form one clear journey from launch to learning
 - **#7 Adaptive difficulty** — tune upcoming questions from accuracy, pace, hints, recent misses, and topic mastery. **Implemented.**
 - **#8 Quiz collections** — save and quickly restore favorite topic, mode, difficulty, and length combinations. **Implemented.**
 - **#9 Boss question** — end selected finite runs with a higher-value question that feels like a finale. **Implemented.**
+- **#10 Personalized Home focus** — surface the best next action from streaks, misses, and recent topics. **Implemented.**
 
 ---
 
@@ -35,7 +36,7 @@ Build these in order because they form one clear journey from launch to learning
 7. **Adaptive difficulty** — **P1 · L** — Adjust upcoming questions from accuracy, speed, hints, and recent misses.
 8. **Quiz collections** — **P1 · M** — Let players save favorite topic, mode, difficulty, and length combinations. **Implemented.**
 9. **Boss question** — **P1 · M** — End selected runs with a higher-value question that feels like a finale. **Implemented.**
-10. **Personalized Home focus** — **P1 · M** — Surface the best next action from streaks, misses, and recent topics.
+10. **Personalized Home focus** — **P1 · M** — Surface the best next action from streaks, misses, and recent topics. **Implemented.**
 11. **Streak protection token** — **P2 · M** — Earn limited protection through play rather than notifications or payment.
 12. **Shareable result card** — **P1 · M** — Export a polished result image without exposing personal data.
 13. **Friendly rival ghost** — **P2 · L** — Race a saved score-and-time profile without requiring live multiplayer.

@@ -340,6 +340,7 @@ class BackupRestoreTest {
         assertEquals(12, restored.totalCorrect)
         assertEquals(0, restored.bestCorrectCombo)
         assertTrue(restored.animeRecentOutcomes.isEmpty())
+        assertTrue(restored.recentTopics.isEmpty())
     }
 
     @Test
@@ -353,6 +354,8 @@ class BackupRestoreTest {
             """{"difficultyAnswered":{"Easy":"many"}}""",
             """{"animeAnswered":{"Naruto":1.5}}""",
             """{"totalQuestionsAnswered":1,"animeAnswered":{"Naruto":1},"animeRecentOutcomes":{"Naruto":"12"}}""",
+            """{"recentTopics":["Naruto","naruto"]}""",
+            """{"recentTopics":"Naruto"}""",
         )
 
         corruptValues.forEach { corrupt ->
@@ -423,6 +426,7 @@ class BackupRestoreTest {
             animeAnswered = mapOf("Naruto" to 4),
             animeCorrect = mapOf("Naruto" to 3),
             animeRecentOutcomes = mapOf("Naruto" to "1011"),
+            recentTopics = listOf("Naruto", "Bleach"),
         )
         QuizStatsStore(source).save(fixture)
         val statsJson = source.getString("quiz_stats_v1", null)!!
