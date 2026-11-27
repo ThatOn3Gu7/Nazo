@@ -12,7 +12,7 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * The available sound-effect voices (Settings → Feedback → Sound style).
+ * The available sound-effect voices (Settings → Accessibility studio → Sound style).
  *
  * Every effect in [Sounds] is synthesised from the same note sequences, so a
  * theme changes only the TIMBRE — the waveform, how fast the note decays, how
@@ -57,7 +57,7 @@ internal fun shouldPlaySound(soundEnabled: Boolean, isPreview: Boolean): Boolean
     soundEnabled || isPreview
 
 /**
- * Sound effects (Phase 7) — OPT-IN, off by default (Settings → Feedback).
+ * Sound effects (Phase 7) — OPT-IN, off by default (Settings → Accessibility studio).
  *
  * Mirrors the Haptics API shape: normal fire-and-forget calls no-op unless the
  * user enabled sounds. The Sound style picker is the deliberate exception: its

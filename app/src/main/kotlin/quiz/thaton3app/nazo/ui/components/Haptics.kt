@@ -8,6 +8,7 @@ import android.os.VibratorManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import quiz.thaton3app.nazo.data.settings.AccessibilityPreferences
 
 /**
  * Amplitude-based haptics. We use the platform [Vibrator] (not Compose's
@@ -20,7 +21,15 @@ import androidx.compose.ui.platform.LocalContext
  */
 object Haptics {
 
+    fun isEnabled(context: Context): Boolean =
+        AccessibilityPreferences(context).hapticsEnabled
+
+    fun setEnabled(context: Context, enabled: Boolean) {
+        AccessibilityPreferences(context).hapticsEnabled = enabled
+    }
+
     private fun vibrator(context: Context): Vibrator? {
+        if (!isEnabled(context)) return null
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator
         } else {

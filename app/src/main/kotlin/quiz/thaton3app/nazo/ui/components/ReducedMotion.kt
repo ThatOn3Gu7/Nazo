@@ -8,26 +8,26 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 
+/** App-level override supplied by [quiz.thaton3app.nazo.ui.theme.NazoTheme]. */
+internal val LocalNazoReduceMotion = staticCompositionLocalOf { false }
+
+/** System Remove animations OR the in-app Accessibility Studio preference. */
+@Composable
+fun rememberSystemReduceMotion(): Boolean =
+    LocalNazoReduceMotion.current || rememberSystemAnimationsDisabled()
+
 /**
- * True while the system's "Remove animations" accessibility setting is on.
- *
- * Reads `Settings.Global.ANIMATOR_DURATION_SCALE` — the framework knob that
- * every animation setting ultimately honours (0 = animations removed). No new
- * dependencies: it is a plain content-resolver read.
- *
- * The value is re-checked on every resume, so turning the setting on in system
- * settings is picked up when the user comes back to the app instead of
- * requiring a restart. Decorative motion (the ambient background, celebration
- * confetti) consults this and stands down; functional transitions — navigation,
- * dialogs, progress — keep running so the app remains operable.
+ * Reads only Android's animation scale; the app root combines it with its preference.
+ * The value is checked again on resume so a system Settings change needs no restart.
  */
 @Composable
-fun rememberSystemReduceMotion(): Boolean {
+internal fun rememberSystemAnimationsDisabled(): Boolean {
     val context = LocalContext.current
     var disabled by remember { mutableStateOf(animationsDisabled(context)) }
     val lifecycleOwner = LocalLifecycleOwner.current

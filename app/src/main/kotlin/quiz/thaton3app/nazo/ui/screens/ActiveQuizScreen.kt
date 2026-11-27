@@ -80,6 +80,8 @@ import quiz.thaton3app.nazo.daily.DailyLadder
 import quiz.thaton3app.nazo.daily.DailyLadderRail
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.QuizEngine
+import quiz.thaton3app.nazo.data.settings.AccessibilityPolicy
+import quiz.thaton3app.nazo.data.settings.TimerAssist
 import quiz.thaton3app.nazo.hints.HintEngine
 import quiz.thaton3app.nazo.hints.HintPill
 import quiz.thaton3app.nazo.hints.HintRevealPill
@@ -376,6 +378,7 @@ internal fun ActiveQuizScreen(
     quizStartedAtMs: Long = 0L,
     quizElapsedBaseMs: Long = 0L,
     difficulty: String = "Medium",
+    timerAssist: TimerAssist = TimerAssist.STANDARD,
     adaptive: Boolean = false,
     adaptiveNextDifficulty: String = "Medium",
     adaptiveMessage: String = "",
@@ -393,6 +396,7 @@ internal fun ActiveQuizScreen(
     // Blitz mode: one GLOBAL deadline replaces the per-question countdown;
     // answers auto-advance and the run ends via [onBlitzTimeUp].
     blitzDeadlineMs: Long? = null,
+    blitzDurationMs: Long = 60_000L,
     onBlitzTimeUp: () -> Unit = {},
     // Survival: fired the moment a wrong answer (or a timeout) is GRADED —
     // before the player advances — so the lost heart is redacted immediately
@@ -448,14 +452,18 @@ internal fun ActiveQuizScreen(
         blitz = isBlitz,
         playerLabel = playerLabel,
     )
-    val secondsPerQuestion = QuizEngine.specFor(difficulty).secondsPerQuestion
+    val secondsPerQuestion = AccessibilityPolicy.seconds(
+        QuizEngine.specFor(difficulty).secondsPerQuestion,
+        timerAssist,
+    )
+    val blitzDurationSeconds = ((blitzDurationMs + 999L) / 1_000L).coerceAtLeast(1L)
     // Blitz's first frame should already read as the global 60-second sprint;
     // the monotonic deadline effect below remains the authoritative clock.
     var remainingSeconds by remember {
         val deadline = if (isBlitz) blitzDeadlineMs ?: 0L else questionDeadlineMs
         mutableIntStateOf(
             ((deadline - SystemClock.elapsedRealtime() + 999L) / 1_000L)
-                .coerceIn(0L, if (isBlitz) 60L else secondsPerQuestion.toLong())
+                .coerceIn(0L, if (isBlitz) blitzDurationSeconds else secondsPerQuestion.toLong())
                 .toInt()
         )
     }
@@ -894,9 +902,7 @@ internal fun ActiveQuizScreen(
                 // Blitz has no question fraction but it does have one global
                 // clock — show THAT as the bar so the run's remaining time is
                 // readable at a glance, not only as a digit in the corner.
-                val blitzTotalMs = remember(blitzDeadlineMs) {
-                    ((blitzDeadlineMs ?: 0L) - SystemClock.elapsedRealtime()).coerceAtLeast(1_000L)
-                }
+                val blitzTotalMs = blitzDurationMs.coerceAtLeast(1_000L)
                 PremiumQuizProgress(
                     progress = (remainingSeconds * 1000f / blitzTotalMs).coerceIn(0f, 1f),
                     color = if (remainingSeconds <= 10) NazoError else NazoPrimary,

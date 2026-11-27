@@ -134,6 +134,33 @@ class BackupRestoreTest {
     }
 
     @Test
+    fun accessibilityAssistsRoundTripThroughPortableBackupData() {
+        val parsed = BackupRepository.parseAndValidate(
+            bundle(
+                stores = mapOf(
+                    AccessibilityPreferences.PREFS_NAME to mapOf(
+                        AccessibilityPreferences.KEY_REDUCE_MOTION to tag("bool", true),
+                        AccessibilityPreferences.KEY_HIGH_CONTRAST to tag("bool", true),
+                        AccessibilityPreferences.KEY_TEXT_SCALE to tag("string", "extra_large"),
+                        AccessibilityPreferences.KEY_TIMER_ASSIST to tag("string", "relaxed"),
+                        AccessibilityPreferences.KEY_HAPTICS to tag("bool", false),
+                    ),
+                ),
+            ),
+        )
+        val target = FakeSharedPreferences()
+
+        BackupRepository.applyValidated({ target }, parsed.stores)
+
+        val restored = AccessibilityPreferences(target)
+        assertTrue(restored.reduceMotion)
+        assertTrue(restored.highContrast)
+        assertEquals(AccessibilityTextScale.EXTRA_LARGE, restored.textScale)
+        assertEquals(TimerAssist.RELAXED, restored.timerAssist)
+        assertFalse(restored.hapticsEnabled)
+    }
+
+    @Test
     fun friendlyRivalsRoundTripThroughPortableBackupData() {
         val source = FakeSharedPreferences()
         val saved = RivalGhostStore(source) { 1_000L }.submit(

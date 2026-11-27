@@ -60,6 +60,7 @@ object BackupRepository {
     internal val STORES = listOf(
         "nazo_stats",
         "nazo_theme",
+        AccessibilityPreferences.PREFS_NAME,
         "nazo_profile",
         "nazo_provider_models",
         // nazo_secure is intentionally not portable: its ciphertext can only
@@ -108,11 +109,13 @@ object BackupRepository {
     private fun labelFor(store: String): Pair<String, String> = when (store) {
         "nazo_stats" -> "Quiz statistics" to "Quizzes played, accuracy and totals"
         "nazo_theme" -> "Appearance" to "Theme, accent colour and icon"
+        AccessibilityPreferences.PREFS_NAME -> "Accessibility" to
+            "Motion, contrast, text size, timer and haptic assists"
         "nazo_profile" -> "Profile" to "Username and avatar"
         "nazo_provider_models" -> "AI providers" to "Selected provider and models"
         "nazo_records" -> "Personal records" to "Best scores and streaks"
         "nazo_daily" -> "Daily challenge" to "Streak days and daily bonus state"
-        "nazo_sound" -> "Sound & haptics" to "Audio and vibration preferences"
+        "nazo_sound" -> "Sound" to "Audio cue and sound-style preferences"
         "nazo_reminders" -> "Reminders" to "Scheduled practice notifications"
         "nazo_qhistory" -> "Question history" to "Anti-repeat memory of seen questions"
         "nazo_missed" -> "Practice deck" to "Questions you answered incorrectly"

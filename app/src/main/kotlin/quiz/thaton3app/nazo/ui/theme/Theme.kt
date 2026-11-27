@@ -27,12 +27,14 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import quiz.thaton3app.nazo.ui.components.LocalNazoReduceMotion
 
 // Theme now reacts to the user's Appearance-screen choices: a real dark "deep forest"
 // theme, plus a selectable accent that applies a full palette. Dynamic color (Material You)
@@ -90,11 +92,13 @@ fun NazoTheme(
     accentId: String,
     themeMode: String = if (darkTheme) "dark" else "light",
     reduceMotion: Boolean = false,
+    highContrast: Boolean = false,
+    textScaleMultiplier: Float = 1f,
     content: @Composable () -> Unit,
 ) {
     val view = LocalView.current
     val window = if (!view.isInEditMode) (view.context as? Activity)?.window else null
-    val targetPalette = resolveAccent(accentId, darkTheme)
+    val targetPalette = resolveAccent(accentId, darkTheme, highContrast)
     val themeFrame = rememberNazoThemeTransition(
         targetPalette = targetPalette,
         targetDark = darkTheme,
@@ -199,11 +203,20 @@ fun NazoTheme(
         }
     }
 
+    val scaledDensity = remember(density.density, density.fontScale, textScaleMultiplier) {
+        Density(
+            density = density.density,
+            fontScale = density.fontScale * textScaleMultiplier.coerceIn(1f, 1.5f),
+        )
+    }
+
     MaterialTheme(
         colorScheme = colorScheme,
         typography = NazoTypography,
     ) {
         CompositionLocalProvider(
+            LocalDensity provides scaledDensity,
+            LocalNazoReduceMotion provides reduceMotion,
             LocalNazoThemeVisualState provides NazoThemeVisualState(
                 darkTheme = themeFrame.darkScheme,
                 themeMode = themeFrame.themeMode,

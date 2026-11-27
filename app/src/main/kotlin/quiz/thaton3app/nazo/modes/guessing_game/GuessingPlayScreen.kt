@@ -102,6 +102,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import quiz.thaton3app.nazo.data.settings.AccessibilityPolicy
+import quiz.thaton3app.nazo.data.settings.TimerAssist
 import quiz.thaton3app.nazo.hints.HintEngine
 import quiz.thaton3app.nazo.hints.HintPill
 import quiz.thaton3app.nazo.hints.HintRevealPill
@@ -147,6 +149,7 @@ internal fun GuessingPlayScreen(
     score: Int,
     phase: GuessPhase,
     roundResult: GuessRoundResult?,
+    timerAssist: TimerAssist = TimerAssist.STANDARD,
     revealStyle: String = "pixel",
     // Appearance → Guessing Game: retained for the future crop path.
     autoCrop: Boolean = true,
@@ -159,7 +162,10 @@ internal fun GuessingPlayScreen(
     onNextRound: (GuessProgressionTicket) -> Unit,
 ) {
     val context = LocalContext.current
-    val durationMs = GuessScoring.durationMsFor(difficultyLabel)
+    val durationMs = AccessibilityPolicy.millis(
+        GuessScoring.durationMsFor(difficultyLabel),
+        timerAssist,
+    )
     val startFraction = GuessScoring.specFor(difficultyLabel).startEffectFraction
 
     val payload: GuessPayload? = (phase as? GuessPhase.Playing)?.payload

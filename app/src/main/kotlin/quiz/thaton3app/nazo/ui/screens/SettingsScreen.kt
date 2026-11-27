@@ -4,14 +4,8 @@ import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.BuildConfig
 import quiz.thaton3app.nazo.ui.components.rememberHapticBack
 import quiz.thaton3app.nazo.ui.components.Haptics
-import quiz.thaton3app.nazo.ui.components.NazoModalSheet
-import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
-import quiz.thaton3app.nazo.ui.components.NazoSheetHeader
 import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
-import quiz.thaton3app.nazo.ui.components.rememberRetained
-import quiz.thaton3app.nazo.sound.SoundTheme
-import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.theme.*
 
 import android.Manifest
@@ -33,14 +27,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,11 +42,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 
-// No backend wiring yet — the on*Click callbacks are no-ops until each destination
-// screen exists, per the incremental build plan.
-// OptIn: rememberModalBottomSheetState for the Sound style chooser, the same
-// Material 3 sheet API the Appearance screen already uses.
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     scrollState: ScrollState = rememberScrollState(),
@@ -65,21 +50,14 @@ fun SettingsScreen(
     onOpenAiProvider: () -> Unit = {},
     onOpenStatistics: () -> Unit = {},
     onOpenAppearance: () -> Unit = {},
+    onOpenAccessibility: () -> Unit = {},
     onOpenBackupRestore: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
     forceOffline: Boolean = false,
     onForceOfflineChange: (Boolean) -> Unit = {},
-    soundEnabled: Boolean = false,
-    onSoundEnabledChange: (Boolean) -> Unit = {},
-    soundTheme: SoundTheme = SoundTheme.DEFAULT,
-    onSoundThemeChange: (SoundTheme) -> Unit = {},
     remindersEnabled: Boolean = false,
     onRemindersEnabledChange: (Boolean) -> Unit = {},
 ) {
-    // Retained so the chooser survives a rotation like every other sheet.
-    var showSoundStyleSheet by rememberRetained("Settings.showSoundStyleSheet") { false }
-    val soundSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
     // Box (not Column) so the content can scroll UNDER the bottom nav, which is
     // drawn by NazoApp on top of this screen. The bottom padding below reserves
     // room for it so the last row is always reachable.
@@ -136,7 +114,7 @@ fun SettingsScreen(
             
             Spacer(Modifier.height(24.dp))
             
-            SectionLabel("FEEDBACK")
+            SectionLabel("REMINDERS")
             Spacer(Modifier.height(8.dp))
             // Enabling the daily reminder needs POST_NOTIFICATIONS on Android 13+.
             // The toggle turns on either way; the worker independently re-checks the
@@ -146,24 +124,6 @@ fun SettingsScreen(
                 ActivityResultContracts.RequestPermission()
             ) { /* result handled implicitly — the worker checks before posting */ }
             SettingsCard {
-                SettingsSwitchRow(
-                    icon = Icons.AutoMirrored.Filled.VolumeUp,
-                    title = "Sound effects",
-                    subtitle = "Soft chimes for answers, results and new records",
-                    checked = soundEnabled,
-                    onCheckedChange = onSoundEnabledChange,
-                )
-                RowDivider()
-                // Same SettingsRow component as every other "opens a chooser"
-                // row, so the card keeps its existing look; the subtitle just
-                // reports the current choice the way Appearance rows do.
-                SettingsRow(
-                    icon = Icons.Filled.MusicNote,
-                    title = "Sound style",
-                    subtitle = "${soundTheme.label} — ${soundTheme.blurb}",
-                    onClick = { showSoundStyleSheet = true },
-                )
-                RowDivider()
                 SettingsSwitchRow(
                     icon = Icons.Filled.Notifications,
                     title = "Daily reminder",
@@ -202,6 +162,13 @@ fun SettingsScreen(
                 )
                 RowDivider()
                 SettingsRow(
+                    icon = Icons.Filled.AccessibilityNew,
+                    title = "Accessibility studio",
+                    subtitle = "Motion, contrast, text, timers, haptics, and sound",
+                    onClick = onOpenAccessibility,
+                )
+                RowDivider()
+                SettingsRow(
                     icon = Icons.Filled.Backup,
                     title = "Backup & Restore",
                     subtitle = "Export or import your quiz history and custom settings",
@@ -226,113 +193,6 @@ fun SettingsScreen(
         }
     }
 
-    // Same NazoModalSheet + option-card pattern Appearance already uses for
-    // "pick a style", so this introduces no new design language.
-    if (showSoundStyleSheet) {
-        val sheetContext = LocalContext.current
-        NazoModalSheet(
-            onDismissRequest = { showSoundStyleSheet = false },
-            sheetState = soundSheetState,
-        ) {
-            NazoSheetColumn {
-                NazoSheetHeader(
-                    icon = Icons.Filled.MusicNote,
-                    title = "Sound style",
-                    subtitle = if (soundEnabled) {
-                        "Tap a style to hear it. It applies to every sound in the app."
-                    } else {
-                        "Tap a style to preview it. Sound effects stay off everywhere else."
-                    },
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-
-                SoundTheme.values().forEach { theme ->
-                    SoundStyleOptionCard(
-                        theme = theme,
-                        selected = soundTheme == theme,
-                        onClick = {
-                            Haptics.soft(sheetContext)
-                            // Persist first, then audition, so the preview is
-                            // the voice that was just selected.
-                            onSoundThemeChange(theme)
-                            Sounds.preview(sheetContext, theme)
-                        },
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                }
-                Spacer(modifier = Modifier.height(6.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun SoundStyleOptionCard(
-    theme: SoundTheme,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val indication = LocalIndication.current
-    val shape = rememberNazoRoundedCornerMorphShape(
-        interactionSource = interactionSource,
-        restingCorner = 18.dp,
-        pressedCorner = 9.dp,
-    )
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(NazoSurfaceVariant, shape)
-            .border(
-                width = if (selected) 2.dp else 1.dp,
-                color = if (selected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.12f),
-                shape = shape,
-            )
-            .clickable(
-                interactionSource = interactionSource,
-                indication = indication,
-                onClick = onClick,
-            )
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = theme.label,
-                style = MaterialTheme.typography.titleMedium,
-                color = NazoTextPrimary,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = theme.blurb,
-                style = MaterialTheme.typography.bodySmall,
-                color = NazoTextSecondary,
-            )
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        Box(
-            modifier = Modifier
-                .size(22.dp)
-                .clip(CircleShape)
-                .background(if (selected) NazoPrimary else Color.Transparent)
-                .border(
-                    width = 2.dp,
-                    color = if (selected) Color.Transparent else NazoTextSecondary.copy(alpha = 0.4f),
-                    shape = CircleShape,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (selected) {
-                Icon(
-                    imageVector = Icons.Filled.Check,
-                    contentDescription = "Selected",
-                    tint = NazoOnPrimary,
-                    modifier = Modifier.size(14.dp),
-                )
-            }
-        }
-    }
 }
 
 @Composable

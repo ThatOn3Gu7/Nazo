@@ -93,6 +93,36 @@ class NazoContrastTest {
     }
 
     @Test
+    fun accessibilityStudioHighContrastUsesEnhancedWcagTargets() {
+        val failures = mutableListOf<String>()
+        for (accent in Accents) {
+            for (dark in listOf(false, true)) {
+                val name = "${accent.id}/${if (dark) "dark" else "light"}"
+                val p = resolveAccent(accent.id, dark, highContrast = true)
+                for (bg in listOf(
+                    p.background,
+                    p.surface,
+                    p.surfaceVariant,
+                    p.badge,
+                    p.pillUnselected,
+                    p.navBar,
+                    p.statsCardBg,
+                )) {
+                    assertRatio(p.textPrimary, bg, 7f, "$name high-contrast primary text", failures)
+                }
+                for (bg in listOf(p.background, p.surface, p.surfaceVariant, p.navBar, p.badge, p.pillUnselected)) {
+                    assertRatio(p.textSecondary, bg, 7f, "$name high-contrast secondary text", failures)
+                }
+                assertRatio(p.onPrimary, p.primary, 7f, "$name high-contrast button label", failures)
+                for (bg in listOf(p.background, p.surface, p.surfaceVariant, p.navBar)) {
+                    assertRatio(p.primary, bg, 4.5f, "$name high-contrast control", failures)
+                }
+            }
+        }
+        assertTrue("high-contrast failures:\n${failures.joinToString("\n")}", failures.isEmpty())
+    }
+
+    @Test
     fun controlFillsAndBordersPassThreeInEveryPalette() {
         val failures = mutableListOf<String>()
         for ((name, p) in allPalettes()) {

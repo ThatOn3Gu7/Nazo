@@ -91,6 +91,8 @@ import quiz.thaton3app.nazo.data.remote.ApiClient
 import quiz.thaton3app.nazo.data.remote.Connectivity
 import quiz.thaton3app.nazo.data.remote.ModelFallbackPolicy
 import quiz.thaton3app.nazo.data.remote.QuizCache
+import quiz.thaton3app.nazo.data.settings.AccessibilityPolicy
+import quiz.thaton3app.nazo.data.settings.AccessibilityPreferences
 import quiz.thaton3app.nazo.data.settings.ApiKeyStore
 import quiz.thaton3app.nazo.data.settings.BackupPrefs
 import quiz.thaton3app.nazo.data.settings.MissedQuestionsStore
@@ -143,6 +145,7 @@ import quiz.thaton3app.nazo.ui.components.QuizLaunchPortal
 import quiz.thaton3app.nazo.ui.components.avatarOverlayTransform
 import quiz.thaton3app.nazo.ui.components.resolveAvatarWinnerScreen
 import quiz.thaton3app.nazo.ui.components.FloatingParticlesBackground
+import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoBottomNav
 import quiz.thaton3app.nazo.ui.components.NazoRailWidth
 import quiz.thaton3app.nazo.ui.components.NazoTab
@@ -192,6 +195,7 @@ sealed interface Screen {
     data object AiProvider : Screen
     data object Statistics : Screen
     data object Appearance : Screen
+    data object Accessibility : Screen
     data object BackupRestore : Screen
     data object About : Screen
     data object Changelog : Screen
@@ -350,6 +354,7 @@ private fun Screen.asSettingsDetail(): Screen? = when (this) {
     Screen.AiProvider,
     Screen.Statistics,
     Screen.Appearance,
+    Screen.Accessibility,
     Screen.BackupRestore,
     Screen.About,
     // The About sub-screens are pushed from About, so they belong in the same
@@ -452,6 +457,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
 
     val apiKeyStore = remember { ApiKeyStore(context) }
     val themePrefs = remember { ThemePreferences(context) }
+    val accessibilityPrefs = remember { AccessibilityPreferences(context.applicationContext) }
     val statsStore = remember { QuizStatsStore(context.applicationContext) }
     var quizStats by remember { mutableStateOf(statsStore.get()) }
     val quizCollectionStore = remember { QuizCollectionStore(context.applicationContext) }
@@ -481,7 +487,14 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var isDailyQuiz by remember { mutableStateOf(restoredQuiz?.daily ?: false) }
     var lastDailyBonus by remember { mutableIntStateOf(0) }
     var lastBossBonus by remember { mutableIntStateOf(0) }
-    // Sound effects (Phase 7): opt-in, persisted in the Sounds store.
+    // Accessibility Studio: all assists are durable, local, and applied live.
+    var appReduceMotion by remember { mutableStateOf(accessibilityPrefs.reduceMotion) }
+    var highContrast by remember { mutableStateOf(accessibilityPrefs.highContrast) }
+    var accessibilityTextScale by remember { mutableStateOf(accessibilityPrefs.textScale) }
+    var timerAssist by remember { mutableStateOf(accessibilityPrefs.timerAssist) }
+    var hapticsEnabled by remember { mutableStateOf(accessibilityPrefs.hapticsEnabled) }
+    // Sound effects remain in their original store for backward compatibility,
+    // but their controls now live beside the other feedback assists.
     var soundEnabled by remember { mutableStateOf(Sounds.isEnabled(context)) }
     var soundTheme by remember { mutableStateOf(Sounds.getTheme(context)) }
     // Daily reminder notification (final polish pack): opt-in, evening-only.
@@ -951,7 +964,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     }
 
     val activity = context as? Activity
-    val reduceMotion = rememberSystemReduceMotion()
+    val systemReduceMotion = rememberSystemReduceMotion()
+    val reduceMotion = AccessibilityPolicy.reduceMotion(systemReduceMotion, appReduceMotion)
 
     // The local-bank launch cover lives above the shared navigation tree, so
     // Home and Quiz remain single live instances. AI-backed starts bypass it
@@ -1102,7 +1116,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var quizFinishedAt by remember { mutableLongStateOf(0L) }
 
     fun restartQuestionClock() {
-        val seconds = QuizEngine.specFor(activeQuestionDifficulty()).secondsPerQuestion
+        val baseSeconds = QuizEngine.specFor(activeQuestionDifficulty()).secondsPerQuestion
+        val seconds = AccessibilityPolicy.seconds(baseSeconds, timerAssist)
         questionDeadline = SystemClock.elapsedRealtime() + seconds * 1_000L
         pendingQuizAnswer = null
         pendingQuizTimeUp = false
@@ -1835,6 +1850,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         score = 0
         aiGenerated = false
         generationState = GenerationState.Idle
+        // Blitz stays a fixed competitive 60-second mode; Timer assist applies
+        // to per-question clocks and Guessing rounds instead.
         blitzDeadline = SystemClock.elapsedRealtime() + 60_000L
         quizProgressionGate.startSession()
         navigate(Screen.Quiz)
@@ -2281,7 +2298,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     fun guessRoundComplete(correct: Boolean, answerText: String?, remainingMs: Long) {
         val payload = (guessPhase as? GuessPhase.Playing)?.payload ?: return
         if (guessRoundResult != null) return // one shot per round
-        val durationMs = GuessScoring.durationMsFor(guessDifficulty)
+        val durationMs = AccessibilityPolicy.millis(
+            GuessScoring.durationMsFor(guessDifficulty),
+            timerAssist,
+        )
         val frac = if (durationMs > 0) (remainingMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
         val points = if (correct) {
             GuessScoring.pointsFor(GuessScoring.specFor(guessDifficulty).basePoints, frac)
@@ -2541,6 +2561,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         accentId = accentName,
         themeMode = themeMode,
         reduceMotion = reduceMotion,
+        highContrast = highContrast,
+        textScaleMultiplier = accessibilityTextScale.multiplier,
     ) {
         Box(
             modifier = Modifier
@@ -2668,6 +2690,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onOpenAiProvider = { navigate(Screen.AiProvider) },
                         onOpenStatistics = { navigate(Screen.Statistics) },
                         onOpenAppearance = { navigate(Screen.Appearance) },
+                        onOpenAccessibility = { navigate(Screen.Accessibility) },
                         onOpenBackupRestore = { navigate(Screen.BackupRestore) },
                         onOpenAbout = { navigate(Screen.About) },
                     forceOffline = offlineMode,
@@ -2678,16 +2701,6 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         // online action is actually attempted.
                         offlineMode = v
                         if (!v) connectivityProbe++
-                    },
-                    soundEnabled = soundEnabled,
-                    onSoundEnabledChange = { v ->
-                        soundEnabled = v
-                        Sounds.setEnabled(context, v)
-                    },
-                    soundTheme = soundTheme,
-                    onSoundThemeChange = { t ->
-                        soundTheme = t
-                        Sounds.setTheme(context, t)
                     },
                     remindersEnabled = remindersEnabled,
                     onRemindersEnabledChange = { v ->
@@ -2842,6 +2855,46 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onHomeClick = { goHome() },
                     )
 
+                    Screen.Accessibility -> AccessibilityScreen(
+                        reduceMotion = appReduceMotion,
+                        systemReduceMotion = systemReduceMotion,
+                        onReduceMotionChange = { enabled ->
+                            appReduceMotion = enabled
+                            accessibilityPrefs.reduceMotion = enabled
+                        },
+                        highContrast = highContrast,
+                        onHighContrastChange = { enabled ->
+                            highContrast = enabled
+                            accessibilityPrefs.highContrast = enabled
+                        },
+                        textScale = accessibilityTextScale,
+                        onTextScaleChange = { scale ->
+                            accessibilityTextScale = scale
+                            accessibilityPrefs.textScale = scale
+                        },
+                        timerAssist = timerAssist,
+                        onTimerAssistChange = { assist ->
+                            timerAssist = assist
+                            accessibilityPrefs.timerAssist = assist
+                        },
+                        hapticsEnabled = hapticsEnabled,
+                        onHapticsEnabledChange = { enabled ->
+                            hapticsEnabled = enabled
+                            Haptics.setEnabled(context, enabled)
+                        },
+                        soundEnabled = soundEnabled,
+                        onSoundEnabledChange = { enabled ->
+                            soundEnabled = enabled
+                            Sounds.setEnabled(context, enabled)
+                        },
+                        soundTheme = soundTheme,
+                        onSoundThemeChange = { theme ->
+                            soundTheme = theme
+                            Sounds.setTheme(context, theme)
+                        },
+                        onBackClick = { goBack() },
+                    )
+
                     Screen.BackupRestore -> BackupRestoreScreen(
                         onBackClick = { goBack() },
                         onHomeClick = { goHome() },
@@ -2872,6 +2925,11 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             sparkleStyle = themePrefs.sparkleStyle
                             guessRevealStyle = themePrefs.guessRevealStyle
                             guessAutoCrop = themePrefs.guessAutoCrop
+                            appReduceMotion = accessibilityPrefs.reduceMotion
+                            highContrast = accessibilityPrefs.highContrast
+                            accessibilityTextScale = accessibilityPrefs.textScale
+                            timerAssist = accessibilityPrefs.timerAssist
+                            hapticsEnabled = accessibilityPrefs.hapticsEnabled
                             soundEnabled = Sounds.isEnabled(context)
                             soundTheme = Sounds.getTheme(context)
                             appIcon = LauncherIconSwitcher.sanitize(context, themePrefs.appIcon)
@@ -2927,6 +2985,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         quizStartedAtMs = quizStartedAt,
                         quizElapsedBaseMs = quizElapsedBaseMs,
                         difficulty = activeQuestionDifficulty(),
+                        timerAssist = timerAssist,
                         adaptive = AdaptiveDifficulty.isAdaptive(quizDifficulty),
                         adaptiveNextDifficulty = adaptiveQuizState.tier.label,
                         adaptiveMessage = AdaptiveDifficulty.statusMessage(adaptiveQuizState),
@@ -2942,6 +3001,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         playerLabel = if (quizMode == "versus") "P$versusStage" else null,
                         daily = isDailyQuiz,
                         blitzDeadlineMs = if (quizMode == "blitz") blitzDeadline else null,
+                        blitzDurationMs = 60_000L,
                         onBlitzTimeUp = { finishBlitz() },
                         // Hearts settle at GRADE time (wrong pick / timeout),
                         // not at the Next tap — the chip drops at once and the
@@ -3107,6 +3167,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         score = guessScore,
                         phase = guessPhase,
                         roundResult = guessRoundResult,
+                        timerAssist = timerAssist,
                         revealStyle = guessRevealStyle,
                         autoCrop = guessAutoCrop,
                         onRetryRound = { prepareGuessRound() },

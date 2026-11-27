@@ -165,24 +165,26 @@ private val REFERENCE_HUE = LightNazoColors.primary.toHsl().h
  * beat, so hue and saturation — Nazo's identity — never change. Roles that
  * already pass come out byte-identical.
  */
-internal fun NazoColors.enforceContrast(): NazoColors {
+internal fun NazoColors.enforceContrast(highContrast: Boolean = false): NazoColors {
+    val textMinimum = if (highContrast) 7f else 4.5f
+    val controlMinimum = if (highContrast) 4.5f else 3f
     val textBackdrops = listOf(background, surface, surfaceVariant, navBar)
     val primaryTextBackdrops = textBackdrops + listOf(badge, pillUnselected, statsCardBg)
     val secondaryBackdrops = textBackdrops + listOf(badge, pillUnselected)
     val darkCardBackdrops = listOf(darkCard, darkCardAccent)
-    val textPrimary = withMinContrast(textPrimary, primaryTextBackdrops, 4.5f)
-    val textPlaceholder = withMinContrast(textPlaceholder, textBackdrops, 4.5f)
-    val textSecondary = withMinContrast(textSecondary, secondaryBackdrops, 4.5f)
-    val onDarkCard = withMinContrast(onDarkCard, darkCardBackdrops, 4.5f)
-    val onDarkCardMuted = withMinContrast(onDarkCardMuted, listOf(darkCard), 4.5f)
-    val success = withMinContrast(success, textBackdrops, 4.5f)
-    val error = withMinContrast(error, textBackdrops, 4.5f)
-    val successBg = withMinContrast(successBg, listOf(success), 4.5f)
-    val errorBg = withMinContrast(errorBg, listOf(error), 4.5f)
-    val controlSafePrimary = withMinContrast(primary, textBackdrops, 3f)
+    val textPrimary = withMinContrast(textPrimary, primaryTextBackdrops, textMinimum)
+    val textPlaceholder = withMinContrast(textPlaceholder, textBackdrops, textMinimum)
+    val textSecondary = withMinContrast(textSecondary, secondaryBackdrops, textMinimum)
+    val onDarkCard = withMinContrast(onDarkCard, darkCardBackdrops, textMinimum)
+    val onDarkCardMuted = withMinContrast(onDarkCardMuted, listOf(darkCard), textMinimum)
+    val success = withMinContrast(success, textBackdrops, textMinimum)
+    val error = withMinContrast(error, textBackdrops, textMinimum)
+    val successBg = withMinContrast(successBg, listOf(success), textMinimum)
+    val errorBg = withMinContrast(errorBg, listOf(error), textMinimum)
+    val controlSafePrimary = withMinContrast(primary, textBackdrops, controlMinimum)
     val preferredOnPrimary = readableTextOn(
         fill = controlSafePrimary,
-        minContrast = 4.5f,
+        minContrast = textMinimum,
         preferred = onPrimary,
     )
     // Mid-tone fills can leave both labels short of 4.5. Solve the label and
@@ -192,7 +194,7 @@ internal fun NazoColors.enforceContrast(): NazoColors {
     val primarySolutions = listOf(preferredOnPrimary, ContrastNearWhite, ContrastNearBlack)
         .distinct()
         .mapNotNull { label ->
-            val requirements = textBackdrops.map { it to 3f } + (label to 4.5f)
+            val requirements = textBackdrops.map { it to controlMinimum } + (label to textMinimum)
             val fill = withContrastRequirements(controlSafePrimary, requirements)
             if (meetsContrastRequirements(fill, requirements)) fill to label else null
         }
@@ -412,8 +414,10 @@ val Accents: List<Accent> = listOf(
     accent("mono", "Mono", MonoLightNazoColors, MonoDarkNazoColors),
 )
 
-fun resolveAccent(id: String, dark: Boolean): NazoColors =
-    (Accents.firstOrNull { it.id == id } ?: Accents.first()).let { if (dark) it.dark else it.light }
+fun resolveAccent(id: String, dark: Boolean, highContrast: Boolean = false): NazoColors =
+    (Accents.firstOrNull { it.id == id } ?: Accents.first())
+        .let { if (dark) it.dark else it.light }
+        .let { palette -> if (highContrast) palette.enforceContrast(highContrast = true) else palette }
 
 fun previewColors(id: String, dark: Boolean): List<Color> {
     val p = resolveAccent(id, dark)
