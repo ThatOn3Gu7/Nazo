@@ -13,6 +13,7 @@ import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.settings.FakeSharedPreferences
 import quiz.thaton3app.nazo.modes.guessing_game.GuessPayload
 import quiz.thaton3app.nazo.modes.guessing_game.GuessRoundResult
+import quiz.thaton3app.nazo.records.RivalGhostSetup
 
 class ActiveSessionStoreTest {
     private val now = 2_000_000_000_000L
@@ -98,6 +99,31 @@ class ActiveSessionStoreTest {
     }
 
     @Test
+    fun friendlyRivalSetupSurvivesProcessRestore() {
+        val original = quiz().copy(
+            rivalSetup = RivalGhostSetup("Naruto", "Hard", 3),
+        )
+        val store = ActiveSessionStore(FakeSharedPreferences()) { now }
+
+        store.save(original)
+
+        assertEquals(original, store.load())
+    }
+
+    @Test
+    fun versionThreeSnapshotDefaultsRivalSetupOff() {
+        val prefs = FakeSharedPreferences()
+        val legacy = ActiveSessionJson.encode(
+            quiz().copy(rivalSetup = RivalGhostSetup("Naruto", "Hard", 3))
+        ).replace("\"version\":4", "\"version\":3")
+        prefs.edit().putString(ActiveSessionStore.KEY, legacy).commit()
+
+        val restored = ActiveSessionStore(prefs) { now }.load() as ActiveQuizSession
+
+        assertNull(restored.rivalSetup)
+    }
+
+    @Test
     fun versionTwoQuizSnapshotKeepsAdaptiveStateAndDefaultsBossOff() {
         val prefs = FakeSharedPreferences()
         val adaptive = AdaptiveQuizState(
@@ -113,7 +139,7 @@ class ActiveSessionStoreTest {
                 adaptiveState = adaptive,
                 bossEnabled = true,
             )
-        ).replace("\"version\":3", "\"version\":2")
+        ).replace("\"version\":4", "\"version\":2")
         prefs.edit().putString(ActiveSessionStore.KEY, legacy).commit()
 
         val restored = ActiveSessionStore(prefs) { now }.load() as ActiveQuizSession
@@ -126,7 +152,7 @@ class ActiveSessionStoreTest {
     fun versionOneQuizSnapshotStillRestoresWithoutAdaptiveOrBossState() {
         val prefs = FakeSharedPreferences()
         val legacy = ActiveSessionJson.encode(quiz().copy(bossEnabled = true))
-            .replace("\"version\":3", "\"version\":1")
+            .replace("\"version\":4", "\"version\":1")
         prefs.edit().putString(ActiveSessionStore.KEY, legacy).commit()
 
         val restored = ActiveSessionStore(prefs) { now }.load() as ActiveQuizSession

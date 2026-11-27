@@ -12,6 +12,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.QuizStats
+import quiz.thaton3app.nazo.records.RivalGhostSetup
+import quiz.thaton3app.nazo.records.RivalGhostStore
 
 /**
  * Backup/restore contract tests.
@@ -129,6 +131,49 @@ class BackupRestoreTest {
         BackupRepository.applyValidated({ target }, parsed.stores)
 
         assertEquals(saved, QuizCollectionStore(target).get().single())
+    }
+
+    @Test
+    fun friendlyRivalsRoundTripThroughPortableBackupData() {
+        val source = FakeSharedPreferences()
+        val saved = RivalGhostStore(source) { 1_000L }.submit(
+            setup = RivalGhostSetup("Naruto", "Hard", 5),
+            correct = 4,
+            totalQuestions = 5,
+            elapsedMillis = 72_000L,
+        ).current
+        val raw = source.getString(RivalGhostStore.KEY, null)!!
+        val parsed = BackupRepository.parseAndValidate(
+            bundle(
+                stores = mapOf(
+                    RivalGhostStore.PREFS_NAME to mapOf(
+                        RivalGhostStore.KEY to tag("string", raw),
+                    ),
+                ),
+            ),
+        )
+        val target = FakeSharedPreferences()
+
+        BackupRepository.applyValidated({ target }, parsed.stores)
+
+        assertEquals(saved, RivalGhostStore(target).get().single())
+    }
+
+    @Test
+    fun malformedFriendlyRivalPayloadIsRejectedBeforeRestore() {
+        val malformed = """{"version":1,"profiles":[{"topic":"Naruto"}]}"""
+
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupRepository.parseAndValidate(
+                bundle(
+                    stores = mapOf(
+                        RivalGhostStore.PREFS_NAME to mapOf(
+                            RivalGhostStore.KEY to tag("string", malformed),
+                        ),
+                    ),
+                ),
+            )
+        }
     }
 
     @Test

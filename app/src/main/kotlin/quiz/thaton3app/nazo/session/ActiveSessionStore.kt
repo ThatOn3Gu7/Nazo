@@ -12,6 +12,8 @@ import quiz.thaton3app.nazo.data.AdaptiveTier
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.modes.guessing_game.GuessPayload
 import quiz.thaton3app.nazo.modes.guessing_game.GuessRoundResult
+import quiz.thaton3app.nazo.records.RivalGhostPolicy
+import quiz.thaton3app.nazo.records.RivalGhostSetup
 
 /** Persisted state for a game that has started but has not been quit or completed. */
 sealed interface ActiveSessionSnapshot {
@@ -41,6 +43,8 @@ data class ActiveQuizSession(
     val adaptiveState: AdaptiveQuizState? = null,
     /** True when the final question is the reserved, higher-value Boss Finale. */
     val bossEnabled: Boolean = false,
+    /** Eligible finite-Quiz setup whose local ghost should survive process restore. */
+    val rivalSetup: RivalGhostSetup? = null,
 ) : ActiveSessionSnapshot {
     enum class Destination { QUIZ, VERSUS_HANDOFF }
 }
@@ -131,7 +135,7 @@ class ActiveSessionStore internal constructor(
 }
 
 internal object ActiveSessionJson {
-    private const val VERSION = 3
+    private const val VERSION = 4
     private const val MAX_QUESTIONS = 200
     private const val MAX_TEXT = 20_000
     private const val MAX_TIMER_MS = ActiveSessionStore.MAX_AGE_MS
@@ -167,6 +171,7 @@ internal object ActiveSessionJson {
                     put("versusP1Answers", nullableStrings(snapshot.versusP1Answers))
                     put("adaptive", snapshot.adaptiveState?.let(::adaptiveJson) ?: JSONObject.NULL)
                     put("bossEnabled", snapshot.bossEnabled)
+                    put("rivalSetup", snapshot.rivalSetup?.let(::rivalSetupJson) ?: JSONObject.NULL)
                 }
                 is ActiveGuessSession -> {
                     put("kind", "guess")
@@ -224,6 +229,11 @@ internal object ActiveSessionJson {
             null
         },
         bossEnabled = version >= 3 && o.strictBoolean("bossEnabled"),
+        rivalSetup = if (version >= 4 && !o.isNull("rivalSetup")) {
+            rivalSetupFromJson(o.strictObject("rivalSetup"))
+        } else {
+            null
+        },
     )
 
     private fun decodeGuess(o: JSONObject, savedAt: Long) = ActiveGuessSession(
@@ -255,6 +265,12 @@ internal object ActiveSessionJson {
             require(s.adaptiveState == null)
         }
         if (s.bossEnabled) require(s.mode == "normal" && !s.daily)
+        s.rivalSetup?.let { setup ->
+            require(s.mode == "normal" && !s.daily)
+            require(RivalGhostPolicy.normalize(setup) == setup)
+            require(setup.difficulty == s.difficulty)
+            require(setup.questionCount == s.questions.size)
+        }
         s.adaptiveState?.let { adaptive ->
             require(adaptive.strongStreak in 0..1)
             require(adaptive.recentMisses in 0..3)
@@ -315,6 +331,20 @@ internal object ActiveSessionJson {
         require(r.imageQuery.length <= MAX_TEXT && (r.answerText?.length ?: 0) <= MAX_TEXT)
         require(r.points >= 0 && r.remainingFraction in 0f..1f)
     }
+
+    private fun rivalSetupJson(setup: RivalGhostSetup) = JSONObject().apply {
+        put("topic", setup.topic)
+        put("difficulty", setup.difficulty)
+        put("questionCount", setup.questionCount)
+    }
+
+    private fun rivalSetupFromJson(o: JSONObject) = RivalGhostPolicy.normalize(
+        RivalGhostSetup(
+            topic = o.strictString("topic"),
+            difficulty = o.strictString("difficulty"),
+            questionCount = o.strictInt("questionCount"),
+        )
+    )
 
     private fun adaptiveJson(state: AdaptiveQuizState) = JSONObject().apply {
         put("tier", state.tier.name)

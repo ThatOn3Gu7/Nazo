@@ -10,6 +10,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import quiz.thaton3app.nazo.data.profile.AvatarPayload
 import quiz.thaton3app.nazo.data.profile.ProfileImageStore
+import quiz.thaton3app.nazo.records.RivalGhostJson
+import quiz.thaton3app.nazo.records.RivalGhostStore
 import java.io.File
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
@@ -21,8 +23,8 @@ import java.util.LinkedHashSet
  * JSON bundle and writes it to either an SAF [Uri] (manual backup, user-chosen
  * location) or a fixed app-external file (automatic backup).
  *
- * Included stores: quiz stats, profile, theme, saved collections, and AI
- * provider models. API-key ciphertext is deliberately excluded: it is bound
+ * Included stores: quiz stats, profile, theme, saved collections, friendly
+ * rival ghosts, and AI provider models. API-key ciphertext is deliberately excluded: it is bound
  * to one Android Keystore and is neither portable nor useful in a backup.
  * Restore therefore leaves the destination install's current encrypted keys untouched. Internal
  * update-checker stores are also excluded (not user data).
@@ -69,6 +71,7 @@ object BackupRepository {
         "nazo_qhistory",   // persistent question anti-repeat memory
         "nazo_missed",     // practice deck (missed questions)
         "nazo_collections", // player-saved Home challenge setups
+        "nazo_rival_ghosts", // local score-and-time profiles for friendly races
     )
     private const val PROFILE_PICTURE_KEY = "profile_picture_uri"
 
@@ -99,7 +102,7 @@ object BackupRepository {
     /** Stores that represent earned progress rather than settings. */
     private val PROGRESS_STORES = setOf(
         "nazo_stats", "nazo_records", "nazo_daily", "nazo_qhistory", "nazo_missed",
-        "nazo_collections", "nazo_profile",
+        "nazo_collections", "nazo_rival_ghosts", "nazo_profile",
     )
 
     private fun labelFor(store: String): Pair<String, String> = when (store) {
@@ -114,6 +117,7 @@ object BackupRepository {
         "nazo_qhistory" -> "Question history" to "Anti-repeat memory of seen questions"
         "nazo_missed" -> "Practice deck" to "Questions you answered incorrectly"
         "nazo_collections" -> "Quiz collections" to "Saved Home challenge setups"
+        "nazo_rival_ghosts" -> "Friendly rivals" to "Local best score-and-time profiles"
         else -> store.removePrefix("nazo_").replaceFirstChar { it.uppercase() } to "App data"
     }
 
@@ -468,6 +472,7 @@ object BackupRepository {
                 entry[k] = t to v
             }
             if (name == "nazo_stats") validateQuizStatsEntry(entry)
+            if (name == RivalGhostStore.PREFS_NAME) validateRivalGhostsEntry(entry)
             pending[name] = entry
         }
         return ParsedBackup(pending, AvatarPayload.decode(root.optJSONObject("picture")))
@@ -485,6 +490,20 @@ object BackupRepository {
             throw IllegalArgumentException("Invalid backup file (quiz statistics)", e)
         } catch (e: IllegalArgumentException) {
             throw IllegalArgumentException("Invalid backup file (quiz statistics)", e)
+        }
+    }
+
+    private fun validateRivalGhostsEntry(entry: Map<String, Pair<String, Any?>>) {
+        val tagged = entry[RivalGhostStore.KEY] ?: return
+        if (tagged.first != "string" || tagged.second !is String) {
+            throw IllegalArgumentException("Invalid backup file (friendly rivals type)")
+        }
+        try {
+            RivalGhostJson.decode(tagged.second as String)
+        } catch (e: org.json.JSONException) {
+            throw IllegalArgumentException("Invalid backup file (friendly rivals)", e)
+        } catch (e: IllegalArgumentException) {
+            throw IllegalArgumentException("Invalid backup file (friendly rivals)", e)
         }
     }
 

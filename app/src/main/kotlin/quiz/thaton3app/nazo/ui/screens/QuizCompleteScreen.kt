@@ -39,8 +39,10 @@ import quiz.thaton3app.nazo.daily.DailyLadderClearCard
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
 import quiz.thaton3app.nazo.progression.ProgressionReward
 import quiz.thaton3app.nazo.records.NewRecordBadge
+import quiz.thaton3app.nazo.records.RivalGhostResult
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
+import quiz.thaton3app.nazo.ui.components.FriendlyRivalResultCard
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
@@ -145,6 +147,7 @@ fun QuizCompleteScreen(
     adaptiveFinalDifficulty: String? = null,
     adaptiveAdjustmentCount: Int = 0,
     progressionReward: ProgressionReward? = null,
+    rivalGhostResult: RivalGhostResult? = null,
     mistakeCount: Int = 0,
     // "Survival" | "Blitz" | null (normal quiz). Adjusts the heading and the
     // personal-best caption: those modes track a COUNT (longest run / most
@@ -385,6 +388,16 @@ fun QuizCompleteScreen(
                             finalDifficulty = adaptiveFinalDifficulty,
                             adjustmentCount = adaptiveAdjustmentCount,
                         )
+                    }
+                }
+
+                rivalGhostResult?.let { result ->
+                    Spacer(Modifier.height(16.dp))
+                    AnimatedVisibility(
+                        visible = showStats,
+                        enter = fadeIn(tween(if (runEntranceSequence) 220 else 1)),
+                    ) {
+                        FriendlyRivalResultCard(result = result)
                     }
                 }
 

@@ -114,6 +114,10 @@ import quiz.thaton3app.nazo.modes.guessing_game.GuessScoring
 import quiz.thaton3app.nazo.modes.guessing_game.GuessingPlayScreen
 import quiz.thaton3app.nazo.modes.guessing_game.GuessingResultsScreen
 import quiz.thaton3app.nazo.records.RecordsStore
+import quiz.thaton3app.nazo.records.RivalGhostPolicy
+import quiz.thaton3app.nazo.records.RivalGhostResult
+import quiz.thaton3app.nazo.records.RivalGhostSetup
+import quiz.thaton3app.nazo.records.RivalGhostStore
 import quiz.thaton3app.nazo.reminders.ReminderScheduler
 import quiz.thaton3app.nazo.session.ActiveGuessSession
 import quiz.thaton3app.nazo.session.ActiveQuizSession
@@ -456,6 +460,17 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // right before a finished run is submitted so the results screens can show
     // either the "New Record!" badge or the standing best as a caption.
     val recordsStore = remember { RecordsStore(context.applicationContext) }
+    val rivalGhostStore = remember { RivalGhostStore(context.applicationContext) }
+    var rivalGhosts by remember { mutableStateOf(rivalGhostStore.get()) }
+    var activeRivalSetup by remember { mutableStateOf(restoredQuiz?.rivalSetup) }
+    var activeRivalGhost by remember {
+        mutableStateOf(
+            restoredQuiz?.rivalSetup?.let { setup ->
+                rivalGhosts.firstOrNull { RivalGhostPolicy.matches(it, setup) }
+            }
+        )
+    }
+    var lastRivalGhostResult by remember { mutableStateOf<RivalGhostResult?>(null) }
     var quizPrevBest by remember { mutableIntStateOf(-1) }
     var quizNewRecord by remember { mutableStateOf(false) }
     var guessPrevBest by remember { mutableIntStateOf(-1) }
@@ -1331,7 +1346,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         score = 0
         aiGenerated = false
         generationState = GenerationState.Idle
-        restartQuestionClock()
+        // Score-and-time races begin when the first question is ready, never
+        // while a provider or local deck is still being prepared.
+        restartQuizClock()
         quizProgressionGate.startSession()
         if (navigationStack.last() == Screen.Loading) replace(Screen.Quiz) else navigate(Screen.Quiz)
     }
@@ -1374,7 +1391,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 score = 0
                 aiGenerated = true
                 generationState = GenerationState.Idle
-                restartQuestionClock()
+                restartQuizClock()
                 quizProgressionGate.startSession()
                 if (req.isFallback) {
                     Toast.makeText(
@@ -1447,7 +1464,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     score = 0
                     aiGenerated = true
                     generationState = GenerationState.Idle
-                    restartQuestionClock()
+                    restartQuizClock()
                     quizProgressionGate.startSession()
                     if (req.isFallback) {
                         Toast.makeText(
@@ -1502,8 +1519,24 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         }
     }
 
+    fun prepareFriendlyRival(topic: String, difficulty: String, count: Int) {
+        val setup = RivalGhostPolicy.normalize(
+            RivalGhostSetup(topic = topic, difficulty = difficulty, questionCount = count),
+        )
+        activeRivalSetup = setup
+        activeRivalGhost = rivalGhosts.firstOrNull { RivalGhostPolicy.matches(it, setup) }
+        lastRivalGhostResult = null
+    }
+
+    fun clearFriendlyRival() {
+        activeRivalSetup = null
+        activeRivalGhost = null
+        lastRivalGhostResult = null
+    }
+
     fun startQuiz(topic: String, difficulty: String, count: Int) {
         themePrefs.lastMode = NazoMode.QUIZ.name
+        prepareFriendlyRival(topic, difficulty, count)
         isDailyQuiz = false
         quizMode = "normal"
         adaptiveQuizState = if (AdaptiveDifficulty.isAdaptive(difficulty)) {
@@ -1568,6 +1601,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
      * in [answer] and banks the bonus XP.
      */
     fun startDailyChallenge() {
+        clearFriendlyRival()
         questions = DailyChallenge.questionsForToday()
         userAnswers = emptyList()
         currentQuestionIndex = 0
@@ -1592,6 +1626,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     fun startPractice() {
         val set = missedStore.practiceSet(10)
         if (set.isEmpty()) return
+        clearFriendlyRival()
         questions = set
         userAnswers = emptyList()
         currentQuestionIndex = 0
@@ -1611,6 +1646,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     fun startMistakeRematch() {
         val set = instantMistakeRematchQuestions(questions, userAnswers)
         if (set.isEmpty()) return
+        clearFriendlyRival()
         questions = set.map(Question::withShuffledOptions)
         userAnswers = emptyList()
         currentQuestionIndex = 0
@@ -1713,6 +1749,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     }
 
     fun startSurvival(topic: String, difficulty: String) {
+        clearFriendlyRival()
         themePrefs.lastMode = NazoMode.SURVIVAL.name
         isDailyQuiz = false
         quizMode = "survival"
@@ -1774,6 +1811,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     }
 
     fun startBlitz(topic: String, difficulty: String) {
+        clearFriendlyRival()
         themePrefs.lastMode = NazoMode.BLITZ.name
         isDailyQuiz = false
         quizMode = "blitz"
@@ -1803,6 +1841,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     }
 
     fun startVersus(topic: String, difficulty: String, count: Int) {
+        clearFriendlyRival()
         themePrefs.lastMode = NazoMode.VERSUS.name
         isDailyQuiz = false
         quizMode = "versus"
@@ -1996,8 +2035,23 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 0
             }
             lastBossBonus = bossBonus
-            captureProgressionReward(beforeStats, afterStats, beforeBonusXp, beforeAchievements)
             freezeQuizClock()
+            lastRivalGhostResult = activeRivalSetup?.let { setup ->
+                rivalGhostStore.submit(
+                    setup = setup,
+                    correct = score,
+                    totalQuestions = finishedQuestions.size,
+                    elapsedMillis = quizElapsedMillis(
+                        quizStartedAt,
+                        quizFinishedAt,
+                        quizElapsedBaseMs,
+                    ),
+                )
+            }
+            if (lastRivalGhostResult != null) {
+                rivalGhosts = rivalGhostStore.get()
+            }
+            captureProgressionReward(beforeStats, afterStats, beforeBonusXp, beforeAchievements)
             // REPLACE the quiz screen (don't push on top of it): the finished
             // quiz must not stay on the back-stack, otherwise the system back
             // gesture from the results screen returns to the last question.
@@ -2209,6 +2263,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     }
 
     fun startGuessing(topic: String, difficulty: String, rounds: Int) {
+        clearFriendlyRival()
         themePrefs.lastMode = NazoMode.GUESSING.name
         guessTopic = topic
         guessDifficulty = difficulty
@@ -2365,6 +2420,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         quizDifficulty,
         adaptiveQuizState,
         bossEnabled,
+        activeRivalSetup,
         quizMode,
         aiGenerated,
         isDailyQuiz,
@@ -2422,6 +2478,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             AdaptiveDifficulty.isAdaptive(quizDifficulty)
                         },
                         bossEnabled = bossEnabled,
+                        rivalSetup = activeRivalSetup?.copy(questionCount = questions.size),
                     )
                 )
             }
@@ -2511,6 +2568,19 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     currentScreen.asSettingsDetail() != null)
             ) NazoRailWidth else 0.dp
 
+            val selectedHomeRival = if (homeMode == NazoMode.QUIZ.name) {
+                Difficulty.entries.firstOrNull { it.name == homeDifficultyName }?.let { level ->
+                    val setup = RivalGhostSetup(
+                        topic = homeTopic,
+                        difficulty = level.label,
+                        questionCount = homeQuestionCount,
+                    )
+                    rivalGhosts.firstOrNull { RivalGhostPolicy.matches(it, setup) }
+                }
+            } else {
+                null
+            }
+
             // The screen switch is reused twice: once full-screen, and once as the
             // DETAIL pane of the landscape Settings list-detail layout. Declaring
             // it as a local composable lambda keeps a single source of truth.
@@ -2585,6 +2655,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         streakProtectionTokens = quizStats.streakProtectionTokens,
                         streakProtectionProgress = quizStats.streakProtectionProgress,
                         protectedStreakEpochDay = quizStats.protectedStreakEpochDay,
+                        rivalGhost = selectedHomeRival,
                         totalQuizzes = quizStats.totalQuizzes,
                         practiceCount = missedCount,
                         onStartPractice = { startPractice() },
@@ -2787,6 +2858,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             missedCount = missedStore.count()
                             quizStats = statsStore.get()
                             quizCollections = quizCollectionStore.get()
+                            rivalGhosts = rivalGhostStore.get()
                             profileName = profilePrefs.username
                             profilePictureUri = profilePrefs.profilePictureUri
                             coverPictureUri = profilePrefs.coverPictureUri
@@ -2851,6 +2923,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         // do not run its decorative infinite clocks until the
                         // collapse is gone and owns no competing frame-time work.
                         decorativeMotionAllowed = pendingQuizLaunch == null,
+                        rivalGhost = activeRivalGhost,
+                        quizStartedAtMs = quizStartedAt,
+                        quizElapsedBaseMs = quizElapsedBaseMs,
                         difficulty = activeQuestionDifficulty(),
                         adaptive = AdaptiveDifficulty.isAdaptive(quizDifficulty),
                         adaptiveNextDifficulty = adaptiveQuizState.tier.label,
@@ -2933,6 +3008,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         },
                         adaptiveAdjustmentCount = adaptiveQuizState.shiftCount,
                         progressionReward = lastProgressionReward,
+                        rivalGhostResult = lastRivalGhostResult,
                         mistakeCount = instantMistakeRematchQuestions(
                             questions,
                             userAnswers,

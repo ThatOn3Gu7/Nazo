@@ -83,8 +83,10 @@ import quiz.thaton3app.nazo.data.QuizEngine
 import quiz.thaton3app.nazo.hints.HintEngine
 import quiz.thaton3app.nazo.hints.HintPill
 import quiz.thaton3app.nazo.hints.HintRevealPill
+import quiz.thaton3app.nazo.records.RivalGhostProfile
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.QuizProgressionTicket
+import quiz.thaton3app.nazo.ui.components.FriendlyRivalRacePanel
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoQuitDialog
 import quiz.thaton3app.nazo.ui.components.isLandscape
@@ -370,6 +372,9 @@ internal fun ActiveQuizScreen(
     currentScore: Int = 0,
     /** False only while an opaque launch portal is settling this first frame. */
     decorativeMotionAllowed: Boolean = true,
+    rivalGhost: RivalGhostProfile? = null,
+    quizStartedAtMs: Long = 0L,
+    quizElapsedBaseMs: Long = 0L,
     difficulty: String = "Medium",
     adaptive: Boolean = false,
     adaptiveNextDifficulty: String = "Medium",
@@ -657,6 +662,12 @@ internal fun ActiveQuizScreen(
     val landscape = isLandscape()
     val chromeGap = if (landscape) 8.dp else 16.dp
     val topGap = if (landscape) 8.dp else 20.dp
+    val rivalElapsedMillis = if (rivalGhost != null && quizStartedAtMs > 0L) {
+        quizElapsedBaseMs +
+            (SystemClock.elapsedRealtime() - quizStartedAtMs).coerceAtLeast(0L)
+    } else {
+        0L
+    }
 
     Box(
         modifier = Modifier
@@ -829,6 +840,16 @@ internal fun ActiveQuizScreen(
                     currentDifficulty = difficulty,
                     nextDifficulty = adaptiveNextDifficulty,
                     message = adaptiveMessage,
+                    compact = landscape,
+                )
+            }
+
+            rivalGhost?.let { ghost ->
+                Spacer(Modifier.height(chromeGap))
+                FriendlyRivalRacePanel(
+                    profile = ghost,
+                    currentScore = currentScore,
+                    elapsedMillis = rivalElapsedMillis,
                     compact = landscape,
                 )
             }

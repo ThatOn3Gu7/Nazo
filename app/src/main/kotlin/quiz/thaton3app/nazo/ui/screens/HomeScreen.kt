@@ -96,6 +96,7 @@ import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.R
 import quiz.thaton3app.nazo.daily.DailyChallenge
 import quiz.thaton3app.nazo.data.LocalQuestionBank
+import quiz.thaton3app.nazo.ui.components.FriendlyRivalHomeCard
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.data.QuizStats
@@ -103,6 +104,7 @@ import quiz.thaton3app.nazo.data.StreakProtection
 import quiz.thaton3app.nazo.data.settings.QuizCollection
 import quiz.thaton3app.nazo.data.settings.QuizCollectionPolicy
 import quiz.thaton3app.nazo.data.settings.QuizCollectionSetup
+import quiz.thaton3app.nazo.records.RivalGhostProfile
 import quiz.thaton3app.nazo.ui.components.NazoModalSheet
 import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
 import quiz.thaton3app.nazo.ui.components.NazoSheetHeader
@@ -325,6 +327,7 @@ fun HomeScreen(
     streakProtectionTokens: Int = 0,
     streakProtectionProgress: Int = 0,
     protectedStreakEpochDay: Long? = null,
+    rivalGhost: RivalGhostProfile? = null,
     totalQuizzes: Int = 0,
     practiceCount: Int = 0,
     onStartPractice: () -> Unit = {},
@@ -665,6 +668,28 @@ fun HomeScreen(
                 onGuessingRoundsChange(count)
             },
         )
+
+        AnimatedVisibility(
+            visible = rivalGhost != null && nazoMode == NazoMode.QUIZ,
+            enter = fadeIn(tween(if (reduceMotion) 90 else 180)) +
+                expandVertically(
+                    expandFrom = Alignment.Top,
+                    animationSpec = tween(if (reduceMotion) 1 else 240),
+                ),
+            exit = fadeOut(tween(if (reduceMotion) 70 else 140)) +
+                shrinkVertically(
+                    shrinkTowards = Alignment.Top,
+                    animationSpec = tween(if (reduceMotion) 1 else 200),
+                ),
+            label = "friendlyRivalVisibility",
+        ) {
+            rivalGhost?.let { ghost ->
+                Column(Modifier.fillMaxWidth()) {
+                    Spacer(Modifier.height(14.dp))
+                    FriendlyRivalHomeCard(profile = ghost)
+                }
+            }
+        }
 
         AnimatedVisibility(
             visible = homePracticeVisible(
