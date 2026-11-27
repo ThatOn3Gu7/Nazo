@@ -1350,6 +1350,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     enabled = req.finaleDifficulty != null,
                     difficulty = req.difficulty,
                     adaptiveTarget = adaptiveQuizState.tier,
+                    preferredFinalIdentity = cached.lastOrNull()?.identity,
                 )
                 questions = if (AdaptiveDifficulty.isAdaptive(req.difficulty)) {
                     AdaptiveDifficulty.prioritizeNextQuestion(
@@ -1422,6 +1423,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         enabled = req.finaleDifficulty != null,
                         difficulty = req.difficulty,
                         adaptiveTarget = adaptiveQuizState.tier,
+                        preferredFinalIdentity = qs.lastOrNull()?.identity,
                     )
                     questions = if (AdaptiveDifficulty.isAdaptive(req.difficulty)) {
                         AdaptiveDifficulty.prioritizeNextQuestion(

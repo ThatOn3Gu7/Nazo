@@ -65,6 +65,25 @@ class BossQuestionTest {
     }
 
     @Test
+    fun generatedDeckPreservesThePromptedFinaleWhenTheTierIsAlreadyMaxed() {
+        val promptedFinale = question(3, "Otaku Master")
+        val reorderedByFreshness = listOf(
+            promptedFinale,
+            question(1, "Otaku Master"),
+            question(2, "Otaku Master"),
+        )
+
+        val arranged = BossQuestion.arrangeGeneratedDeck(
+            candidates = reorderedByFreshness,
+            enabled = true,
+            difficulty = "Otaku Master",
+            preferredFinalIdentity = promptedFinale.identity,
+        )
+
+        assertEquals(listOf(1, 2, 3), arranged.map { it.id })
+    }
+
+    @Test
     fun bonusAndFinaleDetectionRequireTheSelectedFinalCorrectAnswer() {
         assertTrue(BossQuestion.isFinale(enabled = true, questionIndex = 4, questionCount = 5))
         assertFalse(BossQuestion.isFinale(enabled = true, questionIndex = 3, questionCount = 5))

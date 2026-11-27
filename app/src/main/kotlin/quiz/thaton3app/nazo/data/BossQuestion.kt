@@ -52,16 +52,23 @@ object BossQuestion {
         return (regular + boss).take(count)
     }
 
-    /** Moves one elevated candidate to the final slot without changing deck size. */
+    /**
+     * Moves one elevated candidate to the final slot without changing deck size.
+     * Generated decks can identify the provider-prompted finale explicitly so
+     * anti-repeat ordering cannot displace it when every item is already max tier.
+     */
     fun arrangeGeneratedDeck(
         candidates: List<Question>,
         enabled: Boolean,
         difficulty: String,
         adaptiveTarget: AdaptiveTier = AdaptiveTier.MEDIUM,
+        preferredFinalIdentity: String? = null,
     ): List<Question> {
         if (!enabled || candidates.isEmpty()) return candidates
         val target = targetTier(difficulty, adaptiveTarget)
-        val boss = closestCandidate(candidates, target) ?: return candidates
+        val boss = preferredFinalIdentity?.let { identity ->
+            candidates.firstOrNull { it.identity == identity }
+        } ?: closestCandidate(candidates, target) ?: return candidates
         val bossIndex = candidates.indexOfFirst { it === boss }.takeIf { it >= 0 } ?: return candidates
         return candidates.filterIndexed { index, _ -> index != bossIndex } + boss
     }
