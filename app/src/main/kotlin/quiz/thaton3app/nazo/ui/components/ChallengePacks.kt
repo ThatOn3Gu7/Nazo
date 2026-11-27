@@ -152,12 +152,7 @@ private fun ChallengePackCard(
                 onClick = {
                     onStart(
                         pack,
-                        QuizLaunchOrigin(
-                            left = bounds.left,
-                            top = bounds.top,
-                            width = bounds.width,
-                            height = bounds.height,
-                        ),
+                        QuizLaunchOrigin.from(bounds),
                     )
                 },
             )
