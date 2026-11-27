@@ -26,6 +26,7 @@ Build these in order because they form one clear journey from launch to learning
 - **#12 Shareable result card** — export a polished result image without exposing profile or quiz content. **Implemented.**
 - **#13 Friendly rival ghost** — race a saved local score-and-time profile without live multiplayer. **Implemented.**
 - **#14 Accessibility studio** — centralize motion, contrast, text size, timer, haptic, and sound assists. **Implemented.**
+- **#15 Curated challenge packs** — ship themed, quality-reviewed offline sets with their own identity and progress. **Implemented.**
 
 ---
 
@@ -45,7 +46,7 @@ Build these in order because they form one clear journey from launch to learning
 12. **Shareable result card** — **P1 · M** — Export a polished result image without exposing personal data. **Implemented.**
 13. **Friendly rival ghost** — **P2 · L** — Race a saved score-and-time profile without requiring live multiplayer. **Implemented.**
 14. **Accessibility studio** — **P1 · M** — Centralize motion, contrast, text size, timer, haptic, and sound assists. **Implemented.**
-15. **Curated challenge packs** — **P2 · L** — Ship themed, quality-reviewed sets with their own identity and progress.
+15. **Curated challenge packs** — **P2 · L** — Ship themed, quality-reviewed sets with their own identity and progress. **Implemented.**
 
 ## Animation and visual improvements
 

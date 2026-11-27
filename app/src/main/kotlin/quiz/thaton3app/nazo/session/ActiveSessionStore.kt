@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
+import quiz.thaton3app.nazo.challenge.ChallengePackCatalog
 import quiz.thaton3app.nazo.data.AdaptiveDifficulty
 import quiz.thaton3app.nazo.data.AdaptiveQuizState
 import quiz.thaton3app.nazo.data.AdaptiveReason
@@ -45,6 +46,8 @@ data class ActiveQuizSession(
     val bossEnabled: Boolean = false,
     /** Eligible finite-Quiz setup whose local ghost should survive process restore. */
     val rivalSetup: RivalGhostSetup? = null,
+    /** Shipped curated-pack identity; questions are checked against that catalog entry. */
+    val challengePackId: String? = null,
 ) : ActiveSessionSnapshot {
     enum class Destination { QUIZ, VERSUS_HANDOFF }
 }
@@ -135,7 +138,7 @@ class ActiveSessionStore internal constructor(
 }
 
 internal object ActiveSessionJson {
-    private const val VERSION = 4
+    private const val VERSION = 5
     private const val MAX_QUESTIONS = 200
     private const val MAX_TEXT = 20_000
     private const val MAX_TIMER_MS = ActiveSessionStore.MAX_AGE_MS
@@ -172,6 +175,7 @@ internal object ActiveSessionJson {
                     put("adaptive", snapshot.adaptiveState?.let(::adaptiveJson) ?: JSONObject.NULL)
                     put("bossEnabled", snapshot.bossEnabled)
                     put("rivalSetup", snapshot.rivalSetup?.let(::rivalSetupJson) ?: JSONObject.NULL)
+                    put("challengePackId", snapshot.challengePackId ?: JSONObject.NULL)
                 }
                 is ActiveGuessSession -> {
                     put("kind", "guess")
@@ -234,6 +238,7 @@ internal object ActiveSessionJson {
         } else {
             null
         },
+        challengePackId = if (version >= 5) o.nullableString("challengePackId") else null,
     )
 
     private fun decodeGuess(o: JSONObject, savedAt: Long) = ActiveGuessSession(
@@ -266,10 +271,18 @@ internal object ActiveSessionJson {
         }
         if (s.bossEnabled) require(s.mode == "normal" && !s.daily)
         s.rivalSetup?.let { setup ->
-            require(s.mode == "normal" && !s.daily)
+            require(s.mode == "normal" && !s.daily && s.challengePackId == null)
             require(RivalGhostPolicy.normalize(setup) == setup)
             require(setup.difficulty == s.difficulty)
             require(setup.questionCount == s.questions.size)
+        }
+        s.challengePackId?.let { id ->
+            val pack = ChallengePackCatalog.find(id)
+                ?: throw IllegalArgumentException("Unknown challenge pack")
+            require(s.mode == "normal" && !s.daily && !s.aiGenerated)
+            require(s.adaptiveState == null && !s.bossEnabled && s.rivalSetup == null)
+            require(s.difficulty == pack.difficulty)
+            require(s.questions == pack.questions)
         }
         s.adaptiveState?.let { adaptive ->
             require(adaptive.strongStreak in 0..1)

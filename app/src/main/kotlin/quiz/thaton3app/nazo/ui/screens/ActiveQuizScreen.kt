@@ -76,6 +76,7 @@ import kotlin.math.PI
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.delay
+import quiz.thaton3app.nazo.challenge.ChallengePack
 import quiz.thaton3app.nazo.daily.DailyLadder
 import quiz.thaton3app.nazo.daily.DailyLadderRail
 import quiz.thaton3app.nazo.data.Question
@@ -88,6 +89,7 @@ import quiz.thaton3app.nazo.hints.HintRevealPill
 import quiz.thaton3app.nazo.records.RivalGhostProfile
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.QuizProgressionTicket
+import quiz.thaton3app.nazo.ui.components.ChallengePackRacePanel
 import quiz.thaton3app.nazo.ui.components.FriendlyRivalRacePanel
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoQuitDialog
@@ -375,6 +377,7 @@ internal fun ActiveQuizScreen(
     /** False only while an opaque launch portal is settling this first frame. */
     decorativeMotionAllowed: Boolean = true,
     rivalGhost: RivalGhostProfile? = null,
+    challengePack: ChallengePack? = null,
     quizStartedAtMs: Long = 0L,
     quizElapsedBaseMs: Long = 0L,
     difficulty: String = "Medium",
@@ -782,7 +785,24 @@ internal fun ActiveQuizScreen(
                     }
                     Spacer(Modifier.width(8.dp))
                 }
-                if (isAiGenerated && presentation == GameplayPresentation.QUIZ) {
+                if (challengePack != null && presentation == GameplayPresentation.QUIZ) {
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50.dp))
+                            .background(NazoPrimary.copy(alpha = 0.16f))
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "✦ PACK",
+                            color = NazoPrimary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                } else if (isAiGenerated && presentation == GameplayPresentation.QUIZ) {
                     Spacer(Modifier.width(8.dp))
                     Box(
                         modifier = Modifier
@@ -841,6 +861,13 @@ internal fun ActiveQuizScreen(
                 DailyLadderProgressPanel(
                     currentQuestionIndex = currentQuestionIndex,
                     compact = landscape,
+                )
+            } else if (challengePack != null) {
+                Spacer(Modifier.height(chromeGap))
+                ChallengePackRacePanel(
+                    pack = challengePack,
+                    currentScore = currentScore,
+                    currentQuestionIndex = currentQuestionIndex,
                 )
             } else if (adaptive) {
                 Spacer(Modifier.height(chromeGap))

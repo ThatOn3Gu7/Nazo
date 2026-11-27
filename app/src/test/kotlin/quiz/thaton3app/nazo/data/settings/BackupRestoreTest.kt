@@ -10,6 +10,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import quiz.thaton3app.nazo.challenge.ChallengePackCatalog
+import quiz.thaton3app.nazo.challenge.ChallengePackProgressStore
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.QuizStats
 import quiz.thaton3app.nazo.records.RivalGhostSetup
@@ -131,6 +133,45 @@ class BackupRestoreTest {
         BackupRepository.applyValidated({ target }, parsed.stores)
 
         assertEquals(saved, QuizCollectionStore(target).get().single())
+    }
+
+    @Test
+    fun challengePackProgressRoundTripsThroughPortableBackupData() {
+        val source = FakeSharedPreferences()
+        val pack = ChallengePackCatalog.all.first()
+        val saved = ChallengePackProgressStore(source) { 123_456L }.submit(pack.id, 6).progress
+        val raw = source.getString(ChallengePackProgressStore.KEY, null)!!
+        val parsed = BackupRepository.parseAndValidate(
+            bundle(
+                stores = mapOf(
+                    ChallengePackProgressStore.PREFS_NAME to mapOf(
+                        ChallengePackProgressStore.KEY to tag("string", raw),
+                    ),
+                ),
+            ),
+        )
+        val target = FakeSharedPreferences()
+
+        BackupRepository.applyValidated({ target }, parsed.stores)
+
+        assertEquals(saved, ChallengePackProgressStore(target).get().single())
+    }
+
+    @Test
+    fun malformedChallengePackProgressIsRejectedBeforeRestore() {
+        val malformed = "{\"version\":1,\"packs\":[{\"id\":\"not-shipped\"}]}"
+
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupRepository.parseAndValidate(
+                bundle(
+                    stores = mapOf(
+                        ChallengePackProgressStore.PREFS_NAME to mapOf(
+                            ChallengePackProgressStore.KEY to tag("string", malformed),
+                        ),
+                    ),
+                ),
+            )
+        }
     }
 
     @Test

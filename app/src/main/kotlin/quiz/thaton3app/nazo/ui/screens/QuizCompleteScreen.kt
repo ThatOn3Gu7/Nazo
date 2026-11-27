@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import quiz.thaton3app.nazo.challenge.ChallengePackResult
 import quiz.thaton3app.nazo.daily.DailyBonusChip
 import quiz.thaton3app.nazo.daily.DailyLadderClearCard
 import quiz.thaton3app.nazo.data.settings.ThemePreferences
@@ -42,6 +43,7 @@ import quiz.thaton3app.nazo.records.NewRecordBadge
 import quiz.thaton3app.nazo.records.RivalGhostResult
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
+import quiz.thaton3app.nazo.ui.components.ChallengePackResultCard
 import quiz.thaton3app.nazo.ui.components.FriendlyRivalResultCard
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
@@ -108,6 +110,7 @@ internal fun quizResultEyebrow(daily: Boolean, modeLabel: String?): String = whe
     daily -> "DAILY LADDER"
     modeLabel == "Survival" -> "SURVIVAL REPORT"
     modeLabel == "Blitz" -> "60-SECOND REPORT"
+    modeLabel == "Challenge Pack" -> "CURATED PACK REPORT"
     else -> "FOCUSED QUIZ"
 }
 
@@ -120,6 +123,7 @@ internal fun quizResultHeading(
     daily -> "Daily Ladder Cleared"
     modeLabel == "Survival" -> "Run over — you survived $score!"
     modeLabel == "Blitz" -> "Time's up!"
+    modeLabel == "Challenge Pack" -> "Challenge Pack Complete"
     difficulty == "Practice" -> "Practice Complete"
     difficulty == "Adaptive" -> "Adaptive Quiz Complete"
     else -> "Quiz Complete"
@@ -129,6 +133,7 @@ internal fun quizResultReturnLabel(daily: Boolean, modeLabel: String?): String =
     daily -> "Back to Home"
     modeLabel == "Survival" -> "Try Survival Again"
     modeLabel == "Blitz" -> "Run Another Blitz"
+    modeLabel == "Challenge Pack" -> "Replay This Pack"
     else -> "Play Another Quiz"
 }
 
@@ -148,6 +153,7 @@ fun QuizCompleteScreen(
     adaptiveAdjustmentCount: Int = 0,
     progressionReward: ProgressionReward? = null,
     rivalGhostResult: RivalGhostResult? = null,
+    challengePackResult: ChallengePackResult? = null,
     mistakeCount: Int = 0,
     // "Survival" | "Blitz" | null (normal quiz). Adjusts the heading and the
     // personal-best caption: those modes track a COUNT (longest run / most
@@ -346,6 +352,7 @@ fun QuizCompleteScreen(
                                         daily -> "Best Daily ladder: $bestPercent%"
                                         modeLabel == "Survival" -> "Longest run: $bestPercent correct"
                                         modeLabel == "Blitz" -> "Best blitz: $bestPercent correct"
+                                        modeLabel == "Challenge Pack" -> "Previous pack best: $bestPercent%"
                                         else -> "Personal best on $difficulty: $bestPercent%"
                                     },
                                     style = MaterialTheme.typography.bodySmall,
@@ -388,6 +395,16 @@ fun QuizCompleteScreen(
                             finalDifficulty = adaptiveFinalDifficulty,
                             adjustmentCount = adaptiveAdjustmentCount,
                         )
+                    }
+                }
+
+                challengePackResult?.let { result ->
+                    Spacer(Modifier.height(16.dp))
+                    AnimatedVisibility(
+                        visible = showStats,
+                        enter = fadeIn(tween(if (runEntranceSequence) 220 else 1)),
+                    ) {
+                        ChallengePackResultCard(result = result)
                     }
                 }
 

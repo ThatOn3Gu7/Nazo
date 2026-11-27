@@ -118,6 +118,27 @@ class QuizResultsStoryTest {
     }
 
     @Test
+    fun curatedPackResultKeepsItsOwnIdentityAndReplayAction() {
+        assertEquals(
+            "CURATED PACK REPORT",
+            quizResultEyebrow(daily = false, modeLabel = "Challenge Pack"),
+        )
+        assertEquals(
+            "Challenge Pack Complete",
+            quizResultHeading(
+                daily = false,
+                modeLabel = "Challenge Pack",
+                difficulty = "Medium",
+                score = 6,
+            ),
+        )
+        assertEquals(
+            "Replay This Pack",
+            quizResultReturnLabel(daily = false, modeLabel = "Challenge Pack"),
+        )
+    }
+
+    @Test
     fun averagePaceUsesTheFrozenRunDuration() {
         assertEquals("12.4s/q", quizResultPaceLabel(elapsedMillis = 61_999L, answered = 5))
         assertEquals("0.1s/q", quizResultPaceLabel(elapsedMillis = 149L, answered = 1))

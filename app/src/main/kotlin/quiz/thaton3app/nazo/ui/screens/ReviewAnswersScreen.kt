@@ -58,6 +58,7 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 fun ReviewAnswersScreen(
     questions: List<Question>,
     userAnswers: List<String?>,
+    contextLabel: String? = null,
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
@@ -98,11 +99,21 @@ fun ReviewAnswersScreen(
                     )
                 }
                 Spacer(Modifier.width(12.dp))
-                Text(
-                    text = "Review Answers",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = NazoTextPrimary,
-                )
+                Column {
+                    Text(
+                        text = "Review Answers",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = NazoTextPrimary,
+                    )
+                    contextLabel?.let { label ->
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = NazoPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
             }
             Spacer(Modifier.height(20.dp))
 

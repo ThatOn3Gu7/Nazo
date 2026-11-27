@@ -73,6 +73,10 @@ import quiz.thaton3app.nazo.IntroStyle
 import quiz.thaton3app.nazo.LauncherIconSwitcher
 import quiz.thaton3app.nazo.R
 import quiz.thaton3app.nazo.achievements.AchievementEngine
+import quiz.thaton3app.nazo.challenge.ChallengePack
+import quiz.thaton3app.nazo.challenge.ChallengePackCatalog
+import quiz.thaton3app.nazo.challenge.ChallengePackProgressStore
+import quiz.thaton3app.nazo.challenge.ChallengePackResult
 import quiz.thaton3app.nazo.progression.PlayerProgression
 import quiz.thaton3app.nazo.progression.ProgressionReward
 import quiz.thaton3app.nazo.daily.DailyChallenge
@@ -462,6 +466,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var quizStats by remember { mutableStateOf(statsStore.get()) }
     val quizCollectionStore = remember { QuizCollectionStore(context.applicationContext) }
     var quizCollections by remember { mutableStateOf(quizCollectionStore.get()) }
+    val challengePackStore = remember { ChallengePackProgressStore(context.applicationContext) }
+    var challengePackProgress by remember { mutableStateOf(challengePackStore.get()) }
+    var activeChallengePackId by remember { mutableStateOf(restoredQuiz?.challengePackId) }
+    var lastChallengePackResult by remember { mutableStateOf<ChallengePackResult?>(null) }
     // Personal bests (Phase 4): separate tiny store; previous best is captured
     // right before a finished run is submitted so the results screens can show
     // either the "New Record!" badge or the standing best as a caption.
@@ -947,6 +955,8 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // gesture followed by immediate process death cannot resurrect the run.
     fun goBackClearingActiveSession() {
         activeSessionStore.clear()
+        activeChallengePackId = null
+        lastChallengePackResult = null
         goBack()
     }
 
@@ -1549,8 +1559,36 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         lastRivalGhostResult = null
     }
 
+    fun clearChallengePack() {
+        activeChallengePackId = null
+        lastChallengePackResult = null
+    }
+
+    fun startChallengePack(pack: ChallengePack) {
+        themePrefs.lastMode = NazoMode.QUIZ.name
+        clearFriendlyRival()
+        activeChallengePackId = pack.id
+        lastChallengePackResult = null
+        isDailyQuiz = false
+        quizMode = "normal"
+        adaptiveQuizState = AdaptiveQuizState()
+        bossEnabled = false
+        quizDifficulty = pack.difficulty
+        questions = pack.questions
+        userAnswers = emptyList()
+        currentQuestionIndex = 0
+        score = 0
+        aiGenerated = false
+        generationRequest = null
+        generationState = GenerationState.Idle
+        restartQuizClock()
+        quizProgressionGate.startSession()
+        if (navigationStack.last() == Screen.Loading) replace(Screen.Quiz) else navigate(Screen.Quiz)
+    }
+
     fun startQuiz(topic: String, difficulty: String, count: Int) {
         themePrefs.lastMode = NazoMode.QUIZ.name
+        clearChallengePack()
         prepareFriendlyRival(topic, difficulty, count)
         isDailyQuiz = false
         quizMode = "normal"
@@ -1616,6 +1654,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
      * in [answer] and banks the bonus XP.
      */
     fun startDailyChallenge() {
+        clearChallengePack()
         clearFriendlyRival()
         questions = DailyChallenge.questionsForToday()
         userAnswers = emptyList()
@@ -1641,6 +1680,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     fun startPractice() {
         val set = missedStore.practiceSet(10)
         if (set.isEmpty()) return
+        clearChallengePack()
         clearFriendlyRival()
         questions = set
         userAnswers = emptyList()
@@ -1661,6 +1701,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     fun startMistakeRematch() {
         val set = instantMistakeRematchQuestions(questions, userAnswers)
         if (set.isEmpty()) return
+        clearChallengePack()
         clearFriendlyRival()
         questions = set.map(Question::withShuffledOptions)
         userAnswers = emptyList()
@@ -1764,6 +1805,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     }
 
     fun startSurvival(topic: String, difficulty: String) {
+        clearChallengePack()
         clearFriendlyRival()
         themePrefs.lastMode = NazoMode.SURVIVAL.name
         isDailyQuiz = false
@@ -1826,6 +1868,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     }
 
     fun startBlitz(topic: String, difficulty: String) {
+        clearChallengePack()
         clearFriendlyRival()
         themePrefs.lastMode = NazoMode.BLITZ.name
         isDailyQuiz = false
@@ -1858,6 +1901,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     }
 
     fun startVersus(topic: String, difficulty: String, count: Int) {
+        clearChallengePack()
         clearFriendlyRival()
         themePrefs.lastMode = NazoMode.VERSUS.name
         isDailyQuiz = false
@@ -2042,9 +2086,26 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 // Home-screen widget shows streak + daily status — keep it live.
                 NazoWidgetProvider.refreshAll(context.applicationContext)
             }
-            // Personal best check (previous best captured first for the caption).
-            quizPrevBest = recordsStore.quizBestPercent(finishedDifficulty)
-            quizNewRecord = recordsStore.submitQuiz(finishedDifficulty, score, finishedQuestions.size)
+            // Curated packs own a separate durable best/completion track. They
+            // still contribute to normal quiz statistics, but do not overwrite
+            // the broad difficulty personal-best table.
+            val finishedPack = ChallengePackCatalog.find(activeChallengePackId)
+            if (finishedPack != null) {
+                lastChallengePackResult = challengePackStore.submit(finishedPack.id, score)
+                challengePackProgress = challengePackStore.get()
+                quizPrevBest = lastChallengePackResult?.previousBest?.let { previous ->
+                    (previous * 100) / finishedPack.questionCount
+                } ?: -1
+                quizNewRecord = false
+            } else {
+                lastChallengePackResult = null
+                quizPrevBest = recordsStore.quizBestPercent(finishedDifficulty)
+                quizNewRecord = recordsStore.submitQuiz(
+                    finishedDifficulty,
+                    score,
+                    finishedQuestions.size,
+                )
+            }
             // Daily challenge completion banks its bonus XP (0 for normal quizzes).
             lastDailyBonus = if (isDailyQuiz) {
                 dailyStore.recordCompletion(score, finishedQuestions.size)
@@ -2280,6 +2341,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     }
 
     fun startGuessing(topic: String, difficulty: String, rounds: Int) {
+        clearChallengePack()
         clearFriendlyRival()
         themePrefs.lastMode = NazoMode.GUESSING.name
         guessTopic = topic
@@ -2441,6 +2503,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         adaptiveQuizState,
         bossEnabled,
         activeRivalSetup,
+        activeChallengePackId,
         quizMode,
         aiGenerated,
         isDailyQuiz,
@@ -2499,6 +2562,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         },
                         bossEnabled = bossEnabled,
                         rivalSetup = activeRivalSetup?.copy(questionCount = questions.size),
+                        challengePackId = activeChallengePackId,
                     )
                 )
             }
@@ -2650,6 +2714,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         guessingRounds = guessRounds,
                         onGuessingRoundsChange = { guessRounds = it },
                         quizCollections = quizCollections,
+                        challengePacks = ChallengePackCatalog.all,
+                        challengePackProgress = challengePackProgress,
+                        onStartChallengePack = ::startChallengePack,
                         onSaveCollection = { setup: QuizCollectionSetup ->
                             quizCollectionStore.save(setup)
                             quizCollections = quizCollectionStore.get()
@@ -2911,6 +2978,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             missedCount = missedStore.count()
                             quizStats = statsStore.get()
                             quizCollections = quizCollectionStore.get()
+                            challengePackProgress = challengePackStore.get()
                             rivalGhosts = rivalGhostStore.get()
                             profileName = profilePrefs.username
                             profilePictureUri = profilePrefs.profilePictureUri
@@ -2982,6 +3050,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         // collapse is gone and owns no competing frame-time work.
                         decorativeMotionAllowed = pendingQuizLaunch == null,
                         rivalGhost = activeRivalGhost,
+                        challengePack = ChallengePackCatalog.find(activeChallengePackId),
                         quizStartedAtMs = quizStartedAt,
                         quizElapsedBaseMs = quizElapsedBaseMs,
                         difficulty = activeQuestionDifficulty(),
@@ -3040,6 +3109,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         },
                         onCloseClick = {
                             activeSessionStore.clear()
+                            clearChallengePack()
                             goHome()
                         },
                     )
@@ -3069,6 +3139,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         adaptiveAdjustmentCount = adaptiveQuizState.shiftCount,
                         progressionReward = lastProgressionReward,
                         rivalGhostResult = lastRivalGhostResult,
+                        challengePackResult = lastChallengePackResult,
                         mistakeCount = instantMistakeRematchQuestions(
                             questions,
                             userAnswers,
@@ -3076,14 +3147,17 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         modeLabel = when (quizMode) {
                             "survival", "survival-done" -> "Survival"
                             "blitz", "blitz-done" -> "Blitz"
-                            else -> null
+                            else -> "Challenge Pack".takeIf { activeChallengePackId != null }
                         },
                         playEntranceSequence =
                             quizCompleteEntranceGate.shouldPlayEntrance(),
                         onEntranceSequenceStarted = {
                             quizCompleteEntranceGate.markEntranceStarted()
                         },
-                        onPlayAnother = { goHome() },
+                        onPlayAnother = {
+                            ChallengePackCatalog.find(activeChallengePackId)?.let(::startChallengePack)
+                                ?: goHome()
+                        },
                         onPracticeMistakes = { startMistakeRematch() },
                         onReviewAnswers = { navigate(Screen.Review) },
                         onSettingsClick = { navigate(Screen.Settings) },
@@ -3153,6 +3227,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                     Screen.Review -> ReviewAnswersScreen(
                         questions = questions,
                         userAnswers = userAnswers,
+                        contextLabel = ChallengePackCatalog.find(activeChallengePackId)?.let {
+                            "CURATED PACK • ${it.title}"
+                        },
                         onBackClick = { goBack() },
                         onHomeClick = { goHome() },
                     )

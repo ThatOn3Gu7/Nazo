@@ -94,8 +94,11 @@ import kotlin.math.sin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.R
+import quiz.thaton3app.nazo.challenge.ChallengePack
+import quiz.thaton3app.nazo.challenge.ChallengePackProgress
 import quiz.thaton3app.nazo.daily.DailyChallenge
 import quiz.thaton3app.nazo.data.LocalQuestionBank
+import quiz.thaton3app.nazo.ui.components.ChallengePackShelf
 import quiz.thaton3app.nazo.ui.components.FriendlyRivalHomeCard
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
@@ -303,6 +306,9 @@ fun HomeScreen(
     guessingRounds: Int = 3,
     onGuessingRoundsChange: (Int) -> Unit = {},
     quizCollections: List<QuizCollection> = emptyList(),
+    challengePacks: List<ChallengePack> = emptyList(),
+    challengePackProgress: List<ChallengePackProgress> = emptyList(),
+    onStartChallengePack: (ChallengePack) -> Unit = {},
     onSaveCollection: (QuizCollectionSetup) -> Unit = {},
     onDeleteCollection: (QuizCollection) -> Unit = {},
     onStartGuessing: (topic: String, difficulty: String, rounds: Int) -> Unit = { _, _, _ -> },
@@ -591,6 +597,23 @@ fun HomeScreen(
     val rightContent: @Composable () -> Unit = {
         // Top alignment spacer for landscape
         if (landscape) Spacer(Modifier.height(16.dp))
+
+        if (challengePacks.isNotEmpty()) {
+            ChallengePackShelf(
+                packs = challengePacks,
+                progress = challengePackProgress,
+                motionAllowed = !reduceMotion,
+                onStart = { pack, origin ->
+                    if (collectionLoadProgress == null) {
+                        Haptics.light(context)
+                        onLaunchPortal(origin, "Start ${pack.title}") {
+                            onStartChallengePack(pack)
+                        }
+                    }
+                },
+            )
+            Spacer(Modifier.height(16.dp))
+        }
 
         val displayedCollections = if (quizCollections.isNotEmpty()) {
             quizCollections
