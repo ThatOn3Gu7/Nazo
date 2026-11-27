@@ -339,6 +339,8 @@ class BackupRestoreTest {
         assertEquals(4, restored.totalQuizzes)
         assertEquals(12, restored.totalCorrect)
         assertEquals(0, restored.bestCorrectCombo)
+        assertEquals(0, restored.streakProtectionTokens)
+        assertEquals(0, restored.streakProtectionProgress)
         assertTrue(restored.animeRecentOutcomes.isEmpty())
         assertTrue(restored.recentTopics.isEmpty())
     }
@@ -356,6 +358,9 @@ class BackupRestoreTest {
             """{"totalQuestionsAnswered":1,"animeAnswered":{"Naruto":1},"animeRecentOutcomes":{"Naruto":"12"}}""",
             """{"recentTopics":["Naruto","naruto"]}""",
             """{"recentTopics":"Naruto"}""",
+            """{"streakProtectionTokens":3}""",
+            """{"streakProtectionProgress":5}""",
+            """{"protectedStreakEpochDay":200}""",
         )
 
         corruptValues.forEach { corrupt ->
@@ -421,7 +426,10 @@ class BackupRestoreTest {
             bestCorrectCombo = 11,
             currentStreakDays = 5,
             bestStreakDays = 9,
-            lastQuizEpochDay = QuizStats.localEpochDay(),
+            lastQuizEpochDay = QuizStats.localEpochDay() - 2,
+            streakProtectionTokens = 1,
+            streakProtectionProgress = 3,
+            protectedStreakEpochDay = QuizStats.localEpochDay() - 1,
             difficultyPlays = mapOf("Easy" to 3),
             animeAnswered = mapOf("Naruto" to 4),
             animeCorrect = mapOf("Naruto" to 3),

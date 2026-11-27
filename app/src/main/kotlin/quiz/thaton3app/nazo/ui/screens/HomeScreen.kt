@@ -99,6 +99,7 @@ import quiz.thaton3app.nazo.data.LocalQuestionBank
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.data.QuizStats
+import quiz.thaton3app.nazo.data.StreakProtection
 import quiz.thaton3app.nazo.data.settings.QuizCollection
 import quiz.thaton3app.nazo.data.settings.QuizCollectionPolicy
 import quiz.thaton3app.nazo.data.settings.QuizCollectionSetup
@@ -147,6 +148,12 @@ internal fun homePracticeVisible(
 ): Boolean = mode == NazoMode.QUIZ &&
     practiceCount > 0 &&
     focusAction != HomeFocusAction.Practice
+
+internal fun homeStreakChipVisible(
+    streakDays: Int,
+    protectionTokens: Int,
+    protectionProgress: Int,
+): Boolean = streakDays > 0 || protectionTokens > 0 || protectionProgress > 0
 
 internal fun adaptiveDifficultyAvailable(mode: NazoMode): Boolean = mode == NazoMode.QUIZ
 
@@ -315,6 +322,9 @@ fun HomeScreen(
     streakDays: Int = 0,
     bestStreakDays: Int = 0,
     lastQuizEpochDay: Long? = null,
+    streakProtectionTokens: Int = 0,
+    streakProtectionProgress: Int = 0,
+    protectedStreakEpochDay: Long? = null,
     totalQuizzes: Int = 0,
     practiceCount: Int = 0,
     onStartPractice: () -> Unit = {},
@@ -489,7 +499,7 @@ fun HomeScreen(
     val avatarOverscrollEffect = rememberOverscrollEffect()
     val videoAvatarOverscrolling = avatarOverscrollEffect?.isInProgress == true
 
-    // Group 1: Profile, Badges, Daily Challenge, and Mode Selection
+    // Group 1: Profile, status, personalized focus, and Mode Selection
     val leftContent: @Composable () -> Unit = {
         Spacer(Modifier.height(16.dp))
 
@@ -515,11 +525,14 @@ fun HomeScreen(
                 onClick = if (offline) null else ({ showProviderSheet = true }),
             )
             Spacer(Modifier.weight(1f))
-            if (streakDays >= 1) {
+            if (homeStreakChipVisible(streakDays, streakProtectionTokens, streakProtectionProgress)) {
                 StreakFlameChip(
                     streakDays = streakDays,
                     bestStreakDays = bestStreakDays,
                     lastQuizEpochDay = lastQuizEpochDay,
+                    streakProtectionTokens = streakProtectionTokens,
+                    streakProtectionProgress = streakProtectionProgress,
+                    protectedStreakEpochDay = protectedStreakEpochDay,
                     totalQuizzes = totalQuizzes,
                 )
             }
@@ -1177,6 +1190,9 @@ private fun StreakFlameChip(
     streakDays: Int,
     bestStreakDays: Int,
     lastQuizEpochDay: Long?,
+    streakProtectionTokens: Int,
+    streakProtectionProgress: Int,
+    protectedStreakEpochDay: Long?,
     totalQuizzes: Int,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
@@ -1230,33 +1246,64 @@ private fun StreakFlameChip(
             label = "streakFlamePhase",
         )
         Icon(
-            imageVector = Icons.Filled.LocalFireDepartment,
+            imageVector = if (streakDays > 0) {
+                Icons.Filled.LocalFireDepartment
+            } else {
+                Icons.Filled.Shield
+            },
             contentDescription = null,
             tint = flameColor,
             modifier = Modifier
                 .size(flameSize)
                 .graphicsLayer {
-                    // Pivot at the base: a flame is anchored to what it burns.
-                    transformOrigin = TransformOrigin(0.5f, 1f)
-                    // Vertical stretch with a matching horizontal squash, so the
-                    // flame keeps its volume while it licks upward.
-                    val stretch = 1f + 0.07f * sin(t)
-                    scaleY = stretch
-                    scaleX = 1f - 0.05f * sin(t + 0.6f)
-                    // A slow lean, on a different period from the stretch.
-                    rotationZ = 2.4f * sin(t * 0.73f + 1.1f)
-                    // A tiny lift at yet another period keeps it from looking
-                    // like it is bolted down.
-                    translationY = -0.6f * size.height * 0.01f * sin(t * 1.31f)
+                    if (streakDays > 0) {
+                        // Pivot at the base: a flame is anchored to what it burns.
+                        transformOrigin = TransformOrigin(0.5f, 1f)
+                        val stretch = 1f + 0.07f * sin(t)
+                        scaleY = stretch
+                        scaleX = 1f - 0.05f * sin(t + 0.6f)
+                        rotationZ = 2.4f * sin(t * 0.73f + 1.1f)
+                        translationY = -0.6f * size.height * 0.01f * sin(t * 1.31f)
+                    }
                 },
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            text = if (streakDays == 1) "1-day streak" else "$streakDays-day streak",
+            text = when {
+                streakDays == 1 -> "1-day streak"
+                streakDays > 1 -> "$streakDays-day streak"
+                else -> "Streak shield"
+            },
             color = flameColor,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
         )
+        if (streakProtectionTokens > 0) {
+            Spacer(Modifier.width(7.dp))
+            if (streakDays > 0) {
+                Icon(
+                    imageVector = Icons.Filled.Shield,
+                    contentDescription = "$streakProtectionTokens streak shields ready",
+                    tint = NazoPrimary,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(3.dp))
+            }
+            Text(
+                text = "$streakProtectionTokens",
+                color = NazoPrimary,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.ExtraBold,
+            )
+        } else if (streakDays == 0) {
+            Spacer(Modifier.width(7.dp))
+            Text(
+                text = "$streakProtectionProgress/${StreakProtection.GAMES_PER_TOKEN}",
+                color = NazoPrimary,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.ExtraBold,
+            )
+        }
     }
 
     if (expanded) {
@@ -1264,6 +1311,9 @@ private fun StreakFlameChip(
             streakDays = streakDays,
             bestStreakDays = bestStreakDays,
             lastQuizEpochDay = lastQuizEpochDay,
+            streakProtectionTokens = streakProtectionTokens,
+            streakProtectionProgress = streakProtectionProgress,
+            protectedStreakEpochDay = protectedStreakEpochDay,
             totalQuizzes = totalQuizzes,
             flameColor = flameColor,
             onDismiss = { expanded = false },
@@ -1287,6 +1337,9 @@ private fun StreakDetailDialog(
     streakDays: Int,
     bestStreakDays: Int,
     lastQuizEpochDay: Long?,
+    streakProtectionTokens: Int,
+    streakProtectionProgress: Int,
+    protectedStreakEpochDay: Long?,
     totalQuizzes: Int,
     flameColor: Color,
     onDismiss: () -> Unit,
@@ -1319,7 +1372,16 @@ private fun StreakDetailDialog(
                     Column(modifier = Modifier.weight(1f)) {
                         StreakHeadline(streakDays, flameColor, centered = false)
                         Spacer(Modifier.height(12.dp))
-                        StreakFacts(best, totalQuizzes, playedToday, flameColor)
+                        StreakFacts(
+                            best = best,
+                            totalQuizzes = totalQuizzes,
+                            playedToday = playedToday,
+                            streakDays = streakDays,
+                            protectionTokens = streakProtectionTokens,
+                            protectionProgress = streakProtectionProgress,
+                            protectedYesterday = protectedStreakEpochDay == today - 1,
+                            flameColor = flameColor,
+                        )
                     }
                 }
             } else {
@@ -1327,7 +1389,16 @@ private fun StreakDetailDialog(
                 Spacer(Modifier.height(14.dp))
                 StreakHeadline(streakDays, flameColor, centered = true)
                 Spacer(Modifier.height(16.dp))
-                StreakFacts(best, totalQuizzes, playedToday, flameColor)
+                StreakFacts(
+                    best = best,
+                    totalQuizzes = totalQuizzes,
+                    playedToday = playedToday,
+                    streakDays = streakDays,
+                    protectionTokens = streakProtectionTokens,
+                    protectionProgress = streakProtectionProgress,
+                    protectedYesterday = protectedStreakEpochDay == today - 1,
+                    flameColor = flameColor,
+                )
             }
 
             Spacer(Modifier.height(18.dp))
@@ -1377,16 +1448,18 @@ private fun StreakArt(streakDays: Int, flameColor: Color, compact: Boolean) {
                 .background(flameColor.copy(alpha = 0.16f)),
         )
         Icon(
-            imageVector = Icons.Filled.LocalFireDepartment,
+            imageVector = if (streakDays > 0) Icons.Filled.LocalFireDepartment else Icons.Filled.Shield,
             contentDescription = null,
             tint = flameColor,
             modifier = Modifier
                 .size(flame)
                 .graphicsLayer {
-                    transformOrigin = TransformOrigin(0.5f, 1f)
-                    scaleY = 1f + 0.08f * sin(t)
-                    scaleX = 1f - 0.05f * sin(t + 0.6f)
-                    rotationZ = 2.6f * sin(t * 0.73f + 1.1f)
+                    if (streakDays > 0) {
+                        transformOrigin = TransformOrigin(0.5f, 1f)
+                        scaleY = 1f + 0.08f * sin(t)
+                        scaleX = 1f - 0.05f * sin(t + 0.6f)
+                        rotationZ = 2.6f * sin(t * 0.73f + 1.1f)
+                    }
                 },
         )
     }
@@ -1398,13 +1471,17 @@ private fun StreakHeadline(streakDays: Int, flameColor: Color, centered: Boolean
         horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
     ) {
         Text(
-            text = "$streakDays",
+            text = if (streakDays > 0) "$streakDays" else "Shield",
             color = flameColor,
             style = MaterialTheme.typography.displaySmall,
             fontWeight = FontWeight.Bold,
         )
         Text(
-            text = if (streakDays == 1) "day streak" else "days in a row",
+            text = when {
+                streakDays == 1 -> "day streak"
+                streakDays > 1 -> "days in a row"
+                else -> "protection earned through play"
+            },
             color = NazoTextSecondary,
             style = MaterialTheme.typography.bodyMedium,
         )
@@ -1416,6 +1493,10 @@ private fun StreakFacts(
     best: Int,
     totalQuizzes: Int,
     playedToday: Boolean,
+    streakDays: Int,
+    protectionTokens: Int,
+    protectionProgress: Int,
+    protectedYesterday: Boolean,
     flameColor: Color,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -1434,6 +1515,46 @@ private fun StreakFacts(
         )
         Spacer(Modifier.height(10.dp))
         StreakFactRow(
+            icon = Icons.Filled.Shield,
+            label = "Streak shields",
+            value = "$protectionTokens / ${StreakProtection.MAX_TOKENS}",
+            tint = NazoPrimary,
+        )
+        Spacer(Modifier.height(7.dp))
+        LinearProgressIndicator(
+            progress = if (protectionTokens >= StreakProtection.MAX_TOKENS) {
+                1f
+            } else {
+                protectionProgress.toFloat() / StreakProtection.GAMES_PER_TOKEN
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(5.dp)
+                .clip(RoundedCornerShape(50)),
+            color = NazoPrimary,
+            trackColor = NazoTextSecondary.copy(alpha = 0.12f),
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = if (protectionTokens >= StreakProtection.MAX_TOKENS) {
+                "Inventory full · shields are spent automatically when needed."
+            } else {
+                "$protectionProgress/${StreakProtection.GAMES_PER_TOKEN} completed games toward the next shield"
+            },
+            color = NazoTextSecondary,
+            style = MaterialTheme.typography.labelSmall,
+        )
+        if (protectedYesterday) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "A shield protected your streak yesterday.",
+                color = NazoPrimary,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        StreakFactRow(
             icon = if (playedToday) Icons.Filled.CheckCircle else Icons.Filled.Schedule,
             label = "Today",
             value = if (playedToday) "Done" else "Not yet",
@@ -1442,7 +1563,11 @@ private fun StreakFacts(
         if (!playedToday) {
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "Play a quiz today to keep the streak alive.",
+                text = if (streakDays > 0) {
+                    "Play a quiz today to keep the streak alive."
+                } else {
+                    "Complete games to earn protection for your next streak."
+                },
                 color = NazoTextSecondary,
                 style = MaterialTheme.typography.bodySmall,
             )

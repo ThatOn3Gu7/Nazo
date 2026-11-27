@@ -1266,11 +1266,17 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
         beforeBonusXp: Int,
         beforeAchievements: List<quiz.thaton3app.nazo.achievements.Achievement>,
     ) {
-        lastProgressionReward = PlayerProgression.rewardBetween(
+        val reward = PlayerProgression.rewardBetween(
             before = PlayerProgression.from(beforeStats, beforeBonusXp),
             after = PlayerProgression.from(afterStats, dailyStore.totalBonusXp()),
             beforeAchievements = beforeAchievements,
             afterAchievements = achievementsFor(afterStats),
+        )
+        lastProgressionReward = reward.copy(
+            streakProtectionEarned = PlayerProgression.streakProtectionEarnedBetween(
+                beforeStats,
+                afterStats,
+            ),
         )
     }
 
@@ -2576,6 +2582,9 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         streakDays = quizStats.currentStreakDays,
                         bestStreakDays = quizStats.bestStreakDays,
                         lastQuizEpochDay = quizStats.lastQuizEpochDay,
+                        streakProtectionTokens = quizStats.streakProtectionTokens,
+                        streakProtectionProgress = quizStats.streakProtectionProgress,
+                        protectedStreakEpochDay = quizStats.protectedStreakEpochDay,
                         totalQuizzes = quizStats.totalQuizzes,
                         practiceCount = missedCount,
                         onStartPractice = { startPractice() },

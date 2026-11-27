@@ -29,6 +29,7 @@ data class ProgressionReward(
     val previousLevel: Int,
     val progress: PlayerProgress,
     val unlockedAchievementTitles: List<String>,
+    val streakProtectionEarned: Int = 0,
 ) {
     val leveledUp: Boolean get() = progress.level > previousLevel
 }
@@ -46,6 +47,9 @@ object PlayerProgression {
             xpPerLevel = XP_PER_LEVEL,
         )
     }
+
+    fun streakProtectionEarnedBetween(before: QuizStats, after: QuizStats): Int =
+        (after.streakProtectionTokens - before.streakProtectionTokens).coerceAtLeast(0)
 
     /**
      * Compares two already-derived snapshots. Achievement events are inferred

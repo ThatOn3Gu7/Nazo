@@ -37,7 +37,7 @@ fun personalizedHomeFocus(
 ): PersonalizedHomeFocus {
     val streakAtRisk = !dailyCompleted &&
         stats.currentStreakDays > 0 &&
-        stats.lastQuizEpochDay == todayEpochDay - 1
+        stats.lastStreakActivityEpochDay() == todayEpochDay - 1
     if (streakAtRisk) {
         return PersonalizedHomeFocus(
             action = HomeFocusAction.Daily,

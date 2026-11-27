@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -74,7 +75,9 @@ fun ProgressionRewardBanner(
         ),
         modifier = modifier,
     ) {
-        val milestone = reward.leveledUp || reward.unlockedAchievementTitles.isNotEmpty()
+        val milestone = reward.leveledUp ||
+            reward.unlockedAchievementTitles.isNotEmpty() ||
+            reward.streakProtectionEarned > 0
         Surface(
             color = if (milestone) NazoPrimary.copy(alpha = 0.10f) else NazoStatsCardBg,
             shape = RoundedCornerShape(18.dp),
@@ -137,6 +140,32 @@ fun ProgressionRewardBanner(
                             fontWeight = FontWeight.ExtraBold,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         )
+                    }
+                }
+
+                if (reward.streakProtectionEarned > 0) {
+                    Row(verticalAlignment = Alignment.Top) {
+                        Icon(
+                            Icons.Filled.Shield,
+                            contentDescription = null,
+                            tint = NazoPrimary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "Streak shield earned",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = NazoTextSecondary,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = "Automatically protects one missed day",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = NazoTextPrimary,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
                     }
                 }
 

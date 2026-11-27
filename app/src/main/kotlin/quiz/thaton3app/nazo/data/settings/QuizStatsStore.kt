@@ -7,6 +7,7 @@ import org.json.JSONException
 import org.json.JSONObject
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.QuizStats
+import quiz.thaton3app.nazo.data.StreakProtection
 
 /**
  * Persists [QuizStats] as a single JSON string in SharedPreferences — consistent
@@ -35,8 +36,9 @@ class QuizStatsStore internal constructor(
      * Missing a day is a non-event: no code runs when the user simply does not
      * play, so a streak broken by an inactive day stayed on disk (and on
      * screen) until the next quiz was recorded. Folding
-     * [QuizStats.withStreakExpiry] into the read makes the reset happen the
-     * first time anything looks at the stats on the new day.
+     * [QuizStats.withStreakProtection] into the read makes the reset—or an
+     * earned shield's automatic protection—happen the first time anything
+     * looks at the stats on the new day.
      */
     fun get(): QuizStats {
         val raw = try {
@@ -54,7 +56,7 @@ class QuizStatsStore internal constructor(
             return resetCorruptStats()
         }
 
-        val current = stored.withStreakExpiry()
+        val current = stored.withStreakProtection()
         if (current != stored) save(current)
         return current
     }
@@ -110,6 +112,9 @@ internal object QuizStatsJson {
         put("currentStreakDays", stats.currentStreakDays)
         put("bestStreakDays", stats.bestStreakDays)
         put("lastQuizEpochDay", stats.lastQuizEpochDay ?: JSONObject.NULL)
+        put("streakProtectionTokens", stats.streakProtectionTokens)
+        put("streakProtectionProgress", stats.streakProtectionProgress)
+        put("protectedStreakEpochDay", stats.protectedStreakEpochDay ?: JSONObject.NULL)
         put("difficultyPlays", JSONObject(stats.difficultyPlays))
         put("difficultyCorrect", JSONObject(stats.difficultyCorrect))
         put("difficultyAnswered", JSONObject(stats.difficultyAnswered))
@@ -132,6 +137,9 @@ internal object QuizStatsJson {
             currentStreakDays = intField(o, "currentStreakDays"),
             bestStreakDays = intField(o, "bestStreakDays"),
             lastQuizEpochDay = nullableLongField(o, "lastQuizEpochDay"),
+            streakProtectionTokens = intField(o, "streakProtectionTokens"),
+            streakProtectionProgress = intField(o, "streakProtectionProgress"),
+            protectedStreakEpochDay = nullableLongField(o, "protectedStreakEpochDay"),
             difficultyPlays = intMap(o, "difficultyPlays"),
             difficultyCorrect = intMap(o, "difficultyCorrect"),
             difficultyAnswered = intMap(o, "difficultyAnswered"),
@@ -222,6 +230,8 @@ internal object QuizStatsJson {
             stats.bestCorrectCombo,
             stats.currentStreakDays,
             stats.bestStreakDays,
+            stats.streakProtectionTokens,
+            stats.streakProtectionProgress,
         )
         require(scalarCounts.all { it >= 0 }) { "Quiz statistics contain a negative count" }
         require(stats.totalCorrect <= stats.totalQuestionsAnswered) {
@@ -241,6 +251,21 @@ internal object QuizStatsJson {
         }
         stats.lastQuizEpochDay?.let { day ->
             require(day in 0L..MAX_REASONABLE_EPOCH_DAY) { "Invalid last quiz epoch day" }
+        }
+        require(stats.streakProtectionTokens in 0..StreakProtection.MAX_TOKENS) {
+            "Invalid streak-protection inventory"
+        }
+        require(stats.streakProtectionProgress in 0 until StreakProtection.GAMES_PER_TOKEN) {
+            "Invalid streak-protection progress"
+        }
+        stats.protectedStreakEpochDay?.let { day ->
+            require(day in 0L..MAX_REASONABLE_EPOCH_DAY) { "Invalid protected streak epoch day" }
+            require(stats.currentStreakDays > 0 && stats.lastQuizEpochDay != null) {
+                "Protected streak day requires an active streak"
+            }
+            require(day >= requireNotNull(stats.lastQuizEpochDay)) {
+                "Protected streak day predates the last quiz"
+            }
         }
 
         require(stats.difficultyPlays.values.sumAsLong() <= stats.totalQuizzes.toLong()) {

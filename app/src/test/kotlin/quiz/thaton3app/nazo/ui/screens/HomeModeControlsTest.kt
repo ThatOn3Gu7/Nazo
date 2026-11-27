@@ -57,6 +57,14 @@ class HomeModeControlsTest {
     }
 
     @Test
+    fun streakChipRemainsVisibleForShieldInventoryOrEarningProgress() {
+        assertFalse(homeStreakChipVisible(0, 0, 0))
+        assertTrue(homeStreakChipVisible(3, 0, 0))
+        assertTrue(homeStreakChipVisible(0, 1, 0))
+        assertTrue(homeStreakChipVisible(0, 0, 2))
+    }
+
+    @Test
     fun adaptiveDifficultyBelongsOnlyToQuiz() {
         assertTrue(adaptiveDifficultyAvailable(NazoMode.QUIZ))
         NazoMode.entries.filterNot { it == NazoMode.QUIZ }.forEach { mode ->

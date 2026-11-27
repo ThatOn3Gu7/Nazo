@@ -38,6 +38,24 @@ class PlayerProgressionTest {
     }
 
     @Test
+    fun `streak shield reward only reports newly earned inventory`() {
+        assertEquals(
+            1,
+            PlayerProgression.streakProtectionEarnedBetween(
+                before = QuizStats(streakProtectionTokens = 0),
+                after = QuizStats(streakProtectionTokens = 1),
+            ),
+        )
+        assertEquals(
+            0,
+            PlayerProgression.streakProtectionEarnedBetween(
+                before = QuizStats(streakProtectionTokens = 1),
+                after = QuizStats(streakProtectionTokens = 0),
+            ),
+        )
+    }
+
+    @Test
     fun `reward reports level crossing and only newly unlocked existing achievements`() {
         val locked = achievement(id = "first", title = "First Steps", unlocked = false)
         val alreadyUnlocked = achievement(id = "steady", title = "Steady", unlocked = true)

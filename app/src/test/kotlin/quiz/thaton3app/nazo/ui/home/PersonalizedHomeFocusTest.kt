@@ -27,6 +27,24 @@ class PersonalizedHomeFocusTest {
     }
 
     @Test
+    fun aShieldCoveredYesterdayStillMakesTodayTheStreakPriority() {
+        val focus = personalizedHomeFocus(
+            stats = QuizStats(
+                totalQuizzes = 5,
+                currentStreakDays = 5,
+                bestStreakDays = 5,
+                lastQuizEpochDay = today - 2,
+                protectedStreakEpochDay = today - 1,
+            ),
+            dailyCompleted = false,
+            practiceCount = 2,
+            todayEpochDay = today,
+        )
+
+        assertEquals(HomeFocusAction.Daily, focus.action)
+    }
+
+    @Test
     fun mistakesBecomeThePriorityOnceTheStreakIsSafe() {
         val focus = personalizedHomeFocus(
             stats = QuizStats(
