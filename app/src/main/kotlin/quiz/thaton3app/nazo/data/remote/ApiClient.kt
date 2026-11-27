@@ -91,12 +91,19 @@ Hard rules:
         difficulty: String,
         count: Int,
         avoidQuestions: List<String> = emptyList(),
+        finaleDifficulty: String? = null,
     ): Result<List<Question>> = withContext(Dispatchers.IO) {
         runCatching {
             val endpoint = providerById(providerId)
                 ?: throw IllegalArgumentException("Unknown provider: $providerId")
 
-            val prompt = buildUserPrompt(topic, difficulty, count, avoidQuestions = avoidQuestions)
+            val prompt = buildUserPrompt(
+                topic = topic,
+                difficulty = difficulty,
+                count = count,
+                avoidQuestions = avoidQuestions,
+                finaleDifficulty = finaleDifficulty,
+            )
             val url = endpoint.buildUrl(model, apiKey)
 
             val connection = (URL(url).openConnection() as HttpURLConnection).apply {
@@ -131,6 +138,7 @@ Hard rules:
                         topic = topic,
                         expectedCount = count,
                         requestedDifficulty = difficulty,
+                        finaleDifficulty = finaleDifficulty,
                     )
                     if (questions.isEmpty()) {
                         throw IllegalStateException("Provider returned no questions")
@@ -536,6 +544,7 @@ Hard rules:
         topic: String,
         expectedCount: Int = 0,
         requestedDifficulty: String = "Medium",
+        finaleDifficulty: String? = null,
     ): List<Question> {
         val arr = extractQuestionArray(raw)
         val list = mutableListOf<Question>()
@@ -558,13 +567,19 @@ Hard rules:
             // question instead of promoting options.first() to "correct".
             val correctAnswer = options.firstOrNull { canon(it) == canon(rawCorrect) } ?: continue
             val declaredDifficulty = AdaptiveTier.fromLabel(o.optString("difficulty", ""))
-            val questionDifficulty = if (AdaptiveDifficulty.isAdaptive(requestedDifficulty)) {
-                // Adaptive generation is only useful when every candidate says
-                // which tier it actually belongs to. Missing/unknown labels are
-                // rejected instead of silently pretending a question is Medium.
-                declaredDifficulty?.label ?: continue
-            } else {
-                AdaptiveTier.fromLabel(requestedDifficulty)?.label
+            val isFinale = finaleDifficulty != null && expectedCount > 0 &&
+                list.size == expectedCount - 1
+            val questionDifficulty = when {
+                isFinale -> AdaptiveTier.fromLabel(finaleDifficulty)?.label
+                    ?: declaredDifficulty?.label
+                    ?: AdaptiveTier.MEDIUM.label
+                AdaptiveDifficulty.isAdaptive(requestedDifficulty) -> {
+                    // Adaptive generation is only useful when every candidate says
+                    // which tier it actually belongs to. Missing/unknown labels are
+                    // rejected instead of silently pretending a question is Medium.
+                    declaredDifficulty?.label ?: continue
+                }
+                else -> AdaptiveTier.fromLabel(requestedDifficulty)?.label
                     ?: declaredDifficulty?.label
                     ?: AdaptiveTier.MEDIUM.label
             }
@@ -596,6 +611,7 @@ Hard rules:
         count: Int,
         language: String = "English",
         avoidQuestions: List<String> = emptyList(),
+        finaleDifficulty: String? = null,
     ): String {
         val topicLine = if (topic.isNotBlank()) " about \"$topic\"" else " about any popular anime"
         val adaptive = AdaptiveDifficulty.isAdaptive(difficulty)
@@ -605,6 +621,10 @@ Hard rules:
             if (adaptive) {
                 append("Build a balanced adaptive candidate set across Easy, Medium, Hard, and Otaku Master. ")
                 append("Label every item with its real difficulty so the app can choose the next tier live. ")
+            }
+            if (finaleDifficulty != null) {
+                append("Make the FINAL question a distinct $finaleDifficulty difficulty finale; ")
+                append("it should test a deeper fact than the earlier questions while remaining fair and unambiguous. ")
             }
             append("Use exactly 4 answer options per question. ")
             append("Respond ONLY with the JSON array described in your instructions ")
@@ -701,8 +721,14 @@ object QuizCache {
     private val map = LinkedHashMap<String, List<Question>>()
     private const val MAX = 20
 
-    fun key(provider: String, model: String, topic: String, difficulty: String, count: Int): String =
-        "$provider:$model:$topic:$difficulty:$count"
+    fun key(
+        provider: String,
+        model: String,
+        topic: String,
+        difficulty: String,
+        count: Int,
+        finaleDifficulty: String? = null,
+    ): String = "$provider:$model:$topic:$difficulty:$count:finale=${finaleDifficulty.orEmpty()}"
 
     fun get(key: String): List<Question>? = synchronized(lock) { map[key] }
 

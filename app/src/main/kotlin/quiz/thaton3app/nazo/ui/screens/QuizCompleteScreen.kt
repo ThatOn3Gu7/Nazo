@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FactCheck
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.outlined.*
@@ -139,6 +140,7 @@ fun QuizCompleteScreen(
     isNewRecord: Boolean = false,
     daily: Boolean = false,
     dailyBonusXp: Int = 0,
+    bossBonusXp: Int = 0,
     adaptiveFinalDifficulty: String? = null,
     adaptiveAdjustmentCount: Int = 0,
     progressionReward: ProgressionReward? = null,
@@ -169,7 +171,7 @@ fun QuizCompleteScreen(
         quizResultStoryInitialStage(ownsEntranceSequence, reduceMotion)
     }
     val runEntranceSequence = initialStoryStage == QuizResultStoryStage.Arriving
-    val hasRewards = isNewRecord || dailyBonusXp > 0 || progressionReward != null
+    val hasRewards = isNewRecord || dailyBonusXp > 0 || bossBonusXp > 0 || progressionReward != null
     val timeline = remember(hasRewards) { quizResultStoryTimeline(hasRewards) }
     var storyStage by remember { mutableStateOf(initialStoryStage) }
     var triggerConfetti by remember { mutableStateOf(false) }
@@ -396,6 +398,7 @@ fun QuizCompleteScreen(
                         ResultRewardsChapter(
                             isNewRecord = isNewRecord,
                             dailyBonusXp = dailyBonusXp,
+                            bossBonusXp = bossBonusXp,
                             progressionReward = progressionReward,
                         )
                     }
@@ -695,9 +698,39 @@ private fun AdaptiveResultCard(
 }
 
 @Composable
+private fun BossBonusChip(bonusXp: Int) {
+    val accent = MaterialTheme.colorScheme.tertiary
+    Surface(
+        shape = RoundedCornerShape(50.dp),
+        color = accent.copy(alpha = 0.14f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, accent.copy(alpha = 0.35f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Bolt,
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text = "BOSS CLEARED · +$bonusXp XP",
+                style = MaterialTheme.typography.labelLarge,
+                color = accent,
+                fontWeight = FontWeight.ExtraBold,
+            )
+        }
+    }
+}
+
+@Composable
 private fun ResultRewardsChapter(
     isNewRecord: Boolean,
     dailyBonusXp: Int,
+    bossBonusXp: Int,
     progressionReward: ProgressionReward?,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -720,6 +753,11 @@ private fun ResultRewardsChapter(
                     bonusXp = dailyBonusXp,
                     animateEntrance = false,
                 )
+            }
+        }
+        if (bossBonusXp > 0) {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                BossBonusChip(bossBonusXp)
             }
         }
         progressionReward?.let { reward ->

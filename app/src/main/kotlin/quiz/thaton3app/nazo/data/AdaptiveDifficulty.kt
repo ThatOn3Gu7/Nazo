@@ -127,10 +127,16 @@ object AdaptiveDifficulty {
         questions: List<Question>,
         answeredQuestionIndex: Int,
         target: AdaptiveTier,
+        lockFinalQuestion: Boolean = false,
     ): List<Question> {
         val nextIndex = answeredQuestionIndex + 1
         if (nextIndex !in questions.indices) return questions
-        val bestIndex = (nextIndex until questions.size).minWithOrNull(
+        val candidateEnd = if (lockFinalQuestion && nextIndex < questions.lastIndex) {
+            questions.lastIndex
+        } else {
+            questions.size
+        }
+        val bestIndex = (nextIndex until candidateEnd).minWithOrNull(
             compareBy<Int> { index ->
                 val tier = AdaptiveTier.fromLabel(questions[index].difficulty) ?: AdaptiveTier.MEDIUM
                 abs(tier.ordinal - target.ordinal)

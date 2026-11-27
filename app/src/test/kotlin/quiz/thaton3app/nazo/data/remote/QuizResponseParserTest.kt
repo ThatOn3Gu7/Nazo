@@ -1,6 +1,7 @@
 package quiz.thaton3app.nazo.data.remote
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -46,7 +47,14 @@ class QuizResponseParserTest {
         json: String,
         expectedCount: Int = 0,
         requestedDifficulty: String = "Medium",
-    ) = ApiClient.parseQuestions(json, topic, expectedCount, requestedDifficulty)
+        finaleDifficulty: String? = null,
+    ) = ApiClient.parseQuestions(
+        raw = json,
+        topic = topic,
+        expectedCount = expectedCount,
+        requestedDifficulty = requestedDifficulty,
+        finaleDifficulty = finaleDifficulty,
+    )
 
     // ---------------------------------------------------------------- valid
 
@@ -73,6 +81,37 @@ class QuizResponseParserTest {
     fun fixedDifficultyTagsGeneratedQuestionsWithTheRequestedTier() {
         val qs = parse("[" + q(difficulty = "Easy") + "]", 1, requestedDifficulty = "Hard")
         assertEquals("Hard", qs.single().difficulty)
+    }
+
+    @Test
+    fun finaleDeckUsesADistinctCacheIdentity() {
+        val ordinary = QuizCache.key("provider", "model", topic, "Medium", 10)
+        val finale = QuizCache.key(
+            "provider",
+            "model",
+            topic,
+            "Medium",
+            10,
+            finaleDifficulty = "Hard",
+        )
+
+        assertNotEquals(ordinary, finale)
+    }
+
+    @Test
+    fun finaleDifficultyOnlyElevatesTheLastGeneratedQuestion() {
+        val raw = "[" +
+            q(question = "Regular one?", difficulty = "Medium") + "," +
+            q(question = "Final one?", difficulty = "Medium") +
+            "]"
+        val qs = parse(
+            raw,
+            expectedCount = 2,
+            requestedDifficulty = "Medium",
+            finaleDifficulty = "Hard",
+        )
+
+        assertEquals(listOf("Medium", "Hard"), qs.map { it.difficulty })
     }
 
     @Test

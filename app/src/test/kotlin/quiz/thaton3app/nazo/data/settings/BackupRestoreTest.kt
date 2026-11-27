@@ -414,6 +414,7 @@ class BackupRestoreTest {
             totalQuizzes = 12,
             totalQuestionsAnswered = 90,
             totalCorrect = 70,
+            bonusXp = 40,
             bestCorrectCombo = 11,
             currentStreakDays = 5,
             bestStreakDays = 9,

@@ -39,6 +39,8 @@ data class ActiveQuizSession(
     val versusP1Score: Int,
     val versusP1Answers: List<String?>,
     val adaptiveState: AdaptiveQuizState? = null,
+    /** True when the final question is the reserved, higher-value Boss Finale. */
+    val bossEnabled: Boolean = false,
 ) : ActiveSessionSnapshot {
     enum class Destination { QUIZ, VERSUS_HANDOFF }
 }
@@ -129,7 +131,7 @@ class ActiveSessionStore internal constructor(
 }
 
 internal object ActiveSessionJson {
-    private const val VERSION = 2
+    private const val VERSION = 3
     private const val MAX_QUESTIONS = 200
     private const val MAX_TEXT = 20_000
     private const val MAX_TIMER_MS = ActiveSessionStore.MAX_AGE_MS
@@ -164,6 +166,7 @@ internal object ActiveSessionJson {
                     put("versusP1Score", snapshot.versusP1Score)
                     put("versusP1Answers", nullableStrings(snapshot.versusP1Answers))
                     put("adaptive", snapshot.adaptiveState?.let(::adaptiveJson) ?: JSONObject.NULL)
+                    put("bossEnabled", snapshot.bossEnabled)
                 }
                 is ActiveGuessSession -> {
                     put("kind", "guess")
@@ -220,6 +223,7 @@ internal object ActiveSessionJson {
         } else {
             null
         },
+        bossEnabled = version >= 3 && o.strictBoolean("bossEnabled"),
     )
 
     private fun decodeGuess(o: JSONObject, savedAt: Long) = ActiveGuessSession(
@@ -250,6 +254,7 @@ internal object ActiveSessionJson {
         } else {
             require(s.adaptiveState == null)
         }
+        if (s.bossEnabled) require(s.mode == "normal" && !s.daily)
         s.adaptiveState?.let { adaptive ->
             require(adaptive.strongStreak in 0..1)
             require(adaptive.recentMisses in 0..3)

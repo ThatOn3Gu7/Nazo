@@ -137,6 +137,26 @@ class AdaptiveDifficultyTest {
     }
 
     @Test
+    fun adaptiveReorderingCanReserveABossFinale() {
+        val questions = listOf(
+            question(1, "Medium"),
+            question(2, "Easy"),
+            question(3, "Hard"),
+            question(4, "Otaku Master"),
+        )
+
+        val reordered = AdaptiveDifficulty.prioritizeNextQuestion(
+            questions = questions,
+            answeredQuestionIndex = 0,
+            target = AdaptiveTier.OTAKU_MASTER,
+            lockFinalQuestion = true,
+        )
+
+        assertEquals(3, reordered[1].id)
+        assertEquals(4, reordered.last().id)
+    }
+
+    @Test
     fun localCandidateSequenceIsBalancedAndStartsAtMedium() {
         val sequence = AdaptiveDifficulty.candidateTierSequence(10)
         assertEquals(10, sequence.size)

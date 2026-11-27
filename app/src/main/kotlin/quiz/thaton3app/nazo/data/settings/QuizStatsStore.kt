@@ -68,8 +68,9 @@ class QuizStatsStore internal constructor(
         difficulty: String,
         questions: List<Question>,
         userAnswers: List<String?>,
+        bonusXpEarned: Int = 0,
     ) {
-        save(get().record(difficulty, questions, userAnswers))
+        save(get().record(difficulty, questions, userAnswers, bonusXpEarned))
     }
 
     /** Folds a completed guessing game into the same stats (see [QuizStats.recordGuessing]). */
@@ -103,6 +104,7 @@ internal object QuizStatsJson {
         put("totalQuizzes", stats.totalQuizzes)
         put("totalQuestionsAnswered", stats.totalQuestionsAnswered)
         put("totalCorrect", stats.totalCorrect)
+        put("bonusXp", stats.bonusXp)
         put("bestCorrectCombo", stats.bestCorrectCombo)
         put("currentStreakDays", stats.currentStreakDays)
         put("bestStreakDays", stats.bestStreakDays)
@@ -123,6 +125,7 @@ internal object QuizStatsJson {
             totalQuizzes = intField(o, "totalQuizzes"),
             totalQuestionsAnswered = intField(o, "totalQuestionsAnswered"),
             totalCorrect = intField(o, "totalCorrect"),
+            bonusXp = intField(o, "bonusXp"),
             bestCorrectCombo = intField(o, "bestCorrectCombo"),
             currentStreakDays = intField(o, "currentStreakDays"),
             bestStreakDays = intField(o, "bestStreakDays"),
@@ -200,6 +203,7 @@ internal object QuizStatsJson {
             stats.totalQuizzes,
             stats.totalQuestionsAnswered,
             stats.totalCorrect,
+            stats.bonusXp,
             stats.bestCorrectCombo,
             stats.currentStreakDays,
             stats.bestStreakDays,

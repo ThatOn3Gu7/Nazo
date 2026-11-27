@@ -81,6 +81,7 @@ class ActiveSessionStoreTest {
     fun adaptiveControllerRoundTripPreservesItsNextTarget() {
         val original = quiz().copy(
             difficulty = "Adaptive",
+            bossEnabled = true,
             adaptiveState = AdaptiveQuizState(
                 tier = AdaptiveTier.HARD,
                 strongStreak = 1,
@@ -97,15 +98,42 @@ class ActiveSessionStoreTest {
     }
 
     @Test
-    fun versionOneQuizSnapshotStillRestoresWithoutAdaptiveState() {
+    fun versionTwoQuizSnapshotKeepsAdaptiveStateAndDefaultsBossOff() {
         val prefs = FakeSharedPreferences()
-        val legacy = ActiveSessionJson.encode(quiz()).replace("\"version\":2", "\"version\":1")
+        val adaptive = AdaptiveQuizState(
+            tier = AdaptiveTier.HARD,
+            strongStreak = 1,
+            recentMisses = 0,
+            shiftCount = 2,
+            reason = AdaptiveReason.StrongPace,
+        )
+        val legacy = ActiveSessionJson.encode(
+            quiz().copy(
+                difficulty = "Adaptive",
+                adaptiveState = adaptive,
+                bossEnabled = true,
+            )
+        ).replace("\"version\":3", "\"version\":2")
+        prefs.edit().putString(ActiveSessionStore.KEY, legacy).commit()
+
+        val restored = ActiveSessionStore(prefs) { now }.load() as ActiveQuizSession
+
+        assertEquals(adaptive, restored.adaptiveState)
+        assertFalse(restored.bossEnabled)
+    }
+
+    @Test
+    fun versionOneQuizSnapshotStillRestoresWithoutAdaptiveOrBossState() {
+        val prefs = FakeSharedPreferences()
+        val legacy = ActiveSessionJson.encode(quiz().copy(bossEnabled = true))
+            .replace("\"version\":3", "\"version\":1")
         prefs.edit().putString(ActiveSessionStore.KEY, legacy).commit()
 
         val restored = ActiveSessionStore(prefs) { now }.load() as ActiveQuizSession
 
         assertEquals("Hard", restored.difficulty)
         assertNull(restored.adaptiveState)
+        assertFalse(restored.bossEnabled)
     }
 
     @Test

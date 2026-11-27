@@ -8,6 +8,7 @@ package quiz.thaton3app.nazo.data
  *
  * Tracked insights:
  *  - total quizzes, questions answered, correct answers (overall accuracy)
+ *  - durable bonus XP earned from optional challenges
  *  - current / best daily streak (epoch-day based, no java.time needed)
  *  - per-difficulty play count + correct/answered (accuracy per difficulty)
  *  - per-anime answered/correct plus a bounded recent outcome window for mastery
@@ -17,6 +18,8 @@ data class QuizStats(
     val totalQuizzes: Int = 0,
     val totalQuestionsAnswered: Int = 0,
     val totalCorrect: Int = 0,
+    /** Durable bonus XP from optional challenges such as a cleared Boss Finale. */
+    val bonusXp: Int = 0,
     val bestCorrectCombo: Int = 0,
     val currentStreakDays: Int = 0,
     val bestStreakDays: Int = 0,
@@ -33,6 +36,7 @@ data class QuizStats(
         difficulty: String,
         questions: List<Question>,
         userAnswers: List<String?>,
+        bonusXpEarned: Int = 0,
     ): QuizStats {
         val today = localEpochDay()
 
@@ -82,6 +86,7 @@ data class QuizStats(
             totalQuizzes = totalQuizzes + 1,
             totalQuestionsAnswered = answered,
             totalCorrect = correct,
+            bonusXp = bonusXp + bonusXpEarned.coerceAtLeast(0),
             bestCorrectCombo = maxOf(bestCorrectCombo, runBestCombo),
             currentStreakDays = newStreak,
             bestStreakDays = maxOf(bestStreakDays, newStreak),

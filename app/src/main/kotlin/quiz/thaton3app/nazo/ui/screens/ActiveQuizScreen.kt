@@ -286,6 +286,78 @@ private fun AdaptiveDifficultyPanel(
 }
 
 @Composable
+private fun BossFinalePanel(
+    difficulty: String,
+    bonusXp: Int,
+    revealed: Boolean,
+    cleared: Boolean,
+    compact: Boolean,
+) {
+    val shape = RoundedCornerShape(18.dp)
+    val accent = if (revealed && !cleared) NazoError else MaterialTheme.colorScheme.tertiary
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                Brush.horizontalGradient(
+                    0f to accent.copy(alpha = 0.2f),
+                    0.55f to NazoSurface,
+                    1f to NazoPrimary.copy(alpha = 0.1f),
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.horizontalGradient(
+                    listOf(accent.copy(alpha = 0.75f), NazoPrimary.copy(alpha = 0.45f)),
+                ),
+                shape = shape,
+            )
+            .padding(horizontal = 15.dp, vertical = if (compact) 9.dp else 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(if (compact) 34.dp else 40.dp)
+                .clip(CircleShape)
+                .background(accent.copy(alpha = 0.18f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Bolt,
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(if (compact) 20.dp else 23.dp),
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = when {
+                    cleared -> "BOSS CLEARED"
+                    revealed -> "BOSS FINALE COMPLETE"
+                    else -> "BOSS FINALE"
+                },
+                style = MaterialTheme.typography.labelLarge,
+                color = accent,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.8.sp,
+            )
+            Text(
+                text = when {
+                    cleared -> "+$bonusXp XP banked"
+                    revealed -> "Reward not claimed"
+                    else -> "$difficulty · +$bonusXp XP on clear"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = NazoTextSecondary,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
+}
+
+@Composable
 internal fun ActiveQuizScreen(
     question: Question,
     currentQuestionIndex: Int,
@@ -303,6 +375,9 @@ internal fun ActiveQuizScreen(
     adaptiveNextDifficulty: String = "Medium",
     adaptiveMessage: String = "",
     isAiGenerated: Boolean = false,
+    /** Reserved final question in selected finite Quiz runs. */
+    bossFinale: Boolean = false,
+    bossBonusXp: Int = 0,
     // Survival mode: header shows lives instead of "x of y" / progress.
     endless: Boolean = false,
     livesLeft: Int = 0,
@@ -758,6 +833,29 @@ internal fun ActiveQuizScreen(
                 )
             }
 
+            AnimatedVisibility(
+                visible = bossFinale,
+                enter = if (motionAllowed) {
+                    fadeIn(tween(240)) + slideInVertically(tween(320, easing = FastOutSlowInEasing)) {
+                        height -> height / 3
+                    } + scaleIn(tween(320), initialScale = 0.96f)
+                } else {
+                    fadeIn(tween(1))
+                },
+                exit = fadeOut(tween(120)),
+            ) {
+                Column {
+                    Spacer(Modifier.height(chromeGap))
+                    BossFinalePanel(
+                        difficulty = difficulty,
+                        bonusXp = bossBonusXp,
+                        revealed = reveal,
+                        cleared = reveal && !isTimeUp && selectedAnswer == question.correctAnswer,
+                        compact = landscape,
+                    )
+                }
+            }
+
             // Endless runs have no meaningful fraction. Daily uses its explicit
             // three-stage ladder instead of layering a second generic bar under it.
             // Other finite quizzes keep the Material-Expressive wave.
@@ -1158,6 +1256,7 @@ internal fun ActiveQuizScreen(
                                         when {
                                             daily && currentQuestionIndex == totalQuestions - 1 ->
                                                 "Clear Daily Ladder"
+                                            bossFinale -> "Complete Boss Finale"
                                             (!endless && currentQuestionIndex == totalQuestions - 1) ||
                                                 (endless && livesLeft <= 0) -> "Finish Quiz"
                                             else -> "Next Question"
