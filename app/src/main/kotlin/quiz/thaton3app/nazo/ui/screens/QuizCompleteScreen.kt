@@ -45,7 +45,8 @@ import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.components.ProgressionRewardBanner
-import quiz.thaton3app.nazo.ui.components.ShareResultCard
+import quiz.thaton3app.nazo.ui.components.ShareResultButton
+import quiz.thaton3app.nazo.ui.components.ShareResultCardContent
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.components.rememberSystemReduceMotion
 import quiz.thaton3app.nazo.ui.theme.*
@@ -509,44 +510,19 @@ fun QuizCompleteScreen(
 
                         Spacer(Modifier.height(12.dp))
 
-                        // Share the run as a themed image card (system share sheet).
-                        NazoSecondaryButton(
-                            onClick = {
-                                Haptics.light(context)
-                                ShareResultCard.share(
-                                    context = context,
-                                    heading = when {
-                                        daily -> "Daily Ladder"
-                                        modeLabel == "Survival" -> "Survival Run"
-                                        modeLabel == "Blitz" -> "60-Second Blitz"
-                                        else -> "Quiz Complete"
-                                    },
-                                    headline = if (modeLabel != null) "$score" else "$accuracy%",
-                                    headlineCaption = if (modeLabel != null) "correct" else "accuracy",
-                                    stats = listOf(
-                                        "Score" to "$score / $totalQuestions",
-                                        (if (daily) "Path" else "Difficulty") to
-                                            (if (daily) "Easy → Medium → Hard" else difficulty),
-                                        "Time" to timeSpent,
-                                    ),
-                                    background = NazoBackground,
-                                    surface = NazoSurface,
-                                    primary = NazoPrimary,
-                                    onPrimary = NazoOnPrimary,
-                                    textPrimary = NazoTextPrimary,
-                                    textSecondary = NazoTextSecondary,
-                                )
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp),
-                            containerColor = NazoBackground,
-                            muted = true,
-                        ) {
-                            Icon(Icons.Outlined.Share, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Share Result", color = NazoTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        }
+                        ShareResultButton(
+                            content = ShareResultCardContent.quiz(
+                                score = score,
+                                totalQuestions = totalQuestions,
+                                elapsedMillis = elapsedMillis,
+                                difficulty = difficulty,
+                                daily = daily,
+                                modeLabel = modeLabel,
+                                adaptiveFinalDifficulty = adaptiveFinalDifficulty,
+                                isNewRecord = isNewRecord,
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                 }
                     },

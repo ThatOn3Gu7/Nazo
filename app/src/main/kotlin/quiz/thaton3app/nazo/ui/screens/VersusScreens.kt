@@ -63,6 +63,8 @@ import quiz.thaton3app.nazo.ui.components.CelebrationOverlay
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
+import quiz.thaton3app.nazo.ui.components.ShareResultButton
+import quiz.thaton3app.nazo.ui.components.ShareResultCardContent
 import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
 import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoError
@@ -278,7 +280,8 @@ fun VersusResultsScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 20.dp),
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
@@ -390,6 +393,16 @@ fun VersusResultsScreen(
                 Spacer(Modifier.width(8.dp))
                 Text("Review Answers", color = NazoTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
+            Spacer(Modifier.height(12.dp))
+            ShareResultButton(
+                content = ShareResultCardContent.versus(
+                    playerOneScore = p1Score,
+                    playerTwoScore = p2Score,
+                    totalQuestions = totalQuestions,
+                    difficulty = difficulty,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
             Spacer(Modifier.height(12.dp))
             NazoSecondaryButton(
                 onClick = {

@@ -23,6 +23,7 @@ Build these in order because they form one clear journey from launch to learning
 - **#9 Boss question** — end selected finite runs with a higher-value question that feels like a finale. **Implemented.**
 - **#10 Personalized Home focus** — surface the best next action from streaks, misses, and recent topics. **Implemented.**
 - **#11 Streak protection token** — earn limited protection through play rather than notifications or payment. **Implemented.**
+- **#12 Shareable result card** — export a polished result image without exposing profile or quiz content. **Implemented.**
 
 ---
 
@@ -39,7 +40,7 @@ Build these in order because they form one clear journey from launch to learning
 9. **Boss question** — **P1 · M** — End selected runs with a higher-value question that feels like a finale. **Implemented.**
 10. **Personalized Home focus** — **P1 · M** — Surface the best next action from streaks, misses, and recent topics. **Implemented.**
 11. **Streak protection token** — **P2 · M** — Earn limited protection through play rather than notifications or payment. **Implemented.**
-12. **Shareable result card** — **P1 · M** — Export a polished result image without exposing personal data.
+12. **Shareable result card** — **P1 · M** — Export a polished result image without exposing personal data. **Implemented.**
 13. **Friendly rival ghost** — **P2 · L** — Race a saved score-and-time profile without requiring live multiplayer.
 14. **Accessibility studio** — **P1 · M** — Centralize motion, contrast, text size, timer, haptic, and sound assists.
 15. **Curated challenge packs** — **P2 · L** — Ship themed, quality-reviewed sets with their own identity and progress.
