@@ -2,10 +2,12 @@ package quiz.thaton3app.nazo.data.settings
 
 import android.content.Context
 import android.content.SharedPreferences
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.QuizStats
+import quiz.thaton3app.nazo.data.StreakProtection
 
 /**
  * Persists [QuizStats] as a single JSON string in SharedPreferences — consistent
@@ -34,8 +36,9 @@ class QuizStatsStore internal constructor(
      * Missing a day is a non-event: no code runs when the user simply does not
      * play, so a streak broken by an inactive day stayed on disk (and on
      * screen) until the next quiz was recorded. Folding
-     * [QuizStats.withStreakExpiry] into the read makes the reset happen the
-     * first time anything looks at the stats on the new day.
+     * [QuizStats.withStreakProtection] into the read makes the reset—or an
+     * earned shield's automatic protection—happen the first time anything
+     * looks at the stats on the new day.
      */
     fun get(): QuizStats {
         val raw = try {
@@ -53,7 +56,7 @@ class QuizStatsStore internal constructor(
             return resetCorruptStats()
         }
 
-        val current = stored.withStreakExpiry()
+        val current = stored.withStreakProtection()
         if (current != stored) save(current)
         return current
     }
@@ -68,8 +71,9 @@ class QuizStatsStore internal constructor(
         difficulty: String,
         questions: List<Question>,
         userAnswers: List<String?>,
+        bonusXpEarned: Int = 0,
     ) {
-        save(get().record(difficulty, questions, userAnswers))
+        save(get().record(difficulty, questions, userAnswers, bonusXpEarned))
     }
 
     /** Folds a completed guessing game into the same stats (see [QuizStats.recordGuessing]). */
@@ -78,8 +82,9 @@ class QuizStatsStore internal constructor(
         topic: String,
         answered: Int,
         correct: Int,
+        outcomes: List<Boolean> = emptyList(),
     ) {
-        save(get().recordGuessing(difficulty, topic, answered, correct))
+        save(get().recordGuessing(difficulty, topic, answered, correct, outcomes))
     }
 
     internal companion object {
@@ -102,15 +107,21 @@ internal object QuizStatsJson {
         put("totalQuizzes", stats.totalQuizzes)
         put("totalQuestionsAnswered", stats.totalQuestionsAnswered)
         put("totalCorrect", stats.totalCorrect)
+        put("bonusXp", stats.bonusXp)
         put("bestCorrectCombo", stats.bestCorrectCombo)
         put("currentStreakDays", stats.currentStreakDays)
         put("bestStreakDays", stats.bestStreakDays)
         put("lastQuizEpochDay", stats.lastQuizEpochDay ?: JSONObject.NULL)
+        put("streakProtectionTokens", stats.streakProtectionTokens)
+        put("streakProtectionProgress", stats.streakProtectionProgress)
+        put("protectedStreakEpochDay", stats.protectedStreakEpochDay ?: JSONObject.NULL)
         put("difficultyPlays", JSONObject(stats.difficultyPlays))
         put("difficultyCorrect", JSONObject(stats.difficultyCorrect))
         put("difficultyAnswered", JSONObject(stats.difficultyAnswered))
         put("animeAnswered", JSONObject(stats.animeAnswered))
         put("animeCorrect", JSONObject(stats.animeCorrect))
+        put("animeRecentOutcomes", JSONObject(stats.animeRecentOutcomes))
+        put("recentTopics", JSONArray(stats.recentTopics))
     }.toString()
 
     fun decode(json: String): QuizStats {
@@ -121,15 +132,21 @@ internal object QuizStatsJson {
             totalQuizzes = intField(o, "totalQuizzes"),
             totalQuestionsAnswered = intField(o, "totalQuestionsAnswered"),
             totalCorrect = intField(o, "totalCorrect"),
+            bonusXp = intField(o, "bonusXp"),
             bestCorrectCombo = intField(o, "bestCorrectCombo"),
             currentStreakDays = intField(o, "currentStreakDays"),
             bestStreakDays = intField(o, "bestStreakDays"),
             lastQuizEpochDay = nullableLongField(o, "lastQuizEpochDay"),
+            streakProtectionTokens = intField(o, "streakProtectionTokens"),
+            streakProtectionProgress = intField(o, "streakProtectionProgress"),
+            protectedStreakEpochDay = nullableLongField(o, "protectedStreakEpochDay"),
             difficultyPlays = intMap(o, "difficultyPlays"),
             difficultyCorrect = intMap(o, "difficultyCorrect"),
             difficultyAnswered = intMap(o, "difficultyAnswered"),
             animeAnswered = intMap(o, "animeAnswered"),
             animeCorrect = intMap(o, "animeCorrect"),
+            animeRecentOutcomes = stringMap(o, "animeRecentOutcomes"),
+            recentTopics = stringList(o, "recentTopics"),
         )
         validate(stats)
         return stats
@@ -176,14 +193,45 @@ internal object QuizStatsJson {
         return result
     }
 
+    private fun stringMap(o: JSONObject, key: String): Map<String, String> {
+        if (!o.has(key)) return emptyMap()
+        val mapObject = o.get(key) as? JSONObject
+            ?: throw IllegalArgumentException("Quiz statistics field '$key' must be an object")
+        val result = LinkedHashMap<String, String>()
+        for (name in mapObject.keys().asSequence().toList()) {
+            require(name.isNotBlank()) { "Quiz statistics map '$key' contains a blank name" }
+            val value = mapObject.get(name) as? String
+                ?: throw IllegalArgumentException(
+                    "Quiz statistics field '$key.$name' must be a string"
+                )
+            result[name] = value
+        }
+        return result
+    }
+
+    private fun stringList(o: JSONObject, key: String): List<String> {
+        if (!o.has(key)) return emptyList()
+        val array = o.get(key) as? JSONArray
+            ?: throw IllegalArgumentException("Quiz statistics field '$key' must be an array")
+        return List(array.length()) { index ->
+            array.get(index) as? String
+                ?: throw IllegalArgumentException(
+                    "Quiz statistics field '$key[$index]' must be a string"
+                )
+        }
+    }
+
     private fun validate(stats: QuizStats) {
         val scalarCounts = listOf(
             stats.totalQuizzes,
             stats.totalQuestionsAnswered,
             stats.totalCorrect,
+            stats.bonusXp,
             stats.bestCorrectCombo,
             stats.currentStreakDays,
             stats.bestStreakDays,
+            stats.streakProtectionTokens,
+            stats.streakProtectionProgress,
         )
         require(scalarCounts.all { it >= 0 }) { "Quiz statistics contain a negative count" }
         require(stats.totalCorrect <= stats.totalQuestionsAnswered) {
@@ -204,6 +252,21 @@ internal object QuizStatsJson {
         stats.lastQuizEpochDay?.let { day ->
             require(day in 0L..MAX_REASONABLE_EPOCH_DAY) { "Invalid last quiz epoch day" }
         }
+        require(stats.streakProtectionTokens in 0..StreakProtection.MAX_TOKENS) {
+            "Invalid streak-protection inventory"
+        }
+        require(stats.streakProtectionProgress in 0 until StreakProtection.GAMES_PER_TOKEN) {
+            "Invalid streak-protection progress"
+        }
+        stats.protectedStreakEpochDay?.let { day ->
+            require(day in 0L..MAX_REASONABLE_EPOCH_DAY) { "Invalid protected streak epoch day" }
+            require(stats.currentStreakDays > 0 && stats.lastQuizEpochDay != null) {
+                "Protected streak day requires an active streak"
+            }
+            require(day >= requireNotNull(stats.lastQuizEpochDay)) {
+                "Protected streak day predates the last quiz"
+            }
+        }
 
         require(stats.difficultyPlays.values.sumAsLong() <= stats.totalQuizzes.toLong()) {
             "Difficulty plays exceed quizzes played"
@@ -222,6 +285,24 @@ internal object QuizStatsJson {
             totalAnswered = stats.totalQuestionsAnswered,
             label = "Anime",
         )
+        require(stats.animeRecentOutcomes.all { (name, outcomes) ->
+            val answered = stats.animeAnswered.getOrDefault(name, 0)
+            val correct = stats.animeCorrect.getOrDefault(name, 0)
+            outcomes.length <= QuizStats.RECENT_TOPIC_OUTCOME_LIMIT &&
+                outcomes.all { it == '0' || it == '1' } &&
+                outcomes.length <= answered &&
+                outcomes.count { it == '1' } <= correct &&
+                outcomes.count { it == '0' } <= answered - correct
+        }) {
+            "Anime recent outcomes are invalid"
+        }
+        require(
+            stats.recentTopics.size <= QuizStats.RECENT_TOPIC_LIMIT &&
+                stats.recentTopics.all { it.isNotBlank() && it.length <= 1_000 } &&
+                stats.recentTopics.map { it.lowercase() }.distinct().size == stats.recentTopics.size
+        ) {
+            "Recent topics are invalid"
+        }
     }
 
     private fun validateBreakdown(

@@ -8,8 +8,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import quiz.thaton3app.nazo.challenge.ChallengePackProgressJson
+import quiz.thaton3app.nazo.challenge.ChallengePackProgressStore
 import quiz.thaton3app.nazo.data.profile.AvatarPayload
 import quiz.thaton3app.nazo.data.profile.ProfileImageStore
+import quiz.thaton3app.nazo.records.RivalGhostJson
+import quiz.thaton3app.nazo.records.RivalGhostStore
 import java.io.File
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
@@ -21,10 +25,10 @@ import java.util.LinkedHashSet
  * JSON bundle and writes it to either an SAF [Uri] (manual backup, user-chosen
  * location) or a fixed app-external file (automatic backup).
  *
- * Included stores: quiz stats, profile, theme, and AI provider models. API-key
- * ciphertext is deliberately excluded: it is bound to one Android Keystore and
- * is neither portable nor useful in a backup. Restore therefore leaves the
- * destination install's current encrypted keys untouched. Internal
+ * Included stores: quiz stats, profile, theme, saved collections, curated-pack
+ * progress, friendly rival ghosts, and AI provider models. API-key ciphertext is deliberately excluded: it is bound
+ * to one Android Keystore and is neither portable nor useful in a backup.
+ * Restore therefore leaves the destination install's current encrypted keys untouched. Internal
  * update-checker stores are also excluded (not user data).
  *
  * SharedPreferences values are type-tagged on export so they round-trip exactly
@@ -58,6 +62,7 @@ object BackupRepository {
     internal val STORES = listOf(
         "nazo_stats",
         "nazo_theme",
+        AccessibilityPreferences.PREFS_NAME,
         "nazo_profile",
         "nazo_provider_models",
         // nazo_secure is intentionally not portable: its ciphertext can only
@@ -68,6 +73,9 @@ object BackupRepository {
         "nazo_reminders",
         "nazo_qhistory",   // persistent question anti-repeat memory
         "nazo_missed",     // practice deck (missed questions)
+        "nazo_collections", // player-saved Home challenge setups
+        ChallengePackProgressStore.PREFS_NAME, // curated pack bests and completions
+        "nazo_rival_ghosts", // local score-and-time profiles for friendly races
     )
     private const val PROFILE_PICTURE_KEY = "profile_picture_uri"
 
@@ -97,20 +105,28 @@ object BackupRepository {
 
     /** Stores that represent earned progress rather than settings. */
     private val PROGRESS_STORES = setOf(
-        "nazo_stats", "nazo_records", "nazo_daily", "nazo_qhistory", "nazo_missed", "nazo_profile",
+        "nazo_stats", "nazo_records", "nazo_daily", "nazo_qhistory", "nazo_missed",
+        "nazo_collections", ChallengePackProgressStore.PREFS_NAME,
+        "nazo_rival_ghosts", "nazo_profile",
     )
 
     private fun labelFor(store: String): Pair<String, String> = when (store) {
         "nazo_stats" -> "Quiz statistics" to "Quizzes played, accuracy and totals"
         "nazo_theme" -> "Appearance" to "Theme, accent colour and icon"
+        AccessibilityPreferences.PREFS_NAME -> "Accessibility" to
+            "Home layout, motion, contrast, text size, timer and haptic assists"
         "nazo_profile" -> "Profile" to "Username and avatar"
         "nazo_provider_models" -> "AI providers" to "Selected provider and models"
         "nazo_records" -> "Personal records" to "Best scores and streaks"
         "nazo_daily" -> "Daily challenge" to "Streak days and daily bonus state"
-        "nazo_sound" -> "Sound & haptics" to "Audio and vibration preferences"
+        "nazo_sound" -> "Sound" to "Audio cue and sound-style preferences"
         "nazo_reminders" -> "Reminders" to "Scheduled practice notifications"
         "nazo_qhistory" -> "Question history" to "Anti-repeat memory of seen questions"
         "nazo_missed" -> "Practice deck" to "Questions you answered incorrectly"
+        "nazo_collections" -> "Quiz collections" to "Saved Home challenge setups"
+        ChallengePackProgressStore.PREFS_NAME -> "Challenge packs" to
+            "Curated pack best scores, mastery and completions"
+        "nazo_rival_ghosts" -> "Friendly rivals" to "Local best score-and-time profiles"
         else -> store.removePrefix("nazo_").replaceFirstChar { it.uppercase() } to "App data"
     }
 
@@ -465,6 +481,10 @@ object BackupRepository {
                 entry[k] = t to v
             }
             if (name == "nazo_stats") validateQuizStatsEntry(entry)
+            if (name == RivalGhostStore.PREFS_NAME) validateRivalGhostsEntry(entry)
+            if (name == ChallengePackProgressStore.PREFS_NAME) {
+                validateChallengePackProgressEntry(entry)
+            }
             pending[name] = entry
         }
         return ParsedBackup(pending, AvatarPayload.decode(root.optJSONObject("picture")))
@@ -482,6 +502,34 @@ object BackupRepository {
             throw IllegalArgumentException("Invalid backup file (quiz statistics)", e)
         } catch (e: IllegalArgumentException) {
             throw IllegalArgumentException("Invalid backup file (quiz statistics)", e)
+        }
+    }
+
+    private fun validateRivalGhostsEntry(entry: Map<String, Pair<String, Any?>>) {
+        val tagged = entry[RivalGhostStore.KEY] ?: return
+        if (tagged.first != "string" || tagged.second !is String) {
+            throw IllegalArgumentException("Invalid backup file (friendly rivals type)")
+        }
+        try {
+            RivalGhostJson.decode(tagged.second as String)
+        } catch (e: org.json.JSONException) {
+            throw IllegalArgumentException("Invalid backup file (friendly rivals)", e)
+        } catch (e: IllegalArgumentException) {
+            throw IllegalArgumentException("Invalid backup file (friendly rivals)", e)
+        }
+    }
+
+    private fun validateChallengePackProgressEntry(entry: Map<String, Pair<String, Any?>>) {
+        val tagged = entry[ChallengePackProgressStore.KEY] ?: return
+        if (tagged.first != "string" || tagged.second !is String) {
+            throw IllegalArgumentException("Invalid backup file (challenge packs type)")
+        }
+        try {
+            ChallengePackProgressJson.decode(tagged.second as String)
+        } catch (e: org.json.JSONException) {
+            throw IllegalArgumentException("Invalid backup file (challenge packs)", e)
+        } catch (e: IllegalArgumentException) {
+            throw IllegalArgumentException("Invalid backup file (challenge packs)", e)
         }
     }
 

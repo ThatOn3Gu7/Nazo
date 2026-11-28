@@ -13,6 +13,7 @@ import coil.ImageLoaderFactory
 import coil.decode.GifDecoder
 import coil.decode.ImageDecoderDecoder
 import quiz.thaton3app.nazo.LauncherIconSwitcher
+import quiz.thaton3app.nazo.data.UpdateDownloader
 import quiz.thaton3app.nazo.data.UpdatePrefs
 import quiz.thaton3app.nazo.data.profile.ProfileImageStore
 import quiz.thaton3app.nazo.data.UpdateScheduler
@@ -36,6 +37,11 @@ open class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         // Schedule background update checks per the saved frequency preference.
         UpdateScheduler.apply(this, UpdatePrefs(this).updateFrequency)
+        // Successful package replacement normally delivers MY_PACKAGE_REPLACED
+        // to the cleanup receiver. This launch-time check is a durable fallback:
+        // it deletes only when Android's lastUpdateTime advanced after we opened
+        // an installer, never while a downloaded APK is still waiting for retry.
+        UpdateDownloader.cleanupCompletedInstall(applicationContext)
         // Safety net for profile-picture drafts: they are deleted as soon as
         // the user backs out of the picker, but a process death mid-edit would
         // strand one in the cache. Only touches cacheDir/profile_drafts.

@@ -50,12 +50,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import quiz.thaton3app.nazo.data.QuizStats
+import quiz.thaton3app.nazo.data.TopicMastery
+import quiz.thaton3app.nazo.data.TopicMasteryStatus
+import quiz.thaton3app.nazo.data.topicMastery
+import quiz.thaton3app.nazo.data.topicMasteryHighlights
 import quiz.thaton3app.nazo.achievements.Achievement
 import quiz.thaton3app.nazo.achievements.AchievementsCard
 import quiz.thaton3app.nazo.progression.PlayerProgress
@@ -67,11 +72,13 @@ import quiz.thaton3app.nazo.ui.theme.NazoBackground
 import quiz.thaton3app.nazo.ui.theme.NazoDarkCard
 import quiz.thaton3app.nazo.ui.theme.NazoDarkCardAccent
 import quiz.thaton3app.nazo.ui.theme.NazoDarkCardTrack
+import quiz.thaton3app.nazo.ui.theme.NazoError
 import quiz.thaton3app.nazo.ui.theme.NazoOnDarkCard
 import quiz.thaton3app.nazo.ui.theme.NazoOnDarkCardMuted
 import quiz.thaton3app.nazo.ui.theme.NazoOnPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoStatsCardBg
+import quiz.thaton3app.nazo.ui.theme.NazoSuccess
 import quiz.thaton3app.nazo.ui.theme.NazoSurface
 import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
 import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
@@ -109,8 +116,10 @@ private data class StatsData(
     val overallAccuracyPercent: Int,
     val currentStreakDays: Int,
     val totalXp: Int,
-    val bestTopic: String?, 
+    val bestTopic: String?,
+    val bestTopicConfidence: Int,
     val difficulty: List<DifficultyStat>,
+    val topicMastery: List<TopicMastery>,
     val topAnime: List<MasteredAnimeStat>,
 )
 
@@ -121,7 +130,7 @@ private fun QuizStats.toStatsData(progression: PlayerProgress): StatsData {
         0
     }
 
-    val difficultyOrder = listOf("Easy", "Medium", "Hard", "Otaku Master")
+    val difficultyOrder = listOf("Easy", "Medium", "Hard", "Otaku Master", "Adaptive")
     val difficulty = difficultyOrder.map { label ->
         val played = difficultyPlays[label] ?: 0
         val answered = difficultyAnswered[label] ?: 0
@@ -130,9 +139,11 @@ private fun QuizStats.toStatsData(progression: PlayerProgress): StatsData {
         DifficultyStat(label, played, accuracyPercent)
     }
 
+    val mastery = topicMastery()
     val ranked = animeAnswered.mapNotNull { (anime, answered) ->
         val correct = animeCorrect[anime] ?: 0
-        if (answered <= 0) null else AnimeAcc(anime, answered, correct * 100 / answered)
+        val displayAnime = if (anime == "Unknown") "Mixed topics" else anime
+        if (answered <= 0) null else AnimeAcc(displayAnime, answered, correct * 100 / answered)
     }.sortedWith(
         compareByDescending<AnimeAcc> { it.avgScore }.thenByDescending { it.answered }
     ).take(3)
@@ -140,7 +151,7 @@ private fun QuizStats.toStatsData(progression: PlayerProgress): StatsData {
     val topAnime = ranked.mapIndexed { index, e ->
         MasteredAnimeStat(index + 1, e.anime, e.answered, e.avgScore)
     }
-    val bestTopic = topAnime.firstOrNull()?.title
+    val bestTopic = mastery.firstOrNull()?.topic
 
     return StatsData(
         level = progression.level,
@@ -151,7 +162,9 @@ private fun QuizStats.toStatsData(progression: PlayerProgress): StatsData {
         currentStreakDays = currentStreakDays,
         totalXp = progression.totalXp,
         bestTopic = bestTopic,
+        bestTopicConfidence = mastery.firstOrNull()?.confidencePercent ?: 0,
         difficulty = difficulty,
+        topicMastery = mastery,
         topAnime = if (topAnime.isEmpty()) {
             listOf(
                 MasteredAnimeStat(1, "—", 0, 0),
@@ -267,7 +280,7 @@ fun StatisticsScreen(
                         icon = Icons.Filled.TrackChanges,
                         label = "Best Topic",
                         value = data.bestTopic ?: "—",
-                        subtitle = if (data.bestTopic == null) "No games yet" else "Top mastered anime",
+                        subtitle = if (data.bestTopic == null) "No games yet" else "Highest confidence",
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -278,7 +291,7 @@ fun StatisticsScreen(
                 Spacer(Modifier.height(16.dp))
             }
             item {
-                TopAnimeCard(data.topAnime, animate = playAnimations)
+                TopicMasteryCard(data.topicMastery, animate = playAnimations)
                 Spacer(Modifier.height(16.dp))
             }
             // Achievements (Phase 5): badge wall computed from already-persisted
@@ -654,7 +667,8 @@ private fun DifficultyRow(row: DifficultyStat, animate: Boolean) {
 }
 
 @Composable
-private fun TopAnimeCard(rows: List<MasteredAnimeStat>, animate: Boolean) {
+private fun TopicMasteryCard(rows: List<TopicMastery>, animate: Boolean) {
+    val highlights = remember(rows) { topicMasteryHighlights(rows) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -666,103 +680,193 @@ private fun TopAnimeCard(rows: List<MasteredAnimeStat>, animate: Boolean) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "Top Mastered Anime",
-                style = MaterialTheme.typography.titleMedium,
-                color = NazoTextPrimary,
-                fontWeight = FontWeight.Bold,
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Topic Mastery",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = NazoTextPrimary,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = "Confidence combines accuracy, repetition, and recent direction",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NazoTextSecondary,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
             Icon(
-                imageVector = Icons.Filled.AutoAwesome, 
-                contentDescription = null, 
-                tint = NazoTextSecondary,
-                modifier = Modifier.size(20.dp)
+                imageVector = Icons.Filled.AutoAwesome,
+                contentDescription = null,
+                tint = NazoPrimary,
+                modifier = Modifier.size(20.dp),
             )
         }
-        Spacer(Modifier.height(16.dp))
-        if (rows.all { it.answers == 0 }) {
-            // Empty state: placeholder "—/0 Answers/0% Avg" rows looked like
-            // real rankings. Say what will land here instead.
+        Spacer(Modifier.height(14.dp))
+        if (rows.isEmpty()) {
             Text(
-                text = "Nothing here yet",
+                text = "No mastery signal yet",
                 style = MaterialTheme.typography.bodyLarge,
                 color = NazoTextPrimary,
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "Your three most-mastered anime will appear here, ranked by accuracy. Play a few games and watch this fill in.",
+                text = "Answer questions across a few anime and Nazo will show what is strong, improving, or ready for another pass.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = NazoTextSecondary,
             )
-        } else {
-            rows.forEachIndexed { index, row ->
-                TopAnimeRow(row, animate)
-                if (index != rows.lastIndex) Spacer(Modifier.height(16.dp))
-            }
+            return@Column
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            MasterySummaryChip(
+                label = "Strong",
+                count = rows.count { it.status == TopicMasteryStatus.Strong },
+                color = NazoSuccess,
+                modifier = Modifier.weight(1f),
+            )
+            MasterySummaryChip(
+                label = "Improving",
+                count = rows.count { it.status == TopicMasteryStatus.Improving },
+                color = NazoPrimary,
+                modifier = Modifier.weight(1f),
+            )
+            MasterySummaryChip(
+                label = "Needs work",
+                count = rows.count { it.status == TopicMasteryStatus.NeedsPractice },
+                color = NazoError,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+        highlights.forEachIndexed { index, row ->
+            TopicMasteryRow(row, animate)
+            if (index != highlights.lastIndex) Spacer(Modifier.height(16.dp))
+        }
+        if (rows.size > highlights.size) {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = "+${rows.size - highlights.size} more topics tracked",
+                style = MaterialTheme.typography.labelMedium,
+                color = NazoTextSecondary,
+                modifier = Modifier.align(Alignment.End),
+            )
         }
     }
 }
 
 @Composable
-private fun TopAnimeRow(row: MasteredAnimeStat, animate: Boolean) {
-    val animatedScore by animateIntAsState(
-        targetValue = if (animate) row.avgScore else 0,
-        animationSpec = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
-        label = "animeScore"
-    )
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
+private fun MasterySummaryChip(
+    label: String,
+    count: Int,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(color.copy(alpha = 0.10f))
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(NazoPrimary),
-            contentAlignment = Alignment.Center
-        ) {
+        Text(
+            text = count.toString(),
+            style = MaterialTheme.typography.titleMedium,
+            color = color,
+            fontWeight = FontWeight.ExtraBold,
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = NazoTextSecondary,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun TopicMasteryRow(row: TopicMastery, animate: Boolean) {
+    val targetProgress = row.confidencePercent / 100f
+    val animatedProgress by animateFloatAsState(
+        targetValue = if (animate) targetProgress else 0f,
+        animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
+        label = "topicMasteryConfidence",
+    )
+    val (statusLabel, statusColor) = when (row.status) {
+        TopicMasteryStatus.Strong -> "STRONG" to NazoSuccess
+        TopicMasteryStatus.Improving -> "IMPROVING" to NazoPrimary
+        TopicMasteryStatus.NeedsPractice -> "NEEDS PRACTICE" to NazoError
+        TopicMasteryStatus.Building -> "BUILDING" to NazoTextSecondary
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = row.rank.toString(),
-                style = MaterialTheme.typography.titleMedium,
-                color = NazoOnPrimary,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        
-        Spacer(Modifier.width(12.dp))
-        
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = row.title,
+                text = row.topic,
                 style = MaterialTheme.typography.bodyLarge,
                 color = NazoTextPrimary,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
+            Spacer(Modifier.width(8.dp))
             Text(
-                text = "${row.answers} Answers",
-                style = MaterialTheme.typography.bodyMedium,
-                color = NazoTextSecondary
+                text = statusLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = statusColor,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 1,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(statusColor.copy(alpha = 0.11f))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
             )
         }
-        
-        Spacer(Modifier.width(8.dp))
-        
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(50))
-                .background(NazoSurfaceVariant)
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            contentAlignment = Alignment.Center
-        ) {
+        Spacer(Modifier.height(5.dp))
+        Text(
+            text = buildString {
+                append("${row.answered} answers • ${row.accuracyPercent}% accuracy")
+                if (row.status == TopicMasteryStatus.Improving) {
+                    append(" • +${row.trendDeltaPercent} recent")
+                } else if (row.recentAccuracyPercent != row.accuracyPercent) {
+                    append(" • ${row.recentAccuracyPercent}% recent")
+                }
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = NazoTextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(7.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(NazoSurfaceVariant),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(animatedProgress.coerceAtLeast(0.001f))
+                        .height(7.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(statusColor),
+                )
+            }
+            Spacer(Modifier.width(10.dp))
             Text(
-                text = "${animatedScore}% Avg",
-                style = MaterialTheme.typography.bodyMedium,
+                text = "${row.confidencePercent}% confidence",
+                style = MaterialTheme.typography.labelMedium,
                 color = NazoTextPrimary,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
             )
         }
     }
@@ -945,7 +1049,7 @@ private fun shareBitmap(data: StatsData, context: Context): File {
         "BEST TOPIC", cardLeft + pad, btY,
         Paint().apply { color = onMuted; textSize = 22f; typeface = fontSemi; isAntiAlias = true; letterSpacing = 0.15f }
     )
-    val pillText = "${data.topAnime.firstOrNull()?.avgScore ?: 0}%"
+    val pillText = "${data.bestTopicConfidence}%"
     val pillPaint = Paint().apply { textSize = 26f; typeface = fontBold; isAntiAlias = true }
     val pillW = pillPaint.measureText(pillText) + 48f
     val pillX = cardRight - pad - pillW

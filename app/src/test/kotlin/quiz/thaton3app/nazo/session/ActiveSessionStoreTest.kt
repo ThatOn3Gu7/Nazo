@@ -6,10 +6,15 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
+import quiz.thaton3app.nazo.challenge.ChallengePackCatalog
+import quiz.thaton3app.nazo.data.AdaptiveQuizState
+import quiz.thaton3app.nazo.data.AdaptiveReason
+import quiz.thaton3app.nazo.data.AdaptiveTier
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.settings.FakeSharedPreferences
 import quiz.thaton3app.nazo.modes.guessing_game.GuessPayload
 import quiz.thaton3app.nazo.modes.guessing_game.GuessRoundResult
+import quiz.thaton3app.nazo.records.RivalGhostSetup
 
 class ActiveSessionStoreTest {
     private val now = 2_000_000_000_000L
@@ -72,6 +77,134 @@ class ActiveSessionStoreTest {
                 now + 2_000L,
             ),
         )
+    }
+
+    @Test
+    fun adaptiveControllerRoundTripPreservesItsNextTarget() {
+        val original = quiz().copy(
+            difficulty = "Adaptive",
+            bossEnabled = true,
+            adaptiveState = AdaptiveQuizState(
+                tier = AdaptiveTier.HARD,
+                strongStreak = 1,
+                recentMisses = 0,
+                shiftCount = 2,
+                reason = AdaptiveReason.StrongPace,
+            ),
+        )
+        val store = ActiveSessionStore(FakeSharedPreferences()) { now }
+
+        store.save(original)
+
+        assertEquals(original, store.load())
+    }
+
+    @Test
+    fun friendlyRivalSetupSurvivesProcessRestore() {
+        val original = quiz().copy(
+            rivalSetup = RivalGhostSetup("Naruto", "Hard", 3),
+        )
+        val store = ActiveSessionStore(FakeSharedPreferences()) { now }
+
+        store.save(original)
+
+        assertEquals(original, store.load())
+    }
+
+    @Test
+    fun curatedChallengePackIdentitySurvivesProcessRestore() {
+        val pack = ChallengePackCatalog.all.first()
+        val original = ActiveQuizSession(
+            savedAtEpochMs = now,
+            destination = ActiveQuizSession.Destination.QUIZ,
+            mode = "normal",
+            questions = pack.questions,
+            userAnswers = listOf(pack.questions.first().correctAnswer),
+            currentQuestionIndex = 1,
+            score = 1,
+            difficulty = pack.difficulty,
+            aiGenerated = false,
+            daily = false,
+            pendingAnswer = null,
+            pendingTimeUp = false,
+            questionRemainingMs = 10_000L,
+            quizElapsedMs = 20_000L,
+            survivalWrongs = 0,
+            blitzRemainingMs = 0L,
+            versusStage = 1,
+            versusP1Score = 0,
+            versusP1Answers = emptyList(),
+            challengePackId = pack.id,
+        )
+        val store = ActiveSessionStore(FakeSharedPreferences()) { now }
+
+        store.save(original)
+
+        assertEquals(original, store.load())
+    }
+
+    @Test
+    fun versionFourSnapshotDefaultsChallengePackIdentityOff() {
+        val prefs = FakeSharedPreferences()
+        val legacy = ActiveSessionJson.encode(quiz())
+            .replace("\"version\":5", "\"version\":4")
+        prefs.edit().putString(ActiveSessionStore.KEY, legacy).commit()
+
+        val restored = ActiveSessionStore(prefs) { now }.load() as ActiveQuizSession
+
+        assertNull(restored.challengePackId)
+    }
+
+    @Test
+    fun versionThreeSnapshotDefaultsRivalSetupOff() {
+        val prefs = FakeSharedPreferences()
+        val legacy = ActiveSessionJson.encode(
+            quiz().copy(rivalSetup = RivalGhostSetup("Naruto", "Hard", 3))
+        ).replace("\"version\":5", "\"version\":3")
+        prefs.edit().putString(ActiveSessionStore.KEY, legacy).commit()
+
+        val restored = ActiveSessionStore(prefs) { now }.load() as ActiveQuizSession
+
+        assertNull(restored.rivalSetup)
+    }
+
+    @Test
+    fun versionTwoQuizSnapshotKeepsAdaptiveStateAndDefaultsBossOff() {
+        val prefs = FakeSharedPreferences()
+        val adaptive = AdaptiveQuizState(
+            tier = AdaptiveTier.HARD,
+            strongStreak = 1,
+            recentMisses = 0,
+            shiftCount = 2,
+            reason = AdaptiveReason.StrongPace,
+        )
+        val legacy = ActiveSessionJson.encode(
+            quiz().copy(
+                difficulty = "Adaptive",
+                adaptiveState = adaptive,
+                bossEnabled = true,
+            )
+        ).replace("\"version\":5", "\"version\":2")
+        prefs.edit().putString(ActiveSessionStore.KEY, legacy).commit()
+
+        val restored = ActiveSessionStore(prefs) { now }.load() as ActiveQuizSession
+
+        assertEquals(adaptive, restored.adaptiveState)
+        assertFalse(restored.bossEnabled)
+    }
+
+    @Test
+    fun versionOneQuizSnapshotStillRestoresWithoutAdaptiveOrBossState() {
+        val prefs = FakeSharedPreferences()
+        val legacy = ActiveSessionJson.encode(quiz().copy(bossEnabled = true))
+            .replace("\"version\":5", "\"version\":1")
+        prefs.edit().putString(ActiveSessionStore.KEY, legacy).commit()
+
+        val restored = ActiveSessionStore(prefs) { now }.load() as ActiveQuizSession
+
+        assertEquals("Hard", restored.difficulty)
+        assertNull(restored.adaptiveState)
+        assertFalse(restored.bossEnabled)
     }
 
     @Test

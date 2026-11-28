@@ -197,6 +197,17 @@ data class ProviderEndpoint(
                     "properties",
                     JSONObject().apply {
                         put("theme", JSONObject().put("type", "STRING"))
+                        put(
+                            "difficulty",
+                            JSONObject()
+                                .put("type", "STRING")
+                                .put(
+                                    "enum",
+                                    JSONArray().apply {
+                                        put("Easy"); put("Medium"); put("Hard"); put("Otaku Master")
+                                    },
+                                ),
+                        )
                         put("question", JSONObject().put("type", "STRING"))
                         put(
                             "options",
@@ -214,13 +225,15 @@ data class ProviderEndpoint(
                 put(
                     "required",
                     JSONArray().apply {
-                        put("theme"); put("question"); put("options"); put("correctAnswer"); put("explanation")
+                        put("theme"); put("difficulty"); put("question"); put("options")
+                        put("correctAnswer"); put("explanation")
                     },
                 )
                 put(
                     "propertyOrdering",
                     JSONArray().apply {
-                        put("theme"); put("question"); put("options"); put("correctAnswer"); put("explanation")
+                        put("theme"); put("difficulty"); put("question"); put("options")
+                        put("correctAnswer"); put("explanation")
                     },
                 )
             },

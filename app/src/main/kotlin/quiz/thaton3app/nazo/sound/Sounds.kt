@@ -12,7 +12,7 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * The available sound-effect voices (Settings → Feedback → Sound style).
+ * The available sound-effect voices (Settings → Accessibility studio → Sound style).
  *
  * Every effect in [Sounds] is synthesised from the same note sequences, so a
  * theme changes only the TIMBRE — the waveform, how fast the note decays, how
@@ -52,14 +52,20 @@ enum class SoundTheme(
     }
 }
 
+/** A picker preview is intentional feedback, not globally enabled gameplay audio. */
+internal fun shouldPlaySound(soundEnabled: Boolean, isPreview: Boolean): Boolean =
+    soundEnabled || isPreview
+
 /**
- * Sound effects (Phase 7) — OPT-IN, off by default (Settings → Feedback).
+ * Sound effects (Phase 7) — OPT-IN, off by default (Settings → Accessibility studio).
  *
- * Mirrors the Haptics API shape: fire-and-forget calls that no-op unless the
- * user enabled sounds. There are NO audio assets: every effect is a short
- * soft-synth tone rendered once into PCM, cached, and played through a
- * short-lived static AudioTrack on a dedicated daemon thread — zero work on the
- * UI thread, zero APK size cost, no third-party libraries.
+ * Mirrors the Haptics API shape: normal fire-and-forget calls no-op unless the
+ * user enabled sounds. The Sound style picker is the deliberate exception: its
+ * one-off [preview] plays while the switch is off so users can audition a voice
+ * without enabling effects throughout the app. There are NO audio assets: every
+ * effect is a short soft-synth tone rendered once into PCM, cached, and played
+ * through a short-lived static AudioTrack on a dedicated daemon thread — zero
+ * work on the UI thread, zero APK size cost, no third-party libraries.
  *
  * The note sequences below define WHAT is played; the user's [SoundTheme]
  * defines what it sounds like. Because the theme is resolved inside [play],
@@ -94,15 +100,24 @@ object Sounds {
     }
 
     /**
-     * Audition cue for the Sound style picker. Deliberately the same tone as
-     * [correct], and deliberately still subject to the master Sound effects
-     * switch — "sound effects off" has to mean silence everywhere.
+     * Audition cue for the Sound style picker. It uses the same notes as
+     * [correct], but intentionally bypasses the master switch for this one tap.
+     * Passing the clicked [theme] guarantees the preview matches the option even
+     * before its preference write has reached disk.
      */
-    fun preview(context: Context) = correct(context)
+    fun preview(context: Context, theme: SoundTheme = getTheme(context)) =
+        play(
+            context = context,
+            key = "correct",
+            isPreview = true,
+            themeOverride = theme,
+        ) { selectedTheme ->
+            correctCue(selectedTheme)
+        }
 
     /** Bright little up-chime (E5 → A5). */
     fun correct(context: Context) =
-        play(context, "correct") { t -> notes(t, 659.25 to 70, 880.0 to 160) }
+        play(context, "correct") { theme -> correctCue(theme) }
 
     /** Soft descending "wah" (Eb4 → Bb3) — also used for time-up. */
     fun wrong(context: Context) =
@@ -148,11 +163,18 @@ object Sounds {
      */
     private val cache = ConcurrentHashMap<String, ShortArray>()
 
-    private fun play(context: Context, key: String, build: (SoundTheme) -> ShortArray) {
-        if (!isEnabled(context)) return
+    private fun play(
+        context: Context,
+        key: String,
+        isPreview: Boolean = false,
+        themeOverride: SoundTheme? = null,
+        build: (SoundTheme) -> ShortArray,
+    ) {
+        if (!shouldPlaySound(soundEnabled = isEnabled(context), isPreview = isPreview)) return
         // Read on the caller's thread: it is a cheap SharedPreferences hit and
-        // it means a theme change applies to the very next sound.
-        val theme = getTheme(context)
+        // it means a theme change applies to the very next sound. Picker previews
+        // instead receive the clicked theme directly, avoiding persistence races.
+        val theme = themeOverride ?: getTheme(context)
         executor.execute {
             runCatching {
                 val pcm = cache.getOrPut("${theme.id}:$key") { build(theme) }
@@ -182,6 +204,10 @@ object Sounds {
             }
         }
     }
+
+    /** Shared cue so gameplay and picker previews can never drift apart. */
+    private fun correctCue(theme: SoundTheme): ShortArray =
+        notes(theme, 659.25 to 70, 880.0 to 160)
 
     /**
      * One sample of the theme's waveform at [phase] radians, normalised to

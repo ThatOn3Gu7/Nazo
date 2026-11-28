@@ -1,0 +1,951 @@
+package quiz.thaton3app.nazo.ui.screens
+
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.InstallMobile
+import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
+import kotlinx.coroutines.delay
+import quiz.thaton3app.nazo.data.WorkflowBuild
+import quiz.thaton3app.nazo.data.WorkflowBuildArtifact
+import quiz.thaton3app.nazo.data.WorkflowBuildCatalog
+import quiz.thaton3app.nazo.data.newestInstallableWorkflowBuild
+import quiz.thaton3app.nazo.data.releaseArtifact
+import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
+import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
+import quiz.thaton3app.nazo.ui.components.NazoSheetHeader
+import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
+import quiz.thaton3app.nazo.ui.components.sheetContentMaxHeight
+import quiz.thaton3app.nazo.ui.theme.NazoBackground
+import quiz.thaton3app.nazo.ui.theme.NazoError
+import quiz.thaton3app.nazo.ui.theme.NazoPrimary
+import quiz.thaton3app.nazo.ui.theme.NazoSurface
+import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
+import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
+import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
+
+internal sealed interface WorkflowCatalogState {
+    data object Idle : WorkflowCatalogState
+    data class Loading(val previous: WorkflowBuildCatalog? = null) : WorkflowCatalogState
+    data class Loaded(val catalog: WorkflowBuildCatalog) : WorkflowCatalogState
+    data class Failed(val message: String) : WorkflowCatalogState
+}
+
+internal sealed interface WorkflowInstallState {
+    data object Idle : WorkflowInstallState
+    data class Downloading(
+        val runId: Long,
+        val downloaded: Long,
+        val total: Long,
+    ) : WorkflowInstallState
+    data class Verifying(val runId: Long) : WorkflowInstallState
+    data class Ready(
+        val runId: Long,
+        val versionName: String,
+        val versionCode: Long,
+    ) : WorkflowInstallState
+    data class Failed(val runId: Long, val message: String) : WorkflowInstallState
+}
+
+internal fun workflowBuildEntryDelayMillis(index: Int): Int =
+    index.coerceIn(0, 5) * 24
+
+internal enum class WorkflowInstallVisualPhase {
+    DownloadAction,
+    Downloading,
+    Verifying,
+    Ready,
+    Failed,
+    Unavailable,
+}
+
+internal fun workflowInstallVisualPhase(
+    installState: WorkflowInstallState,
+    runId: Long,
+    releaseAvailable: Boolean,
+): WorkflowInstallVisualPhase = when (installState) {
+    is WorkflowInstallState.Downloading -> if (installState.runId == runId) {
+        WorkflowInstallVisualPhase.Downloading
+    } else if (releaseAvailable) {
+        WorkflowInstallVisualPhase.DownloadAction
+    } else {
+        WorkflowInstallVisualPhase.Unavailable
+    }
+    is WorkflowInstallState.Verifying -> if (installState.runId == runId) {
+        WorkflowInstallVisualPhase.Verifying
+    } else if (releaseAvailable) {
+        WorkflowInstallVisualPhase.DownloadAction
+    } else {
+        WorkflowInstallVisualPhase.Unavailable
+    }
+    is WorkflowInstallState.Ready -> if (installState.runId == runId) {
+        WorkflowInstallVisualPhase.Ready
+    } else if (releaseAvailable) {
+        WorkflowInstallVisualPhase.DownloadAction
+    } else {
+        WorkflowInstallVisualPhase.Unavailable
+    }
+    is WorkflowInstallState.Failed -> if (installState.runId == runId) {
+        WorkflowInstallVisualPhase.Failed
+    } else if (releaseAvailable) {
+        WorkflowInstallVisualPhase.DownloadAction
+    } else {
+        WorkflowInstallVisualPhase.Unavailable
+    }
+    WorkflowInstallState.Idle -> if (releaseAvailable) {
+        WorkflowInstallVisualPhase.DownloadAction
+    } else {
+        WorkflowInstallVisualPhase.Unavailable
+    }
+}
+
+@Composable
+internal fun WorkflowBuildBrowserContent(
+    catalogState: WorkflowCatalogState,
+    installState: WorkflowInstallState,
+    installedWorkflowSha: String,
+    selectedRunId: Long?,
+    onSelectRun: (Long) -> Unit,
+    onRefresh: () -> Unit,
+    onDownload: (WorkflowBuild, WorkflowBuildArtifact) -> Unit,
+    onCancelDownload: () -> Unit,
+    onInstallAgain: () -> Unit,
+    onOpenWorkflow: (String) -> Unit,
+    onUseReleaseUpdater: () -> Unit,
+) {
+    val displayedCatalog = when (catalogState) {
+        is WorkflowCatalogState.Loaded -> catalogState.catalog
+        is WorkflowCatalogState.Loading -> catalogState.previous
+        else -> null
+    }
+    val refreshing = catalogState is WorkflowCatalogState.Loading &&
+        catalogState.previous != null
+    val builds = displayedCatalog?.builds.orEmpty()
+    val newestAvailable = newestInstallableWorkflowBuild(builds)
+    val listGeneration = displayedCatalog?.fetchedAtMillis ?: 0L
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = sheetContentMaxHeight()),
+        contentPadding = PaddingValues(
+            start = 24.dp,
+            top = 16.dp,
+            end = 24.dp,
+            bottom = 48.dp,
+        ),
+    ) {
+        item(key = "workflow-header") {
+            NazoSheetHeader(
+                icon = Icons.Filled.Science,
+                title = "Workflow builds",
+                subtitle = "Install a successful GitHub Actions snapshot",
+            )
+            Spacer(Modifier.height(14.dp))
+        }
+        item(key = "workflow-warning") {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = NazoPrimary.copy(alpha = 0.10f),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Info,
+                        contentDescription = null,
+                        tint = NazoPrimary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = "Tester snapshots may be less stable. Only signed release APKs are " +
+                            "mirrored publicly; Nazo verifies the package, signing certificate, and " +
+                            "version code before opening Android's installer.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NazoTextPrimary,
+                    )
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+
+        if (displayedCatalog == null) {
+            item(key = "workflow-state") {
+                AnimatedContent(
+                    targetState = catalogState,
+                    transitionSpec = {
+                        (fadeIn(tween(160)) + slideInVertically(tween(190)) { it / 10 }) togetherWith
+                            (fadeOut(tween(100)) + slideOutVertically(tween(120)) { -it / 12 })
+                    },
+                    label = "workflowCatalogState",
+                ) { state ->
+                    when (state) {
+                        WorkflowCatalogState.Idle,
+                        is WorkflowCatalogState.Loading -> WorkflowCatalogLoading()
+
+                        is WorkflowCatalogState.Failed -> WorkflowCatalogFailure(
+                            message = state.message,
+                            onRefresh = onRefresh,
+                            onUseReleaseUpdater = onUseReleaseUpdater,
+                        )
+
+                        is WorkflowCatalogState.Loaded -> Unit
+                    }
+                }
+            }
+        } else {
+            item(key = "workflow-runs-header") {
+                WorkflowCatalogHeader(
+                    catalog = displayedCatalog,
+                    buildCount = builds.size,
+                    refreshing = refreshing,
+                    onRefresh = onRefresh,
+                )
+                Spacer(Modifier.height(12.dp))
+            }
+
+            if (builds.isEmpty()) {
+                item(key = "workflow-empty") {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        color = NazoSurfaceVariant,
+                    ) {
+                        Text(
+                            text = "No successful workflow runs were returned by GitHub.",
+                            modifier = Modifier.padding(16.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = NazoTextSecondary,
+                        )
+                    }
+                }
+            } else {
+                itemsIndexed(
+                    items = builds,
+                    key = { _, build -> build.runId },
+                ) { index, build ->
+                    AnimatedWorkflowBuildCard(
+                        index = index,
+                        generation = listGeneration,
+                        build = build,
+                        selected = build.runId == selectedRunId,
+                        installed = installedWorkflowSha.equals(
+                            build.commitSha,
+                            ignoreCase = true,
+                        ),
+                        installState = installState,
+                        newestAvailable = newestAvailable,
+                        onSelect = { onSelectRun(build.runId) },
+                        onDownload = { artifact -> onDownload(build, artifact) },
+                        onCancelDownload = onCancelDownload,
+                        onInstallAgain = onInstallAgain,
+                        onSelectFallback = { fallback -> onSelectRun(fallback.runId) },
+                        onOpenWorkflow = { onOpenWorkflow(build.htmlUrl) },
+                    )
+                }
+            }
+
+            item(key = "workflow-footer") {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "Nazo's public installer mirror keeps the newest 30 signed snapshots. " +
+                        "Original Actions archives still require GitHub sign-in, so Nazo never " +
+                        "stores an account token. A pruned snapshot cannot be recovered without " +
+                        "rebuilding its commit.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NazoTextSecondary,
+                )
+                Spacer(Modifier.height(12.dp))
+                NazoSecondaryButton(
+                    onClick = onUseReleaseUpdater,
+                    modifier = Modifier.fillMaxWidth(),
+                    muted = true,
+                ) {
+                    Text("Use beta or stable updater")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkflowCatalogHeader(
+    catalog: WorkflowBuildCatalog,
+    buildCount: Int,
+    refreshing: Boolean,
+    onRefresh: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Successful runs",
+                style = MaterialTheme.typography.titleMedium,
+                color = NazoTextPrimary,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = when {
+                    refreshing -> "$buildCount runs · refreshing…"
+                    catalog.stale ->
+                        "$buildCount cached runs · GitHub temporarily unavailable"
+                    catalog.fromCache ->
+                        "$buildCount cached runs · checked " +
+                            formatWorkflowCacheTime(catalog.fetchedAtMillis)
+                    else -> "$buildCount runs · just refreshed"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (catalog.stale) NazoError else NazoTextSecondary,
+            )
+        }
+        NazoSecondaryButton(
+            onClick = onRefresh,
+            enabled = !refreshing,
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        ) {
+            AnimatedContent(
+                targetState = refreshing,
+                transitionSpec = { fadeIn(tween(120)) togetherWith fadeOut(tween(90)) },
+                label = "workflowRefreshIcon",
+            ) { loading ->
+                if (loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(17.dp),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Icon(
+                        Icons.Filled.Sync,
+                        contentDescription = null,
+                        modifier = Modifier.size(17.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.width(6.dp))
+            Text(if (refreshing) "Refreshing" else "Refresh")
+        }
+    }
+}
+
+@Composable
+private fun AnimatedWorkflowBuildCard(
+    index: Int,
+    generation: Long,
+    build: WorkflowBuild,
+    selected: Boolean,
+    installed: Boolean,
+    installState: WorkflowInstallState,
+    newestAvailable: WorkflowBuild?,
+    onSelect: () -> Unit,
+    onDownload: (WorkflowBuildArtifact) -> Unit,
+    onCancelDownload: () -> Unit,
+    onInstallAgain: () -> Unit,
+    onSelectFallback: (WorkflowBuild) -> Unit,
+    onOpenWorkflow: () -> Unit,
+) {
+    var visible by remember(build.runId, generation) { mutableStateOf(false) }
+    LaunchedEffect(build.runId, generation) {
+        delay(workflowBuildEntryDelayMillis(index).toLong())
+        visible = true
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 88.dp),
+    ) {
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(tween(130)) + slideInVertically(tween(180)) { it / 9 },
+            exit = fadeOut(tween(80)),
+        ) {
+            Column {
+                WorkflowBuildCard(
+                    build = build,
+                    selected = selected,
+                    installed = installed,
+                    installState = installState,
+                    newestAvailable = newestAvailable,
+                    onSelect = onSelect,
+                    onDownload = onDownload,
+                    onCancelDownload = onCancelDownload,
+                    onInstallAgain = onInstallAgain,
+                    onSelectFallback = onSelectFallback,
+                    onOpenWorkflow = onOpenWorkflow,
+                )
+                Spacer(Modifier.height(10.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkflowCatalogLoading() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = NazoSurfaceVariant,
+    ) {
+        Row(
+            modifier = Modifier.padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(22.dp),
+                strokeWidth = 2.5.dp,
+                color = NazoPrimary,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = "Loading successful runs…",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = NazoTextPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "Checking workflow and artifact availability",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NazoTextSecondary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkflowCatalogFailure(
+    message: String,
+    onRefresh: () -> Unit,
+    onUseReleaseUpdater: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = NazoError.copy(alpha = 0.10f),
+    ) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Error, contentDescription = null, tint = NazoError)
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = "Workflow builds unavailable",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = NazoError,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(message, style = MaterialTheme.typography.bodyMedium, color = NazoTextSecondary)
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                NazoPrimaryButton(onClick = onRefresh, modifier = Modifier.weight(1f)) {
+                    Text("Retry")
+                }
+                NazoSecondaryButton(
+                    onClick = onUseReleaseUpdater,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Releases")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkflowBuildCard(
+    build: WorkflowBuild,
+    selected: Boolean,
+    installed: Boolean,
+    installState: WorkflowInstallState,
+    newestAvailable: WorkflowBuild?,
+    onSelect: () -> Unit,
+    onDownload: (WorkflowBuildArtifact) -> Unit,
+    onCancelDownload: () -> Unit,
+    onInstallAgain: () -> Unit,
+    onSelectFallback: (WorkflowBuild) -> Unit,
+    onOpenWorkflow: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 18.dp,
+        pressedCorner = 10.dp,
+    )
+    val releaseArtifact = build.releaseArtifact()
+    val releaseAvailable = releaseArtifact != null && !releaseArtifact.expired
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(if (selected) NazoPrimary.copy(alpha = 0.08f) else NazoSurface, shape)
+            .border(
+                width = if (selected) 1.5.dp else 1.dp,
+                color = if (selected) NazoPrimary else NazoTextSecondary.copy(alpha = 0.12f),
+                shape = shape,
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onSelect,
+            )
+            .padding(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.Top) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(NazoBackground),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (installed) Icons.Filled.CheckCircle else Icons.Filled.Code,
+                    contentDescription = null,
+                    tint = if (installed) NazoPrimary else NazoTextPrimary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = build.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = NazoTextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = "${build.branch} · ${build.commitSha.take(7)} · run #${build.runNumber}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NazoTextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = formatWorkflowTime(build.createdAt),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoTextSecondary,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            WorkflowAvailabilityBadge(
+                label = when {
+                    installed -> "INSTALLED"
+                    releaseAvailable -> "AVAILABLE"
+                    else -> "UNAVAILABLE"
+                },
+                positive = installed || releaseAvailable,
+            )
+        }
+
+        AnimatedVisibility(
+            visible = selected,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
+        ) {
+            Column {
+                Spacer(Modifier.height(14.dp))
+                HorizontalDivider(color = NazoTextSecondary.copy(alpha = 0.12f))
+                Spacer(Modifier.height(14.dp))
+                WorkflowArtifactDetails(
+                    build = build,
+                    releaseArtifact = releaseArtifact,
+                    installState = installState,
+                    newestAvailable = newestAvailable,
+                    installed = installed,
+                    onDownload = onDownload,
+                    onCancelDownload = onCancelDownload,
+                    onInstallAgain = onInstallAgain,
+                    onSelectFallback = onSelectFallback,
+                    onOpenWorkflow = onOpenWorkflow,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkflowAvailabilityBadge(label: String, positive: Boolean) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = if (positive) NazoPrimary.copy(alpha = 0.14f) else NazoError.copy(alpha = 0.10f),
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = if (positive) NazoPrimary else NazoError,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun WorkflowArtifactDetails(
+    build: WorkflowBuild,
+    releaseArtifact: WorkflowBuildArtifact?,
+    installState: WorkflowInstallState,
+    newestAvailable: WorkflowBuild?,
+    installed: Boolean,
+    onDownload: (WorkflowBuildArtifact) -> Unit,
+    onCancelDownload: () -> Unit,
+    onInstallAgain: () -> Unit,
+    onSelectFallback: (WorkflowBuild) -> Unit,
+    onOpenWorkflow: () -> Unit,
+) {
+    Text(
+        text = "Artifacts",
+        style = MaterialTheme.typography.labelLarge,
+        color = NazoTextPrimary,
+        fontWeight = FontWeight.Bold,
+    )
+    Spacer(Modifier.height(8.dp))
+
+    if (releaseArtifact != null) {
+        ArtifactSummary(
+            title = "Signed release snapshot",
+            subtitle = "${formatWorkflowBytes(releaseArtifact.sizeBytes)} · public installer mirror",
+            compatible = !releaseArtifact.expired,
+        )
+    } else {
+        ArtifactSummary(
+            title = "Public snapshot unavailable",
+            subtitle = "This predates the mirror or has been pruned from its newest 30 builds",
+            compatible = false,
+        )
+    }
+
+    Spacer(Modifier.height(12.dp))
+    val phase = workflowInstallVisualPhase(
+        installState = installState,
+        runId = build.runId,
+        releaseAvailable = releaseArtifact?.expired == false,
+    )
+    AnimatedContent(
+        targetState = phase,
+        transitionSpec = {
+            (fadeIn(tween(170)) + slideInVertically(tween(210)) { it / 8 }) togetherWith
+                (fadeOut(tween(100)) + slideOutVertically(tween(130)) { -it / 10 })
+        },
+        label = "workflowInstallPhase",
+    ) { visualPhase ->
+        Column {
+            when (visualPhase) {
+                WorkflowInstallVisualPhase.Downloading -> {
+                    val downloading = installState as? WorkflowInstallState.Downloading
+                    if (downloading != null) {
+                        val fraction = if (downloading.total > 0L) {
+                            (downloading.downloaded.toFloat() / downloading.total)
+                                .coerceIn(0f, 1f)
+                        } else {
+                            null
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.5.dp,
+                                color = NazoPrimary,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("Downloading artifact…", color = NazoTextPrimary)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        if (fraction != null) {
+                            LinearProgressIndicator(
+                                progress = { fraction },
+                                modifier = Modifier.fillMaxWidth(),
+                                color = NazoPrimary,
+                                trackColor = NazoSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "${formatWorkflowBytes(downloading.downloaded)} / " +
+                                    formatWorkflowBytes(downloading.total),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NazoTextSecondary,
+                            )
+                        } else {
+                            LinearProgressIndicator(
+                                modifier = Modifier.fillMaxWidth(),
+                                color = NazoPrimary,
+                                trackColor = NazoSurfaceVariant,
+                            )
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        NazoSecondaryButton(
+                            onClick = onCancelDownload,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Cancel")
+                        }
+                    }
+                }
+
+                WorkflowInstallVisualPhase.Verifying -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.5.dp,
+                            color = NazoPrimary,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Verifying package and signature…",
+                            color = NazoTextPrimary,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+
+                WorkflowInstallVisualPhase.Ready -> {
+                    val ready = installState as? WorkflowInstallState.Ready
+                    if (ready != null) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = NazoPrimary.copy(alpha = 0.10f),
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    text = "Verified Nazo ${ready.versionName} " +
+                                        "(code ${ready.versionCode})",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = NazoTextPrimary,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    text = "Android's installer should be open. " +
+                                        "You can launch it again below.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = NazoTextSecondary,
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        NazoPrimaryButton(
+                            onClick = onInstallAgain,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(
+                                Icons.Filled.InstallMobile,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("Open Installer Again")
+                        }
+                    }
+                }
+
+                WorkflowInstallVisualPhase.Failed -> {
+                    val failed = installState as? WorkflowInstallState.Failed
+                    if (failed != null) {
+                        Text(
+                            text = failed.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NazoError,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        if (releaseArtifact?.expired == false) {
+                            NazoPrimaryButton(
+                                onClick = { onDownload(releaseArtifact) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("Retry Release APK")
+                            }
+                        }
+                    }
+                }
+
+                WorkflowInstallVisualPhase.DownloadAction -> {
+                    if (releaseArtifact?.expired == false) {
+                        NazoPrimaryButton(
+                            onClick = { onDownload(releaseArtifact) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(
+                                Icons.Filled.Download,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (installed) "Reinstall This Snapshot"
+                                else "Download, Verify & Install"
+                            )
+                        }
+                    }
+                }
+
+                WorkflowInstallVisualPhase.Unavailable -> {
+                    Text(
+                        text = "The exact snapshot is no longer downloadable.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NazoError,
+                    )
+                    if (newestAvailable != null && newestAvailable.runId != build.runId) {
+                        Spacer(Modifier.height(8.dp))
+                        NazoPrimaryButton(
+                            onClick = { onSelectFallback(newestAvailable) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                "Select Newest Available · ${newestAvailable.commitSha.take(7)}"
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Spacer(Modifier.height(8.dp))
+    NazoSecondaryButton(
+        onClick = onOpenWorkflow,
+        modifier = Modifier.fillMaxWidth(),
+        muted = true,
+    ) {
+        Icon(Icons.Filled.Code, contentDescription = null, modifier = Modifier.size(17.dp))
+        Spacer(Modifier.width(7.dp))
+        Text("View Workflow on GitHub")
+    }
+
+    if (releaseArtifact == null) {
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = "The original Actions archive may still exist, but GitHub returns HTTP 401 " +
+                "without an authenticated account. Nazo intentionally does not request one.",
+            style = MaterialTheme.typography.labelSmall,
+            color = NazoTextSecondary,
+        )
+    }
+}
+
+@Composable
+private fun ArtifactSummary(
+    title: String,
+    subtitle: String,
+    compatible: Boolean,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(NazoBackground)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = if (compatible) Icons.Filled.CheckCircle else Icons.Filled.Error,
+            contentDescription = null,
+            tint = if (compatible) NazoPrimary else NazoTextSecondary,
+            modifier = Modifier.size(19.dp),
+        )
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = NazoTextPrimary,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoTextSecondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+internal fun formatWorkflowBytes(bytes: Long): String = when {
+    bytes < 0L -> "Unknown size"
+    bytes >= 1024L * 1024L -> String.format(Locale.US, "%.1f MB", bytes / (1024f * 1024f))
+    bytes >= 1024L -> String.format(Locale.US, "%.1f KB", bytes / 1024f)
+    else -> "$bytes B"
+}
+
+internal fun formatWorkflowCacheTime(timestampMillis: Long): String = runCatching {
+    val output = SimpleDateFormat("HH:mm", Locale.getDefault())
+    output.format(java.util.Date(timestampMillis))
+}.getOrElse { "earlier" }
+
+internal fun formatWorkflowTime(raw: String): String {
+    if (raw.isBlank()) return "Unknown time"
+    return runCatching {
+        val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+        val output = SimpleDateFormat("MMM d, yyyy · HH:mm 'UTC'", Locale.getDefault()).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+        output.format(requireNotNull(parser.parse(raw)))
+    }.getOrElse { raw }
+}

@@ -134,6 +134,7 @@ class NazoNavigationTransitionTest {
         val startedAt = 10_000L
         val finishedAt = 75_999L
 
+        assertEquals(65_999L, quizElapsedMillis(startedAt, finishedAt))
         assertEquals("1m 5s", formatQuizElapsed(startedAt, finishedAt))
         // Predictive-back progress may recompose Results long after this point,
         // but there is deliberately no current-clock input to advance the label.
@@ -143,6 +144,7 @@ class NazoNavigationTransitionTest {
         assertEquals("0m 0s", formatQuizElapsed(finishedAt, startedAt))
         // A process-restored run contributes its checkpointed prefix exactly
         // once, then continues on the new monotonic span.
+        assertEquals(95_999L, quizElapsedMillis(startedAt, finishedAt, 30_000L))
         assertEquals("1m 35s", formatQuizElapsed(startedAt, finishedAt, 30_000L))
     }
 }

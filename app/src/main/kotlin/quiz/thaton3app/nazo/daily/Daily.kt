@@ -72,7 +72,7 @@ import kotlin.random.Random
  */
 object DailyChallenge {
 
-    const val QUESTION_COUNT = 5
+    const val QUESTION_COUNT = DailyLadder.QUESTION_COUNT
 
     /** Local-midnight day boundary — shared with streaks (QuizStats.localEpochDay). */
     fun todayEpochDay(): Long = QuizStats.localEpochDay()
@@ -102,11 +102,11 @@ object DailyChallenge {
             val remaining = pool.filter { p -> picked.none { it.identity == p.identity } }
             picked += remaining.shuffled(rng).take(n)
         }
-        fun pool(vararg difficulties: String) =
-            all.filter { q -> difficulties.any { q.difficulty.equals(it, ignoreCase = true) } }
-        pickFrom(pool("Easy"), 2)
-        pickFrom(pool("Medium"), 2)
-        pickFrom(pool("Hard", "Otaku Master"), 1)
+        fun pool(stage: DailyLadderStage) =
+            all.filter { question -> stage.acceptsDifficulty(question.difficulty) }
+        DailyLadder.stages.forEach { stage ->
+            pickFrom(pool(stage), stage.questionCount)
+        }
         if (picked.size < QUESTION_COUNT) pickFrom(all, QUESTION_COUNT - picked.size)
         return picked.mapIndexed { i, q ->
             q.copy(options = q.options.shuffled(Random(epochDay * 131 + i)))
@@ -177,7 +177,19 @@ fun DailyChallengeCard(
         pressedCorner = 10.dp,
         enabled = !completed,
     )
-    Row(
+    // Gentle heartbeat on the bolt while today's ladder is waiting.
+    val pulse = rememberInfiniteTransition(label = "dailyPulse")
+    val iconScale by pulse.animateFloat(
+        initialValue = 1f,
+        targetValue = if (completed) 1f else 1.12f,
+        animationSpec = infiniteRepeatable(
+            tween(900, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse,
+        ),
+        label = "dailyPulseScale",
+    )
+
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
@@ -196,86 +208,203 @@ fun DailyChallengeCard(
             )
             .padding(16.dp)
             .animateContentSize(tween(260)),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Gentle heartbeat on the bolt while the challenge is waiting.
-        val pulse = rememberInfiniteTransition(label = "dailyPulse")
-        val iconScale by pulse.animateFloat(
-            initialValue = 1f,
-            targetValue = if (completed) 1f else 1.12f,
-            animationSpec = infiniteRepeatable(
-                tween(900, easing = FastOutSlowInEasing),
-                RepeatMode.Reverse,
-            ),
-            label = "dailyPulseScale",
-        )
-        Box(
-            modifier = Modifier
-                .size(46.dp)
-                .clip(CircleShape)
-                .background(if (completed) NazoSuccess else NazoPrimary),
-            contentAlignment = Alignment.Center,
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Only the ICON pulses — the circle stays put, so the scale can
-            // never visually overflow the card's padding (graphicsLayer scale
-            // doesn't affect layout, so a pulsing container would bleed
-            // toward the card edge).
-            Icon(
-                imageVector = if (completed) Icons.Filled.TaskAlt else Icons.Filled.Bolt,
-                contentDescription = null,
-                tint = NazoOnPrimary,
-                modifier = Modifier
-                    .size(24.dp)
-                    .graphicsLayer {
-                        scaleX = iconScale
-                        scaleY = iconScale
-                    },
-            )
-        }
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = "DAILY CHALLENGE",
-                style = MaterialTheme.typography.labelSmall,
-                color = NazoPrimary,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.2.sp,
-            )
-            Spacer(Modifier.height(3.dp))
-            Text(
-                text = if (completed) {
-                    "Cleared ${lastScore}/${DailyChallenge.QUESTION_COUNT} · +$lastBonus XP earned"
-                } else {
-                    "${DailyChallenge.QUESTION_COUNT} mixed questions · up to +${DailyChallenge.maxBonusXp()} XP"
-                },
-                style = MaterialTheme.typography.bodyMedium,
-                color = NazoTextPrimary,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = if (completed) "Come back tomorrow for a new one" else "New puzzle every day · works offline",
-                style = MaterialTheme.typography.bodySmall,
-                color = NazoTextSecondary,
-            )
-        }
-        if (!completed) {
-            Spacer(Modifier.width(10.dp))
             Box(
                 modifier = Modifier
-                    .size(38.dp)
+                    .size(46.dp)
                     .clip(CircleShape)
-                    .background(NazoPrimary.copy(alpha = 0.2f)),
+                    .background(if (completed) NazoSuccess else NazoPrimary),
+                contentAlignment = Alignment.Center,
+            ) {
+                // Only the icon pulses; its container remains inside the card.
+                Icon(
+                    imageVector = if (completed) Icons.Filled.TaskAlt else Icons.Filled.Bolt,
+                    contentDescription = null,
+                    tint = NazoOnPrimary,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .graphicsLayer {
+                            scaleX = iconScale
+                            scaleY = iconScale
+                        },
+                )
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = "DAILY LADDER",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoPrimary,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.2.sp,
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = if (completed) {
+                        "Cleared $lastScore/${DailyChallenge.QUESTION_COUNT} · +$lastBonus XP earned"
+                    } else {
+                        "${DailyChallenge.QUESTION_COUNT}-question climb · up to +${DailyChallenge.maxBonusXp()} XP"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NazoTextPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = if (completed) {
+                        "All 3 stages complete · new ladder tomorrow"
+                    } else {
+                        "Easy to hard · works fully offline"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NazoTextSecondary,
+                )
+            }
+            if (!completed) {
+                Spacer(Modifier.width(10.dp))
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(NazoPrimary.copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = "Play daily ladder",
+                        tint = NazoPrimary,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+        DailyLadderRail(
+            currentStage = null,
+            completed = completed,
+        )
+    }
+}
+
+/** Compact shared rendering of Warm-up → Climb → Summit. */
+@Composable
+internal fun DailyLadderRail(
+    currentStage: DailyLadderStage?,
+    completed: Boolean,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+) {
+    val currentStageIndex = currentStage?.ordinal ?: -1
+    Row(modifier = modifier.fillMaxWidth()) {
+        DailyLadder.stages.forEachIndexed { index, stage ->
+            val stageComplete = completed || (currentStageIndex >= 0 && index < currentStageIndex)
+            val stageCurrent = !completed && index == currentStageIndex
+            val stageColor = when {
+                stageComplete -> NazoSuccess
+                stageCurrent -> NazoPrimary
+                else -> NazoTextSecondary.copy(alpha = 0.6f)
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                if (!compact) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(stageColor),
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            text = stage.title,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (stageCurrent || stageComplete) NazoTextPrimary else NazoTextSecondary,
+                            fontWeight = if (stageCurrent || stageComplete) FontWeight.Bold else FontWeight.Medium,
+                            maxLines = 1,
+                        )
+                    }
+                    Spacer(Modifier.height(5.dp))
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(5.dp)
+                        .clip(CircleShape)
+                        .background(stageColor.copy(alpha = if (stageCurrent || stageComplete) 1f else 0.24f)),
+                )
+                if (!compact) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = stage.difficultyLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NazoTextSecondary,
+                        maxLines = 1,
+                    )
+                }
+            }
+            if (index < DailyLadder.stages.lastIndex) Spacer(Modifier.width(8.dp))
+        }
+    }
+}
+
+/** A definitive end-cap used by Daily Results after all five questions. */
+@Composable
+fun DailyLadderClearCard(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(NazoPrimary.copy(alpha = 0.09f))
+            .border(1.dp, NazoPrimary.copy(alpha = 0.28f), RoundedCornerShape(18.dp))
+            .padding(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(NazoSuccess),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = "Play daily challenge",
-                    tint = NazoPrimary,
-                    modifier = Modifier.size(22.dp),
+                    imageVector = Icons.Filled.TaskAlt,
+                    contentDescription = null,
+                    tint = NazoOnPrimary,
+                    modifier = Modifier.size(19.dp),
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(
+                    text = "LADDER CLEARED",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = NazoSuccess,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 0.8.sp,
+                )
+                Text(
+                    text = "Warm-up, Climb, and Summit complete",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NazoTextSecondary,
                 )
             }
         }
+        Spacer(Modifier.height(14.dp))
+        DailyLadderRail(
+            currentStage = DailyLadderStage.SUMMIT,
+            completed = true,
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = "A fresh ladder opens tomorrow.",
+            style = MaterialTheme.typography.bodySmall,
+            color = NazoTextSecondary,
+            modifier = Modifier.align(Alignment.End),
+        )
     }
 }
 

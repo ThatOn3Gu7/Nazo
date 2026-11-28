@@ -34,7 +34,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.ImageSearch
 import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.FitnessCenter
 import androidx.compose.material3.Icon
@@ -70,7 +69,8 @@ import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.ui.components.ProgressionRewardBanner
-import quiz.thaton3app.nazo.ui.components.ShareResultCard
+import quiz.thaton3app.nazo.ui.components.ShareResultButton
+import quiz.thaton3app.nazo.ui.components.ShareResultCardContent
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.theme.*
 
@@ -367,38 +367,16 @@ fun GuessingResultsScreen(
 
                         Spacer(Modifier.height(12.dp))
 
-                        // Share the run as a themed image card (system share sheet).
-                        NazoSecondaryButton(
-                            onClick = {
-                                Haptics.light(context)
-                                ShareResultCard.share(
-                                    context = context,
-                                    heading = "Guessing Game",
-                                    headline = "$score",
-                                    headlineCaption = "points",
-                                    stats = listOf(
-                                        "Rounds solved" to "$solved / $total",
-                                        "Difficulty" to difficulty,
-                                        "Topic" to topic.ifBlank { "Any popular anime" },
-                                    ),
-                                    background = NazoBackground,
-                                    surface = NazoSurface,
-                                    primary = NazoPrimary,
-                                    onPrimary = NazoOnPrimary,
-                                    textPrimary = NazoTextPrimary,
-                                    textSecondary = NazoTextSecondary,
-                                )
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp),
-                            containerColor = NazoBackground,
-                            muted = true,
-                        ) {
-                            Icon(Icons.Filled.Share, contentDescription = null, tint = NazoTextPrimary, modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Share Result", color = NazoTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        }
+                        ShareResultButton(
+                            content = ShareResultCardContent.guessing(
+                                score = score,
+                                solvedRounds = solved,
+                                totalRounds = total,
+                                difficulty = difficulty,
+                                isNewRecord = isNewRecord,
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                 }
                 Spacer(Modifier.height(16.dp))

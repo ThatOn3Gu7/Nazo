@@ -4,6 +4,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import quiz.thaton3app.nazo.data.settings.QuizCollection
+import quiz.thaton3app.nazo.ui.home.HomeFocusAction
 import quiz.thaton3app.nazo.ui.mode.NazoMode
 
 /** Contracts for the mode-dependent groups whose visibility animates on Home. */
@@ -19,8 +21,35 @@ class HomeModeControlsTest {
     }
 
     @Test
+    fun portalBelongsToKnownLocalBankLaunchesOnly() {
+        // Offline question modes can reveal ready local content directly.
+        assertTrue(homeLaunchUsesPortal(NazoMode.QUIZ, offline = true))
+        assertTrue(homeLaunchUsesPortal(NazoMode.SURVIVAL, offline = true))
+        assertTrue(homeLaunchUsesPortal(NazoMode.VERSUS, offline = true))
+
+        // Their online path may need AI Loading, which is already the correct
+        // and informative destination; never queue the portal in front of it.
+        assertFalse(homeLaunchUsesPortal(NazoMode.QUIZ, offline = false))
+        assertFalse(homeLaunchUsesPortal(NazoMode.SURVIVAL, offline = false))
+        assertFalse(homeLaunchUsesPortal(NazoMode.VERSUS, offline = false))
+
+        // Blitz is always local. Guessing always has its own preparation flow.
+        assertTrue(homeLaunchUsesPortal(NazoMode.BLITZ, offline = false))
+        assertTrue(homeLaunchUsesPortal(NazoMode.BLITZ, offline = true))
+        assertFalse(homeLaunchUsesPortal(NazoMode.GUESSING, offline = false))
+        assertFalse(homeLaunchUsesPortal(NazoMode.GUESSING, offline = true))
+    }
+
+    @Test
     fun practiceBelongsOnlyToQuizWhenTheDeckIsNotEmpty() {
         assertTrue(homePracticeVisible(NazoMode.QUIZ, practiceCount = 1))
+        assertFalse(
+            homePracticeVisible(
+                NazoMode.QUIZ,
+                practiceCount = 1,
+                focusAction = HomeFocusAction.Practice,
+            )
+        )
         assertFalse(homePracticeVisible(NazoMode.QUIZ, practiceCount = 0))
         NazoMode.entries.filterNot { it == NazoMode.QUIZ }.forEach { mode ->
             assertFalse(homePracticeVisible(mode, practiceCount = 12))
@@ -28,10 +57,102 @@ class HomeModeControlsTest {
     }
 
     @Test
+    fun streakChipRemainsVisibleForShieldInventoryOrEarningProgress() {
+        assertFalse(homeStreakChipVisible(0, 0, 0))
+        assertTrue(homeStreakChipVisible(3, 0, 0))
+        assertTrue(homeStreakChipVisible(0, 1, 0))
+        assertTrue(homeStreakChipVisible(0, 0, 2))
+    }
+
+    @Test
+    fun adaptiveDifficultyBelongsOnlyToQuiz() {
+        assertTrue(adaptiveDifficultyAvailable(NazoMode.QUIZ))
+        NazoMode.entries.filterNot { it == NazoMode.QUIZ }.forEach { mode ->
+            assertFalse(adaptiveDifficultyAvailable(mode))
+            assertEquals(
+                Difficulty.MEDIUM,
+                homeDifficultyForMode(mode, Difficulty.ADAPTIVE),
+            )
+        }
+        assertEquals(
+            Difficulty.ADAPTIVE,
+            homeDifficultyForMode(NazoMode.QUIZ, Difficulty.ADAPTIVE),
+        )
+    }
+
+    @Test
+    fun collectionSetupKeepsOnlyTheCurrentModesMeaningfulLength() {
+        assertEquals(
+            15,
+            homeCollectionSetup("Naruto", NazoMode.QUIZ, Difficulty.HARD, 15, 3).amount,
+        )
+        assertEquals(
+            5,
+            homeCollectionSetup("Luffy", NazoMode.GUESSING, Difficulty.EASY, 15, 5).amount,
+        )
+        assertEquals(
+            0,
+            homeCollectionSetup("Bleach", NazoMode.BLITZ, Difficulty.MEDIUM, 10, 3).amount,
+        )
+    }
+
+    @Test
+    fun collectionLabelsExplainBlankTopicsAndEveryKindOfLength() {
+        fun collection(mode: String, amount: Int) = QuizCollection(
+            id = mode,
+            topic = "",
+            mode = mode,
+            difficulty = "Medium",
+            amount = amount,
+        )
+
+        assertEquals("Mixed anime", quizCollectionHeadline(collection("QUIZ", 10)))
+        assertEquals("Quiz • Medium • 10 questions", quizCollectionDetail(collection("QUIZ", 10)))
+        assertEquals(
+            "Guessing Game • Medium • 1 round",
+            quizCollectionDetail(collection("GUESSING", 1)),
+        )
+        assertEquals(
+            "Survival • Medium • Endless",
+            quizCollectionDetail(collection("SURVIVAL", 0)),
+        )
+        assertEquals("Blitz • Medium • 60 seconds", quizCollectionDetail(collection("BLITZ", 0)))
+    }
+
+    @Test
+    fun collectionTopicRevealIsProgressiveBoundedAndUnicodeSafe() {
+        val frames = collectionTopicRevealFrames("One Piece", maxFrames = 4)
+        assertEquals(4, frames.size)
+        assertEquals("One Piece", frames.last())
+        assertTrue(frames.zipWithNext().all { (first, second) -> first.length < second.length })
+
+        val unicode = collectionTopicRevealFrames("悟😀空", maxFrames = 8)
+        assertEquals(listOf("悟", "悟😀", "悟😀空"), unicode)
+
+        val bounded = collectionTopicRevealFrames("A".repeat(100), maxFrames = 24)
+        assertEquals(24, bounded.size)
+        assertEquals("A".repeat(100), bounded.last())
+    }
+
+    @Test
+    fun compactLaunchpadKeepsEveryModesPrimaryActionExplicit() {
+        assertEquals("Generate AI Quiz", homePrimaryLaunchLabel(NazoMode.QUIZ, offline = false))
+        assertEquals("Generate Quiz", homePrimaryLaunchLabel(NazoMode.QUIZ, offline = true))
+        assertEquals("Start Guessing Game", homePrimaryLaunchLabel(NazoMode.GUESSING, false))
+        assertEquals("Start Survival Run", homePrimaryLaunchLabel(NazoMode.SURVIVAL, false))
+        assertEquals("Start 60-Second Blitz", homePrimaryLaunchLabel(NazoMode.BLITZ, false))
+        assertEquals("Start Versus Match", homePrimaryLaunchLabel(NazoMode.VERSUS, false))
+    }
+
+    @Test
     fun challengeSummaryAlwaysReflectsTheVisibleModeSpecificChoice() {
         assertEquals(
             "Medium • 10 questions",
             challengeSummary(NazoMode.QUIZ, Difficulty.MEDIUM, 10, 3),
+        )
+        assertEquals(
+            "Adaptive • 5 questions",
+            challengeSummary(NazoMode.QUIZ, Difficulty.ADAPTIVE, 5, 3),
         )
         assertEquals(
             "Hard • 1 round",

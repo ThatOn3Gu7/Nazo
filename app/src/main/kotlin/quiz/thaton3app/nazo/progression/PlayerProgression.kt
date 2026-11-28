@@ -29,6 +29,7 @@ data class ProgressionReward(
     val previousLevel: Int,
     val progress: PlayerProgress,
     val unlockedAchievementTitles: List<String>,
+    val streakProtectionEarned: Int = 0,
 ) {
     val leveledUp: Boolean get() = progress.level > previousLevel
 }
@@ -36,9 +37,9 @@ data class ProgressionReward(
 object PlayerProgression {
     const val XP_PER_LEVEL = 200
 
-    /** Preserves Nazo's existing formula exactly: correct × 10 + games × 5 + Daily XP. */
+    /** Base XP plus durable challenge rewards and the separately stored Daily XP. */
     fun from(stats: QuizStats, bonusXp: Int = 0): PlayerProgress {
-        val totalXp = stats.totalCorrect * 10 + stats.totalQuizzes * 5 + bonusXp
+        val totalXp = stats.totalCorrect * 10 + stats.totalQuizzes * 5 + stats.bonusXp + bonusXp
         return PlayerProgress(
             totalXp = totalXp,
             level = totalXp / XP_PER_LEVEL + 1,
@@ -46,6 +47,9 @@ object PlayerProgression {
             xpPerLevel = XP_PER_LEVEL,
         )
     }
+
+    fun streakProtectionEarnedBetween(before: QuizStats, after: QuizStats): Int =
+        (after.streakProtectionTokens - before.streakProtectionTokens).coerceAtLeast(0)
 
     /**
      * Compares two already-derived snapshots. Achievement events are inferred

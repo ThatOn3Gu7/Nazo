@@ -1,6 +1,7 @@
 package quiz.thaton3app.nazo.ui.screens
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -28,12 +29,180 @@ class ActiveQuizPolishTest {
     }
 
     @Test
+    fun comboFeedbackEscalatesFromSparkToSuperCombo() {
+        assertEquals(QuizComboTier.Spark, quizComboTier(2))
+        assertEquals("SPARKED", quizComboCallout(2))
+        assertEquals("HEATING UP", quizComboCallout(3))
+        assertEquals(QuizComboTier.Blaze, quizComboTier(4))
+        assertEquals("BLAZING", quizComboCallout(5))
+        assertEquals(QuizComboTier.Inferno, quizComboTier(6))
+        assertEquals("MAX HEAT", quizComboCallout(9))
+        assertEquals(QuizComboTier.Super, quizComboTier(10))
+        assertEquals("SUPER COMBO", quizComboCallout(10))
+        assertEquals("MYTHIC", quizComboCallout(12))
+        assertEquals("PERFECT STORM", quizComboCallout(15))
+
+        assertEquals(2, quizComboMilestoneStreak(2))
+        assertNull(quizComboMilestoneStreak(5))
+        assertEquals(6, quizComboMilestoneStreak(6))
+        assertEquals(10, quizComboMilestoneStreak(10))
+        assertEquals(0f, quizComboHeat(2), 0f)
+        assertEquals(0.425f, quizComboHeat(6), 0.0001f)
+        assertEquals(0.85f, quizComboHeat(10), 0.0001f)
+        assertEquals(1f, quizComboHeat(15), 0f)
+    }
+
+    @Test
     fun questionProgressIsSafeAndClamped() {
         assertEquals(0f, quizProgressFraction(0, 0), 0f)
         assertEquals(0.2f, quizProgressFraction(0, 5), 0.0001f)
         assertEquals(0.6f, quizProgressFraction(2, 5), 0.0001f)
         assertEquals(1f, quizProgressFraction(99, 5), 0f)
         assertEquals(0f, quizProgressFraction(-2, 5), 0f)
+    }
+
+    @Test
+    fun progressPathMarksEscalatingCombosHalfwayAndTheOrdinaryFinish() {
+        val milestones = quizProgressMilestones(
+            totalQuestions = 10,
+            comboMilestonesByQuestion = mapOf(
+                1 to 2,
+                2 to 3, // ordinary stacked answers do not become path milestones
+                5 to 6,
+                9 to 10,
+                -1 to 2,
+                10 to 10,
+            ),
+            hasBossFinale = false,
+        )
+
+        assertEquals(
+            listOf(
+                QuizProgressMilestone(QuizProgressMilestoneKind.Combo, 0.2f, comboStreak = 2),
+                QuizProgressMilestone(QuizProgressMilestoneKind.Halfway, 0.5f),
+                QuizProgressMilestone(QuizProgressMilestoneKind.Combo, 0.6f, comboStreak = 6),
+                QuizProgressMilestone(QuizProgressMilestoneKind.Combo, 1f, comboStreak = 10),
+                QuizProgressMilestone(QuizProgressMilestoneKind.Final, 1f),
+            ),
+            milestones,
+        )
+    }
+
+    @Test
+    fun bossProgressPathReservesTheFinalQuestionAndFinish() {
+        val milestones = quizProgressMilestones(
+            totalQuestions = 10,
+            comboMilestonesByQuestion = emptyMap(),
+            hasBossFinale = true,
+        )
+
+        assertEquals(
+            listOf(
+                QuizProgressMilestone(QuizProgressMilestoneKind.Halfway, 0.5f),
+                QuizProgressMilestone(QuizProgressMilestoneKind.Final, 0.9f),
+                QuizProgressMilestone(QuizProgressMilestoneKind.Boss, 1f),
+            ),
+            milestones,
+        )
+        assertTrue(
+            quizProgressMilestones(0, mapOf(0 to 2), hasBossFinale = true).isEmpty()
+        )
+    }
+
+    @Test
+    fun advancingRestoresPortraitScrollBeforeTheNextQuestion() {
+        assertTrue(
+            quizAdvanceShouldRestoreTop(
+                scrollOffset = 480,
+                landscape = false,
+                hasNextQuestion = true,
+            )
+        )
+        assertFalse(
+            quizAdvanceShouldRestoreTop(0, landscape = false, hasNextQuestion = true)
+        )
+        assertFalse(
+            quizAdvanceShouldRestoreTop(480, landscape = true, hasNextQuestion = true)
+        )
+        assertFalse(
+            quizAdvanceShouldRestoreTop(480, landscape = false, hasNextQuestion = false)
+        )
+        assertEquals(260, quizAdvanceScrollDurationMillis(motionAllowed = true))
+        assertEquals(0, quizAdvanceScrollDurationMillis(motionAllowed = false))
+    }
+
+    @Test
+    fun landscapeCombinesFiniteRivalAndProgressChromeOnlyWhenBothExist() {
+        assertTrue(
+            quizCombinesRivalAndProgress(
+                landscape = true,
+                hasRival = true,
+                endless = false,
+                blitz = false,
+                daily = false,
+            )
+        )
+        assertFalse(quizCombinesRivalAndProgress(false, true, false, false, false))
+        assertFalse(quizCombinesRivalAndProgress(true, false, false, false, false))
+        assertFalse(quizCombinesRivalAndProgress(true, true, true, false, false))
+        assertFalse(quizCombinesRivalAndProgress(true, true, false, true, false))
+        assertFalse(quizCombinesRivalAndProgress(true, true, false, false, true))
+    }
+
+    @Test
+    fun timerUrgencyEscalatesAndSettlesWhenTheClockIsNotRunning() {
+        assertEquals(QuizTimerUrgency.Calm, quizTimerUrgency(30, timerRunning = true))
+        assertEquals(QuizTimerUrgency.Watch, quizTimerUrgency(10, timerRunning = true))
+        assertEquals(QuizTimerUrgency.Critical, quizTimerUrgency(5, timerRunning = true))
+        assertEquals(QuizTimerUrgency.Expired, quizTimerUrgency(0, timerRunning = true))
+        assertEquals(
+            QuizTimerUrgency.Expired,
+            quizTimerUrgency(4, timerRunning = false, timeUp = true),
+        )
+        assertEquals(QuizTimerUrgency.Calm, quizTimerUrgency(4, timerRunning = false))
+        assertEquals(QuizTimerUrgency.Calm, quizTimerUrgency(0, timerRunning = false))
+    }
+
+    @Test
+    fun decorativeQuizMotionWaitsForTheLaunchCoverAndReducedMotion() {
+        assertTrue(quizDecorativeMotionAllowed(reduceMotion = false, hostAllowsMotion = true))
+        assertTrue(!quizDecorativeMotionAllowed(reduceMotion = false, hostAllowsMotion = false))
+        assertTrue(!quizDecorativeMotionAllowed(reduceMotion = true, hostAllowsMotion = true))
+    }
+
+    @Test
+    fun questionStageEntranceIsOrderedAndNeverReplaysRestoredOrReducedMotionState() {
+        assertEquals(0, questionEntranceDelayMillis(QuestionEntranceLayer.Progress))
+        assertTrue(
+            questionEntranceDelayMillis(QuestionEntranceLayer.Progress) <
+                questionEntranceDelayMillis(QuestionEntranceLayer.Prompt)
+        )
+        assertTrue(
+            questionEntranceDelayMillis(QuestionEntranceLayer.Prompt) <
+                questionEntranceDelayMillis(QuestionEntranceLayer.Answers)
+        )
+        assertTrue(
+            questionEntranceDelayMillis(QuestionEntranceLayer.Answers) <
+                questionEntranceDelayMillis(QuestionEntranceLayer.Timer)
+        )
+
+        assertTrue(
+            questionStageEntranceShouldPlay(
+                previousQuestionIndex = 0,
+                currentQuestionIndex = 1,
+                motionAllowed = true,
+                restoredGrade = false,
+            )
+        )
+        assertFalse(
+            questionStageEntranceShouldPlay(1, 1, motionAllowed = true, restoredGrade = false)
+        )
+        assertFalse(
+            questionStageEntranceShouldPlay(0, 1, motionAllowed = false, restoredGrade = false)
+        )
+        assertFalse(
+            questionStageEntranceShouldPlay(0, 1, motionAllowed = true, restoredGrade = true)
+        )
     }
 
     @Test
@@ -57,6 +226,93 @@ class ActiveQuizPolishTest {
         assertEquals(80, questionTransitionOffset(width = 1_000, direction = 1))
         assertEquals(-80, questionTransitionOffset(width = 1_000, direction = -1))
         assertEquals(0, questionTransitionOffset(width = 1_000, direction = 0))
+    }
+
+    @Test
+    fun answerChoreographyKeepsLearningAndActionInOrder() {
+        assertTrue(!answerExplanationVisible(AnswerChoreographyStage.Choosing))
+        assertTrue(!answerExplanationVisible(AnswerChoreographyStage.Graded))
+        assertTrue(answerExplanationVisible(AnswerChoreographyStage.Explained))
+        assertTrue(answerExplanationVisible(AnswerChoreographyStage.ActionReady))
+
+        assertTrue(!answerActionVisible(AnswerChoreographyStage.Explained))
+        assertTrue(answerActionVisible(AnswerChoreographyStage.ActionReady))
+        assertTrue(AnswerExplanationDelayMs < AnswerActionDelayMs)
+    }
+
+    @Test
+    fun explanationTethersToThePickedAnswerOrTheRevealedTimeoutAnswer() {
+        assertTrue(
+            explanationTetherAnchor(
+                reveal = true,
+                selected = true,
+                correctAnswer = false,
+                timeUp = false,
+            )
+        )
+        assertTrue(
+            explanationTetherAnchor(
+                reveal = true,
+                selected = true,
+                correctAnswer = true,
+                timeUp = false,
+            )
+        )
+        assertFalse(
+            explanationTetherAnchor(
+                reveal = true,
+                selected = false,
+                correctAnswer = true,
+                timeUp = false,
+            )
+        )
+        assertTrue(
+            explanationTetherAnchor(
+                reveal = true,
+                selected = false,
+                correctAnswer = true,
+                timeUp = true,
+            )
+        )
+        assertFalse(
+            explanationTetherAnchor(
+                reveal = true,
+                selected = true,
+                correctAnswer = false,
+                timeUp = true,
+            )
+        )
+        assertFalse(
+            explanationTetherAnchor(
+                reveal = false,
+                selected = true,
+                correctAnswer = false,
+                timeUp = false,
+            )
+        )
+    }
+
+    @Test
+    fun answerOutcomeStagingPrioritizesThePickedAndCorrectOptions() {
+        assertEquals(0, answerOptionRevealDelayMillis(selected = true, correctAnswer = false))
+        assertEquals(90, answerOptionRevealDelayMillis(selected = false, correctAnswer = true))
+        assertEquals(120, answerOptionRevealDelayMillis(selected = false, correctAnswer = false))
+
+        assertEquals(
+            0.58f,
+            answerOptionEmphasis(reveal = true, selected = false, correctAnswer = false),
+            0f,
+        )
+        assertEquals(
+            1f,
+            answerOptionEmphasis(reveal = true, selected = false, correctAnswer = true),
+            0f,
+        )
+        assertEquals(
+            1f,
+            answerOptionEmphasis(reveal = false, selected = false, correctAnswer = false),
+            0f,
+        )
     }
 
     @Test

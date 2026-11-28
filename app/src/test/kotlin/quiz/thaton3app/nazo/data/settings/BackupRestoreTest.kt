@@ -10,8 +10,12 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import quiz.thaton3app.nazo.challenge.ChallengePackCatalog
+import quiz.thaton3app.nazo.challenge.ChallengePackProgressStore
 import quiz.thaton3app.nazo.data.Question
 import quiz.thaton3app.nazo.data.QuizStats
+import quiz.thaton3app.nazo.records.RivalGhostSetup
+import quiz.thaton3app.nazo.records.RivalGhostStore
 
 /**
  * Backup/restore contract tests.
@@ -101,6 +105,145 @@ class BackupRestoreTest {
         val content = bundle(stores = BackupRepository.STORES.associateWith { emptyMap<String, JSONObject>() })
         val parsed = BackupRepository.parseAndValidate(content)
         assertEquals(BackupRepository.STORES.toSet(), parsed.stores.keys)
+    }
+
+    @Test
+    fun savedQuizCollectionsRoundTripThroughPortableBackupData() {
+        val source = FakeSharedPreferences()
+        val saved = QuizCollectionStore(source).save(
+            QuizCollectionSetup(
+                topic = "Naruto",
+                mode = "QUIZ",
+                difficulty = "Adaptive",
+                amount = 10,
+            ),
+        )
+        val raw = source.getString(QuizCollectionStore.KEY, null)!!
+        val parsed = BackupRepository.parseAndValidate(
+            bundle(
+                stores = mapOf(
+                    QuizCollectionStore.PREFS_NAME to mapOf(
+                        QuizCollectionStore.KEY to tag("string", raw),
+                    ),
+                ),
+            ),
+        )
+        val target = FakeSharedPreferences()
+
+        BackupRepository.applyValidated({ target }, parsed.stores)
+
+        assertEquals(saved, QuizCollectionStore(target).get().single())
+    }
+
+    @Test
+    fun challengePackProgressRoundTripsThroughPortableBackupData() {
+        val source = FakeSharedPreferences()
+        val pack = ChallengePackCatalog.all.first()
+        val saved = ChallengePackProgressStore(source) { 123_456L }.submit(pack.id, 6).progress
+        val raw = source.getString(ChallengePackProgressStore.KEY, null)!!
+        val parsed = BackupRepository.parseAndValidate(
+            bundle(
+                stores = mapOf(
+                    ChallengePackProgressStore.PREFS_NAME to mapOf(
+                        ChallengePackProgressStore.KEY to tag("string", raw),
+                    ),
+                ),
+            ),
+        )
+        val target = FakeSharedPreferences()
+
+        BackupRepository.applyValidated({ target }, parsed.stores)
+
+        assertEquals(saved, ChallengePackProgressStore(target).get().single())
+    }
+
+    @Test
+    fun malformedChallengePackProgressIsRejectedBeforeRestore() {
+        val malformed = "{\"version\":1,\"packs\":[{\"id\":\"not-shipped\"}]}"
+
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupRepository.parseAndValidate(
+                bundle(
+                    stores = mapOf(
+                        ChallengePackProgressStore.PREFS_NAME to mapOf(
+                            ChallengePackProgressStore.KEY to tag("string", malformed),
+                        ),
+                    ),
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun accessibilityAssistsRoundTripThroughPortableBackupData() {
+        val parsed = BackupRepository.parseAndValidate(
+            bundle(
+                stores = mapOf(
+                    AccessibilityPreferences.PREFS_NAME to mapOf(
+                        AccessibilityPreferences.KEY_REDUCE_MOTION to tag("bool", true),
+                        AccessibilityPreferences.KEY_HIGH_CONTRAST to tag("bool", true),
+                        AccessibilityPreferences.KEY_TEXT_SCALE to tag("string", "extra_large"),
+                        AccessibilityPreferences.KEY_TIMER_ASSIST to tag("string", "relaxed"),
+                        AccessibilityPreferences.KEY_HAPTICS to tag("bool", false),
+                        AccessibilityPreferences.KEY_CLASSIC_HOME_LAYOUT to tag("bool", true),
+                    ),
+                ),
+            ),
+        )
+        val target = FakeSharedPreferences()
+
+        BackupRepository.applyValidated({ target }, parsed.stores)
+
+        val restored = AccessibilityPreferences(target)
+        assertTrue(restored.reduceMotion)
+        assertTrue(restored.highContrast)
+        assertEquals(AccessibilityTextScale.EXTRA_LARGE, restored.textScale)
+        assertEquals(TimerAssist.RELAXED, restored.timerAssist)
+        assertFalse(restored.hapticsEnabled)
+        assertTrue(restored.classicHomeLayout)
+    }
+
+    @Test
+    fun friendlyRivalsRoundTripThroughPortableBackupData() {
+        val source = FakeSharedPreferences()
+        val saved = RivalGhostStore(source) { 1_000L }.submit(
+            setup = RivalGhostSetup("Naruto", "Hard", 5),
+            correct = 4,
+            totalQuestions = 5,
+            elapsedMillis = 72_000L,
+        ).current
+        val raw = source.getString(RivalGhostStore.KEY, null)!!
+        val parsed = BackupRepository.parseAndValidate(
+            bundle(
+                stores = mapOf(
+                    RivalGhostStore.PREFS_NAME to mapOf(
+                        RivalGhostStore.KEY to tag("string", raw),
+                    ),
+                ),
+            ),
+        )
+        val target = FakeSharedPreferences()
+
+        BackupRepository.applyValidated({ target }, parsed.stores)
+
+        assertEquals(saved, RivalGhostStore(target).get().single())
+    }
+
+    @Test
+    fun malformedFriendlyRivalPayloadIsRejectedBeforeRestore() {
+        val malformed = """{"version":1,"profiles":[{"topic":"Naruto"}]}"""
+
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupRepository.parseAndValidate(
+                bundle(
+                    stores = mapOf(
+                        RivalGhostStore.PREFS_NAME to mapOf(
+                            RivalGhostStore.KEY to tag("string", malformed),
+                        ),
+                    ),
+                ),
+            )
+        }
     }
 
     @Test
@@ -311,6 +454,10 @@ class BackupRestoreTest {
         assertEquals(4, restored.totalQuizzes)
         assertEquals(12, restored.totalCorrect)
         assertEquals(0, restored.bestCorrectCombo)
+        assertEquals(0, restored.streakProtectionTokens)
+        assertEquals(0, restored.streakProtectionProgress)
+        assertTrue(restored.animeRecentOutcomes.isEmpty())
+        assertTrue(restored.recentTopics.isEmpty())
     }
 
     @Test
@@ -323,6 +470,12 @@ class BackupRestoreTest {
             """{"totalQuizzes":1,"currentStreakDays":1,"bestStreakDays":1,"lastQuizEpochDay":-4}""",
             """{"difficultyAnswered":{"Easy":"many"}}""",
             """{"animeAnswered":{"Naruto":1.5}}""",
+            """{"totalQuestionsAnswered":1,"animeAnswered":{"Naruto":1},"animeRecentOutcomes":{"Naruto":"12"}}""",
+            """{"recentTopics":["Naruto","naruto"]}""",
+            """{"recentTopics":"Naruto"}""",
+            """{"streakProtectionTokens":3}""",
+            """{"streakProtectionProgress":5}""",
+            """{"protectedStreakEpochDay":200}""",
         )
 
         corruptValues.forEach { corrupt ->
@@ -348,6 +501,7 @@ class BackupRestoreTest {
             """{"totalQuizzes":1,"currentStreakDays":1,"bestStreakDays":1,"lastQuizEpochDay":"today"}""",
             """{"totalQuizzes":1,"difficultyPlays":{"Easy":-1}}""",
             """{"totalQuizzes":1,"totalQuestionsAnswered":1,"animeAnswered":{"Naruto":1},"animeCorrect":{"Naruto":2}}""",
+            """{"totalQuestionsAnswered":2,"totalCorrect":1,"animeAnswered":{"Naruto":2},"animeCorrect":{"Naruto":1},"animeRecentOutcomes":{"Naruto":"11"}}""",
         )
 
         invalidValues.forEach { statsJson ->
@@ -383,12 +537,19 @@ class BackupRestoreTest {
             totalQuizzes = 12,
             totalQuestionsAnswered = 90,
             totalCorrect = 70,
+            bonusXp = 40,
             bestCorrectCombo = 11,
             currentStreakDays = 5,
             bestStreakDays = 9,
-            lastQuizEpochDay = QuizStats.localEpochDay(),
+            lastQuizEpochDay = QuizStats.localEpochDay() - 2,
+            streakProtectionTokens = 1,
+            streakProtectionProgress = 3,
+            protectedStreakEpochDay = QuizStats.localEpochDay() - 1,
             difficultyPlays = mapOf("Easy" to 3),
             animeAnswered = mapOf("Naruto" to 4),
+            animeCorrect = mapOf("Naruto" to 3),
+            animeRecentOutcomes = mapOf("Naruto" to "1011"),
+            recentTopics = listOf("Naruto", "Bleach"),
         )
         QuizStatsStore(source).save(fixture)
         val statsJson = source.getString("quiz_stats_v1", null)!!

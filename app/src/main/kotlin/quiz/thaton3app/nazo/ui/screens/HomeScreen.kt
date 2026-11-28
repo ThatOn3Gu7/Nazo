@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -36,6 +37,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberOverscrollEffect
 import androidx.compose.foundation.rememberScrollState
@@ -70,6 +73,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
@@ -89,11 +94,20 @@ import kotlin.math.sin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.R
-import quiz.thaton3app.nazo.daily.DailyChallengeCard
+import quiz.thaton3app.nazo.challenge.ChallengePack
+import quiz.thaton3app.nazo.challenge.ChallengePackProgress
+import quiz.thaton3app.nazo.daily.DailyChallenge
 import quiz.thaton3app.nazo.data.LocalQuestionBank
+import quiz.thaton3app.nazo.ui.components.ChallengePackShelf
+import quiz.thaton3app.nazo.ui.components.FriendlyRivalHomeCard
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
 import quiz.thaton3app.nazo.data.QuizStats
+import quiz.thaton3app.nazo.data.StreakProtection
+import quiz.thaton3app.nazo.data.settings.QuizCollection
+import quiz.thaton3app.nazo.data.settings.QuizCollectionPolicy
+import quiz.thaton3app.nazo.data.settings.QuizCollectionSetup
+import quiz.thaton3app.nazo.records.RivalGhostProfile
 import quiz.thaton3app.nazo.ui.components.NazoModalSheet
 import quiz.thaton3app.nazo.ui.components.NazoSheetColumn
 import quiz.thaton3app.nazo.ui.components.NazoSheetHeader
@@ -104,11 +118,14 @@ import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.rememberSystemReduceMotion
 import quiz.thaton3app.nazo.ui.components.AvatarAnchorId
 import quiz.thaton3app.nazo.ui.components.ProfileAvatar
+import quiz.thaton3app.nazo.ui.components.QuizLaunchOrigin
 import quiz.thaton3app.nazo.ui.components.SPARKLE_METEORS
 import quiz.thaton3app.nazo.ui.components.SPARKLE_TWINKLE
 import quiz.thaton3app.nazo.ui.components.drawMeteorShower
 import quiz.thaton3app.nazo.ui.components.drawTwinklingStars
 import quiz.thaton3app.nazo.ui.components.isLandscape
+import quiz.thaton3app.nazo.ui.home.HomeFocusAction
+import quiz.thaton3app.nazo.ui.home.PersonalizedHomeFocus
 import quiz.thaton3app.nazo.ui.mode.NazoMode
 import quiz.thaton3app.nazo.ui.mode.modeIdentitySpec
 import quiz.thaton3app.nazo.ui.theme.*
@@ -118,6 +135,7 @@ enum class Difficulty(val label: String) {
     MEDIUM("Medium"),
     HARD("Hard"),
     OTAKU_MASTER("Otaku Master"),
+    ADAPTIVE("Adaptive"),
 }
 
 internal enum class HomeCountControls { Questions, Rounds, None }
@@ -128,8 +146,46 @@ internal fun homeCountControls(mode: NazoMode): HomeCountControls = when (mode) 
     NazoMode.SURVIVAL, NazoMode.BLITZ -> HomeCountControls.None
 }
 
-internal fun homePracticeVisible(mode: NazoMode, practiceCount: Int): Boolean =
-    mode == NazoMode.QUIZ && practiceCount > 0
+internal fun homePracticeVisible(
+    mode: NazoMode,
+    practiceCount: Int,
+    focusAction: HomeFocusAction? = null,
+): Boolean = mode == NazoMode.QUIZ &&
+    practiceCount > 0 &&
+    focusAction != HomeFocusAction.Practice
+
+internal fun homeStreakChipVisible(
+    streakDays: Int,
+    protectionTokens: Int,
+    protectionProgress: Int,
+): Boolean = streakDays > 0 || protectionTokens > 0 || protectionProgress > 0
+
+internal fun adaptiveDifficultyAvailable(mode: NazoMode): Boolean = mode == NazoMode.QUIZ
+
+/** Adaptive is intentionally Quiz-only; other modes retain their authored rules. */
+internal fun homeDifficultyForMode(mode: NazoMode, difficulty: Difficulty): Difficulty =
+    if (!adaptiveDifficultyAvailable(mode) && difficulty == Difficulty.ADAPTIVE) Difficulty.MEDIUM
+    else difficulty
+
+/**
+ * The portal is a destination transition for challenges that are known to be
+ * ready from the local bank. AI-backed starts already have a meaningful
+ * Loading destination, and Guessing has its own preparation flow, so adding a
+ * second full-screen interstitial to either only creates visual queueing.
+ */
+internal fun homeLaunchUsesPortal(mode: NazoMode, offline: Boolean): Boolean = when (mode) {
+    NazoMode.BLITZ -> true // Always local, even while the app is online.
+    NazoMode.QUIZ, NazoMode.SURVIVAL, NazoMode.VERSUS -> offline
+    NazoMode.GUESSING -> false
+}
+
+internal fun homePrimaryLaunchLabel(mode: NazoMode, offline: Boolean): String = when (mode) {
+    NazoMode.GUESSING -> "Start Guessing Game"
+    NazoMode.SURVIVAL -> "Start Survival Run"
+    NazoMode.BLITZ -> "Start 60-Second Blitz"
+    NazoMode.VERSUS -> "Start Versus Match"
+    NazoMode.QUIZ -> if (offline) "Generate Quiz" else "Generate AI Quiz"
+}
 
 internal fun challengeSummary(
     mode: NazoMode,
@@ -147,6 +203,69 @@ internal fun challengeSummary(
         NazoMode.BLITZ -> "60-second run"
     }
     return "${difficulty.label} • $detail"
+}
+
+internal fun homeCollectionSetup(
+    topic: String,
+    mode: NazoMode,
+    difficulty: Difficulty,
+    questionCount: Int,
+    guessingRounds: Int,
+): QuizCollectionSetup = QuizCollectionSetup(
+    topic = topic,
+    mode = mode.name,
+    difficulty = difficulty.label,
+    amount = when (homeCountControls(mode)) {
+        HomeCountControls.Questions -> questionCount
+        HomeCountControls.Rounds -> guessingRounds
+        HomeCountControls.None -> 0
+    },
+)
+
+internal fun quizCollectionHeadline(collection: QuizCollection): String =
+    collection.topic.ifBlank { "Mixed anime" }
+
+internal fun quizCollectionDetail(collection: QuizCollection): String {
+    val mode = NazoMode.entries.firstOrNull { it.name == collection.mode }?.label ?: "Quiz"
+    val length = when (collection.mode) {
+        NazoMode.QUIZ.name, NazoMode.VERSUS.name ->
+            "${collection.amount} question${if (collection.amount == 1) "" else "s"}"
+        NazoMode.GUESSING.name ->
+            "${collection.amount} round${if (collection.amount == 1) "" else "s"}"
+        NazoMode.SURVIVAL.name -> "Endless"
+        NazoMode.BLITZ.name -> "60 seconds"
+        else -> ""
+    }
+    return listOf(mode, collection.difficulty, length).filter { it.isNotBlank() }.joinToString(" • ")
+}
+
+internal enum class CollectionLoadStep(val label: String) {
+    Mode("SETTING MODE"),
+    Topic("TYPING TOPIC"),
+    Difficulty("SETTING DIFFICULTY"),
+    Length("SETTING LENGTH"),
+}
+
+internal data class CollectionLoadProgress(
+    val collectionId: String,
+    val step: CollectionLoadStep,
+)
+
+/** Bounded, Unicode-safe frames for the staged topic typing effect. */
+internal fun collectionTopicRevealFrames(
+    topic: String,
+    maxFrames: Int = 24,
+): List<String> {
+    require(maxFrames > 0)
+    val codePoints = topic.codePoints().toArray()
+    if (codePoints.isEmpty()) return listOf("")
+    val frameCount = minOf(codePoints.size, maxFrames)
+    return (1..frameCount).map { frame ->
+        val visibleCount = (frame * codePoints.size + frameCount - 1) / frameCount
+        buildString {
+            repeat(visibleCount) { index -> appendCodePoint(codePoints[index]) }
+        }
+    }
 }
 
 private val HOME_TOPIC_STARTERS = listOf(
@@ -182,6 +301,8 @@ fun HomeScreen(
     profilePictureUri: String? = null,
     onProfileClick: () -> Unit = {},
     onStartQuiz: (topic: String, difficulty: String, count: Int) -> Unit,
+    /** Lets the app-level overlay cover navigation before this launch action runs. */
+    onLaunchPortal: (QuizLaunchOrigin, String, () -> Unit) -> Unit = { _, _, launch -> launch() },
     topic: String = "",
     difficultyName: String = Difficulty.MEDIUM.name,
     questionCount: Int = 5,
@@ -192,6 +313,15 @@ fun HomeScreen(
     onModeChange: (String) -> Unit = {},
     guessingRounds: Int = 3,
     onGuessingRoundsChange: (Int) -> Unit = {},
+    quizCollections: List<QuizCollection> = emptyList(),
+    challengePacks: List<ChallengePack> = emptyList(),
+    challengePackProgress: List<ChallengePackProgress> = emptyList(),
+    onStartChallengePack: (ChallengePack) -> Unit = {},
+    onDeleteCollection: (QuizCollection) -> Unit = {},
+    challengePackCount: Int = 0,
+    onOpenLibrary: () -> Unit = {},
+    classicLayout: Boolean = false,
+    onSaveCollection: (QuizCollectionSetup) -> Unit = {},
     onStartGuessing: (topic: String, difficulty: String, rounds: Int) -> Unit = { _, _, _ -> },
     onStartSurvival: (topic: String, difficulty: String) -> Unit = { _, _ -> },
     onStartBlitz: (topic: String, difficulty: String) -> Unit = { _, _ -> },
@@ -202,24 +332,168 @@ fun HomeScreen(
     dailyCompleted: Boolean = false,
     dailyScore: Int = 0,
     dailyBonus: Int = 0,
+    personalizedFocus: PersonalizedHomeFocus = PersonalizedHomeFocus(
+        action = HomeFocusAction.Daily,
+        title = "Climb today's Daily Ladder",
+        reason = "Five questions with bonus XP.",
+    ),
     onPlayDaily: () -> Unit = {},
     streakDays: Int = 0,
     bestStreakDays: Int = 0,
     lastQuizEpochDay: Long? = null,
+    streakProtectionTokens: Int = 0,
+    streakProtectionProgress: Int = 0,
+    protectedStreakEpochDay: Long? = null,
+    rivalGhost: RivalGhostProfile? = null,
     totalQuizzes: Int = 0,
     practiceCount: Int = 0,
     onStartPractice: () -> Unit = {},
 ) {
     val difficulty = Difficulty.valueOf(difficultyName)
     val nazoMode = NazoMode.entries.firstOrNull { it.name == mode } ?: NazoMode.QUIZ
+    val currentCollectionSetup = homeCollectionSetup(
+        topic = topic,
+        mode = nazoMode,
+        difficulty = difficulty,
+        questionCount = questionCount,
+        guessingRounds = guessingRounds,
+    )
+    val currentSetupSaved = quizCollections.any {
+        QuizCollectionPolicy.matches(it, currentCollectionSetup)
+    }
+    val collectionLimitReached = !currentSetupSaved &&
+        quizCollections.size >= QuizCollectionPolicy.MAX_COLLECTIONS
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
     val reduceMotion = rememberSystemReduceMotion()
+    val scope = rememberCoroutineScope()
+    var collectionLoadProgress by remember { mutableStateOf<CollectionLoadProgress?>(null) }
+    var lastVisibleCollections by remember { mutableStateOf(quizCollections) }
+    SideEffect {
+        if (quizCollections.isNotEmpty()) lastVisibleCollections = quizCollections
+    }
     var showProviderSheet by remember { mutableStateOf(false) }
     var showModeSheet by remember { mutableStateOf(false) }
+    var showSetupSheet by remember { mutableStateOf(false) }
+    var focusPortalOrigin by remember { mutableStateOf<QuizLaunchOrigin?>(null) }
+    var practicePortalOrigin by remember { mutableStateOf<QuizLaunchOrigin?>(null) }
+
+    fun launchReadyChallenge(
+        origin: QuizLaunchOrigin?,
+        label: String,
+        launch: () -> Unit,
+    ) {
+        if (origin == null) launch() else onLaunchPortal(origin, label, launch)
+    }
+
+    fun launchDailyFromFocus() {
+        if (collectionLoadProgress != null || dailyCompleted) return
+        launchReadyChallenge(
+            origin = focusPortalOrigin,
+            label = "Play Daily Ladder",
+            launch = onPlayDaily,
+        )
+    }
+
+    fun launchPersonalizedFocus() {
+        if (collectionLoadProgress != null) return
+        when (personalizedFocus.action) {
+            HomeFocusAction.Daily -> launchDailyFromFocus()
+            HomeFocusAction.Practice -> launchReadyChallenge(
+                origin = focusPortalOrigin,
+                label = "Practice your misses",
+                launch = onStartPractice,
+            )
+            HomeFocusAction.TopicQuiz -> {
+                val focusDifficulty = Difficulty.entries.firstOrNull {
+                    it.label.equals(personalizedFocus.difficulty, ignoreCase = true)
+                } ?: Difficulty.ADAPTIVE
+                onModeChange(NazoMode.QUIZ.name)
+                onTopicChange(personalizedFocus.topic)
+                onDifficultyChange(focusDifficulty.name)
+                onQuestionCountChange(personalizedFocus.questionCount)
+                launchReadyChallenge(
+                    origin = focusPortalOrigin.takeIf { offline },
+                    label = personalizedFocus.title,
+                ) {
+                    onStartQuiz(
+                        personalizedFocus.topic,
+                        focusDifficulty.label,
+                        personalizedFocus.questionCount,
+                    )
+                }
+            }
+        }
+    }
+
+    fun applyCollection(collection: QuizCollection) {
+        if (collectionLoadProgress != null) return
+        val savedMode = NazoMode.entries.firstOrNull { it.name == collection.mode } ?: return
+        val savedDifficulty = Difficulty.entries.firstOrNull {
+            it.label.equals(collection.difficulty, ignoreCase = true)
+        } ?: return
+        val supportedDifficulty = homeDifficultyForMode(savedMode, savedDifficulty)
+        fun applyLength() {
+            when (homeCountControls(savedMode)) {
+                HomeCountControls.Questions -> onQuestionCountChange(collection.amount)
+                HomeCountControls.Rounds -> onGuessingRoundsChange(collection.amount)
+                HomeCountControls.None -> Unit
+            }
+        }
+
+        Haptics.light(context)
+        focusManager.clearFocus()
+        if (reduceMotion) {
+            onModeChange(savedMode.name)
+            onTopicChange(collection.topic)
+            onDifficultyChange(supportedDifficulty.name)
+            applyLength()
+            return
+        }
+
+        collectionLoadProgress = CollectionLoadProgress(collection.id, CollectionLoadStep.Mode)
+        scope.launch {
+            try {
+                onModeChange(savedMode.name)
+                delay(240)
+
+                collectionLoadProgress = CollectionLoadProgress(
+                    collection.id,
+                    CollectionLoadStep.Topic,
+                )
+                onTopicChange("")
+                val topicFrames = collectionTopicRevealFrames(collection.topic)
+                val frameDelay = (520L / topicFrames.size.coerceAtLeast(1)).coerceIn(18L, 48L)
+                topicFrames.forEach { frame ->
+                    onTopicChange(frame)
+                    delay(frameDelay)
+                }
+                delay(80)
+
+                collectionLoadProgress = CollectionLoadProgress(
+                    collection.id,
+                    CollectionLoadStep.Difficulty,
+                )
+                onDifficultyChange(supportedDifficulty.name)
+                delay(240)
+
+                if (homeCountControls(savedMode) != HomeCountControls.None) {
+                    collectionLoadProgress = CollectionLoadProgress(
+                        collection.id,
+                        CollectionLoadStep.Length,
+                    )
+                    applyLength()
+                    delay(180)
+                }
+            } finally {
+                collectionLoadProgress = null
+            }
+        }
+    }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val modeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val scope = rememberCoroutineScope()
+    val setupSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     // Smooth dismiss helpers let each slide-down finish before its sheet unmounts.
     fun dismissSheet(onComplete: () -> Unit = {}) {
@@ -244,8 +518,9 @@ fun HomeScreen(
     val avatarOverscrollEffect = rememberOverscrollEffect()
     val videoAvatarOverscrolling = avatarOverscrollEffect?.isInProgress == true
 
-    // Group 1: Profile, Badges, Daily Challenge, and Mode Selection
-    val leftContent: @Composable () -> Unit = {
+    // Home is a launchpad: the custom builder is always ahead of reusable
+    // content. Packs and Collections live one tap away in Play Library.
+    val launchpadLeftContent: @Composable () -> Unit = {
         Spacer(Modifier.height(16.dp))
 
         HomeHeader(
@@ -256,8 +531,7 @@ fun HomeScreen(
             videoAvatarOverscrolling = videoAvatarOverscrolling,
         )
 
-        Spacer(Modifier.height(14.dp))
-
+        Spacer(Modifier.height(10.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -270,33 +544,152 @@ fun HomeScreen(
                 onClick = if (offline) null else ({ showProviderSheet = true }),
             )
             Spacer(Modifier.weight(1f))
-            if (streakDays >= 1) {
+            if (homeStreakChipVisible(streakDays, streakProtectionTokens, streakProtectionProgress)) {
                 StreakFlameChip(
                     streakDays = streakDays,
                     bestStreakDays = bestStreakDays,
                     lastQuizEpochDay = lastQuizEpochDay,
+                    streakProtectionTokens = streakProtectionTokens,
+                    streakProtectionProgress = streakProtectionProgress,
+                    protectedStreakEpochDay = protectedStreakEpochDay,
                     totalQuizzes = totalQuizzes,
                 )
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(14.dp))
+        HomeGameLaunchpad(
+            mode = nazoMode,
+            topic = topic,
+            difficulty = difficulty,
+            questionCount = questionCount,
+            guessingRounds = guessingRounds,
+            sparkleStyle = sparkleStyle,
+            offline = offline,
+            setupSaved = currentSetupSaved,
+            collectionLimitReached = collectionLimitReached,
+            rivalGhost = rivalGhost,
+            onModeClick = {
+                Haptics.light(context)
+                showModeSheet = true
+            },
+            onSetupClick = {
+                Haptics.light(context)
+                showSetupSheet = true
+            },
+            onTopicChange = onTopicChange,
+            onSaveSetup = {
+                if (!currentSetupSaved && !collectionLimitReached) {
+                    Haptics.light(context)
+                    onSaveCollection(currentCollectionSetup)
+                }
+            },
+            onLaunchPortal = onLaunchPortal,
+            onStart = {
+                when (nazoMode) {
+                    NazoMode.GUESSING -> onStartGuessing(topic, difficulty.label, guessingRounds)
+                    NazoMode.SURVIVAL -> onStartSurvival(topic, difficulty.label)
+                    NazoMode.BLITZ -> onStartBlitz(topic, difficulty.label)
+                    NazoMode.VERSUS -> onStartVersus(topic, difficulty.label, questionCount)
+                    else -> onStartQuiz(topic, difficulty.label, questionCount)
+                }
+            },
+        )
+    }
 
-        DailyChallengeCard(
-            completed = dailyCompleted,
-            lastScore = dailyScore,
-            lastBonus = dailyBonus,
-            onPlay = onPlayDaily,
+    val launchpadRightContent: @Composable () -> Unit = {
+        if (landscape) Spacer(Modifier.height(16.dp))
+        PersonalizedHomeFocusCard(
+            focus = personalizedFocus,
+            dailyCompleted = dailyCompleted,
+            dailyScore = dailyScore,
+            dailyBonus = dailyBonus,
+            enabled = true,
+            motionAllowed = !reduceMotion,
+            onPrimaryClick = ::launchPersonalizedFocus,
+            onDailyClick = ::launchDailyFromFocus,
+            modifier = Modifier.onGloballyPositioned { coordinates ->
+                focusPortalOrigin = QuizLaunchOrigin.from(coordinates.boundsInRoot())
+            },
         )
 
+        Spacer(Modifier.height(12.dp))
+        HomeQuickPaths(
+            challengePackCount = challengePackCount,
+            collectionCount = quizCollections.size,
+            practiceCount = practiceCount.takeIf {
+                homePracticeVisible(
+                    mode = nazoMode,
+                    practiceCount = practiceCount,
+                    focusAction = personalizedFocus.action,
+                )
+            } ?: 0,
+            onOpenLibrary = onOpenLibrary,
+            onPractice = { origin ->
+                launchReadyChallenge(
+                    origin = origin,
+                    label = "Practice your misses",
+                    launch = onStartPractice,
+                )
+            },
+        )
         Spacer(Modifier.height(16.dp))
+    }
 
+    // The classic option intentionally reconstructs the familiar pre-launchpad
+    // hierarchy, including its on-Home pack and Collection shelves. It shares
+    // the same durable setup state and launch coordinator as the new default.
+    val classicLeftContent: @Composable () -> Unit = {
+        Spacer(Modifier.height(16.dp))
+        HomeHeader(
+            onSettingsClick = onSettingsClick,
+            profileName = profileName,
+            profilePictureUri = profilePictureUri,
+            onProfileClick = onProfileClick,
+            videoAvatarOverscrolling = videoAvatarOverscrolling,
+        )
+        Spacer(Modifier.height(14.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ApiKeyBadge(
+                active = apiKeyActive,
+                activeProvider = activeProvider,
+                offline = offline,
+                keyWithoutModel = apiKeyPresentWithoutModel,
+                onClick = if (offline) null else ({ showProviderSheet = true }),
+            )
+            Spacer(Modifier.weight(1f))
+            if (homeStreakChipVisible(streakDays, streakProtectionTokens, streakProtectionProgress)) {
+                StreakFlameChip(
+                    streakDays = streakDays,
+                    bestStreakDays = bestStreakDays,
+                    lastQuizEpochDay = lastQuizEpochDay,
+                    streakProtectionTokens = streakProtectionTokens,
+                    streakProtectionProgress = streakProtectionProgress,
+                    protectedStreakEpochDay = protectedStreakEpochDay,
+                    totalQuizzes = totalQuizzes,
+                )
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+        PersonalizedHomeFocusCard(
+            focus = personalizedFocus,
+            dailyCompleted = dailyCompleted,
+            dailyScore = dailyScore,
+            dailyBonus = dailyBonus,
+            enabled = collectionLoadProgress == null,
+            motionAllowed = !reduceMotion,
+            onPrimaryClick = ::launchPersonalizedFocus,
+            onDailyClick = ::launchDailyFromFocus,
+            modifier = Modifier.onGloballyPositioned { coordinates ->
+                focusPortalOrigin = QuizLaunchOrigin.from(coordinates.boundsInRoot())
+            },
+        )
+        Spacer(Modifier.height(16.dp))
         SectionLabel("MODE")
         Spacer(Modifier.height(8.dp))
-
-        // This identity card is now the sole mode picker on Home. Tapping it
-        // opens the richer bottom sheet; there is no second dropdown competing
-        // with the mode's personality or repeating the same selection.
         AnimatedContent(
             targetState = nazoMode,
             transitionSpec = {
@@ -307,7 +700,7 @@ fun HomeScreen(
                         .togetherWith(slideOutVertically { -it / 4 } + fadeOut())
                 }
             },
-            label = "modeIdentity",
+            label = "classicModeIdentity",
         ) { selectedMode ->
             ModeIdentityCard(
                 mode = selectedMode,
@@ -319,21 +712,87 @@ fun HomeScreen(
         }
     }
 
-    // Group 2: Topic, Difficulty, Rounds/Questions, and the Generate Button
-    val rightContent: @Composable () -> Unit = {
-        // Top alignment spacer for landscape
+    val classicRightContent: @Composable () -> Unit = {
         if (landscape) Spacer(Modifier.height(16.dp))
 
+        if (challengePacks.isNotEmpty()) {
+            ChallengePackShelf(
+                packs = challengePacks,
+                progress = challengePackProgress,
+                motionAllowed = !reduceMotion,
+                onStart = { pack, origin ->
+                    if (collectionLoadProgress == null) {
+                        Haptics.light(context)
+                        onLaunchPortal(origin, "Start ${pack.title}") {
+                            onStartChallengePack(pack)
+                        }
+                    }
+                },
+            )
+            Spacer(Modifier.height(16.dp))
+        }
+
+        val displayedCollections = if (quizCollections.isNotEmpty()) {
+            quizCollections
+        } else {
+            lastVisibleCollections
+        }
+        AnimatedVisibility(
+            visible = quizCollections.isNotEmpty(),
+            enter = if (reduceMotion) {
+                fadeIn(tween(90))
+            } else {
+                fadeIn(tween(180, easing = FastOutSlowInEasing)) +
+                    expandVertically(
+                        expandFrom = Alignment.Top,
+                        animationSpec = tween(300, easing = FastOutSlowInEasing),
+                    )
+            },
+            exit = if (reduceMotion) {
+                fadeOut(tween(70))
+            } else {
+                fadeOut(tween(150, easing = FastOutSlowInEasing)) +
+                    shrinkVertically(
+                        shrinkTowards = Alignment.Top,
+                        animationSpec = tween(280, easing = FastOutSlowInEasing),
+                    )
+            },
+            label = "classicCollectionsShelfVisibility",
+        ) {
+            Column(Modifier.fillMaxWidth()) {
+                QuizCollectionsShelf(
+                    collections = displayedCollections,
+                    motionAllowed = !reduceMotion,
+                    loadProgress = collectionLoadProgress,
+                    onApply = ::applyCollection,
+                    onDelete = { collection ->
+                        if (collectionLoadProgress == null) {
+                            Haptics.light(context)
+                            onDeleteCollection(collection)
+                        }
+                    },
+                )
+                Spacer(Modifier.height(16.dp))
+            }
+        }
+
         TopicInputCard(topic = topic, onTopicChange = onTopicChange)
-
         Spacer(Modifier.height(16.dp))
-
         ChallengeSetupCard(
             mode = nazoMode,
             difficulty = difficulty,
             questionCount = questionCount,
             guessingRounds = guessingRounds,
             reduceMotion = reduceMotion,
+            setupSaved = currentSetupSaved,
+            collectionLimitReached = collectionLimitReached,
+            collectionLoading = collectionLoadProgress != null,
+            onSaveSetup = {
+                if (!currentSetupSaved && !collectionLimitReached && collectionLoadProgress == null) {
+                    Haptics.light(context)
+                    onSaveCollection(currentCollectionSetup)
+                }
+            },
             onDifficultySelected = { level ->
                 if (difficulty != level) Haptics.light(context)
                 onDifficultyChange(level.name)
@@ -349,7 +808,33 @@ fun HomeScreen(
         )
 
         AnimatedVisibility(
-            visible = homePracticeVisible(nazoMode, practiceCount),
+            visible = rivalGhost != null && nazoMode == NazoMode.QUIZ,
+            enter = fadeIn(tween(if (reduceMotion) 90 else 180)) +
+                expandVertically(
+                    expandFrom = Alignment.Top,
+                    animationSpec = tween(if (reduceMotion) 1 else 240),
+                ),
+            exit = fadeOut(tween(if (reduceMotion) 70 else 140)) +
+                shrinkVertically(
+                    shrinkTowards = Alignment.Top,
+                    animationSpec = tween(if (reduceMotion) 1 else 200),
+                ),
+            label = "classicFriendlyRivalVisibility",
+        ) {
+            rivalGhost?.let { ghost ->
+                Column(Modifier.fillMaxWidth()) {
+                    Spacer(Modifier.height(14.dp))
+                    FriendlyRivalHomeCard(profile = ghost)
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = homePracticeVisible(
+                mode = nazoMode,
+                practiceCount = practiceCount,
+                focusAction = personalizedFocus.action,
+            ),
             enter = if (reduceMotion) {
                 fadeIn(tween(90))
             } else {
@@ -368,27 +853,36 @@ fun HomeScreen(
                         animationSpec = tween(220, easing = FastOutSlowInEasing),
                     )
             },
-            label = "homePracticeVisibility",
+            label = "classicPracticeVisibility",
         ) {
             Column(Modifier.fillMaxWidth()) {
                 Spacer(Modifier.height(14.dp))
                 PracticeMissesButton(
                     practiceCount = practiceCount,
-                    onClick = onStartPractice,
+                    onClick = {
+                        launchReadyChallenge(
+                            origin = practicePortalOrigin,
+                            label = "Practice your misses",
+                            launch = onStartPractice,
+                        )
+                    },
+                    modifier = Modifier.onGloballyPositioned { coordinates ->
+                        practicePortalOrigin = QuizLaunchOrigin.from(coordinates.boundsInRoot())
+                    },
                 )
             }
         }
 
         Spacer(Modifier.height(20.dp))
-
         GenerateButton(
             sparkleStyle = sparkleStyle,
-            label = when (nazoMode) {
-                NazoMode.GUESSING -> "Start Guessing Game"
-                NazoMode.SURVIVAL -> "Start Survival Run"
-                NazoMode.BLITZ -> "Start 60-Second Blitz"
-                NazoMode.VERSUS -> "Start Versus Match"
-                else -> if (offline) "Generate Quiz" else "Generate AI Quiz"
+            portalEnabled = homeLaunchUsesPortal(nazoMode, offline),
+            onLaunchPortal = onLaunchPortal,
+            enabled = collectionLoadProgress == null,
+            label = if (collectionLoadProgress != null) {
+                "Applying saved setup…"
+            } else {
+                homePrimaryLaunchLabel(nazoMode, offline)
             },
             onClick = {
                 when (nazoMode) {
@@ -402,6 +896,11 @@ fun HomeScreen(
         )
         Spacer(Modifier.height(16.dp))
     }
+
+    val leftContent: @Composable () -> Unit =
+        if (classicLayout) classicLeftContent else launchpadLeftContent
+    val rightContent: @Composable () -> Unit =
+        if (classicLayout) classicRightContent else launchpadRightContent
 
     Box(
         modifier = Modifier
@@ -488,7 +987,11 @@ fun HomeScreen(
                             onClick = {
                                 if (candidate != nazoMode) Haptics.light(context)
                                 dismissModeSheet {
-                                    if (candidate != nazoMode) onModeChange(candidate.name)
+                                    if (candidate != nazoMode) {
+                                        onModeChange(candidate.name)
+                                        val supported = homeDifficultyForMode(candidate, difficulty)
+                                        if (supported != difficulty) onDifficultyChange(supported.name)
+                                    }
                                 }
                             },
                         )
@@ -518,6 +1021,99 @@ fun HomeScreen(
                         )
                     }
                     Spacer(Modifier.height(16.dp))
+                }
+            }
+        }
+
+        if (showSetupSheet && !classicLayout) {
+            NazoModalSheet(
+                onDismissRequest = { showSetupSheet = false },
+                sheetState = setupSheetState,
+            ) {
+                NazoSheetColumn {
+                    NazoSheetHeader(
+                        icon = Icons.Filled.Tune,
+                        title = "Difficulty & length",
+                        subtitle = challengeSummary(
+                            nazoMode,
+                            difficulty,
+                            questionCount,
+                            guessingRounds,
+                        ),
+                    )
+                    Spacer(Modifier.height(18.dp))
+                    ChallengeGroupLabel(
+                        title = "DIFFICULTY",
+                        supporting = if (adaptiveDifficultyAvailable(nazoMode)) {
+                            "Fixed or responsive"
+                        } else {
+                            "Choose your pace"
+                        },
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    ChallengeDifficultyRail(
+                        mode = nazoMode,
+                        selected = difficulty,
+                        onSelected = { level ->
+                            if (difficulty != level) Haptics.light(context)
+                            onDifficultyChange(level.name)
+                        },
+                    )
+                    when (homeCountControls(nazoMode)) {
+                        HomeCountControls.Questions -> ChallengeCountGroup(
+                            title = "QUESTIONS",
+                            supporting = "Pick a run length",
+                            values = listOf(5, 10, 15),
+                            selected = questionCount,
+                            captions = listOf("Quick", "Standard", "Long"),
+                            onSelected = { value ->
+                                if (questionCount != value) Haptics.light(context)
+                                onQuestionCountChange(value)
+                            },
+                        )
+                        HomeCountControls.Rounds -> ChallengeCountGroup(
+                            title = "ROUNDS",
+                            supporting = "Choose your session",
+                            values = listOf(1, 3, 5),
+                            selected = guessingRounds,
+                            captions = listOf("Quick", "Standard", "Marathon"),
+                            onSelected = { value ->
+                                if (guessingRounds != value) Haptics.light(context)
+                                onGuessingRoundsChange(value)
+                            },
+                        )
+                        HomeCountControls.None -> Unit
+                    }
+                    Spacer(Modifier.height(18.dp))
+                    val doneInteraction = remember { MutableInteractionSource() }
+                    val doneShape = rememberNazoRoundedCornerMorphShape(
+                        interactionSource = doneInteraction,
+                        restingCorner = 16.dp,
+                        pressedCorner = 8.dp,
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .clip(doneShape)
+                            .background(NazoPrimary, doneShape)
+                            .clickable(
+                                interactionSource = doneInteraction,
+                                indication = LocalIndication.current,
+                            ) {
+                                Haptics.light(context)
+                                showSetupSheet = false
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "Done",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = NazoOnPrimary,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    Spacer(Modifier.height(14.dp))
                 }
             }
         }
@@ -848,6 +1444,9 @@ private fun StreakFlameChip(
     streakDays: Int,
     bestStreakDays: Int,
     lastQuizEpochDay: Long?,
+    streakProtectionTokens: Int,
+    streakProtectionProgress: Int,
+    protectedStreakEpochDay: Long?,
     totalQuizzes: Int,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
@@ -901,33 +1500,64 @@ private fun StreakFlameChip(
             label = "streakFlamePhase",
         )
         Icon(
-            imageVector = Icons.Filled.LocalFireDepartment,
+            imageVector = if (streakDays > 0) {
+                Icons.Filled.LocalFireDepartment
+            } else {
+                Icons.Filled.Shield
+            },
             contentDescription = null,
             tint = flameColor,
             modifier = Modifier
                 .size(flameSize)
                 .graphicsLayer {
-                    // Pivot at the base: a flame is anchored to what it burns.
-                    transformOrigin = TransformOrigin(0.5f, 1f)
-                    // Vertical stretch with a matching horizontal squash, so the
-                    // flame keeps its volume while it licks upward.
-                    val stretch = 1f + 0.07f * sin(t)
-                    scaleY = stretch
-                    scaleX = 1f - 0.05f * sin(t + 0.6f)
-                    // A slow lean, on a different period from the stretch.
-                    rotationZ = 2.4f * sin(t * 0.73f + 1.1f)
-                    // A tiny lift at yet another period keeps it from looking
-                    // like it is bolted down.
-                    translationY = -0.6f * size.height * 0.01f * sin(t * 1.31f)
+                    if (streakDays > 0) {
+                        // Pivot at the base: a flame is anchored to what it burns.
+                        transformOrigin = TransformOrigin(0.5f, 1f)
+                        val stretch = 1f + 0.07f * sin(t)
+                        scaleY = stretch
+                        scaleX = 1f - 0.05f * sin(t + 0.6f)
+                        rotationZ = 2.4f * sin(t * 0.73f + 1.1f)
+                        translationY = -0.6f * size.height * 0.01f * sin(t * 1.31f)
+                    }
                 },
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            text = if (streakDays == 1) "1-day streak" else "$streakDays-day streak",
+            text = when {
+                streakDays == 1 -> "1-day streak"
+                streakDays > 1 -> "$streakDays-day streak"
+                else -> "Streak shield"
+            },
             color = flameColor,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
         )
+        if (streakProtectionTokens > 0) {
+            Spacer(Modifier.width(7.dp))
+            if (streakDays > 0) {
+                Icon(
+                    imageVector = Icons.Filled.Shield,
+                    contentDescription = "$streakProtectionTokens streak shields ready",
+                    tint = NazoPrimary,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(3.dp))
+            }
+            Text(
+                text = "$streakProtectionTokens",
+                color = NazoPrimary,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.ExtraBold,
+            )
+        } else if (streakDays == 0) {
+            Spacer(Modifier.width(7.dp))
+            Text(
+                text = "$streakProtectionProgress/${StreakProtection.GAMES_PER_TOKEN}",
+                color = NazoPrimary,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.ExtraBold,
+            )
+        }
     }
 
     if (expanded) {
@@ -935,6 +1565,9 @@ private fun StreakFlameChip(
             streakDays = streakDays,
             bestStreakDays = bestStreakDays,
             lastQuizEpochDay = lastQuizEpochDay,
+            streakProtectionTokens = streakProtectionTokens,
+            streakProtectionProgress = streakProtectionProgress,
+            protectedStreakEpochDay = protectedStreakEpochDay,
             totalQuizzes = totalQuizzes,
             flameColor = flameColor,
             onDismiss = { expanded = false },
@@ -958,6 +1591,9 @@ private fun StreakDetailDialog(
     streakDays: Int,
     bestStreakDays: Int,
     lastQuizEpochDay: Long?,
+    streakProtectionTokens: Int,
+    streakProtectionProgress: Int,
+    protectedStreakEpochDay: Long?,
     totalQuizzes: Int,
     flameColor: Color,
     onDismiss: () -> Unit,
@@ -990,7 +1626,16 @@ private fun StreakDetailDialog(
                     Column(modifier = Modifier.weight(1f)) {
                         StreakHeadline(streakDays, flameColor, centered = false)
                         Spacer(Modifier.height(12.dp))
-                        StreakFacts(best, totalQuizzes, playedToday, flameColor)
+                        StreakFacts(
+                            best = best,
+                            totalQuizzes = totalQuizzes,
+                            playedToday = playedToday,
+                            streakDays = streakDays,
+                            protectionTokens = streakProtectionTokens,
+                            protectionProgress = streakProtectionProgress,
+                            protectedYesterday = protectedStreakEpochDay == today - 1,
+                            flameColor = flameColor,
+                        )
                     }
                 }
             } else {
@@ -998,7 +1643,16 @@ private fun StreakDetailDialog(
                 Spacer(Modifier.height(14.dp))
                 StreakHeadline(streakDays, flameColor, centered = true)
                 Spacer(Modifier.height(16.dp))
-                StreakFacts(best, totalQuizzes, playedToday, flameColor)
+                StreakFacts(
+                    best = best,
+                    totalQuizzes = totalQuizzes,
+                    playedToday = playedToday,
+                    streakDays = streakDays,
+                    protectionTokens = streakProtectionTokens,
+                    protectionProgress = streakProtectionProgress,
+                    protectedYesterday = protectedStreakEpochDay == today - 1,
+                    flameColor = flameColor,
+                )
             }
 
             Spacer(Modifier.height(18.dp))
@@ -1048,16 +1702,18 @@ private fun StreakArt(streakDays: Int, flameColor: Color, compact: Boolean) {
                 .background(flameColor.copy(alpha = 0.16f)),
         )
         Icon(
-            imageVector = Icons.Filled.LocalFireDepartment,
+            imageVector = if (streakDays > 0) Icons.Filled.LocalFireDepartment else Icons.Filled.Shield,
             contentDescription = null,
             tint = flameColor,
             modifier = Modifier
                 .size(flame)
                 .graphicsLayer {
-                    transformOrigin = TransformOrigin(0.5f, 1f)
-                    scaleY = 1f + 0.08f * sin(t)
-                    scaleX = 1f - 0.05f * sin(t + 0.6f)
-                    rotationZ = 2.6f * sin(t * 0.73f + 1.1f)
+                    if (streakDays > 0) {
+                        transformOrigin = TransformOrigin(0.5f, 1f)
+                        scaleY = 1f + 0.08f * sin(t)
+                        scaleX = 1f - 0.05f * sin(t + 0.6f)
+                        rotationZ = 2.6f * sin(t * 0.73f + 1.1f)
+                    }
                 },
         )
     }
@@ -1069,13 +1725,17 @@ private fun StreakHeadline(streakDays: Int, flameColor: Color, centered: Boolean
         horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
     ) {
         Text(
-            text = "$streakDays",
+            text = if (streakDays > 0) "$streakDays" else "Shield",
             color = flameColor,
             style = MaterialTheme.typography.displaySmall,
             fontWeight = FontWeight.Bold,
         )
         Text(
-            text = if (streakDays == 1) "day streak" else "days in a row",
+            text = when {
+                streakDays == 1 -> "day streak"
+                streakDays > 1 -> "days in a row"
+                else -> "protection earned through play"
+            },
             color = NazoTextSecondary,
             style = MaterialTheme.typography.bodyMedium,
         )
@@ -1087,6 +1747,10 @@ private fun StreakFacts(
     best: Int,
     totalQuizzes: Int,
     playedToday: Boolean,
+    streakDays: Int,
+    protectionTokens: Int,
+    protectionProgress: Int,
+    protectedYesterday: Boolean,
     flameColor: Color,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -1105,6 +1769,46 @@ private fun StreakFacts(
         )
         Spacer(Modifier.height(10.dp))
         StreakFactRow(
+            icon = Icons.Filled.Shield,
+            label = "Streak shields",
+            value = "$protectionTokens / ${StreakProtection.MAX_TOKENS}",
+            tint = NazoPrimary,
+        )
+        Spacer(Modifier.height(7.dp))
+        LinearProgressIndicator(
+            progress = if (protectionTokens >= StreakProtection.MAX_TOKENS) {
+                1f
+            } else {
+                protectionProgress.toFloat() / StreakProtection.GAMES_PER_TOKEN
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(5.dp)
+                .clip(RoundedCornerShape(50)),
+            color = NazoPrimary,
+            trackColor = NazoTextSecondary.copy(alpha = 0.12f),
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = if (protectionTokens >= StreakProtection.MAX_TOKENS) {
+                "Inventory full · shields are spent automatically when needed."
+            } else {
+                "$protectionProgress/${StreakProtection.GAMES_PER_TOKEN} completed games toward the next shield"
+            },
+            color = NazoTextSecondary,
+            style = MaterialTheme.typography.labelSmall,
+        )
+        if (protectedYesterday) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "A shield protected your streak yesterday.",
+                color = NazoPrimary,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        StreakFactRow(
             icon = if (playedToday) Icons.Filled.CheckCircle else Icons.Filled.Schedule,
             label = "Today",
             value = if (playedToday) "Done" else "Not yet",
@@ -1113,7 +1817,11 @@ private fun StreakFacts(
         if (!playedToday) {
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "Play a quiz today to keep the streak alive.",
+                text = if (streakDays > 0) {
+                    "Play a quiz today to keep the streak alive."
+                } else {
+                    "Complete games to earn protection for your next streak."
+                },
                 color = NazoTextSecondary,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -1505,6 +2213,430 @@ private fun SectionLabel(text: String) {
 }
 
 @Composable
+private fun HomeGameLaunchpad(
+    mode: NazoMode,
+    topic: String,
+    difficulty: Difficulty,
+    questionCount: Int,
+    guessingRounds: Int,
+    sparkleStyle: String,
+    offline: Boolean,
+    setupSaved: Boolean,
+    collectionLimitReached: Boolean,
+    rivalGhost: RivalGhostProfile?,
+    onModeClick: () -> Unit,
+    onSetupClick: () -> Unit,
+    onTopicChange: (String) -> Unit,
+    onSaveSetup: () -> Unit,
+    onLaunchPortal: (QuizLaunchOrigin, String, () -> Unit) -> Unit,
+    onStart: () -> Unit,
+) {
+    val identity = modeIdentitySpec(mode)
+    val cardShape = RoundedCornerShape(26.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(NazoSurface, cardShape)
+            .border(1.dp, NazoPrimary.copy(alpha = 0.24f), cardShape)
+            .padding(14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .background(NazoPrimary.copy(alpha = 0.14f), RoundedCornerShape(14.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.SportsEsports,
+                    contentDescription = null,
+                    tint = NazoPrimary,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Spacer(Modifier.width(11.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "CREATE A GAME",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoPrimary,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 1.1.sp,
+                )
+                Text(
+                    text = "Everything needed to start",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NazoTextSecondary,
+                )
+            }
+            SaveSetupButton(
+                saved = setupSaved,
+                limitReached = collectionLimitReached,
+                loading = false,
+                onClick = onSaveSetup,
+            )
+        }
+
+        Spacer(Modifier.height(11.dp))
+        CompactLaunchpadSelector(
+            icon = MODE_ICONS[mode] ?: Icons.Filled.Quiz,
+            eyebrow = "MODE",
+            title = mode.label,
+            supporting = identity.eyebrow,
+            contentDescription = "Change game mode",
+            onClick = onModeClick,
+        )
+
+        Spacer(Modifier.height(9.dp))
+        CompactTopicField(topic = topic, onTopicChange = onTopicChange)
+
+        Spacer(Modifier.height(9.dp))
+        CompactLaunchpadSelector(
+            icon = Icons.Filled.Tune,
+            eyebrow = "DIFFICULTY & LENGTH",
+            title = challengeSummary(mode, difficulty, questionCount, guessingRounds),
+            supporting = "Tap to adjust",
+            contentDescription = "Change difficulty and game length",
+            onClick = onSetupClick,
+        )
+
+        if (rivalGhost != null && mode == NazoMode.QUIZ) {
+            Spacer(Modifier.height(9.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(NazoPrimary.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Flag,
+                    contentDescription = null,
+                    tint = NazoPrimary,
+                    modifier = Modifier.size(17.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Friendly rival target",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = NazoTextSecondary,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = "${rivalGhost.correct}/${rivalGhost.totalQuestions}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = NazoPrimary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        GenerateButton(
+            label = homePrimaryLaunchLabel(mode, offline),
+            sparkleStyle = sparkleStyle,
+            portalEnabled = homeLaunchUsesPortal(mode, offline),
+            onLaunchPortal = onLaunchPortal,
+            onClick = onStart,
+        )
+    }
+}
+
+@Composable
+private fun CompactLaunchpadSelector(
+    icon: ImageVector,
+    eyebrow: String,
+    title: String,
+    supporting: String,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interaction,
+        restingCorner = 17.dp,
+        pressedCorner = 8.dp,
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 58.dp)
+            .clip(shape)
+            .background(NazoSurfaceVariant, shape)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.10f), shape)
+            .clickable(
+                interactionSource = interaction,
+                indication = LocalIndication.current,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .semantics { this.contentDescription = contentDescription }
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .background(NazoPrimary.copy(alpha = 0.12f), RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = NazoPrimary, modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = eyebrow,
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoTextSecondary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.7.sp,
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = NazoTextPrimary,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+            )
+            Text(
+                text = supporting,
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoTextSecondary,
+                maxLines = 1,
+            )
+        }
+        Icon(
+            imageVector = Icons.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = NazoTextSecondary,
+        )
+    }
+}
+
+@Composable
+private fun CompactTopicField(topic: String, onTopicChange: (String) -> Unit) {
+    val focusManager = LocalFocusManager.current
+    val allSuggestions = remember { LocalQuestionBank.suggestions() }
+    val suggestions = remember(topic, allSuggestions) {
+        homeTopicSuggestions(topic, allSuggestions)
+    }
+    var focused by remember { mutableStateOf(false) }
+    val fieldShape = RoundedCornerShape(17.dp)
+    Column {
+        BasicTextField(
+            value = topic,
+            onValueChange = onTopicChange,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Words,
+                keyboardType = KeyboardType.Text,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                color = NazoTextPrimary,
+                fontWeight = FontWeight.SemiBold,
+            ),
+            cursorBrush = SolidColor(NazoPrimary),
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics { contentDescription = "Challenge topic, optional" }
+                .onFocusChanged { focused = it.isFocused },
+            decorationBox = { innerField ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = 58.dp)
+                        .background(
+                            if (focused) NazoPrimary.copy(alpha = 0.09f) else NazoSurfaceVariant,
+                            fieldShape,
+                        )
+                        .border(
+                            1.dp,
+                            if (focused) NazoPrimary.copy(alpha = 0.46f)
+                            else NazoTextSecondary.copy(alpha = 0.10f),
+                            fieldShape,
+                        )
+                        .padding(start = 13.dp, end = 7.dp, top = 7.dp, bottom = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = null,
+                        tint = if (focused) NazoPrimary else NazoTextSecondary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "TOPIC • OPTIONAL",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (focused) NazoPrimary else NazoTextSecondary,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.6.sp,
+                        )
+                        Box {
+                            if (topic.isEmpty()) {
+                                Text(
+                                    text = "Anime, character, arc, or mixed",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = NazoTextSecondary,
+                                    maxLines = 1,
+                                )
+                            }
+                            innerField()
+                        }
+                    }
+                    if (topic.isNotEmpty()) {
+                        IconButton(
+                            onClick = { onTopicChange("") },
+                            modifier = Modifier.size(42.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Clear topic",
+                                tint = NazoTextSecondary,
+                                modifier = Modifier.size(17.dp),
+                            )
+                        }
+                    }
+                }
+            },
+        )
+        AnimatedVisibility(
+            visible = focused && suggestions.isNotEmpty(),
+            enter = fadeIn(tween(120)) + expandVertically(tween(170)),
+            exit = fadeOut(tween(90)) + shrinkVertically(tween(130)),
+        ) {
+            val trayShape = RoundedCornerShape(16.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 7.dp)
+                    .clip(trayShape)
+                    .background(NazoSurfaceVariant, trayShape)
+                    .border(1.dp, NazoPrimary.copy(alpha = 0.22f), trayShape)
+                    .horizontalScroll(rememberScrollState())
+                    .padding(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                suggestions.take(6).forEach { suggestion ->
+                    TopicSuggestionChip(
+                        suggestion = suggestion,
+                        onClick = {
+                            onTopicChange(suggestion)
+                            focusManager.clearFocus()
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeQuickPaths(
+    challengePackCount: Int,
+    collectionCount: Int,
+    practiceCount: Int,
+    onOpenLibrary: () -> Unit,
+    onPractice: (QuizLaunchOrigin) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        if (practiceCount > 0) {
+            var practiceBounds by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
+            HomeQuickPathCard(
+                icon = Icons.Filled.School,
+                eyebrow = "PRACTICE",
+                title = "$practiceCount misses",
+                contentDescription = "Practice $practiceCount missed questions",
+                onClick = { onPractice(QuizLaunchOrigin.from(practiceBounds)) },
+                modifier = Modifier
+                    .weight(1f)
+                    .onGloballyPositioned { practiceBounds = it.boundsInRoot() },
+            )
+        }
+        HomeQuickPathCard(
+            icon = Icons.Filled.CollectionsBookmark,
+            eyebrow = "PLAY LIBRARY",
+            title = "$challengePackCount curated • $collectionCount saved",
+            contentDescription = "Open Play Library",
+            onClick = onOpenLibrary,
+            modifier = Modifier.weight(if (practiceCount > 0) 1f else 2f),
+        )
+    }
+}
+
+@Composable
+private fun HomeQuickPathCard(
+    icon: ImageVector,
+    eyebrow: String,
+    title: String,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interaction,
+        restingCorner = 19.dp,
+        pressedCorner = 9.dp,
+    )
+    Row(
+        modifier = modifier
+            .defaultMinSize(minHeight = 64.dp)
+            .clip(shape)
+            .background(NazoSurface, shape)
+            .border(1.dp, NazoPrimary.copy(alpha = 0.22f), shape)
+            .clickable(
+                interactionSource = interaction,
+                indication = LocalIndication.current,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .semantics { this.contentDescription = contentDescription }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .background(NazoPrimary.copy(alpha = 0.12f), RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = NazoPrimary, modifier = Modifier.size(19.dp))
+        }
+        Spacer(Modifier.width(9.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = eyebrow,
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoPrimary,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.6.sp,
+                maxLines = 1,
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelMedium,
+                color = NazoTextSecondary,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+            )
+        }
+        Icon(
+            imageVector = Icons.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = NazoTextSecondary,
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+@Composable
 private fun TopicInputCard(topic: String, onTopicChange: (String) -> Unit) {
     val focusManager = LocalFocusManager.current
     val reduceMotion = rememberSystemReduceMotion()
@@ -1751,6 +2883,7 @@ private fun TopicInputCard(topic: String, onTopicChange: (String) -> Unit) {
                     suggestions.forEach { suggestion ->
                         TopicSuggestionChip(
                             suggestion = suggestion,
+                            onDarkSurface = true,
                             onClick = {
                                 onTopicChange(suggestion)
                                 focusManager.clearFocus()
@@ -1801,6 +2934,7 @@ private fun TopicStatusBadge(ready: Boolean) {
 @Composable
 private fun TopicSuggestionChip(
     suggestion: String,
+    onDarkSurface: Boolean = false,
     onClick: () -> Unit,
 ) {
     val interactionSource = remember(suggestion) { MutableInteractionSource() }
@@ -1809,12 +2943,24 @@ private fun TopicSuggestionChip(
         restingCorner = 14.dp,
         pressedCorner = 7.dp,
     )
+    val background = if (onDarkSurface) {
+        NazoOnDarkCard.copy(alpha = 0.10f)
+    } else {
+        NazoPrimary.copy(alpha = 0.13f)
+    }
+    val border = if (onDarkSurface) {
+        NazoOnDarkCard.copy(alpha = 0.16f)
+    } else {
+        NazoPrimary.copy(alpha = 0.34f)
+    }
+    val iconColor = if (onDarkSurface) NazoOnDarkCardMuted else NazoPrimary
+    val textColor = if (onDarkSurface) NazoOnDarkCard else NazoTextPrimary
     Row(
         modifier = Modifier
             .defaultMinSize(minHeight = 48.dp)
             .clip(shape)
-            .background(NazoOnDarkCard.copy(alpha = 0.10f), shape)
-            .border(1.dp, NazoOnDarkCard.copy(alpha = 0.16f), shape)
+            .background(background, shape)
+            .border(1.dp, border, shape)
             .clickable(
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
@@ -1827,16 +2973,238 @@ private fun TopicSuggestionChip(
         Icon(
             imageVector = Icons.Filled.AutoAwesome,
             contentDescription = null,
-            tint = NazoOnDarkCardMuted,
+            tint = iconColor,
             modifier = Modifier.size(15.dp),
         )
         Spacer(Modifier.width(7.dp))
         Text(
             text = suggestion,
             style = MaterialTheme.typography.labelLarge,
-            color = NazoOnDarkCard,
+            color = textColor,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun QuizCollectionsShelf(
+    collections: List<QuizCollection>,
+    motionAllowed: Boolean,
+    loadProgress: CollectionLoadProgress?,
+    onApply: (QuizCollection) -> Unit,
+    onDelete: (QuizCollection) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SectionLabel("COLLECTIONS")
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "${collections.size}/${QuizCollectionPolicy.MAX_COLLECTIONS} SAVED",
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoTextSecondary,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.6.sp,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(
+                items = collections,
+                key = { it.id },
+            ) { collection ->
+                QuizCollectionCard(
+                    collection = collection,
+                    loadStep = loadProgress
+                        ?.takeIf { it.collectionId == collection.id }
+                        ?.step,
+                    enabled = loadProgress == null,
+                    onApply = { onApply(collection) },
+                    onDelete = { onDelete(collection) },
+                    modifier = if (motionAllowed) Modifier.animateItem() else Modifier,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuizCollectionCard(
+    collection: QuizCollection,
+    loadStep: CollectionLoadStep?,
+    enabled: Boolean,
+    onApply: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val interactionSource = remember(collection.id) { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 18.dp,
+        pressedCorner = 9.dp,
+    )
+    Column(
+        modifier = modifier
+            .widthIn(min = 250.dp, max = 280.dp)
+            .defaultMinSize(minHeight = 126.dp)
+            .clip(shape)
+            .background(NazoSurface.copy(alpha = 0.82f), shape)
+            .border(1.dp, NazoPrimary.copy(alpha = 0.24f), shape)
+            .clickable(
+                enabled = enabled,
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                role = Role.Button,
+                onClick = onApply,
+            )
+            .padding(start = 14.dp, top = 9.dp, end = 6.dp, bottom = 12.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Bookmark,
+                contentDescription = null,
+                tint = NazoPrimary,
+                modifier = Modifier.size(17.dp),
+            )
+            Spacer(Modifier.width(7.dp))
+            Text(
+                text = NazoMode.entries.firstOrNull { it.name == collection.mode }
+                    ?.label?.uppercase() ?: collection.mode.replace('_', ' '),
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoPrimary,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.8.sp,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(
+                onClick = onDelete,
+                enabled = enabled,
+                modifier = Modifier.size(40.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Delete ${quizCollectionHeadline(collection)} collection",
+                    tint = NazoTextSecondary,
+                    modifier = Modifier.size(17.dp),
+                )
+            }
+        }
+        Text(
+            text = quizCollectionHeadline(collection),
+            style = MaterialTheme.typography.titleMedium,
+            color = NazoTextPrimary,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+        )
+        Spacer(Modifier.height(3.dp))
+        Text(
+            text = quizCollectionDetail(collection),
+            style = MaterialTheme.typography.bodySmall,
+            color = NazoTextSecondary,
+            fontWeight = FontWeight.Medium,
+            maxLines = 2,
+        )
+        Spacer(Modifier.height(8.dp))
+        AnimatedContent(
+            targetState = loadStep,
+            transitionSpec = {
+                (fadeIn(tween(120)) + slideInVertically(tween(150)) { it / 3 })
+                    .togetherWith(fadeOut(tween(90)) + slideOutVertically { -it / 3 })
+            },
+            label = "collectionLoadStep_${collection.id}",
+        ) { step ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = step?.label ?: "LOAD SETUP",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoPrimary,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.7.sp,
+                )
+                Spacer(Modifier.width(3.dp))
+                Icon(
+                    imageVector = if (step == null) {
+                        Icons.Filled.ArrowForward
+                    } else {
+                        Icons.Filled.AutoAwesome
+                    },
+                    contentDescription = null,
+                    tint = NazoPrimary,
+                    modifier = Modifier.size(15.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SaveSetupButton(
+    saved: Boolean,
+    limitReached: Boolean,
+    loading: Boolean,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 13.dp,
+        pressedCorner = 7.dp,
+    )
+    Column(
+        modifier = Modifier
+            .defaultMinSize(minWidth = 58.dp, minHeight = 52.dp)
+            .clip(shape)
+            .background(
+                if (saved && !loading) NazoPrimary.copy(alpha = 0.12f) else NazoSurfaceVariant,
+                shape,
+            )
+            .clickable(
+                enabled = !saved && !limitReached && !loading,
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .padding(horizontal = 8.dp, vertical = 7.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            imageVector = when {
+                loading -> Icons.Filled.AutoAwesome
+                saved -> Icons.Filled.Bookmark
+                else -> Icons.Filled.BookmarkBorder
+            },
+            contentDescription = when {
+                loading -> "Applying saved setup"
+                saved -> "Setup saved"
+                limitReached -> "Collection limit reached; delete a saved setup first"
+                else -> "Save setup to collections"
+            },
+            tint = if (limitReached) NazoTextSecondary else NazoPrimary,
+            modifier = Modifier.size(19.dp),
+        )
+        Spacer(Modifier.height(3.dp))
+        Text(
+            text = when {
+                loading -> "WAIT"
+                saved -> "SAVED"
+                limitReached -> "FULL"
+                else -> "SAVE"
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = if (limitReached) NazoTextSecondary else NazoPrimary,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp,
         )
     }
 }
@@ -1848,6 +3216,10 @@ private fun ChallengeSetupCard(
     questionCount: Int,
     guessingRounds: Int,
     reduceMotion: Boolean,
+    setupSaved: Boolean,
+    collectionLimitReached: Boolean,
+    collectionLoading: Boolean,
+    onSaveSetup: () -> Unit,
     onDifficultySelected: (Difficulty) -> Unit,
     onQuestionCountSelected: (Int) -> Unit,
     onGuessingRoundsSelected: (Int) -> Unit,
@@ -1916,15 +3288,23 @@ private fun ChallengeSetupCard(
                     )
                 }
             }
+            Spacer(Modifier.width(8.dp))
+            SaveSetupButton(
+                saved = setupSaved,
+                limitReached = collectionLimitReached,
+                loading = collectionLoading,
+                onClick = onSaveSetup,
+            )
         }
 
         Spacer(Modifier.height(16.dp))
         ChallengeGroupLabel(
             title = "DIFFICULTY",
-            supporting = "Choose your pace",
+            supporting = if (adaptiveDifficultyAvailable(mode)) "Fixed or responsive" else "Choose your pace",
         )
         Spacer(Modifier.height(8.dp))
         ChallengeDifficultyRail(
+            mode = mode,
             selected = difficulty,
             onSelected = onDifficultySelected,
         )
@@ -2009,28 +3389,115 @@ private fun ChallengeGroupLabel(title: String, supporting: String) {
 
 @Composable
 private fun ChallengeDifficultyRail(
+    mode: NazoMode,
     selected: Difficulty,
     onSelected: (Difficulty) -> Unit,
 ) {
     val railShape = RoundedCornerShape(18.dp)
+    Column(modifier = Modifier.selectableGroup()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(railShape)
+                .background(NazoPillUnselected.copy(alpha = 0.58f), railShape)
+                .border(1.dp, NazoTextSecondary.copy(alpha = 0.10f), railShape)
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Difficulty.entries.filterNot { it == Difficulty.ADAPTIVE }.forEach { level ->
+                ChallengeDifficultyOption(
+                    difficulty = level,
+                    selected = selected == level,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onSelected(level) },
+                )
+            }
+        }
+        if (adaptiveDifficultyAvailable(mode)) {
+            Spacer(Modifier.height(8.dp))
+            AdaptiveDifficultyOption(
+                selected = selected == Difficulty.ADAPTIVE,
+                onClick = { onSelected(Difficulty.ADAPTIVE) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun AdaptiveDifficultyOption(
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 16.dp,
+        pressedCorner = 8.dp,
+    )
+    val container by animateColorAsState(
+        targetValue = if (selected) NazoPrimary else NazoPrimary.copy(alpha = 0.08f),
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "adaptiveDifficultyContainer",
+    )
+    val foreground by animateColorAsState(
+        targetValue = if (selected) NazoOnPrimary else NazoTextPrimary,
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "adaptiveDifficultyForeground",
+    )
+    val supporting by animateColorAsState(
+        targetValue = if (selected) NazoOnPrimary.copy(alpha = 0.82f) else NazoTextSecondary,
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "adaptiveDifficultySupporting",
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(railShape)
-            .background(NazoPillUnselected.copy(alpha = 0.58f), railShape)
-            .border(1.dp, NazoTextSecondary.copy(alpha = 0.10f), railShape)
-            .padding(4.dp)
-            .selectableGroup(),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+            .defaultMinSize(minHeight = 62.dp)
+            .clip(shape)
+            .background(container, shape)
+            .border(
+                1.dp,
+                if (selected) NazoPrimary else NazoPrimary.copy(alpha = 0.24f),
+                shape,
+            )
+            .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Difficulty.entries.forEach { level ->
-            ChallengeDifficultyOption(
-                difficulty = level,
-                selected = selected == level,
-                modifier = Modifier.weight(1f),
-                onClick = { onSelected(level) },
+        Icon(
+            imageVector = Icons.Filled.AutoAwesome,
+            contentDescription = null,
+            tint = if (selected) NazoOnPrimary else NazoPrimary,
+            modifier = Modifier.size(21.dp),
+        )
+        Spacer(Modifier.width(11.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Adaptive",
+                style = MaterialTheme.typography.labelLarge,
+                color = foreground,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "Responds to accuracy, pace, hints, and misses",
+                style = MaterialTheme.typography.labelSmall,
+                color = supporting,
+                maxLines = 2,
             )
         }
+        Text(
+            text = "AUTO",
+            style = MaterialTheme.typography.labelSmall,
+            color = supporting,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 0.8.sp,
+        )
     }
 }
 
@@ -2067,6 +3534,7 @@ private fun ChallengeDifficultyOption(
         Difficulty.MEDIUM -> Icons.Filled.TrackChanges
         Difficulty.HARD -> Icons.Filled.LocalFireDepartment
         Difficulty.OTAKU_MASTER -> Icons.Filled.WorkspacePremium
+        Difficulty.ADAPTIVE -> Icons.Filled.AutoAwesome
     }
 
     Column(
@@ -2204,6 +3672,201 @@ private fun ChallengeCountOption(
 }
 
 /**
+ * One stable Home slot for the recommendation policy. Daily stays one tap away
+ * when another action wins, avoiding another full-height section on long Home.
+ */
+@Composable
+private fun PersonalizedHomeFocusCard(
+    focus: PersonalizedHomeFocus,
+    dailyCompleted: Boolean,
+    dailyScore: Int,
+    dailyBonus: Int,
+    enabled: Boolean,
+    motionAllowed: Boolean,
+    onPrimaryClick: () -> Unit,
+    onDailyClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interactionSource,
+        restingCorner = 22.dp,
+        pressedCorner = 11.dp,
+        enabled = enabled,
+    )
+    val accent = when (focus.action) {
+        HomeFocusAction.Daily -> NazoPrimary
+        HomeFocusAction.Practice -> MaterialTheme.colorScheme.tertiary
+        HomeFocusAction.TopicQuiz -> NazoPrimary
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                Brush.horizontalGradient(
+                    listOf(accent.copy(alpha = 0.18f), NazoSurface),
+                ),
+                shape,
+            )
+            .border(1.dp, accent.copy(alpha = 0.34f), shape)
+            .clickable(
+                enabled = enabled,
+                interactionSource = interactionSource,
+                indication = indication,
+            ) {
+                Haptics.light(context)
+                onPrimaryClick()
+            }
+            .animateContentSize(tween(if (motionAllowed) 260 else 1))
+            .padding(16.dp),
+    ) {
+        AnimatedContent(
+            targetState = focus,
+            transitionSpec = {
+                if (!motionAllowed) {
+                    fadeIn(tween(1)) togetherWith fadeOut(tween(1))
+                } else {
+                    (fadeIn(tween(180)) + slideInVertically(tween(240)) { it / 5 })
+                        .togetherWith(fadeOut(tween(130)) + slideOutVertically(tween(200)) { -it / 6 })
+                        .using(SizeTransform(clip = false))
+                }
+            },
+            label = "personalizedHomeFocus",
+        ) { recommendation ->
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(accent.copy(alpha = 0.18f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = when (recommendation.action) {
+                                HomeFocusAction.Daily -> Icons.Filled.Bolt
+                                HomeFocusAction.Practice -> Icons.Filled.School
+                                HomeFocusAction.TopicQuiz -> Icons.Filled.AutoAwesome
+                            },
+                            contentDescription = null,
+                            tint = accent,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = "NEXT FOR YOU",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = accent,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 1.1.sp,
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = recommendation.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = NazoTextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = recommendation.reason,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NazoTextSecondary,
+                            maxLines = 2,
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(accent.copy(alpha = 0.18f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.ArrowForward,
+                            contentDescription = when (recommendation.action) {
+                                HomeFocusAction.Daily -> "Play daily ladder"
+                                HomeFocusAction.Practice -> "Practice missed questions"
+                                HomeFocusAction.TopicQuiz -> "Start recommended quiz"
+                            },
+                            tint = accent,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(50.dp),
+                        color = accent.copy(alpha = 0.12f),
+                    ) {
+                        Text(
+                            text = when (recommendation.action) {
+                                HomeFocusAction.Daily -> "WARM-UP → CLIMB → SUMMIT"
+                                HomeFocusAction.Practice -> "OFFLINE PRACTICE"
+                                HomeFocusAction.TopicQuiz ->
+                                    "${recommendation.difficulty.uppercase()} · ${recommendation.questionCount} Q"
+                            },
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = accent,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    if (recommendation.action != HomeFocusAction.Daily) {
+                        val dailyInteraction = remember { MutableInteractionSource() }
+                        Surface(
+                            shape = RoundedCornerShape(50.dp),
+                            color = if (dailyCompleted) {
+                                NazoSuccess.copy(alpha = 0.12f)
+                            } else {
+                                NazoPrimary.copy(alpha = 0.12f)
+                            },
+                            modifier = Modifier.clickable(
+                                enabled = enabled && !dailyCompleted,
+                                interactionSource = dailyInteraction,
+                                indication = LocalIndication.current,
+                            ) {
+                                Haptics.light(context)
+                                onDailyClick()
+                            },
+                        ) {
+                            Text(
+                                text = if (dailyCompleted) {
+                                    "✓ Daily $dailyScore/${DailyChallenge.QUESTION_COUNT} · +$dailyBonus XP"
+                                } else {
+                                    "Daily ready"
+                                },
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (dailyCompleted) NazoSuccess else NazoPrimary,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
  * Corner-only expressive prototype. The Row keeps its original measurement and
  * full touch target; only the clipping outline and matching border interpolate.
  */
@@ -2211,6 +3874,7 @@ private fun ChallengeCountOption(
 private fun PracticeMissesButton(
     practiceCount: Int,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val interactionSource = remember { MutableInteractionSource() }
@@ -2218,7 +3882,7 @@ private fun PracticeMissesButton(
     val expressivePress = rememberNazoExpressivePressState(interactionSource)
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
                 val cornerPercent = nazoExpressiveCornerPercent(expressivePress.progress)
@@ -2276,16 +3940,43 @@ private fun PracticeMissesButton(
 }
 
 @Composable
-private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> Unit) {
+private fun GenerateButton(
+    label: String,
+    sparkleStyle: String,
+    portalEnabled: Boolean,
+    enabled: Boolean = true,
+    onLaunchPortal: (QuizLaunchOrigin, String, () -> Unit) -> Unit,
+    onClick: () -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val reduceMotion = rememberSystemReduceMotion()
 
-    // Tap sequence: the sparkle twinkles, then navigation fires a beat later so
-    // the animation is actually seen. `launching` also guards against a second
-    // tap queueing a second quiz while the beat plays.
+    // Tap sequence: one quick sparkle acknowledges the press, then the root
+    // portal takes over the motion. `launching` also guards against a second
+    // tap queueing a second quiz during that hand-off.
     var launching by remember { mutableStateOf(false) }
+    var portalOrigin by remember { mutableStateOf<QuizLaunchOrigin?>(null) }
     val twinkle = remember { Animatable(0f) }
+
+    fun enterLaunchPortal() {
+        if (!portalEnabled) {
+            // AI generation and Guessing already own a real loading/preparing
+            // destination. Keep the button acknowledgement, then enter that
+            // flow directly instead of flashing a second full-screen message.
+            onClick()
+            return
+        }
+        val origin = portalOrigin
+        if (origin == null) {
+            // Layout coordinates are normally available long before a tap. If
+            // they are not (for example during a rotation frame), never strand
+            // the user's action waiting for decorative motion.
+            onClick()
+        } else {
+            onLaunchPortal(origin, label, onClick)
+        }
+    }
 
     // The button used to give no visual feedback at all — only haptics — so a
     // press was invisible. Three layers now respond to touch:
@@ -2346,9 +4037,13 @@ private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> U
         modifier = Modifier
             .fillMaxWidth()
             .height(58.dp)
+            .onGloballyPositioned { coordinates ->
+                portalOrigin = QuizLaunchOrigin.from(coordinates.boundsInRoot())
+            }
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
+                alpha = if (enabled) 1f else 0.72f
             }
             .shadow(
                 elevation = elevation,
@@ -2395,6 +4090,7 @@ private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> U
                 }
             }
             .clickable(
+                enabled = enabled,
                 interactionSource = interactionSource,
                 // The scale + brighten IS the feedback; a ripple on top would
                 // clash with the sheen.
@@ -2406,24 +4102,22 @@ private fun GenerateButton(label: String, sparkleStyle: String, onClick: () -> U
                 if (reduceMotion) {
                     // The action stays immediate under Remove animations; no
                     // decorative sheen, press transform, sparkle or delay.
-                    onClick()
+                    enterLaunchPortal()
                     launching = false
                     return@clickable
                 }
                 scope.launch {
                     twinkle.snapTo(0f)
-                    // ~420ms of twinkle, then a short beat so the animation
-                    // lands before the screen changes. Deliberately brief —
-                    // this is a flourish, not a loading screen.
-                    // Meteors need longer to cross the button than the stars
-                    // need to pulse, so the shower gets a wider window.
-                    val duration = if (sparkleStyle == SPARKLE_METEORS) 720 else 460
+                    // A compact acknowledgement is enough now that the portal
+                    // carries the launch itself. Meteors still get a slightly
+                    // wider window so their direction remains readable.
+                    val duration = if (sparkleStyle == SPARKLE_METEORS) 240 else 180
                     twinkle.animateTo(
                         targetValue = 1f,
                         animationSpec = tween(durationMillis = duration, easing = LinearEasing),
                     )
-                    delay(70)
-                    onClick()
+                    delay(30)
+                    enterLaunchPortal()
                     // Reset so returning Home shows a clean, untwinkled icon.
                     twinkle.snapTo(0f)
                     launching = false

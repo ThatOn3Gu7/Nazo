@@ -281,6 +281,16 @@
             </intent-filter>
         </receiver>
 
+        <!-- Installer APKs remain available while Android's confirmation is
+             pending, then are removed only after this package is replaced. -->
+        <receiver
+            android:name=".data.PackageReplacedCleanupReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

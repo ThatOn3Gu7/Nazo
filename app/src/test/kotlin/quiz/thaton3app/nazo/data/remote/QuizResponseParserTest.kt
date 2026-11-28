@@ -1,6 +1,7 @@
 package quiz.thaton3app.nazo.data.remote
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -34,14 +35,26 @@ class QuizResponseParserTest {
         question: String = "Who is the Fifth Hokage?",
         options: String = opts("Tsunade", "Jiraiya", "Orochimaru", "Danzo"),
         correct: String? = "Tsunade",
+        difficulty: String? = null,
     ): String {
         val correctJson = if (correct == null) "" else ",\"correctAnswer\":${enc(correct)}"
+        val difficultyJson = difficulty?.let { ",\"difficulty\":${enc(it)}" }.orEmpty()
         return "{\"question\":${enc(question)},\"options\":$options," +
-            "\"theme\":\"CHARACTERS\",\"explanation\":\"e\"$correctJson}"
+            "\"theme\":\"CHARACTERS\",\"explanation\":\"e\"$difficultyJson$correctJson}"
     }
 
-    private fun parse(json: String, expectedCount: Int = 0) =
-        ApiClient.parseQuestions(json, topic, expectedCount)
+    private fun parse(
+        json: String,
+        expectedCount: Int = 0,
+        requestedDifficulty: String = "Medium",
+        finaleDifficulty: String? = null,
+    ) = ApiClient.parseQuestions(
+        raw = json,
+        topic = topic,
+        expectedCount = expectedCount,
+        requestedDifficulty = requestedDifficulty,
+        finaleDifficulty = finaleDifficulty,
+    )
 
     // ---------------------------------------------------------------- valid
 
@@ -62,6 +75,63 @@ class QuizResponseParserTest {
         assertEquals(1, parse("{\"questions\":[" + q() + "]}", 1).size)
         assertEquals(1, parse("Sure!\n```json\n[" + q() + "]\n```\nHope that helps.", 1).size)
         assertEquals(1, parse("<think>hmm, tsunade probably...</think>[" + q() + "]", 1).size)
+    }
+
+    @Test
+    fun fixedDifficultyTagsGeneratedQuestionsWithTheRequestedTier() {
+        val qs = parse("[" + q(difficulty = "Easy") + "]", 1, requestedDifficulty = "Hard")
+        assertEquals("Hard", qs.single().difficulty)
+    }
+
+    @Test
+    fun finaleDeckUsesADistinctCacheIdentity() {
+        val ordinary = QuizCache.key("provider", "model", topic, "Medium", 10)
+        val finale = QuizCache.key(
+            "provider",
+            "model",
+            topic,
+            "Medium",
+            10,
+            finaleDifficulty = "Hard",
+        )
+
+        assertNotEquals(ordinary, finale)
+    }
+
+    @Test
+    fun finaleDifficultyOnlyElevatesTheLastGeneratedQuestion() {
+        val raw = "[" +
+            q(question = "Regular one?", difficulty = "Medium") + "," +
+            q(question = "Final one?", difficulty = "Medium") +
+            "]"
+        val qs = parse(
+            raw,
+            expectedCount = 2,
+            requestedDifficulty = "Medium",
+            finaleDifficulty = "Hard",
+        )
+
+        assertEquals(listOf("Medium", "Hard"), qs.map { it.difficulty })
+    }
+
+    @Test
+    fun adaptiveGenerationPreservesEachDeclaredTier() {
+        val raw = "[" +
+            q(question = "Easy one?", difficulty = "Easy") + "," +
+            q(question = "Hard one?", difficulty = "Hard") +
+            "]"
+        val qs = parse(raw, 2, requestedDifficulty = "Adaptive")
+        assertEquals(listOf("Easy", "Hard"), qs.map { it.difficulty })
+    }
+
+    @Test
+    fun adaptiveGenerationRejectsMissingOrUnknownTierLabels() {
+        assertThrows(Exception::class.java) {
+            parse("[" + q(difficulty = null) + "]", 1, requestedDifficulty = "Adaptive")
+        }
+        assertThrows(Exception::class.java) {
+            parse("[" + q(difficulty = "Impossible") + "]", 1, requestedDifficulty = "Adaptive")
+        }
     }
 
     @Test

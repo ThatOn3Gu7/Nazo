@@ -28,6 +28,19 @@ class QuizStatsComboTest {
     }
 
     @Test
+    fun `record adds earned bonus xp without changing answer totals`() {
+        val updated = QuizStats(totalCorrect = 4, bonusXp = 10).record(
+            difficulty = "Hard",
+            questions = listOf(question(1)),
+            userAnswers = listOf("A"),
+            bonusXpEarned = 20,
+        )
+
+        assertEquals(5, updated.totalCorrect)
+        assertEquals(30, updated.bonusXp)
+    }
+
+    @Test
     fun `guessing aggregate does not invent an ordered combo`() {
         val updated = QuizStats(bestCorrectCombo = 5).recordGuessing(
             difficulty = "Medium",

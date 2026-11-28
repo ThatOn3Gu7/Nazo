@@ -171,4 +171,30 @@ class LocalQuestionBankTest {
         assertTrue(qs.isNotEmpty())
         assertTrue(qs.all { it.anime.contains("Jujutsu", ignoreCase = true) })
     }
+
+    @Test
+    fun adaptiveDrawBalancesAllAvailableDifficultyTiers() {
+        val qs = LocalQuestionBank.getAdaptiveQuestions(count = 12)
+
+        assertEquals(12, qs.size)
+        AdaptiveTier.entries.forEach { tier ->
+            assertEquals(3, qs.count { tier == AdaptiveTier.fromLabel(it.difficulty) })
+        }
+        assertEquals(qs.size, qs.map { it.identity }.toSet().size)
+        assertTrue(qs.all { it.correctAnswer in it.options })
+    }
+
+    @Test
+    fun adaptiveDrawKeepsTopicScopeAndExplicitMissBehavior() {
+        val naruto = LocalQuestionBank.getAdaptiveQuestions(count = 8, topic = "Naruto")
+        assertTrue(naruto.isNotEmpty())
+        assertTrue(naruto.all { it.anime.equals("Naruto", ignoreCase = true) })
+
+        assertTrue(
+            LocalQuestionBank.getAdaptiveQuestions(
+                count = 8,
+                topic = "Definitely Not A Nazo Franchise 987654",
+            ).isEmpty(),
+        )
+    }
 }

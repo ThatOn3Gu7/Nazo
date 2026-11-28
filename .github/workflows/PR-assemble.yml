@@ -11,7 +11,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # Signed release snapshots are mirrored onto one rolling pre-release because
+  # GitHub's Actions artifact download endpoint returns HTTP 401 to the app
+  # without account credentials. The mirror is public and keeps only 30 APKs.
+  contents: write
   pull-requests: write
 
 jobs:
@@ -142,7 +145,12 @@ jobs:
       # Preserve the existing debug build and its normal debug signing.
       - name: Assemble debug APK
         run: |
-          ./gradlew assembleDebug --stacktrace 2>&1 | tee -a gradle-build.log
+          ./gradlew assembleDebug --stacktrace \
+            -Pnazo.workflow.sha="$GITHUB_SHA" \
+            -Pnazo.workflow.runId="$GITHUB_RUN_ID" \
+            -Pnazo.workflow.runNumber="$GITHUB_RUN_NUMBER" \
+            -Pnazo.workflow.branch="$GITHUB_REF_NAME" \
+            2>&1 | tee -a gradle-build.log
           exit ${PIPESTATUS[0]}
 
       - name: Upload debug APK
@@ -180,6 +188,10 @@ jobs:
               -Pandroid.injected.signing.store.password="$SIGNING_STORE_PASSWORD" \
               -Pandroid.injected.signing.key.alias="$SIGNING_KEY_ALIAS" \
               -Pandroid.injected.signing.key.password="$SIGNING_KEY_PASSWORD" \
+              -Pnazo.workflow.sha="$GITHUB_SHA" \
+              -Pnazo.workflow.runId="$GITHUB_RUN_ID" \
+              -Pnazo.workflow.runNumber="$GITHUB_RUN_NUMBER" \
+              -Pnazo.workflow.branch="$GITHUB_REF_NAME" \
               2>&1 | tee -a gradle-build.log
 
             BUILD_STATUS=${PIPESTATUS[0]}
@@ -188,7 +200,12 @@ jobs:
           else
             echo "::warning::Release signing secrets are not configured. The release APK will be unsigned."
 
-            ./gradlew assembleRelease --stacktrace 2>&1 | tee -a gradle-build.log
+            ./gradlew assembleRelease --stacktrace \
+              -Pnazo.workflow.sha="$GITHUB_SHA" \
+              -Pnazo.workflow.runId="$GITHUB_RUN_ID" \
+              -Pnazo.workflow.runNumber="$GITHUB_RUN_NUMBER" \
+              -Pnazo.workflow.branch="$GITHUB_REF_NAME" \
+              2>&1 | tee -a gradle-build.log
 
             BUILD_STATUS=${PIPESTATUS[0]}
             echo "signed=false" >> "$GITHUB_OUTPUT"
@@ -202,6 +219,51 @@ jobs:
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 14
+
+      # Actions archives require an authenticated GitHub account even for this
+      # public repository. Mirror only the signed release APK onto one rolling
+      # public pre-release so Nazo can download snapshots without storing a PAT.
+      - name: Publish public tester snapshot
+        if: ${{ success() && steps.release.outputs.signed == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TAG="workflow-snapshots"
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          ASSET_NAME="Nazo-workflow-${GITHUB_RUN_ID}-${SHORT_SHA}.zip"
+          SOURCE_APK="$(find app/build/outputs/apk/release -type f -name '*.apk' -print -quit)"
+
+          if [ -z "$SOURCE_APK" ]; then
+            echo "::error::Signed release APK is missing from the expected output directory."
+            exit 1
+          fi
+
+          zip -j "$RUNNER_TEMP/$ASSET_NAME" "$SOURCE_APK"
+
+          if ! gh release view "$TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --repo "$REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Nazo workflow snapshots" \
+              --notes "Automated signed tester snapshots. Nazo keeps the newest 30 builds here for its manual Workflow Builds browser." \
+              --prerelease \
+              || gh release view "$TAG" --repo "$REPOSITORY" >/dev/null
+          fi
+
+          gh release upload "$TAG" "$RUNNER_TEMP/$ASSET_NAME" \
+            --repo "$REPOSITORY" \
+            --clobber
+
+          # Bound the public mirror without touching any unrelated release asset.
+          gh api "repos/$REPOSITORY/releases/tags/$TAG" \
+            --jq '[.assets[] | select(.name | startswith("Nazo-workflow-"))] | sort_by(.created_at) | reverse | .[30:] | .[].id' \
+            | while read -r ASSET_ID; do
+                if [ -n "$ASSET_ID" ]; then
+                  gh api --method DELETE "repos/$REPOSITORY/releases/assets/$ASSET_ID"
+                fi
+              done
 
       - name: Build summary
         if: success()

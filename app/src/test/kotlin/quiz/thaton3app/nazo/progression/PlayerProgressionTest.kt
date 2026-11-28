@@ -12,17 +12,17 @@ import quiz.thaton3app.nazo.data.QuizStats
 class PlayerProgressionTest {
 
     @Test
-    fun `progress preserves existing xp formula including daily bonus`() {
+    fun `progress preserves base formula and includes durable and daily bonus xp`() {
         val progress = PlayerProgression.from(
-            stats = QuizStats(totalQuizzes = 7, totalCorrect = 23),
+            stats = QuizStats(totalQuizzes = 7, totalCorrect = 23, bonusXp = 20),
             bonusXp = 35,
         )
 
-        assertEquals(300, progress.totalXp)
+        assertEquals(320, progress.totalXp)
         assertEquals(2, progress.level)
-        assertEquals(100, progress.currentLevelXp)
-        assertEquals(100, progress.xpToNextLevel)
-        assertEquals(0.5f, progress.progressFraction)
+        assertEquals(120, progress.currentLevelXp)
+        assertEquals(80, progress.xpToNextLevel)
+        assertEquals(0.6f, progress.progressFraction)
     }
 
     @Test
@@ -35,6 +35,24 @@ class PlayerProgressionTest {
         assertEquals(2, progress.level)
         assertEquals(0, progress.currentLevelXp)
         assertEquals(200, progress.xpToNextLevel)
+    }
+
+    @Test
+    fun `streak shield reward only reports newly earned inventory`() {
+        assertEquals(
+            1,
+            PlayerProgression.streakProtectionEarnedBetween(
+                before = QuizStats(streakProtectionTokens = 0),
+                after = QuizStats(streakProtectionTokens = 1),
+            ),
+        )
+        assertEquals(
+            0,
+            PlayerProgression.streakProtectionEarnedBetween(
+                before = QuizStats(streakProtectionTokens = 1),
+                after = QuizStats(streakProtectionTokens = 0),
+            ),
+        )
     }
 
     @Test
