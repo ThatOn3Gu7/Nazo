@@ -75,10 +75,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.PI
-import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.challenge.ChallengePack
 import quiz.thaton3app.nazo.daily.DailyLadder
 import quiz.thaton3app.nazo.daily.DailyLadderRail
@@ -194,21 +194,23 @@ internal fun quizComboCallout(streak: Int): String = when (streak) {
     else -> if (streak >= 15) "PERFECT STORM" else ""
 }
 
-internal fun quizComboFireCount(streak: Int): Int = when (quizComboTier(streak)) {
-    QuizComboTier.Spark -> 1
-    QuizComboTier.Blaze -> 2
-    QuizComboTier.Inferno -> 3
-    QuizComboTier.Super -> 4
-}
-
 internal fun quizComboMilestoneStreak(streak: Int): Int? =
     streak.takeIf { it == 2 || it == 6 || it == 10 }
 
-internal fun quizComboBurstStrength(streak: Int): Float {
+internal fun quizComboHeat(streak: Int): Float {
     val superCombo = ((streak.coerceIn(2, 10) - 2) / 8f) * 0.85f
     val overdrive = ((streak - 10).coerceIn(0, 5) / 5f) * 0.15f
     return (superCombo + overdrive).coerceIn(0f, 1f)
 }
+
+internal fun quizAdvanceShouldRestoreTop(
+    scrollOffset: Int,
+    landscape: Boolean,
+    hasNextQuestion: Boolean,
+): Boolean = scrollOffset > 0 && !landscape && hasNextQuestion
+
+internal fun quizAdvanceScrollDurationMillis(motionAllowed: Boolean): Int =
+    if (motionAllowed) 260 else 0
 
 internal fun quizProgressFraction(questionIndex: Int, totalQuestions: Int): Float =
     if (totalQuestions <= 0) 0f
@@ -870,6 +872,43 @@ internal fun ActiveQuizScreen(
     // answers on the right. The chrome above the split is also tightened,
     // because vertical space is the scarce dimension in landscape.
     val landscape = isLandscape()
+    val pageScrollState = rememberScrollState()
+    val advanceScope = rememberCoroutineScope()
+    var advanceInFlight by remember { mutableStateOf(false) }
+    fun advanceFromScrolledQuestion(correct: Boolean, answer: String?) {
+        if (advanceInFlight) return
+        val hasNextQuestion = if (endless) {
+            livesLeft > 0
+        } else {
+            currentQuestionIndex < totalQuestions - 1
+        }
+        if (
+            !quizAdvanceShouldRestoreTop(
+                scrollOffset = pageScrollState.value,
+                landscape = landscape,
+                hasNextQuestion = hasNextQuestion,
+            )
+        ) {
+            onNextQuestion(progressionTicket, correct, answer)
+            selectedAnswer = null
+            return
+        }
+        advanceInFlight = true
+        advanceScope.launch {
+            val duration = quizAdvanceScrollDurationMillis(motionAllowed)
+            if (duration > 0) {
+                pageScrollState.animateScrollTo(
+                    value = 0,
+                    animationSpec = tween(duration, easing = FastOutSlowInEasing),
+                )
+            } else {
+                pageScrollState.scrollTo(0)
+            }
+            onNextQuestion(progressionTicket, correct, answer)
+            selectedAnswer = null
+            advanceInFlight = false
+        }
+    }
     val chromeGap = if (landscape) 8.dp else 16.dp
     val topGap = if (landscape) 8.dp else 20.dp
     val rivalElapsedMillis = if (rivalGhost != null && quizStartedAtMs > 0L) {
@@ -904,7 +943,7 @@ internal fun ActiveQuizScreen(
                     // itself must not also scroll (two nested scrollers would
                     // fight over the same drag).
                     if (landscape) Modifier.weight(1f)
-                    else Modifier.verticalScroll(rememberScrollState())
+                    else Modifier.verticalScroll(pageScrollState)
                 )
                 .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
@@ -1120,6 +1159,11 @@ internal fun ActiveQuizScreen(
                     currentScore = currentScore,
                     elapsedMillis = rivalElapsedMillis,
                     compact = landscape,
+                    modifier = Modifier.questionStageEntrance(
+                        questionIndex = currentQuestionIndex,
+                        layer = QuestionEntranceLayer.Progress,
+                        enabled = stageEntranceActive,
+                    ),
                 )
             }
 
@@ -1325,14 +1369,7 @@ internal fun ActiveQuizScreen(
                             val comboLabel = quizComboLabel(shownCombo)
                             AnimatedVisibility(
                                 visible = isCorrect && comboLabel != null,
-                                enter = if (motionAllowed) {
-                                    fadeIn(tween(140)) + scaleIn(
-                                        initialScale = 0.82f,
-                                        animationSpec = tween(220, easing = FastOutSlowInEasing),
-                                    )
-                                } else {
-                                    fadeIn(tween(0))
-                                },
+                                enter = fadeIn(tween(if (motionAllowed) 180 else 0)),
                                 exit = fadeOut(tween(if (motionAllowed) 120 else 0)),
                             ) {
                                 Column {
@@ -1522,8 +1559,7 @@ internal fun ActiveQuizScreen(
                                             indication = LocalIndication.current,
                                         ) {
                                             Haptics.light(context)
-                                            onNextQuestion(progressionTicket, isCorrect, shownAnswer)
-                                            selectedAnswer = null
+                                            advanceFromScrolledQuestion(isCorrect, shownAnswer)
                                         }
                                         .padding(vertical = 16.dp),
                                     horizontalArrangement = Arrangement.Center,
@@ -2129,8 +2165,8 @@ private fun PremiumQuizProgress(
                 val markerSize = when (milestone.kind) {
                     QuizProgressMilestoneKind.Combo -> when {
                         milestone.comboStreak >= 10 -> 31.dp
-                        milestone.comboStreak >= 6 -> 23.dp
-                        else -> 15.dp
+                        milestone.comboStreak >= 6 -> 24.dp
+                        else -> 18.dp
                     }
                     QuizProgressMilestoneKind.Halfway -> 17.dp
                     QuizProgressMilestoneKind.Final -> 17.dp
@@ -2142,6 +2178,7 @@ private fun PremiumQuizProgress(
                         reached = milestone.fraction <= displayed + 0.001f,
                         pathColor = color,
                         motionAllowed = motionAllowed,
+                        flamePhase = wavePhase?.value ?: 0.18f,
                         modifier = Modifier
                             .align(Alignment.CenterStart)
                             .offset(
@@ -2155,140 +2192,228 @@ private fun PremiumQuizProgress(
     }
 }
 
+private data class ComboFlamePalette(
+    val outer: Color,
+    val inner: Color,
+    val core: Color,
+)
+
+private fun comboFlamePalette(streak: Int): ComboFlamePalette = when (quizComboTier(streak)) {
+    QuizComboTier.Spark -> ComboFlamePalette(
+        outer = Color(0xFFFF8A35),
+        inner = Color(0xFFFFC857),
+        core = Color(0xFFFFF0A6),
+    )
+    QuizComboTier.Blaze -> ComboFlamePalette(
+        outer = Color(0xFFFF6538),
+        inner = Color(0xFFFFA93A),
+        core = Color(0xFFFFE27A),
+    )
+    QuizComboTier.Inferno -> ComboFlamePalette(
+        outer = Color(0xFFEF3E36),
+        inner = Color(0xFFFF6D32),
+        core = Color(0xFFFFD84D),
+    )
+    QuizComboTier.Super -> ComboFlamePalette(
+        outer = Color(0xFF8B5CFF),
+        inner = Color(0xFFFF3F8E),
+        core = Color(0xFFFFF7D6),
+    )
+}
+
+/** One layered flame whose silhouette, core, and glow flicker without moving layout. */
+@Composable
+private fun BurningComboFlame(
+    streak: Int,
+    phase: Float,
+    motionAllowed: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val palette = comboFlamePalette(streak)
+    val heat = quizComboHeat(streak)
+    Canvas(modifier) {
+        val resolvedPhase = if (motionAllowed) {
+            (phase + streak * 0.071f) % 1f
+        } else {
+            0.18f
+        }
+        val primaryWave = sin(resolvedPhase * 2f * PI.toFloat())
+        val secondaryWave = sin((resolvedPhase * 4f + 0.23f) * PI.toFloat())
+        val centerX = size.width / 2f
+        val bottomY = size.height * 0.95f
+        val sway = primaryWave * size.width * (0.025f + heat * 0.035f)
+        val topY = size.height * (0.05f - secondaryWave * (0.015f + heat * 0.01f))
+        val glowPulse = 0.72f + (primaryWave + 1f) * 0.08f + heat * 0.12f
+
+        drawCircle(
+            color = palette.outer.copy(alpha = 0.16f + heat * 0.16f),
+            radius = size.minDimension * (0.42f + glowPulse * 0.08f),
+            center = Offset(centerX, size.height * 0.58f),
+        )
+        drawCircle(
+            color = palette.inner.copy(alpha = 0.1f + heat * 0.1f),
+            radius = size.minDimension * (0.31f + glowPulse * 0.05f),
+            center = Offset(centerX, size.height * 0.57f),
+        )
+
+        val outerFlame = Path().apply {
+            moveTo(centerX, bottomY)
+            cubicTo(
+                size.width * 0.12f,
+                size.height * 0.84f,
+                size.width * 0.14f,
+                size.height * 0.6f,
+                centerX - size.width * 0.08f,
+                size.height * 0.39f,
+            )
+            cubicTo(
+                centerX - size.width * 0.02f,
+                size.height * 0.27f,
+                centerX - size.width * 0.13f,
+                size.height * 0.18f,
+                centerX + sway,
+                topY,
+            )
+            cubicTo(
+                centerX + size.width * 0.22f,
+                size.height * 0.22f,
+                size.width * 0.88f,
+                size.height * 0.45f,
+                size.width * 0.82f,
+                size.height * 0.69f,
+            )
+            cubicTo(
+                size.width * 0.79f,
+                size.height * 0.86f,
+                size.width * 0.66f,
+                bottomY,
+                centerX,
+                bottomY,
+            )
+            close()
+        }
+        drawPath(outerFlame, palette.outer.copy(alpha = glowPulse.coerceIn(0f, 1f)))
+
+        val innerFlame = Path().apply {
+            moveTo(centerX, size.height * 0.9f)
+            cubicTo(
+                size.width * 0.31f,
+                size.height * 0.78f,
+                size.width * 0.34f,
+                size.height * 0.59f,
+                centerX + sway * 0.45f,
+                size.height * (0.31f - secondaryWave * 0.012f),
+            )
+            cubicTo(
+                size.width * 0.7f,
+                size.height * 0.53f,
+                size.width * 0.72f,
+                size.height * 0.78f,
+                centerX,
+                size.height * 0.9f,
+            )
+            close()
+        }
+        drawPath(innerFlame, palette.inner)
+
+        val coreFlame = Path().apply {
+            moveTo(centerX, size.height * 0.84f)
+            cubicTo(
+                size.width * 0.42f,
+                size.height * 0.75f,
+                size.width * 0.44f,
+                size.height * 0.64f,
+                centerX + sway * 0.2f,
+                size.height * 0.49f,
+            )
+            cubicTo(
+                size.width * 0.6f,
+                size.height * 0.64f,
+                size.width * 0.61f,
+                size.height * 0.77f,
+                centerX,
+                size.height * 0.84f,
+            )
+            close()
+        }
+        drawPath(
+            coreFlame,
+            palette.core.copy(alpha = (0.82f + glowPulse * 0.14f).coerceIn(0f, 1f)),
+        )
+    }
+}
+
 @Composable
 private fun QuizProgressMilestoneMarker(
     milestone: QuizProgressMilestone,
     reached: Boolean,
     pathColor: Color,
     motionAllowed: Boolean,
+    flamePhase: Float,
     modifier: Modifier = Modifier,
 ) {
-    val comboTier = quizComboTier(milestone.comboStreak)
-    val markerColor = when (milestone.kind) {
-        QuizProgressMilestoneKind.Combo -> when (comboTier) {
-            QuizComboTier.Spark -> Color(0xFFFFC857)
-            QuizComboTier.Blaze -> Color(0xFFFF9D3D)
-            QuizComboTier.Inferno -> Color(0xFFFF654A)
-            QuizComboTier.Super -> Color(0xFFFF4F9A)
-        }
-        QuizProgressMilestoneKind.Halfway -> pathColor
-        QuizProgressMilestoneKind.Final -> Color(0xFF58D7B3)
-        QuizProgressMilestoneKind.Boss -> Color(0xFFE28CFF)
-    }
     val label = when (milestone.kind) {
-        QuizProgressMilestoneKind.Combo -> "${milestone.comboStreak}× combo point"
+        QuizProgressMilestoneKind.Combo -> "${milestone.comboStreak}× combo flame"
         QuizProgressMilestoneKind.Halfway -> "Halfway point"
         QuizProgressMilestoneKind.Final -> "Final question"
         QuizProgressMilestoneKind.Boss -> "Boss finish"
     }
-    val comboArrival = remember(milestone.comboStreak, milestone.fraction) {
-        Animatable(
-            if (motionAllowed && milestone.kind == QuizProgressMilestoneKind.Combo) 0f else 1f
-        )
-    }
-    LaunchedEffect(milestone, motionAllowed) {
-        if (!motionAllowed || milestone.kind != QuizProgressMilestoneKind.Combo) {
-            comboArrival.snapTo(1f)
-            return@LaunchedEffect
-        }
-        comboArrival.snapTo(0f)
-        comboArrival.animateTo(
-            1f,
-            tween(
-                durationMillis = if (milestone.comboStreak >= 10) 720 else 520,
-                easing = FastOutSlowInEasing,
-            ),
-        )
-    }
-    val arrival = comboArrival.value.coerceIn(0f, 1f)
-    val burstStrength = quizComboBurstStrength(milestone.comboStreak)
-    val comboScale = if (milestone.kind == QuizProgressMilestoneKind.Combo) {
-        0.58f + arrival * 0.42f +
-            sin(arrival * PI.toFloat()) * (0.12f + burstStrength * 0.22f)
-    } else {
-        1f
-    }
-
     Box(
-        modifier = modifier
-            .graphicsLayer {
-                scaleX = comboScale
-                scaleY = comboScale
-            }
-            .semantics {
-                contentDescription = "$label, ${if (reached) "reached" else "ahead"}"
-            },
+        modifier = modifier.semantics {
+            contentDescription = "$label, ${if (reached) "reached" else "ahead"}"
+        },
         contentAlignment = Alignment.Center,
     ) {
-        if (milestone.kind == QuizProgressMilestoneKind.Combo && arrival < 1f) {
-            Canvas(Modifier.matchParentSize()) {
-                val ringAlpha = (1f - arrival) * (0.45f + burstStrength * 0.4f)
-                drawCircle(
-                    color = markerColor.copy(alpha = ringAlpha),
-                    radius = size.minDimension * (0.28f + arrival * 0.2f),
-                    style = Stroke(width = (1.5f + burstStrength * 1.5f).dp.toPx()),
-                )
+        if (milestone.kind == QuizProgressMilestoneKind.Combo) {
+            BurningComboFlame(
+                streak = milestone.comboStreak,
+                phase = flamePhase,
+                motionAllowed = motionAllowed,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            val markerColor = when (milestone.kind) {
+                QuizProgressMilestoneKind.Halfway -> pathColor
+                QuizProgressMilestoneKind.Final -> Color(0xFF58D7B3)
+                QuizProgressMilestoneKind.Boss -> Color(0xFFE28CFF)
+                QuizProgressMilestoneKind.Combo -> Color.Transparent
             }
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(
-                    if (milestone.kind == QuizProgressMilestoneKind.Combo) 2.dp else 0.dp
-                )
-                .clip(CircleShape)
-                .background(
-                    if (reached) markerColor
-                    else MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
-                )
-                .border(
-                    width = if (
-                        milestone.kind == QuizProgressMilestoneKind.Boss ||
-                        milestone.comboStreak >= 6
-                    ) 2.dp else 1.dp,
-                    color = markerColor.copy(alpha = if (reached) 1f else 0.72f),
-                    shape = CircleShape,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            when (milestone.kind) {
-                QuizProgressMilestoneKind.Combo -> {
-                    val fireCount = quizComboFireCount(milestone.comboStreak)
-                    val fireSize = when (fireCount) {
-                        1 -> 9.dp
-                        2 -> 8.dp
-                        3 -> 7.dp
-                        else -> 6.dp
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        repeat(fireCount) {
-                            Icon(
-                                imageVector = Icons.Filled.Whatshot,
-                                contentDescription = null,
-                                tint = Color.Black.copy(alpha = 0.78f),
-                                modifier = Modifier.size(fireSize),
-                            )
-                        }
-                    }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .background(
+                        if (reached) markerColor
+                        else MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+                    )
+                    .border(
+                        width = if (milestone.kind == QuizProgressMilestoneKind.Boss) 2.dp else 1.dp,
+                        color = markerColor.copy(alpha = if (reached) 1f else 0.72f),
+                        shape = CircleShape,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                when (milestone.kind) {
+                    QuizProgressMilestoneKind.Halfway -> Text(
+                        text = "½",
+                        color = if (reached) Color.Black.copy(alpha = 0.78f) else markerColor,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                    )
+                    QuizProgressMilestoneKind.Final -> Text(
+                        text = "F",
+                        color = if (reached) Color.Black.copy(alpha = 0.78f) else markerColor,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                    )
+                    QuizProgressMilestoneKind.Boss -> Icon(
+                        imageVector = Icons.Filled.Bolt,
+                        contentDescription = null,
+                        tint = if (reached) Color.Black.copy(alpha = 0.76f) else markerColor,
+                        modifier = Modifier.size(13.dp),
+                    )
+                    QuizProgressMilestoneKind.Combo -> Unit
                 }
-                QuizProgressMilestoneKind.Halfway -> Text(
-                    text = "½",
-                    color = if (reached) Color.Black.copy(alpha = 0.78f) else markerColor,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Black,
-                )
-                QuizProgressMilestoneKind.Final -> Text(
-                    text = "F",
-                    color = if (reached) Color.Black.copy(alpha = 0.78f) else markerColor,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Black,
-                )
-                QuizProgressMilestoneKind.Boss -> Icon(
-                    imageVector = Icons.Filled.Bolt,
-                    contentDescription = null,
-                    tint = if (reached) Color.Black.copy(alpha = 0.76f) else markerColor,
-                    modifier = Modifier.size(13.dp),
-                )
             }
         }
     }
@@ -2301,66 +2426,64 @@ private fun ComboPill(
     motionAllowed: Boolean,
 ) {
     val tier = quizComboTier(streak)
-    val strength = quizComboBurstStrength(streak)
-    val fireCount = quizComboFireCount(streak)
-    val (accent, hotAccent) = when (tier) {
-        QuizComboTier.Spark -> NazoPrimary to Color(0xFFFFC857)
-        QuizComboTier.Blaze -> Color(0xFFFFA33D) to Color(0xFFFFD45C)
-        QuizComboTier.Inferno -> Color(0xFFFF5D45) to Color(0xFFFFB23F)
-        QuizComboTier.Super -> Color(0xFFFF4F9A) to Color(0xFFFFC857)
-    }
-    val burst = remember(label) { Animatable(if (motionAllowed) 0f else 1f) }
-    LaunchedEffect(label, motionAllowed) {
-        if (!motionAllowed) {
-            burst.snapTo(1f)
-            return@LaunchedEffect
-        }
-        burst.snapTo(0f)
-        burst.animateTo(
-            1f,
-            tween(
-                durationMillis = (440 + strength * 400).roundToInt(),
-                easing = FastOutSlowInEasing,
+    val heat = quizComboHeat(streak)
+    val palette = comboFlamePalette(streak)
+    val phase = if (motionAllowed) {
+        val transition = rememberInfiniteTransition(label = "comboFlame")
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(
+                    durationMillis = (1_300 - heat * 450).roundToInt(),
+                    easing = LinearEasing,
+                ),
+                repeatMode = RepeatMode.Restart,
             ),
-        )
+            label = "comboFlamePhase",
+        ).value
+    } else {
+        0.18f
     }
-    val burstProgress = burst.value.coerceIn(0f, 1f)
-    val burstEnvelope = sin(burstProgress * PI.toFloat()).coerceAtLeast(0f)
-    val liftPx = with(LocalDensity.current) { (3f + 4f * strength).dp.toPx() }
-    val particleCount = 6 + (strength * 10).roundToInt()
+    val edgePulse = 0.68f +
+        (sin(phase * 2f * PI.toFloat()) + 1f) * (0.08f + heat * 0.04f)
 
     Box(
-        modifier = Modifier
-            .graphicsLayer {
-                val scale = 0.84f + burstProgress * 0.16f +
-                    burstEnvelope * (0.06f + strength * 0.13f)
-                scaleX = scale
-                scaleY = scale
-                rotationZ = sin(burstProgress * PI.toFloat() * 4f) *
-                    (1f - burstProgress) * (1.2f + strength * 4.8f)
-                translationY = -burstEnvelope * liftPx
-            }
-            .padding(horizontal = 5.dp, vertical = 4.dp),
+        modifier = Modifier.padding(horizontal = 4.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center,
     ) {
-        if (motionAllowed && burstProgress < 1f) {
-            Canvas(Modifier.matchParentSize()) {
-                val center = Offset(size.width / 2f, size.height / 2f)
-                val travelX = size.width * (0.28f + strength * 0.14f)
-                val travelY = size.height * (0.28f + strength * 0.14f)
-                repeat(particleCount) { index ->
-                    val angle = (2f * PI.toFloat() * index / particleCount) +
-                        strength * 0.35f
-                    val distance = 0.2f + burstProgress * 0.8f
+        Canvas(Modifier.matchParentSize()) {
+            val corner = CornerRadius(size.height / 2f, size.height / 2f)
+            val glowWidth = (4f + heat * 3f).dp.toPx()
+            drawRoundRect(
+                color = palette.outer.copy(alpha = 0.12f + heat * 0.12f),
+                cornerRadius = corner,
+                style = Stroke(width = glowWidth),
+            )
+            drawRoundRect(
+                brush = Brush.horizontalGradient(
+                    listOf(palette.outer, palette.inner, palette.core, palette.outer)
+                ),
+                cornerRadius = corner,
+                style = Stroke(width = (1.4f + heat * 1.2f).dp.toPx()),
+                alpha = edgePulse.coerceIn(0f, 1f),
+            )
+            if (motionAllowed) {
+                val emberCount = 3 + (heat * 4).roundToInt()
+                repeat(emberCount) { index ->
+                    val emberPhase = (phase + index.toFloat() / emberCount) % 1f
+                    val x = size.width * emberPhase
+                    val wave = sin((emberPhase * 2f + index * 0.37f) * PI.toFloat())
+                    val y = if (index % 2 == 0) {
+                        (1.5f + wave * 0.8f).dp.toPx()
+                    } else {
+                        size.height - (1.5f + wave * 0.8f).dp.toPx()
+                    }
                     drawCircle(
-                        color = (if (index % 2 == 0) accent else hotAccent).copy(
-                            alpha = burstEnvelope * (0.38f + strength * 0.38f)
-                        ),
-                        radius = (1.2f + strength * 1.8f).dp.toPx(),
-                        center = Offset(
-                            x = center.x + cos(angle) * travelX * distance,
-                            y = center.y + sin(angle) * travelY * distance,
-                        ),
+                        color = (if (index % 3 == 0) palette.core else palette.inner)
+                            .copy(alpha = 0.55f + heat * 0.3f),
+                        radius = (1.1f + heat * 1.2f).dp.toPx(),
+                        center = Offset(x, y),
                     )
                 }
             }
@@ -2368,39 +2491,36 @@ private fun ComboPill(
 
         Row(
             modifier = Modifier
+                .padding(2.dp)
                 .clip(RoundedCornerShape(50))
                 .background(
                     Brush.horizontalGradient(
                         listOf(
-                            accent.copy(alpha = 0.18f + strength * 0.08f),
+                            palette.outer.copy(alpha = 0.13f + heat * 0.06f),
                             NazoSurface.copy(alpha = 0.98f),
-                            hotAccent.copy(alpha = 0.12f + strength * 0.08f),
+                            palette.inner.copy(alpha = 0.1f + heat * 0.07f),
                         )
                     )
                 )
-                .border(
-                    width = (1f + strength).dp,
-                    color = accent.copy(alpha = 0.55f + strength * 0.35f),
-                    shape = RoundedCornerShape(50),
-                )
                 .padding(
-                    horizontal = (12f + 4f * strength).dp,
-                    vertical = (6f + 3f * strength).dp,
+                    horizontal = (12f + 3f * heat).dp,
+                    vertical = (6f + 2f * heat).dp,
                 ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                repeat(fireCount) {
-                    Icon(
-                        imageVector = Icons.Filled.Whatshot,
-                        contentDescription = null,
-                        tint = if (it % 2 == 0) accent else hotAccent,
-                        modifier = Modifier.size(
-                            if (tier == QuizComboTier.Super) 17.dp else 15.dp
-                        ),
-                    )
-                }
-            }
+            BurningComboFlame(
+                streak = streak,
+                phase = phase,
+                motionAllowed = motionAllowed,
+                modifier = Modifier.size(
+                    when (tier) {
+                        QuizComboTier.Spark -> 25.dp
+                        QuizComboTier.Blaze -> 28.dp
+                        QuizComboTier.Inferno -> 31.dp
+                        QuizComboTier.Super -> 35.dp
+                    }
+                ),
+            )
             Spacer(Modifier.width(8.dp))
             Column {
                 Text(
@@ -2412,14 +2532,14 @@ private fun ComboPill(
                     },
                     color = NazoTextPrimary,
                     fontWeight = FontWeight.Black,
-                    letterSpacing = (0.8f + 0.3f * strength).sp,
+                    letterSpacing = (0.8f + 0.3f * heat).sp,
                 )
                 Text(
                     text = quizComboCallout(streak),
                     style = MaterialTheme.typography.labelSmall,
                     color = NazoTextSecondary,
                     fontWeight = FontWeight.Black,
-                    letterSpacing = (1f + 0.4f * strength).sp,
+                    letterSpacing = (1f + 0.4f * heat).sp,
                 )
             }
         }

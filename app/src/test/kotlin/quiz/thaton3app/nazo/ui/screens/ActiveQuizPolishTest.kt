@@ -42,18 +42,14 @@ class ActiveQuizPolishTest {
         assertEquals("MYTHIC", quizComboCallout(12))
         assertEquals("PERFECT STORM", quizComboCallout(15))
 
-        assertEquals(1, quizComboFireCount(2))
-        assertEquals(2, quizComboFireCount(4))
-        assertEquals(3, quizComboFireCount(6))
-        assertEquals(4, quizComboFireCount(10))
         assertEquals(2, quizComboMilestoneStreak(2))
         assertNull(quizComboMilestoneStreak(5))
         assertEquals(6, quizComboMilestoneStreak(6))
         assertEquals(10, quizComboMilestoneStreak(10))
-        assertEquals(0f, quizComboBurstStrength(2), 0f)
-        assertEquals(0.425f, quizComboBurstStrength(6), 0.0001f)
-        assertEquals(0.85f, quizComboBurstStrength(10), 0.0001f)
-        assertEquals(1f, quizComboBurstStrength(15), 0f)
+        assertEquals(0f, quizComboHeat(2), 0f)
+        assertEquals(0.425f, quizComboHeat(6), 0.0001f)
+        assertEquals(0.85f, quizComboHeat(10), 0.0001f)
+        assertEquals(1f, quizComboHeat(15), 0f)
     }
 
     @Test
@@ -111,6 +107,28 @@ class ActiveQuizPolishTest {
         assertTrue(
             quizProgressMilestones(0, mapOf(0 to 2), hasBossFinale = true).isEmpty()
         )
+    }
+
+    @Test
+    fun advancingRestoresPortraitScrollBeforeTheNextQuestion() {
+        assertTrue(
+            quizAdvanceShouldRestoreTop(
+                scrollOffset = 480,
+                landscape = false,
+                hasNextQuestion = true,
+            )
+        )
+        assertFalse(
+            quizAdvanceShouldRestoreTop(0, landscape = false, hasNextQuestion = true)
+        )
+        assertFalse(
+            quizAdvanceShouldRestoreTop(480, landscape = true, hasNextQuestion = true)
+        )
+        assertFalse(
+            quizAdvanceShouldRestoreTop(480, landscape = false, hasNextQuestion = false)
+        )
+        assertEquals(260, quizAdvanceScrollDurationMillis(motionAllowed = true))
+        assertEquals(0, quizAdvanceScrollDurationMillis(motionAllowed = false))
     }
 
     @Test
