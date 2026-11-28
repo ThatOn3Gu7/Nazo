@@ -187,7 +187,6 @@ fun StatisticsScreen(
     achievements: List<Achievement> = emptyList(),
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
-    headerContinuityModifier: Modifier = Modifier,
 ) {
     val data = remember(stats, progression) { stats.toStatsData(progression) }
     val reduceMotion = rememberSystemReduceMotion()
@@ -214,11 +213,7 @@ fun StatisticsScreen(
             contentPadding = PaddingValues(top = 28.dp, bottom = 12.dp)
         ) {
             item {
-                ScreenHeader(
-                    title = "Progression & Insights",
-                    onBackClick = onBackClick,
-                    modifier = headerContinuityModifier,
-                )
+                ScreenHeader(title = "Progression & Insights", onBackClick = onBackClick)
                 Spacer(Modifier.height(20.dp))
             }
             item {
@@ -318,11 +313,7 @@ fun StatisticsScreen(
 }
 
 @Composable
-private fun ScreenHeader(
-    title: String,
-    onBackClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+private fun ScreenHeader(title: String, onBackClick: () -> Unit) {
     val interactionSource = remember { MutableInteractionSource() }
     val shape = rememberNazoPillCornerMorphShape(
         interactionSource = interactionSource,
@@ -330,7 +321,7 @@ private fun ScreenHeader(
     )
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth()
     ) {
         IconButton(
             onClick = rememberHapticBack(onBackClick),

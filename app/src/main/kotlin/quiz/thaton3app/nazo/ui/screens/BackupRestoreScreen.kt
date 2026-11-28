@@ -95,7 +95,6 @@ fun BackupRestoreScreen(
      * reflects the restored backup without an app restart.
      */
     onRestored: () -> Unit = {},
-    headerContinuityModifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val backupPrefs = remember { BackupPrefs(context) }
@@ -237,11 +236,7 @@ fun BackupRestoreScreen(
         ) {
             Spacer(Modifier.height(28.dp))
 
-            ScreenHeader(
-                title = "Backup & Restore",
-                onBackClick = onBackClick,
-                modifier = headerContinuityModifier,
-            )
+            ScreenHeader(title = "Backup & Restore", onBackClick = onBackClick)
 
             // Live operation status: progress while it runs, then a success or
             // failure note in place of the old transient Toasts.
@@ -1104,20 +1099,13 @@ private fun AutoBackupFreqContent(
 }
 
 @Composable
-private fun ScreenHeader(
-    title: String,
-    onBackClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+private fun ScreenHeader(title: String, onBackClick: () -> Unit) {
     val interactionSource = remember { MutableInteractionSource() }
     val shape = rememberNazoPillCornerMorphShape(
         interactionSource = interactionSource,
         pressedCornerPercent = 28f,
     )
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(
             onClick = rememberHapticBack(onBackClick),
             interactionSource = interactionSource,

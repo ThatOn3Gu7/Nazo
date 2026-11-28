@@ -30,17 +30,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -53,12 +47,12 @@ fun SettingsScreen(
     scrollState: ScrollState = rememberScrollState(),
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
-    onOpenAiProvider: (Rect) -> Unit = {},
-    onOpenStatistics: (Rect) -> Unit = {},
-    onOpenAppearance: (Rect) -> Unit = {},
-    onOpenAccessibility: (Rect) -> Unit = {},
-    onOpenBackupRestore: (Rect) -> Unit = {},
-    onOpenAbout: (Rect) -> Unit = {},
+    onOpenAiProvider: () -> Unit = {},
+    onOpenStatistics: () -> Unit = {},
+    onOpenAppearance: () -> Unit = {},
+    onOpenAccessibility: () -> Unit = {},
+    onOpenBackupRestore: () -> Unit = {},
+    onOpenAbout: () -> Unit = {},
     forceOffline: Boolean = false,
     onForceOfflineChange: (Boolean) -> Unit = {},
     remindersEnabled: Boolean = false,
@@ -282,10 +276,9 @@ private fun SettingsRow(
     icon: ImageVector,
     title: String,
     subtitle: String,
-    onClick: (Rect) -> Unit,
+    onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    var bounds by remember { mutableStateOf(Rect.Zero) }
     val indication = LocalIndication.current
     val shape = rememberNazoRoundedCornerMorphShape(
         interactionSource = interactionSource,
@@ -296,12 +289,11 @@ private fun SettingsRow(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .onGloballyPositioned { bounds = it.boundsInRoot() }
             .clip(shape)
             .clickable(
                 interactionSource = interactionSource,
                 indication = indication,
-                onClick = { onClick(bounds) },
+                onClick = onClick,
             )
             .padding(horizontal = 16.dp, vertical = 16.dp),
     ) {

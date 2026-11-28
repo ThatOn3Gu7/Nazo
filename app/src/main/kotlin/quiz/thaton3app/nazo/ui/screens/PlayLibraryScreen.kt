@@ -87,7 +87,6 @@ fun PlayLibraryScreen(
     onApplyCollection: (QuizCollection) -> Unit,
     onDeleteCollection: (QuizCollection) -> Unit,
     onBackClick: () -> Unit,
-    headerContinuityModifier: Modifier = Modifier,
 ) {
     BackHandler(onBack = onBackClick)
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -104,7 +103,7 @@ fun PlayLibraryScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Row(
-            modifier = headerContinuityModifier
+            modifier = Modifier
                 .fillMaxWidth()
                 .widthIn(max = 920.dp)
                 .padding(horizontal = 20.dp, vertical = 14.dp),

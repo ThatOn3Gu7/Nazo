@@ -141,7 +141,6 @@ fun AppearanceScreen(
     onSparkleStyleChange: (String) -> Unit = {},
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
-    headerContinuityModifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val reduceMotion = rememberSystemReduceMotion()
@@ -194,7 +193,7 @@ fun AppearanceScreen(
         ) {
             Spacer(modifier = Modifier.height(28.dp))
             Row(
-                modifier = headerContinuityModifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val backInteraction = remember { MutableInteractionSource() }
