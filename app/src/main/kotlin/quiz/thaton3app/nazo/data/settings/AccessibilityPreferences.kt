@@ -86,6 +86,11 @@ class AccessibilityPreferences internal constructor(
         get() = safeBoolean(KEY_HAPTICS, true)
         set(value) = prefs.edit().putBoolean(KEY_HAPTICS, value).apply()
 
+    /** The focused launchpad stays the default; this opt-in restores familiar Home shelves. */
+    var classicHomeLayout: Boolean
+        get() = safeBoolean(KEY_CLASSIC_HOME_LAYOUT, false)
+        set(value) = prefs.edit().putBoolean(KEY_CLASSIC_HOME_LAYOUT, value).apply()
+
     private fun safeBoolean(key: String, default: Boolean): Boolean = try {
         prefs.getBoolean(key, default)
     } catch (_: ClassCastException) {
@@ -107,5 +112,6 @@ class AccessibilityPreferences internal constructor(
         const val KEY_TEXT_SCALE = "text_scale"
         const val KEY_TIMER_ASSIST = "timer_assist"
         const val KEY_HAPTICS = "haptics_enabled"
+        const val KEY_CLASSIC_HOME_LAYOUT = "classic_home_layout"
     }
 }

@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.AccessibilityNew
 import androidx.compose.material.icons.filled.Animation
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Contrast
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Timer
@@ -69,7 +70,7 @@ import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
 import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 
-/** One player-facing home for visual, motion, timing, vibration, and audio assists. */
+/** One player-facing home for layout, visual, motion, timing, vibration, and audio assists. */
 @Composable
 fun AccessibilityScreen(
     reduceMotion: Boolean,
@@ -81,6 +82,8 @@ fun AccessibilityScreen(
     onTextScaleChange: (AccessibilityTextScale) -> Unit,
     timerAssist: TimerAssist,
     onTimerAssistChange: (TimerAssist) -> Unit,
+    classicHomeLayout: Boolean,
+    onClassicHomeLayoutChange: (Boolean) -> Unit,
     hapticsEnabled: Boolean,
     onHapticsEnabledChange: (Boolean) -> Unit,
     soundEnabled: Boolean,
@@ -127,6 +130,16 @@ fun AccessibilityScreen(
                     color = NazoTextSecondary,
                 )
             }
+        }
+
+        AccessibilitySection("LAYOUT") {
+            AccessibilitySwitchRow(
+                icon = Icons.Filled.Home,
+                title = "Classic Home layout",
+                subtitle = "Restore the familiar scrolling Home with Challenge Packs and Collections on the page",
+                checked = classicHomeLayout,
+                onCheckedChange = onClassicHomeLayoutChange,
+            )
         }
 
         AccessibilitySection("VISION") {

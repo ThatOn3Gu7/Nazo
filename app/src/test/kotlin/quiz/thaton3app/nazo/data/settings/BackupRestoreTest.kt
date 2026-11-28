@@ -185,6 +185,7 @@ class BackupRestoreTest {
                         AccessibilityPreferences.KEY_TEXT_SCALE to tag("string", "extra_large"),
                         AccessibilityPreferences.KEY_TIMER_ASSIST to tag("string", "relaxed"),
                         AccessibilityPreferences.KEY_HAPTICS to tag("bool", false),
+                        AccessibilityPreferences.KEY_CLASSIC_HOME_LAYOUT to tag("bool", true),
                     ),
                 ),
             ),
@@ -199,6 +200,7 @@ class BackupRestoreTest {
         assertEquals(AccessibilityTextScale.EXTRA_LARGE, restored.textScale)
         assertEquals(TimerAssist.RELAXED, restored.timerAssist)
         assertFalse(restored.hapticsEnabled)
+        assertTrue(restored.classicHomeLayout)
     }
 
     @Test

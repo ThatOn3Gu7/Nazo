@@ -501,6 +501,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var highContrast by remember { mutableStateOf(accessibilityPrefs.highContrast) }
     var accessibilityTextScale by remember { mutableStateOf(accessibilityPrefs.textScale) }
     var timerAssist by remember { mutableStateOf(accessibilityPrefs.timerAssist) }
+    var classicHomeLayout by remember { mutableStateOf(accessibilityPrefs.classicHomeLayout) }
     var hapticsEnabled by remember { mutableStateOf(accessibilityPrefs.hapticsEnabled) }
     // Sound effects remain in their original store for backward compatibility,
     // but their controls now live beside the other feedback assists.
@@ -2734,8 +2735,16 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         guessingRounds = guessRounds,
                         onGuessingRoundsChange = { guessRounds = it },
                         quizCollections = quizCollections,
+                        challengePacks = ChallengePackCatalog.all,
+                        challengePackProgress = challengePackProgress,
+                        onStartChallengePack = ::startChallengePack,
+                        onDeleteCollection = { collection ->
+                            quizCollectionStore.delete(collection.id)
+                            quizCollections = quizCollectionStore.get()
+                        },
                         challengePackCount = ChallengePackCatalog.all.size,
                         onOpenLibrary = { navigate(Screen.PlayLibrary) },
+                        classicLayout = classicHomeLayout,
                         onSaveCollection = { setup: QuizCollectionSetup ->
                             quizCollectionStore.save(setup)
                             quizCollections = quizCollectionStore.get()
@@ -2976,6 +2985,11 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             timerAssist = assist
                             accessibilityPrefs.timerAssist = assist
                         },
+                        classicHomeLayout = classicHomeLayout,
+                        onClassicHomeLayoutChange = { enabled ->
+                            classicHomeLayout = enabled
+                            accessibilityPrefs.classicHomeLayout = enabled
+                        },
                         hapticsEnabled = hapticsEnabled,
                         onHapticsEnabledChange = { enabled ->
                             hapticsEnabled = enabled
@@ -3029,6 +3043,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             highContrast = accessibilityPrefs.highContrast
                             accessibilityTextScale = accessibilityPrefs.textScale
                             timerAssist = accessibilityPrefs.timerAssist
+                            classicHomeLayout = accessibilityPrefs.classicHomeLayout
                             hapticsEnabled = accessibilityPrefs.hapticsEnabled
                             soundEnabled = Sounds.isEnabled(context)
                             soundTheme = Sounds.getTheme(context)

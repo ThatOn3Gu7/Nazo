@@ -15,6 +15,7 @@ class AccessibilityPreferencesTest {
         assertEquals(AccessibilityTextScale.STANDARD, prefs.textScale)
         assertEquals(TimerAssist.STANDARD, prefs.timerAssist)
         assertTrue(prefs.hapticsEnabled)
+        assertFalse(prefs.classicHomeLayout)
     }
 
     @Test
@@ -27,6 +28,7 @@ class AccessibilityPreferencesTest {
         prefs.textScale = AccessibilityTextScale.EXTRA_LARGE
         prefs.timerAssist = TimerAssist.EXTENDED
         prefs.hapticsEnabled = false
+        prefs.classicHomeLayout = true
 
         val restored = AccessibilityPreferences(storage)
         assertTrue(restored.reduceMotion)
@@ -34,6 +36,7 @@ class AccessibilityPreferencesTest {
         assertEquals(AccessibilityTextScale.EXTRA_LARGE, restored.textScale)
         assertEquals(TimerAssist.EXTENDED, restored.timerAssist)
         assertFalse(restored.hapticsEnabled)
+        assertTrue(restored.classicHomeLayout)
     }
 
     @Test
@@ -41,6 +44,7 @@ class AccessibilityPreferencesTest {
         val storage = FakeSharedPreferences()
         storage.edit()
             .putString(AccessibilityPreferences.KEY_REDUCE_MOTION, "not a boolean")
+            .putString(AccessibilityPreferences.KEY_CLASSIC_HOME_LAYOUT, "not a boolean")
             .putString(AccessibilityPreferences.KEY_TEXT_SCALE, "future_scale")
             .putString(AccessibilityPreferences.KEY_TIMER_ASSIST, "future_timer")
             .commit()
@@ -48,6 +52,7 @@ class AccessibilityPreferencesTest {
         val prefs = AccessibilityPreferences(storage)
 
         assertFalse(prefs.reduceMotion)
+        assertFalse(prefs.classicHomeLayout)
         assertEquals(AccessibilityTextScale.STANDARD, prefs.textScale)
         assertEquals(TimerAssist.STANDARD, prefs.timerAssist)
     }

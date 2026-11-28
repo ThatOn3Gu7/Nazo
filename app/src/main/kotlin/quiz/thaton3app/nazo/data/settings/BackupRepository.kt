@@ -114,7 +114,7 @@ object BackupRepository {
         "nazo_stats" -> "Quiz statistics" to "Quizzes played, accuracy and totals"
         "nazo_theme" -> "Appearance" to "Theme, accent colour and icon"
         AccessibilityPreferences.PREFS_NAME -> "Accessibility" to
-            "Motion, contrast, text size, timer and haptic assists"
+            "Home layout, motion, contrast, text size, timer and haptic assists"
         "nazo_profile" -> "Profile" to "Username and avatar"
         "nazo_provider_models" -> "AI providers" to "Selected provider and models"
         "nazo_records" -> "Personal records" to "Best scores and streaks"
