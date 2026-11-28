@@ -96,7 +96,7 @@ Build these in order because they form one clear journey from launch to learning
 
 ## Layout and usability
 
-53. **★ One-thumb Home priority** — **P1 · M** — Keep mode, topic, setup, and Start in a clear reachable sequence.
+53. **★ One-thumb Home priority** — **P1 · M** — Keep mode, topic, setup, and Start in a clear reachable sequence, with reusable packs and Collections organized in a separate Play Library. **Implemented.**
 54. **Sticky quiz action zone** — **P1 · M** — Keep the graded answer’s Next action reachable without covering explanations.
 55. **Preset chips with summaries** — **P1 · S** — Show saved setups as short labels such as “Naruto · Hard · 10.”
 56. **Recent topics row** — **P1 · S** — Offer a small, editable list above topic search instead of making users retype.
