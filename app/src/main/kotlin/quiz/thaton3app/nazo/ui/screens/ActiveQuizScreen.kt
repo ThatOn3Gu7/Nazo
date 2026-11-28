@@ -96,12 +96,15 @@ import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.QuizProgressionTicket
 import quiz.thaton3app.nazo.ui.components.ChallengePackRacePanel
 import quiz.thaton3app.nazo.ui.components.FriendlyRivalRacePanel
+import quiz.thaton3app.nazo.ui.components.GameplayAtmosphere
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoQuitDialog
+import quiz.thaton3app.nazo.ui.components.gameplayAtmosphereKind
 import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.components.rememberGameplayQuitPauseState
 import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.rememberSystemReduceMotion
+import quiz.thaton3app.nazo.ui.components.versusAtmosphereSide
 import quiz.thaton3app.nazo.ui.mode.BlitzUrgency
 import quiz.thaton3app.nazo.ui.mode.GameplayPresentation
 import quiz.thaton3app.nazo.ui.mode.blitzClockText
@@ -976,9 +979,15 @@ internal fun ActiveQuizScreen(
             // a whisper instead of passing under the question text.
             .background(NazoBackground.copy(alpha = 0.9f))
     ) {
-        ModeAtmosphere(
-            presentation = presentation,
-            livesLeft = livesLeft,
+        GameplayAtmosphere(
+            kind = gameplayAtmosphereKind(presentation),
+            motionAllowed = motionAllowed && !quitPauseState.timerPaused,
+            survivalIntensity = if (presentation == GameplayPresentation.SURVIVAL) {
+                survivalDanger(livesLeft).intensity
+            } else {
+                0f
+            },
+            versusActiveSide = versusAtmosphereSide(playerLabel),
         )
         TimerUrgencyField(
             urgency = timerUrgency,
@@ -1713,30 +1722,6 @@ internal fun ActiveQuizScreen(
             },
             onHideForQuit = { quitPauseState.hideForQuit() },
             onQuit = onCloseClick,
-        )
-    }
-}
-
-@Composable
-private fun ModeAtmosphere(
-    presentation: GameplayPresentation,
-    livesLeft: Int,
-) {
-    if (presentation != GameplayPresentation.SURVIVAL) return
-    val danger = survivalDanger(livesLeft)
-    val alpha by animateFloatAsState(
-        targetValue = danger.intensity * 0.13f,
-        animationSpec = tween(520, easing = FastOutSlowInEasing),
-        label = "survivalAtmosphereAlpha",
-    )
-    Canvas(Modifier.fillMaxSize()) {
-        if (alpha <= 0f) return@Canvas
-        drawRect(
-            brush = Brush.radialGradient(
-                colors = listOf(Color.Transparent, NazoError.copy(alpha = alpha)),
-                center = Offset(size.width / 2f, size.height / 2f),
-                radius = maxOf(size.width, size.height) * 0.72f,
-            )
         )
     }
 }

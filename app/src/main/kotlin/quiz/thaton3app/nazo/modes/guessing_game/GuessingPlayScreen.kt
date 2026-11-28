@@ -109,6 +109,8 @@ import quiz.thaton3app.nazo.hints.HintPill
 import quiz.thaton3app.nazo.hints.HintRevealPill
 import quiz.thaton3app.nazo.sound.Sounds
 import quiz.thaton3app.nazo.ui.GuessProgressionTicket
+import quiz.thaton3app.nazo.ui.components.GameplayAtmosphere
+import quiz.thaton3app.nazo.ui.components.GameplayAtmosphereKind
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoQuitDialog
 import quiz.thaton3app.nazo.ui.components.WavySpinner
@@ -116,6 +118,7 @@ import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.components.rememberGameplayQuitPauseState
 import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
+import quiz.thaton3app.nazo.ui.components.rememberSystemReduceMotion
 import quiz.thaton3app.nazo.ui.mode.mysteryRevealStage
 import quiz.thaton3app.nazo.ui.theme.*
 import quiz.thaton3app.nazo.vision.PortraitCrop
@@ -162,6 +165,7 @@ internal fun GuessingPlayScreen(
     onNextRound: (GuessProgressionTicket) -> Unit,
 ) {
     val context = LocalContext.current
+    val reduceMotion = rememberSystemReduceMotion()
     val durationMs = AccessibilityPolicy.millis(
         GuessScoring.durationMsFor(difficultyLabel),
         timerAssist,
@@ -339,6 +343,12 @@ internal fun GuessingPlayScreen(
             // passing under the question/answer text.
             .background(NazoBackground.copy(alpha = 0.9f))
     ) {
+        GameplayAtmosphere(
+            kind = GameplayAtmosphereKind.Guessing,
+            motionAllowed = !reduceMotion &&
+                phase is GuessPhase.Playing &&
+                !quitPauseState.timerPaused,
+        )
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             Column(
                 modifier = Modifier

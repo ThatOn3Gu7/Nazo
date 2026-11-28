@@ -46,6 +46,7 @@ then archived below; there should be no per-version release-note files.
 - **Improved** — Landscape quizzes now prioritize two independently scrollable, full-height question and answer panes, move hints into the compact header, and combine finite-run progress with Friendly Rival status so secondary chrome no longer crowds out play.
 - **Improved** — Play Library now uses a compact left navigation rail in landscape while preserving portrait tabs. The rail starts directly beneath the Back control instead of floating midway down the screen, Curated packs use the wider stage cleanly, and Collections reorganize into an adaptive card grid without changing any play, load, or removal action.
 - **Added** — Timed gameplay now builds a subtle edge field as the clock runs low, then strengthens its glow, corner brackets, timer ring, and optional pulse through the final five seconds. Shape and thickness keep urgency readable without color, and Remove animations retains a clear settled warning.
+- **Added** — Quiz, Survival, Blitz, Versus, and Guessing now carry quiet mode-specific atmosphere behind play: calm breathing halos, a life-sensitive danger heartbeat, speed trails, opposing player-side glows, and mystery focus rings. These effects never block input, settle while gameplay dialogs are open, and remain recognizable as motion-free stills when Remove animations is enabled.
 
 ## Release archive
 
