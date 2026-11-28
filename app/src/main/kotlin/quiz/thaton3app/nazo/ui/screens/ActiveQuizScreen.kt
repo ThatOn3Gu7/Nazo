@@ -61,6 +61,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -220,6 +221,21 @@ internal fun quizCombinesRivalAndProgress(
     blitz: Boolean,
     daily: Boolean,
 ): Boolean = landscape && hasRival && !endless && !blitz && !daily
+
+internal enum class QuizTimerUrgency { Calm, Watch, Critical, Expired }
+
+internal fun quizTimerUrgency(
+    seconds: Int,
+    timerRunning: Boolean,
+    timeUp: Boolean = false,
+): QuizTimerUrgency = when {
+    timeUp -> QuizTimerUrgency.Expired
+    !timerRunning -> QuizTimerUrgency.Calm
+    seconds <= 0 -> QuizTimerUrgency.Expired
+    seconds <= 5 -> QuizTimerUrgency.Critical
+    seconds <= 10 -> QuizTimerUrgency.Watch
+    else -> QuizTimerUrgency.Calm
+}
 
 internal fun quizProgressFraction(questionIndex: Int, totalQuestions: Int): Float =
     if (totalQuestions <= 0) 0f
@@ -946,6 +962,11 @@ internal fun ActiveQuizScreen(
     } else {
         0L
     }
+    val timerUrgency = quizTimerUrgency(
+        seconds = remainingSeconds,
+        timerRunning = (isBlitz || !reveal) && !quitPauseState.timerPaused,
+        timeUp = isTimeUp,
+    )
 
     Box(
         modifier = Modifier
@@ -958,6 +979,10 @@ internal fun ActiveQuizScreen(
         ModeAtmosphere(
             presentation = presentation,
             livesLeft = livesLeft,
+        )
+        TimerUrgencyField(
+            urgency = timerUrgency,
+            motionAllowed = motionAllowed,
         )
         Column(
             modifier = Modifier
@@ -1717,12 +1742,131 @@ private fun ModeAtmosphere(
 }
 
 @Composable
+private fun TimerUrgencyField(
+    urgency: QuizTimerUrgency,
+    motionAllowed: Boolean,
+) {
+    if (urgency == QuizTimerUrgency.Calm) return
+
+    val pulse = if (motionAllowed && urgency == QuizTimerUrgency.Critical) {
+        val transition = rememberInfiniteTransition(label = "quizTimerUrgency")
+        transition.animateFloat(
+            initialValue = 0.25f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(620, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "quizTimerUrgencyPulse",
+        ).value
+    } else {
+        1f
+    }
+    val baseAlpha = when (urgency) {
+        QuizTimerUrgency.Calm -> 0f
+        QuizTimerUrgency.Watch -> 0.08f
+        QuizTimerUrgency.Critical -> 0.10f + 0.08f * pulse
+        QuizTimerUrgency.Expired -> 0.17f
+    }
+    val edgeWidth = when (urgency) {
+        QuizTimerUrgency.Calm -> 0.dp
+        QuizTimerUrgency.Watch -> 14.dp
+        QuizTimerUrgency.Critical -> (18 + 8 * pulse).dp
+        QuizTimerUrgency.Expired -> 24.dp
+    }
+    val bracketLength = when (urgency) {
+        QuizTimerUrgency.Calm -> 0.dp
+        QuizTimerUrgency.Watch -> 18.dp
+        QuizTimerUrgency.Critical -> 24.dp
+        QuizTimerUrgency.Expired -> 30.dp
+    }
+    val bracketStroke = when (urgency) {
+        QuizTimerUrgency.Calm -> 0.dp
+        QuizTimerUrgency.Watch -> 1.dp
+        QuizTimerUrgency.Critical -> 2.dp
+        QuizTimerUrgency.Expired -> 3.dp
+    }
+
+    Canvas(Modifier.fillMaxSize()) {
+        val edgePx = edgeWidth.toPx().coerceAtLeast(1f)
+        val glow = NazoError.copy(alpha = baseAlpha)
+        drawRect(
+            brush = Brush.horizontalGradient(
+                colors = listOf(glow, Color.Transparent),
+                startX = 0f,
+                endX = edgePx,
+            ),
+            size = Size(edgePx, size.height),
+        )
+        drawRect(
+            brush = Brush.horizontalGradient(
+                colors = listOf(Color.Transparent, glow),
+                startX = size.width - edgePx,
+                endX = size.width,
+            ),
+            topLeft = Offset(size.width - edgePx, 0f),
+            size = Size(edgePx, size.height),
+        )
+        drawRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(glow, Color.Transparent),
+                startY = 0f,
+                endY = edgePx,
+            ),
+            size = Size(size.width, edgePx),
+        )
+        drawRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(Color.Transparent, glow),
+                startY = size.height - edgePx,
+                endY = size.height,
+            ),
+            topLeft = Offset(0f, size.height - edgePx),
+            size = Size(size.width, edgePx),
+        )
+
+        // Corner brackets grow and thicken as time runs down, so urgency is
+        // still legible without color and remains clear when motion is removed.
+        val inset = 4.dp.toPx()
+        val length = bracketLength.toPx()
+        val stroke = bracketStroke.toPx()
+        val bracketColor = NazoError.copy(alpha = (baseAlpha * 3.2f).coerceAtMost(0.72f))
+        listOf(
+            Triple(Offset(inset, inset), Offset(inset + length, inset), Offset(inset, inset + length)),
+            Triple(
+                Offset(size.width - inset, inset),
+                Offset(size.width - inset - length, inset),
+                Offset(size.width - inset, inset + length),
+            ),
+            Triple(
+                Offset(inset, size.height - inset),
+                Offset(inset + length, size.height - inset),
+                Offset(inset, size.height - inset - length),
+            ),
+            Triple(
+                Offset(size.width - inset, size.height - inset),
+                Offset(size.width - inset - length, size.height - inset),
+                Offset(size.width - inset, size.height - inset - length),
+            ),
+        ).forEach { (corner, horizontal, vertical) ->
+            drawLine(bracketColor, corner, horizontal, stroke, StrokeCap.Round)
+            drawLine(bracketColor, corner, vertical, stroke, StrokeCap.Round)
+        }
+    }
+}
+
+@Composable
 private fun CountdownDisc(
     seconds: Int,
     timeUp: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    val urgent = timeUp || seconds <= 5
+    val urgency = quizTimerUrgency(
+        seconds = seconds,
+        timerRunning = true,
+        timeUp = timeUp,
+    )
+    val urgent = urgency != QuizTimerUrgency.Calm
     val timerColor by animateColorAsState(
         targetValue = if (urgent) NazoError else NazoPrimary,
         animationSpec = tween(400),
@@ -1733,11 +1877,32 @@ private fun CountdownDisc(
         animationSpec = tween(400),
         label = "countdownDiscBackground",
     )
+    val ringWidth = when (urgency) {
+        QuizTimerUrgency.Calm -> 0.dp
+        QuizTimerUrgency.Watch -> 1.dp
+        QuizTimerUrgency.Critical -> 2.dp
+        QuizTimerUrgency.Expired -> 3.dp
+    }
     Box(
         modifier = modifier
             .size(40.dp)
             .clip(CircleShape)
-            .background(timerBackground),
+            .background(timerBackground)
+            .then(
+                if (urgency != QuizTimerUrgency.Calm) {
+                    Modifier.border(ringWidth, timerColor, CircleShape)
+                } else {
+                    Modifier
+                }
+            )
+            .semantics {
+                contentDescription = when (urgency) {
+                    QuizTimerUrgency.Calm -> "Timer, $seconds seconds remaining"
+                    QuizTimerUrgency.Watch -> "Timer, $seconds seconds remaining, running low"
+                    QuizTimerUrgency.Critical -> "Timer, $seconds seconds remaining, urgent"
+                    QuizTimerUrgency.Expired -> "Timer expired"
+                }
+            },
         contentAlignment = Alignment.Center,
     ) {
         AnimatedContent(

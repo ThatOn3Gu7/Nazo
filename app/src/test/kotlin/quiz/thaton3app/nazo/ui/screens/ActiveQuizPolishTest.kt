@@ -150,6 +150,20 @@ class ActiveQuizPolishTest {
     }
 
     @Test
+    fun timerUrgencyEscalatesAndSettlesWhenTheClockIsNotRunning() {
+        assertEquals(QuizTimerUrgency.Calm, quizTimerUrgency(30, timerRunning = true))
+        assertEquals(QuizTimerUrgency.Watch, quizTimerUrgency(10, timerRunning = true))
+        assertEquals(QuizTimerUrgency.Critical, quizTimerUrgency(5, timerRunning = true))
+        assertEquals(QuizTimerUrgency.Expired, quizTimerUrgency(0, timerRunning = true))
+        assertEquals(
+            QuizTimerUrgency.Expired,
+            quizTimerUrgency(4, timerRunning = false, timeUp = true),
+        )
+        assertEquals(QuizTimerUrgency.Calm, quizTimerUrgency(4, timerRunning = false))
+        assertEquals(QuizTimerUrgency.Calm, quizTimerUrgency(0, timerRunning = false))
+    }
+
+    @Test
     fun decorativeQuizMotionWaitsForTheLaunchCoverAndReducedMotion() {
         assertTrue(quizDecorativeMotionAllowed(reduceMotion = false, hostAllowsMotion = true))
         assertTrue(!quizDecorativeMotionAllowed(reduceMotion = false, hostAllowsMotion = false))

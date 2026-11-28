@@ -44,7 +44,8 @@ then archived below; there should be no per-version release-note files.
 - **Fixed** — Advancing after scrolling through a tall graded question now restores the portrait page smoothly before the next question transition, and the Friendly Rival panel joins the progress-stage entrance instead of snapping abruptly into view. Final actions and landscape’s independent panes remain immediate.
 - **Improved** — Moving between Updates and the workflow-build browser now lets each sheet finish its exit before the destination enters. Downloads reveal their progress panel smoothly, refresh keeps cached runs visible behind an animated status, and refreshed or newly scrolled-to build cards settle in with a quick entrance instead of popping into place.
 - **Improved** — Landscape quizzes now prioritize two independently scrollable, full-height question and answer panes, move hints into the compact header, and combine finite-run progress with Friendly Rival status so secondary chrome no longer crowds out play.
-- **Improved** — Play Library now uses a compact left navigation rail in landscape while preserving portrait tabs. Curated packs use the wider stage cleanly, and Collections reorganize into an adaptive card grid without changing any play, load, or removal action.
+- **Improved** — Play Library now uses a compact left navigation rail in landscape while preserving portrait tabs. The rail starts directly beneath the Back control instead of floating midway down the screen, Curated packs use the wider stage cleanly, and Collections reorganize into an adaptive card grid without changing any play, load, or removal action.
+- **Added** — Timed gameplay now builds a subtle edge field as the clock runs low, then strengthens its glow, corner brackets, timer ring, and optional pulse through the final five seconds. Shape and thickness keep urgency readable without color, and Remove animations retains a clear settled warning.
 
 ## Release archive
 

@@ -55,7 +55,7 @@ Build these in order because they form one clear journey from launch to learning
 18. **Explanation tether** — **P1 · S** — Grow the explanation directly from the graded answer instead of inserting a detached block. **Implemented.**
 19. **Progress path milestones** — **P2 · M** — Mark combo, halfway, final, and boss points on the quiz progress line. **Implemented.**
 20. **Mode-specific ambient motion** — **P2 · M** — Give Quiz, Survival, Blitz, Versus, and Guessing subtle distinct background behavior.
-21. **Timer urgency field** — **P1 · S** — Shift edge glow and motion as time runs low without relying on color alone.
+21. **Timer urgency field** — **P1 · S** — Shift edge glow and motion as time runs low without relying on color alone. **Implemented.**
 22. **Life-loss choreography** — **P1 · S** — Move a lost Survival heart into the question outcome, then settle the remaining lives.
 23. **Versus handoff wipe** — **P2 · M** — Use player color and direction to make phone handoffs unmistakable.
 24. **Image-reveal materialization** — **P2 · M** — Make Guessing images resolve progressively rather than appear as a hard swap.

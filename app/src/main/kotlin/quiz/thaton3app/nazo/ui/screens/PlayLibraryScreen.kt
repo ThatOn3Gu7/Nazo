@@ -195,7 +195,7 @@ fun PlayLibraryScreen(
                     modifier = Modifier
                         .width(168.dp)
                         .fillMaxHeight(),
-                    contentAlignment = Alignment.CenterStart,
+                    contentAlignment = Alignment.TopStart,
                 ) {
                     PlayLibraryRail(
                         section = section,
