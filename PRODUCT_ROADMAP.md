@@ -52,7 +52,7 @@ Build these in order because they form one clear journey from launch to learning
 
 16. **Button-to-card continuity** — **P1 · M** — Morph source controls toward their destination card where it improves orientation. **Dropped after visual review; the existing screen transitions are clearer.**
 17. **Question-stage entrance** — **P1 · S** — Bring in progress, prompt, answers, and timer with restrained timing offsets. **Implemented.**
-18. **Explanation tether** — **P1 · S** — Grow the explanation directly from the graded answer instead of inserting a detached block.
+18. **Explanation tether** — **P1 · S** — Grow the explanation directly from the graded answer instead of inserting a detached block. **Implemented.**
 19. **Progress path milestones** — **P2 · M** — Mark combo, halfway, final, and boss points on the quiz progress line.
 20. **Mode-specific ambient motion** — **P2 · M** — Give Quiz, Survival, Blitz, Versus, and Guessing subtle distinct background behavior.
 21. **Timer urgency field** — **P1 · S** — Shift edge glow and motion as time runs low without relying on color alone.

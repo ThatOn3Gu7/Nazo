@@ -115,6 +115,58 @@ class ActiveQuizPolishTest {
     }
 
     @Test
+    fun explanationTethersToThePickedAnswerOrTheRevealedTimeoutAnswer() {
+        assertTrue(
+            explanationTetherAnchor(
+                reveal = true,
+                selected = true,
+                correctAnswer = false,
+                timeUp = false,
+            )
+        )
+        assertTrue(
+            explanationTetherAnchor(
+                reveal = true,
+                selected = true,
+                correctAnswer = true,
+                timeUp = false,
+            )
+        )
+        assertFalse(
+            explanationTetherAnchor(
+                reveal = true,
+                selected = false,
+                correctAnswer = true,
+                timeUp = false,
+            )
+        )
+        assertTrue(
+            explanationTetherAnchor(
+                reveal = true,
+                selected = false,
+                correctAnswer = true,
+                timeUp = true,
+            )
+        )
+        assertFalse(
+            explanationTetherAnchor(
+                reveal = true,
+                selected = true,
+                correctAnswer = false,
+                timeUp = true,
+            )
+        )
+        assertFalse(
+            explanationTetherAnchor(
+                reveal = false,
+                selected = true,
+                correctAnswer = false,
+                timeUp = false,
+            )
+        )
+    }
+
+    @Test
     fun answerOutcomeStagingPrioritizesThePickedAndCorrectOptions() {
         assertEquals(0, answerOptionRevealDelayMillis(selected = true, correctAnswer = false))
         assertEquals(90, answerOptionRevealDelayMillis(selected = false, correctAnswer = true))

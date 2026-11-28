@@ -113,8 +113,8 @@ private data class GradedAnswer(val selected: String?, val timeUp: Boolean)
 
 /**
  * AnimatedContent identity for one question. Grading does NOT change this
- * (same slot → the answer tint and the explanation card's expand animate in
- * place); only advancing to the next question does.
+ * (same slot → the answer tint and tethered explanation animate in place);
+ * only advancing to the next question does.
  */
 private data class QuestionSlot(val index: Int, val question: Question)
 
@@ -130,6 +130,18 @@ internal fun answerExplanationVisible(stage: AnswerChoreographyStage): Boolean =
 
 internal fun answerActionVisible(stage: AnswerChoreographyStage): Boolean =
     stage == AnswerChoreographyStage.ActionReady
+
+/** The explanation grows from the picked answer; timeouts anchor to the revealed correct answer. */
+internal fun explanationTetherAnchor(
+    reveal: Boolean,
+    selected: Boolean,
+    correctAnswer: Boolean,
+    timeUp: Boolean,
+): Boolean = when {
+    !reveal -> false
+    timeUp -> correctAnswer
+    else -> selected
+}
 
 internal fun answerOptionRevealDelayMillis(
     selected: Boolean,
@@ -1153,280 +1165,238 @@ internal fun ActiveQuizScreen(
                     else -> AnswerChoreographyStage.ActionReady
                 }
                 val playStageEntrance = stageEntranceActive && slot.index == currentQuestionIndex
+                val liveAnswerChoreography = motionAllowed && choreographyIndex == slot.index
+                val outcomeTitle = when {
+                    isTimeUp -> "Time's up!"
+                    isCorrect -> "Correct!"
+                    else -> "Not quite"
+                }
+                val outcomeColor = if (isCorrect && !isTimeUp) NazoSuccess else NazoError
                 TwoPaneQuizBody(
                     landscape = landscape,
                     question = {
-                // Question Card. The franchise label used to repeat here as a
-                // kicker; it now lives once in the header, so the card's whole
-                // job is the question itself — the main thing to read.
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .questionStageEntrance(
-                            questionIndex = slot.index,
-                            layer = QuestionEntranceLayer.Prompt,
-                            enabled = playStageEntrance,
-                        )
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(NazoSurface)
-                        .border(
-                            width = if (presentation == GameplayPresentation.QUIZ) 0.dp else 1.dp,
-                            color = when (presentation) {
-                                GameplayPresentation.SURVIVAL -> NazoError.copy(
-                                    alpha = 0.14f + survivalDanger(livesLeft).intensity * 0.34f
-                                )
-                                GameplayPresentation.BLITZ -> NazoPrimary.copy(alpha = 0.34f)
-                                GameplayPresentation.VERSUS -> NazoPrimary.copy(alpha = 0.26f)
-                                GameplayPresentation.QUIZ -> Color.Transparent
-                            },
-                            shape = RoundedCornerShape(24.dp),
-                        )
-                        .padding(if (landscape) 18.dp else 24.dp)
-                ) {
-                    ModeQuestionKicker(
-                        presentation = presentation,
-                        playerLabel = playerLabel,
-                        livesLeft = livesLeft,
-                    )
-                    Text(
-                        text = q.text,
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = NazoTextPrimary,
-                        fontWeight = FontWeight.Bold
-                    )
-                    val comboLabel = quizComboLabel(shownCombo)
-                    AnimatedVisibility(
-                        visible = isCorrect && comboLabel != null,
-                        enter = fadeIn(tween(180)) + scaleIn(
-                            initialScale = if (motionAllowed) 0.88f else 1f,
-                            animationSpec = tween(260, easing = FastOutSlowInEasing),
-                        ),
-                        exit = fadeOut(tween(120)),
-                    ) {
-                        Column {
-                            Spacer(Modifier.height(14.dp))
-                            ComboPill(
-                                label = comboLabel.orEmpty(),
-                                streak = shownCombo,
-                                motionAllowed = motionAllowed,
-                            )
-                        }
-                    }
-                }
-
-                    },
-                    options = {
-                // Options enter as one stable answer group; individual rows keep
-                // their separate grading choreography after a pick.
-                Column(
-                    modifier = Modifier.questionStageEntrance(
-                        questionIndex = slot.index,
-                        layer = QuestionEntranceLayer.Answers,
-                        enabled = playStageEntrance,
-                    ),
-                ) {
-                val labels = listOf("A", "B", "C", "D")
-                q.options.forEachIndexed { index, optionText ->
-                    // FROZEN selection (see gradedByIndex): the outgoing slide
-                    // keeps its pick highlighted instead of un-selecting.
-                    val isThisSelected = shownAnswer == optionText
-                    val isThisCorrectAnswer = optionText == q.correctAnswer
-                    // 50/50 lifeline: eliminated options fade to a ghost and stop
-                    // accepting taps — the layout itself never shifts.
-                    val isHiddenByHint = hiddenOptions.contains(optionText) && !reveal
-                    val hintAlpha by animateFloatAsState(
-                        targetValue = if (isHiddenByHint) 0.22f else 1f,
-                        animationSpec = tween(320),
-                        label = "hintAlpha"
-                    )
-                    val revealDelay = answerOptionRevealDelayMillis(
-                        selected = isThisSelected,
-                        correctAnswer = isThisCorrectAnswer,
-                    )
-                    val outcomeEmphasis by animateFloatAsState(
-                        targetValue = answerOptionEmphasis(
-                            reveal = reveal,
-                            selected = isThisSelected,
-                            correctAnswer = isThisCorrectAnswer,
-                        ),
-                        animationSpec = tween(
-                            durationMillis = if (motionAllowed) 180 else 0,
-                            delayMillis = if (motionAllowed && reveal) revealDelay else 0,
-                        ),
-                        label = "answerOutcomeEmphasis",
-                    )
-
-                    val bgColor by animateColorAsState(
-                        targetValue = when {
-                            !reveal -> NazoSurfaceVariant
-                            isThisCorrectAnswer -> NazoSuccessBg
-                            isThisSelected && !isThisCorrectAnswer -> NazoErrorBg
-                            else -> NazoSurfaceVariant
-                        },
-                        animationSpec = tween(
-                            durationMillis = if (motionAllowed) 220 else 0,
-                            delayMillis = if (motionAllowed && reveal) revealDelay else 0,
-                        ),
-                        label = "optionBg"
-                    )
-                    val borderColor by animateColorAsState(
-                        targetValue = when {
-                            !reveal -> Color.Transparent
-                            isThisCorrectAnswer -> NazoSuccess 
-                            isThisSelected && !isThisCorrectAnswer -> NazoError 
-                            else -> Color.Transparent
-                        },
-                        animationSpec = tween(
-                            durationMillis = if (motionAllowed) 220 else 0,
-                            delayMillis = if (motionAllowed && reveal) revealDelay else 0,
-                        ),
-                        label = "optionBorder"
-                    )
-
-                    PremiumAnswerOption(
-                        reveal = reveal,
-                        isThisCorrectAnswer = isThisCorrectAnswer,
-                        isThisSelected = isThisSelected,
-                        isHiddenByHint = isHiddenByHint,
-                        hintAlpha = hintAlpha * outcomeEmphasis,
-                        revealDelayMillis = revealDelay,
-                        backgroundColor = bgColor,
-                        borderColor = borderColor,
-                        label = labels[index],
-                        text = optionText,
-                        motionAllowed = motionAllowed,
-                        onClick = {
-                            // Idempotence guard: `reveal` only flips on the
-                            // next recomposition, so two taps landing in the
-                            // same frame both pass `enabled`. `graded` also
-                            // closes the timeout race.
-                            if (selectedAnswer == null && graded == null) {
-                                val wasCorrect = optionText == q.correctAnswer
-                                if (wasCorrect) {
-                                    Haptics.light(context)
-                                    Sounds.correct(context)
-                                } else {
-                                    Haptics.doubleLight(context)
-                                    Sounds.wrong(context)
-                                    // Grading time — not Next-tap time: the
-                                    // survival heart is redacted immediately.
-                                    onLifeLost()
-                                }
-                                selectedAnswer = optionText
-                                // Freeze result + visual streak for this outgoing
-                                // slot. Neither participates in answer evaluation.
-                                gradedByIndex[slot.index] =
-                                    GradedAnswer(selected = optionText, timeUp = false)
-                                recordVisualGrade(slot.index, wasCorrect)
-                                beginAnswerChoreography(slot.index)
-                                onQuestionGraded(
-                                    optionText,
-                                    false,
-                                    hiddenOptions.isNotEmpty() || letterHint != null,
-                                    remainingSeconds.toFloat() / secondsPerQuestion.coerceAtLeast(1),
-                                )
-                            }
-                        },
-                    )
-                }
-                }
-
-                    },
-                    explanation = {
-                // Explanation Card (shows after answering OR when time runs out).
-                // Hidden in blitz: answers auto-advance on a 650ms beat instead.
-                AnimatedVisibility(
-                    visible = reveal && !isBlitz && answerExplanationVisible(answerStage),
-                    enter = if (!motionAllowed) {
-                        fadeIn(tween(100))
-                    } else {
-                        expandVertically(
-                            animationSpec = tween(320, easing = FastOutSlowInEasing),
-                            expandFrom = Alignment.Top,
-                        ) + slideInVertically(
-                            animationSpec = tween(320, easing = FastOutSlowInEasing),
-                        ) { height -> height / 12 } + fadeIn(tween(220))
-                    },
-                    exit = shrinkVertically(tween(180)) + fadeOut(tween(140)),
-                ) {
-                    // The outcome IS the news; the explanation follows it.
-                    val outcomeTitle = when {
-                        isTimeUp -> "Time's up!"
-                        isCorrect -> "Correct!"
-                        else -> "Not quite"
-                    }
-                    val outcomeColor = if (isCorrect && !isTimeUp) NazoSuccess else NazoError
-                    Column {
-                        Spacer(Modifier.height(12.dp))
+                        // Question Card. The franchise label used to repeat here as a
+                        // kicker; it now lives once in the header, so the card's whole
+                        // job is the question itself — the main thing to read.
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .questionStageEntrance(
+                                    questionIndex = slot.index,
+                                    layer = QuestionEntranceLayer.Prompt,
+                                    enabled = playStageEntrance,
+                                )
                                 .clip(RoundedCornerShape(24.dp))
-                                .background(
-                                    Brush.horizontalGradient(
-                                        0f to outcomeColor.copy(alpha = 0.12f),
-                                        0.45f to NazoSurface,
-                                        1f to NazoSurface,
-                                    )
-                                )
+                                .background(NazoSurface)
                                 .border(
-                                    1.dp,
-                                    outcomeColor.copy(alpha = 0.28f),
-                                    RoundedCornerShape(24.dp),
-                                )
-                                .padding(20.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = when {
-                                        isTimeUp -> Icons.Filled.Schedule
-                                        isCorrect && !isTimeUp -> Icons.Filled.Check
-                                        else -> Icons.Filled.Close
+                                    width = if (presentation == GameplayPresentation.QUIZ) 0.dp else 1.dp,
+                                    color = when (presentation) {
+                                        GameplayPresentation.SURVIVAL -> NazoError.copy(
+                                            alpha = 0.14f + survivalDanger(livesLeft).intensity * 0.34f
+                                        )
+                                        GameplayPresentation.BLITZ -> NazoPrimary.copy(alpha = 0.34f)
+                                        GameplayPresentation.VERSUS -> NazoPrimary.copy(alpha = 0.26f)
+                                        GameplayPresentation.QUIZ -> Color.Transparent
                                     },
-                                    contentDescription = null,
-                                    tint = outcomeColor,
-                                    modifier = Modifier.size(20.dp),
+                                    shape = RoundedCornerShape(24.dp),
                                 )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    outcomeTitle,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = outcomeColor,
-                                    fontWeight = FontWeight.Bold,
+                                .padding(if (landscape) 18.dp else 24.dp)
+                        ) {
+                            ModeQuestionKicker(
+                                presentation = presentation,
+                                playerLabel = playerLabel,
+                                livesLeft = livesLeft,
+                            )
+                            Text(
+                                text = q.text,
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = NazoTextPrimary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            val comboLabel = quizComboLabel(shownCombo)
+                            AnimatedVisibility(
+                                visible = isCorrect && comboLabel != null,
+                                enter = fadeIn(tween(180)) + scaleIn(
+                                    initialScale = if (motionAllowed) 0.88f else 1f,
+                                    animationSpec = tween(260, easing = FastOutSlowInEasing),
+                                ),
+                                exit = fadeOut(tween(120)),
+                            ) {
+                                Column {
+                                    Spacer(Modifier.height(14.dp))
+                                    ComboPill(
+                                        label = comboLabel.orEmpty(),
+                                        streak = shownCombo,
+                                        motionAllowed = motionAllowed,
+                                    )
+                                }
+                            }
+                        }
+
+                    },
+                    options = {
+                        // Options enter as one stable answer group; individual rows keep
+                        // their separate grading choreography after a pick.
+                        Column(
+                            modifier = Modifier.questionStageEntrance(
+                                questionIndex = slot.index,
+                                layer = QuestionEntranceLayer.Answers,
+                                enabled = playStageEntrance,
+                            ),
+                        ) {
+                            val labels = listOf("A", "B", "C", "D")
+                            q.options.forEachIndexed { index, optionText ->
+                                // FROZEN selection (see gradedByIndex): the outgoing slide
+                                // keeps its pick highlighted instead of un-selecting.
+                                val isThisSelected = shownAnswer == optionText
+                                val isThisCorrectAnswer = optionText == q.correctAnswer
+                                val isTetherAnchor = explanationTetherAnchor(
+                                    reveal = reveal,
+                                    selected = isThisSelected,
+                                    correctAnswer = isThisCorrectAnswer,
+                                    timeUp = isTimeUp,
                                 )
-                                Spacer(Modifier.weight(1f))
-                                Text(
-                                    "EXPLANATION",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = NazoTextSecondary,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp,
+                                // 50/50 lifeline: eliminated options fade to a ghost and stop
+                                // accepting taps — the layout itself never shifts.
+                                val isHiddenByHint = hiddenOptions.contains(optionText) && !reveal
+                                val hintAlpha by animateFloatAsState(
+                                    targetValue = if (isHiddenByHint) 0.22f else 1f,
+                                    animationSpec = tween(320),
+                                    label = "hintAlpha"
+                                )
+                                val revealDelay = answerOptionRevealDelayMillis(
+                                    selected = isThisSelected,
+                                    correctAnswer = isThisCorrectAnswer,
+                                )
+                                val outcomeEmphasis by animateFloatAsState(
+                                    targetValue = answerOptionEmphasis(
+                                        reveal = reveal,
+                                        selected = isThisSelected,
+                                        correctAnswer = isThisCorrectAnswer,
+                                    ),
+                                    animationSpec = tween(
+                                        durationMillis = if (motionAllowed) 180 else 0,
+                                        delayMillis = if (motionAllowed && reveal) revealDelay else 0,
+                                    ),
+                                    label = "answerOutcomeEmphasis",
+                                )
+
+                                val bgColor by animateColorAsState(
+                                    targetValue = when {
+                                        !reveal -> NazoSurfaceVariant
+                                        isThisCorrectAnswer -> NazoSuccessBg
+                                        isThisSelected && !isThisCorrectAnswer -> NazoErrorBg
+                                        else -> NazoSurfaceVariant
+                                    },
+                                    animationSpec = tween(
+                                        durationMillis = if (motionAllowed) 220 else 0,
+                                        delayMillis = if (motionAllowed && reveal) revealDelay else 0,
+                                    ),
+                                    label = "optionBg"
+                                )
+                                val borderColor by animateColorAsState(
+                                    targetValue = when {
+                                        !reveal -> Color.Transparent
+                                        isThisCorrectAnswer -> NazoSuccess
+                                        isThisSelected && !isThisCorrectAnswer -> NazoError
+                                        else -> Color.Transparent
+                                    },
+                                    animationSpec = tween(
+                                        durationMillis = if (motionAllowed) 220 else 0,
+                                        delayMillis = if (motionAllowed && reveal) revealDelay else 0,
+                                    ),
+                                    label = "optionBorder"
+                                )
+
+                                PremiumAnswerOption(
+                                    reveal = reveal,
+                                    isThisCorrectAnswer = isThisCorrectAnswer,
+                                    isThisSelected = isThisSelected,
+                                    isHiddenByHint = isHiddenByHint,
+                                    hintAlpha = hintAlpha * outcomeEmphasis,
+                                    revealDelayMillis = revealDelay,
+                                    backgroundColor = bgColor,
+                                    borderColor = borderColor,
+                                    label = labels[index],
+                                    text = optionText,
+                                    motionAllowed = motionAllowed,
+                                    onClick = {
+                                        // Idempotence guard: `reveal` only flips on the
+                                        // next recomposition, so two taps landing in the
+                                        // same frame both pass `enabled`. `graded` also
+                                        // closes the timeout race.
+                                        if (selectedAnswer == null && graded == null) {
+                                            val wasCorrect = optionText == q.correctAnswer
+                                            if (wasCorrect) {
+                                                Haptics.light(context)
+                                                Sounds.correct(context)
+                                            } else {
+                                                Haptics.doubleLight(context)
+                                                Sounds.wrong(context)
+                                                // Grading time — not Next-tap time: the
+                                                // survival heart is redacted immediately.
+                                                onLifeLost()
+                                            }
+                                            selectedAnswer = optionText
+                                            // Freeze result + visual streak for this outgoing
+                                            // slot. Neither participates in answer evaluation.
+                                            gradedByIndex[slot.index] =
+                                                GradedAnswer(selected = optionText, timeUp = false)
+                                            recordVisualGrade(slot.index, wasCorrect)
+                                            beginAnswerChoreography(slot.index)
+                                            onQuestionGraded(
+                                                optionText,
+                                                false,
+                                                hiddenOptions.isNotEmpty() || letterHint != null,
+                                                remainingSeconds.toFloat() / secondsPerQuestion.coerceAtLeast(1),
+                                            )
+                                        }
+                                    },
+                                    tetherContent = if (isTetherAnchor) {
+                                        {
+                                            TetheredExplanationPanel(
+                                                visible = !isBlitz && answerExplanationVisible(answerStage),
+                                                animateEntrance = liveAnswerChoreography,
+                                                outcomeTitle = outcomeTitle,
+                                                outcomeColor = outcomeColor,
+                                                tetherColor = if (isTimeUp) NazoSuccess else outcomeColor,
+                                                successful = isCorrect && !isTimeUp,
+                                                timeUp = isTimeUp,
+                                                correctAnswer = q.correctAnswer.takeUnless {
+                                                    isCorrect && !isTimeUp
+                                                },
+                                                explanation = q.explanation,
+                                            )
+                                        }
+                                    } else {
+                                        null
+                                    },
                                 )
                             }
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                text = q.explanation,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = NazoTextSecondary,
-                                lineHeight = 22.sp
-                            )
-                            Spacer(Modifier.height(20.dp))
+                        }
 
-                            // The explanation gets one readable beat before the
-                            // action arrives, completing pick → grade → learn → go.
-                            AnimatedVisibility(
-                                visible = answerActionVisible(answerStage),
-                                enter = if (motionAllowed) {
-                                    fadeIn(tween(180)) + expandVertically(
-                                        animationSpec = tween(220, easing = FastOutSlowInEasing),
-                                        expandFrom = Alignment.Top,
-                                    )
-                                } else {
-                                    fadeIn(tween(1))
-                                },
-                                exit = fadeOut(tween(100)),
-                            ) {
-                                // Next Question Button
+                    },
+                    explanation = {
+                        // The explanation is tethered to the graded option above. The
+                        // action keeps a predictable final position after all answers.
+                        AnimatedVisibility(
+                            visible = reveal && !isBlitz && answerActionVisible(answerStage),
+                            enter = if (liveAnswerChoreography) {
+                                fadeIn(tween(180)) + expandVertically(
+                                    animationSpec = tween(220, easing = FastOutSlowInEasing),
+                                    expandFrom = Alignment.Top,
+                                )
+                            } else {
+                                fadeIn(tween(0))
+                            },
+                            exit = if (liveAnswerChoreography) {
+                                fadeOut(tween(100))
+                            } else {
+                                fadeOut(tween(0))
+                            },
+                        ) {
+                            Column {
+                                Spacer(Modifier.height(8.dp))
                                 val nextInteraction = remember { MutableInteractionSource() }
                                 val nextShape = rememberNazoPillCornerMorphShape(nextInteraction)
                                 Row(
@@ -1440,19 +1410,14 @@ internal fun ActiveQuizScreen(
                                         ) {
                                             Haptics.light(context)
                                             onNextQuestion(progressionTicket, isCorrect, shownAnswer)
-                                            selectedAnswer = null // Reset for next question
+                                            selectedAnswer = null
                                         }
                                         .padding(vertical = 16.dp),
                                     horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text(
-                                        // The label must name the click that ENDS
-                                        // the run: the last question of a fixed
-                                        // quiz, or the fatal question of a survival
-                                        // run (its heart is redacted at grading, so
-                                        // livesLeft already reads 0 here).
-                                        when {
+                                        text = when {
                                             daily && currentQuestionIndex == totalQuestions - 1 ->
                                                 "Clear Daily Ladder"
                                             bossFinale -> "Complete Boss Finale"
@@ -1461,15 +1426,18 @@ internal fun ActiveQuizScreen(
                                             else -> "Next Question"
                                         },
                                         color = NazoOnPrimary,
-                                        fontWeight = FontWeight.Bold
+                                        fontWeight = FontWeight.Bold,
                                     )
                                     Spacer(Modifier.width(8.dp))
-                                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = NazoOnPrimary, modifier = Modifier.size(18.dp))
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.ArrowForward,
+                                        contentDescription = null,
+                                        tint = NazoOnPrimary,
+                                        modifier = Modifier.size(18.dp),
+                                    )
                                 }
                             }
                         }
-                    }
-                }
                     },
                 )
             }
@@ -1866,11 +1834,9 @@ private fun ModeQuestionKicker(
  * Portrait keeps the original single column: question, options, then the
  * explanation underneath.
  *
- * Landscape splits into two panes — question on the left with the explanation
- * appearing beneath it (there is dead space there once the question is short),
- * and the four options on the right where they are all reachable without
- * scrolling. Each pane scrolls independently so a long question can never push
- * the answers off-screen.
+ * Landscape splits into two panes — question on the left and the answer stack,
+ * its tethered explanation, and final action on the right. Each pane scrolls
+ * independently so a long question can never push the answers off-screen.
  */
 @Composable
 private fun TwoPaneQuizBody(
@@ -1896,10 +1862,6 @@ private fun TwoPaneQuizBody(
                 .verticalScroll(rememberScrollState()),
         ) {
             question()
-            // The explanation lives under the question in landscape: that pane
-            // has room once answered, and it keeps the answers where the eye
-            // already is.
-            explanation()
             Spacer(Modifier.height(12.dp))
         }
         Spacer(Modifier.width(16.dp))
@@ -1909,6 +1871,9 @@ private fun TwoPaneQuizBody(
                 .verticalScroll(rememberScrollState()),
         ) {
             options()
+            // The tethered explanation now belongs to the answer pane; the
+            // final action follows the complete option group in both layouts.
+            explanation()
             Spacer(Modifier.height(12.dp))
         }
     }
@@ -2078,6 +2043,114 @@ private fun ComboPill(
 }
 
 @Composable
+private fun TetheredExplanationPanel(
+    visible: Boolean,
+    animateEntrance: Boolean,
+    outcomeTitle: String,
+    outcomeColor: Color,
+    tetherColor: Color,
+    successful: Boolean,
+    timeUp: Boolean,
+    correctAnswer: String?,
+    explanation: String,
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = if (animateEntrance) {
+            expandVertically(
+                animationSpec = tween(300, easing = FastOutSlowInEasing),
+                expandFrom = Alignment.Top,
+            ) + fadeIn(tween(180))
+        } else {
+            fadeIn(tween(0))
+        },
+        exit = if (animateEntrance) {
+            shrinkVertically(tween(160)) + fadeOut(tween(120))
+        } else {
+            fadeOut(tween(0))
+        },
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // The short stem shares the picked option's left text axis. Because
+            // it lives in the same option Column, there is no detached overlay,
+            // coordinate guessing, or end-of-animation hand-off.
+            Box(
+                modifier = Modifier
+                    .padding(start = 34.dp)
+                    .width(2.dp)
+                    .height(10.dp)
+                    .background(tetherColor.copy(alpha = 0.62f)),
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            0f to tetherColor.copy(alpha = 0.12f),
+                            0.45f to NazoSurface,
+                            1f to NazoSurface,
+                        )
+                    )
+                    .border(
+                        1.dp,
+                        tetherColor.copy(alpha = 0.28f),
+                        RoundedCornerShape(20.dp),
+                    )
+                    .padding(18.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = when {
+                            timeUp -> Icons.Filled.Schedule
+                            successful -> Icons.Filled.Check
+                            else -> Icons.Filled.Close
+                        },
+                        contentDescription = null,
+                        tint = outcomeColor,
+                        modifier = Modifier.size(19.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = outcomeTitle,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = outcomeColor,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = "EXPLANATION",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NazoTextSecondary,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp,
+                    )
+                }
+                if (correctAnswer != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = "Correct answer · $correctAnswer",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = NazoSuccess,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = explanation,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NazoTextSecondary,
+                    lineHeight = 22.sp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun PremiumAnswerOption(
     reveal: Boolean,
     isThisCorrectAnswer: Boolean,
@@ -2091,6 +2164,7 @@ private fun PremiumAnswerOption(
     text: String,
     motionAllowed: Boolean,
     onClick: () -> Unit,
+    tetherContent: (@Composable () -> Unit)? = null,
 ) {
     val feedback = remember { Animatable(1f) }
     LaunchedEffect(reveal, isThisSelected, isThisCorrectAnswer, motionAllowed) {
@@ -2122,68 +2196,74 @@ private fun PremiumAnswerOption(
         0f
     }
 
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 12.dp)
-            .alpha(hintAlpha)
-            .graphicsLayer {
-                translationX = shakePx
-                scaleX = pulseScale
-                scaleY = pulseScale
-            },
+            .alpha(hintAlpha),
     ) {
-        if (correctSelected) {
-            Canvas(
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer {
+                    translationX = shakePx
+                    scaleX = pulseScale
+                    scaleY = pulseScale
+                },
+        ) {
+            if (correctSelected) {
+                Canvas(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .graphicsLayer {
+                            alpha = halo * 0.34f
+                            val expansion = 1f + halo * 0.055f
+                            scaleX = expansion
+                            scaleY = expansion
+                        }
+                ) {
+                    drawRoundRect(
+                        color = NazoSuccess,
+                        cornerRadius = CornerRadius(size.height / 2f, size.height / 2f),
+                    )
+                }
+            }
+            Row(
                 modifier = Modifier
-                    .matchParentSize()
-                    .graphicsLayer {
-                        alpha = halo * 0.34f
-                        val expansion = 1f + halo * 0.055f
-                        scaleX = expansion
-                        scaleY = expansion
-                    }
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(50))
+                    .background(backgroundColor)
+                    .border(
+                        if (reveal && isThisSelected) 1.5.dp else 1.dp,
+                        borderColor,
+                        RoundedCornerShape(50),
+                    )
+                    .clickable(enabled = !reveal && !isHiddenByHint, onClick = onClick)
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                drawRoundRect(
-                    color = NazoSuccess,
-                    cornerRadius = CornerRadius(size.height / 2f, size.height / 2f),
+                OptionCircle(
+                    reveal = reveal,
+                    isThisCorrectAnswer = isThisCorrectAnswer,
+                    isThisSelected = isThisSelected,
+                    revealDelayMillis = if (motionAllowed) revealDelayMillis else 0,
+                    label = label,
+                )
+                Spacer(Modifier.width(16.dp))
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (reveal && (isThisCorrectAnswer || isThisSelected)) {
+                        borderColor
+                    } else {
+                        NazoTextPrimary
+                    },
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f),
                 )
             }
         }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(50))
-                .background(backgroundColor)
-                .border(
-                    if (reveal && isThisSelected) 1.5.dp else 1.dp,
-                    borderColor,
-                    RoundedCornerShape(50),
-                )
-                .clickable(enabled = !reveal && !isHiddenByHint, onClick = onClick)
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            OptionCircle(
-                reveal = reveal,
-                isThisCorrectAnswer = isThisCorrectAnswer,
-                isThisSelected = isThisSelected,
-                revealDelayMillis = if (motionAllowed) revealDelayMillis else 0,
-                label = label,
-            )
-            Spacer(Modifier.width(16.dp))
-            Text(
-                text = text,
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (reveal && (isThisCorrectAnswer || isThisSelected)) {
-                    borderColor
-                } else {
-                    NazoTextPrimary
-                },
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.weight(1f),
-            )
-        }
+        tetherContent?.invoke()
     }
 }
 
@@ -2206,7 +2286,7 @@ private fun OptionCircle(
         animationSpec = tween(220, delayMillis = if (reveal) revealDelayMillis else 0),
         label = "optionCircle"
     ).value
-    
+
     Box(
         modifier = Modifier
             .size(28.dp)

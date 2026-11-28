@@ -36,6 +36,7 @@ then archived below; there should be no per-version release-note files.
 - **Improved** — Home is now a focused launchpad: mode, topic, difficulty, length, saving, rival status, and Start share one compact game builder before recommendations. Curated packs and saved Collections move to a polished one-tap Play Library, keeping reusable content organized without pushing the core setup onto a second page. Topic suggestions now retain a clearly highlighted, readable treatment in light themes.
 - **Added** — Accessibility Studio includes an opt-in Classic Home layout for players who prefer the familiar scrolling shelves. The focused launchpad remains the default, while Classic restores on-page Challenge Packs, Collections, staged Collection loading, and the original setup flow.
 - **Improved** — Advancing between questions now uses one restrained stage rhythm: progress settles first, followed by the prompt, answer group, and timer. The sequence affects only later questions, preserves the existing first-screen transition, remains measurement-stable in portrait and landscape, and paints immediately for restored or reduced-motion states.
+- **Improved** — Answer explanations now grow from the graded answer itself instead of appearing as a detached card. Wrong picks explicitly name the correct answer, timeouts tether to the revealed correct option, and the final action remains predictably after the complete answer group in portrait and landscape.
 
 ## Release archive
 
