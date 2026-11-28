@@ -1,6 +1,7 @@
 package quiz.thaton3app.nazo.ui.screens
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -41,6 +42,41 @@ class ActiveQuizPolishTest {
         assertTrue(quizDecorativeMotionAllowed(reduceMotion = false, hostAllowsMotion = true))
         assertTrue(!quizDecorativeMotionAllowed(reduceMotion = false, hostAllowsMotion = false))
         assertTrue(!quizDecorativeMotionAllowed(reduceMotion = true, hostAllowsMotion = true))
+    }
+
+    @Test
+    fun questionStageEntranceIsOrderedAndNeverReplaysRestoredOrReducedMotionState() {
+        assertEquals(0, questionEntranceDelayMillis(QuestionEntranceLayer.Progress))
+        assertTrue(
+            questionEntranceDelayMillis(QuestionEntranceLayer.Progress) <
+                questionEntranceDelayMillis(QuestionEntranceLayer.Prompt)
+        )
+        assertTrue(
+            questionEntranceDelayMillis(QuestionEntranceLayer.Prompt) <
+                questionEntranceDelayMillis(QuestionEntranceLayer.Answers)
+        )
+        assertTrue(
+            questionEntranceDelayMillis(QuestionEntranceLayer.Answers) <
+                questionEntranceDelayMillis(QuestionEntranceLayer.Timer)
+        )
+
+        assertTrue(
+            questionStageEntranceShouldPlay(
+                previousQuestionIndex = 0,
+                currentQuestionIndex = 1,
+                motionAllowed = true,
+                restoredGrade = false,
+            )
+        )
+        assertFalse(
+            questionStageEntranceShouldPlay(1, 1, motionAllowed = true, restoredGrade = false)
+        )
+        assertFalse(
+            questionStageEntranceShouldPlay(0, 1, motionAllowed = false, restoredGrade = false)
+        )
+        assertFalse(
+            questionStageEntranceShouldPlay(0, 1, motionAllowed = true, restoredGrade = true)
+        )
     }
 
     @Test

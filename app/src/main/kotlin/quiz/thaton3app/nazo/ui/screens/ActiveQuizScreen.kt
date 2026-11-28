@@ -162,6 +162,73 @@ internal fun quizDecorativeMotionAllowed(
     hostAllowsMotion: Boolean,
 ): Boolean = !reduceMotion && hostAllowsMotion
 
+internal enum class QuestionEntranceLayer {
+    Progress,
+    Prompt,
+    Answers,
+    Timer,
+}
+
+private const val QuestionEntranceStepMs = 55
+private const val QuestionEntranceDurationMs = 210
+
+internal fun questionEntranceDelayMillis(layer: QuestionEntranceLayer): Int = when (layer) {
+    QuestionEntranceLayer.Progress -> 0
+    QuestionEntranceLayer.Prompt -> QuestionEntranceStepMs
+    QuestionEntranceLayer.Answers -> QuestionEntranceStepMs * 2
+    QuestionEntranceLayer.Timer -> QuestionEntranceStepMs * 3
+}
+
+internal fun questionStageEntranceShouldPlay(
+    previousQuestionIndex: Int,
+    currentQuestionIndex: Int,
+    motionAllowed: Boolean,
+    restoredGrade: Boolean,
+): Boolean = previousQuestionIndex != currentQuestionIndex && motionAllowed && !restoredGrade
+
+/**
+ * A visual-only stage modifier. It changes no layout measurements or gameplay
+ * state, so countdowns and answer hit targets are live from the first frame.
+ */
+@Composable
+private fun Modifier.questionStageEntrance(
+    questionIndex: Int,
+    layer: QuestionEntranceLayer,
+    enabled: Boolean,
+): Modifier {
+    val progress = remember(questionIndex, layer, enabled) {
+        Animatable(if (enabled) 0f else 1f)
+    }
+    LaunchedEffect(questionIndex, layer, enabled) {
+        if (!enabled) {
+            progress.snapTo(1f)
+            return@LaunchedEffect
+        }
+        progress.snapTo(0f)
+        delay(questionEntranceDelayMillis(layer).toLong())
+        progress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(
+                durationMillis = QuestionEntranceDurationMs,
+                easing = FastOutSlowInEasing,
+            ),
+        )
+    }
+    val offset = when (layer) {
+        QuestionEntranceLayer.Progress -> 4.dp
+        QuestionEntranceLayer.Prompt -> 8.dp
+        QuestionEntranceLayer.Answers -> 10.dp
+        QuestionEntranceLayer.Timer -> 5.dp
+    }
+    val offsetPx = with(LocalDensity.current) { offset.toPx() }
+    return graphicsLayer {
+        // Keep every layer readable even in slow-motion capture; the entrance
+        // is orientation, not a reveal that blanks usable gameplay controls.
+        alpha = 0.72f + (progress.value * 0.28f)
+        translationY = (1f - progress.value) * offsetPx
+    }
+}
+
 /** Normalized Material-Expressive wave. A full phase returns to the same rest shape. */
 internal fun quizProgressWaveOffset(
     position: Float,
@@ -473,6 +540,22 @@ internal fun ActiveQuizScreen(
     val context = LocalContext.current
     val reduceMotion = rememberSystemReduceMotion()
     val motionAllowed = quizDecorativeMotionAllowed(reduceMotion, decorativeMotionAllowed)
+    // The first displayed question already arrives through screen/loading/portal
+    // navigation. Stage only later question changes, which avoids double motion
+    // on launch and never replays after configuration or process restoration.
+    var entranceQuestionIndex by remember { mutableIntStateOf(currentQuestionIndex) }
+    var entranceEnabledForQuestion by remember { mutableStateOf(false) }
+    if (entranceQuestionIndex != currentQuestionIndex) {
+        val previousIndex = entranceQuestionIndex
+        entranceQuestionIndex = currentQuestionIndex
+        entranceEnabledForQuestion = questionStageEntranceShouldPlay(
+            previousQuestionIndex = previousIndex,
+            currentQuestionIndex = currentQuestionIndex,
+            motionAllowed = motionAllowed,
+            restoredGrade = restoredAnswer != null || restoredTimeUp,
+        )
+    }
+    val stageEntranceActive = entranceEnabledForQuestion && motionAllowed
     val quitPauseState = rememberGameplayQuitPauseState()
 
     // One visual sequence per newly graded question. Gameplay state is frozen
@@ -824,6 +907,11 @@ internal fun ActiveQuizScreen(
                     CountdownDisc(
                         seconds = remainingSeconds,
                         timeUp = isTimeUp,
+                        modifier = Modifier.questionStageEntrance(
+                            questionIndex = currentQuestionIndex,
+                            layer = QuestionEntranceLayer.Timer,
+                            enabled = stageEntranceActive,
+                        ),
                     )
                 }
             }
@@ -835,6 +923,11 @@ internal fun ActiveQuizScreen(
                         livesLeft = livesLeft,
                         seconds = remainingSeconds,
                         motionAllowed = motionAllowed,
+                        modifier = Modifier.questionStageEntrance(
+                            questionIndex = currentQuestionIndex,
+                            layer = QuestionEntranceLayer.Timer,
+                            enabled = stageEntranceActive,
+                        ),
                     )
                 }
                 GameplayPresentation.BLITZ -> {
@@ -844,6 +937,11 @@ internal fun ActiveQuizScreen(
                         score = currentScore,
                         questionNumber = currentQuestionIndex + 1,
                         motionAllowed = motionAllowed,
+                        modifier = Modifier.questionStageEntrance(
+                            questionIndex = currentQuestionIndex,
+                            layer = QuestionEntranceLayer.Timer,
+                            enabled = stageEntranceActive,
+                        ),
                     )
                 }
                 GameplayPresentation.VERSUS -> {
@@ -851,6 +949,11 @@ internal fun ActiveQuizScreen(
                     VersusTurnPanel(
                         activePlayer = playerLabel.orEmpty(),
                         seconds = remainingSeconds,
+                        modifier = Modifier.questionStageEntrance(
+                            questionIndex = currentQuestionIndex,
+                            layer = QuestionEntranceLayer.Timer,
+                            enabled = stageEntranceActive,
+                        ),
                     )
                 }
                 GameplayPresentation.QUIZ -> Unit
@@ -861,6 +964,11 @@ internal fun ActiveQuizScreen(
                 DailyLadderProgressPanel(
                     currentQuestionIndex = currentQuestionIndex,
                     compact = landscape,
+                    modifier = Modifier.questionStageEntrance(
+                        questionIndex = currentQuestionIndex,
+                        layer = QuestionEntranceLayer.Progress,
+                        enabled = stageEntranceActive,
+                    ),
                 )
             } else if (challengePack != null) {
                 Spacer(Modifier.height(chromeGap))
@@ -868,6 +976,11 @@ internal fun ActiveQuizScreen(
                     pack = challengePack,
                     currentScore = currentScore,
                     currentQuestionIndex = currentQuestionIndex,
+                    modifier = Modifier.questionStageEntrance(
+                        questionIndex = currentQuestionIndex,
+                        layer = QuestionEntranceLayer.Progress,
+                        enabled = stageEntranceActive,
+                    ),
                 )
             } else if (adaptive) {
                 Spacer(Modifier.height(chromeGap))
@@ -876,6 +989,11 @@ internal fun ActiveQuizScreen(
                     nextDifficulty = adaptiveNextDifficulty,
                     message = adaptiveMessage,
                     compact = landscape,
+                    modifier = Modifier.questionStageEntrance(
+                        questionIndex = currentQuestionIndex,
+                        layer = QuestionEntranceLayer.Progress,
+                        enabled = stageEntranceActive,
+                    ),
                 )
             }
 
@@ -922,7 +1040,13 @@ internal fun ActiveQuizScreen(
                     color = NazoPrimary,
                     trackColor = NazoSurface,
                     motionAllowed = motionAllowed,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .questionStageEntrance(
+                            questionIndex = currentQuestionIndex,
+                            layer = QuestionEntranceLayer.Progress,
+                            enabled = stageEntranceActive,
+                        ),
                 )
             } else if (isBlitz) {
                 Spacer(Modifier.height(chromeGap))
@@ -936,7 +1060,13 @@ internal fun ActiveQuizScreen(
                     trackColor = NazoSurface,
                     motionAllowed = motionAllowed,
                     animationDurationMs = 200,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .questionStageEntrance(
+                            questionIndex = currentQuestionIndex,
+                            layer = QuestionEntranceLayer.Progress,
+                            enabled = stageEntranceActive,
+                        ),
                 )
             }
 
@@ -1022,6 +1152,7 @@ internal fun ActiveQuizScreen(
                     // readable without replaying an entrance sequence.
                     else -> AnswerChoreographyStage.ActionReady
                 }
+                val playStageEntrance = stageEntranceActive && slot.index == currentQuestionIndex
                 TwoPaneQuizBody(
                     landscape = landscape,
                     question = {
@@ -1031,6 +1162,11 @@ internal fun ActiveQuizScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .questionStageEntrance(
+                            questionIndex = slot.index,
+                            layer = QuestionEntranceLayer.Prompt,
+                            enabled = playStageEntrance,
+                        )
                         .clip(RoundedCornerShape(24.dp))
                         .background(NazoSurface)
                         .border(
@@ -1080,7 +1216,15 @@ internal fun ActiveQuizScreen(
 
                     },
                     options = {
-                // Options
+                // Options enter as one stable answer group; individual rows keep
+                // their separate grading choreography after a pick.
+                Column(
+                    modifier = Modifier.questionStageEntrance(
+                        questionIndex = slot.index,
+                        layer = QuestionEntranceLayer.Answers,
+                        enabled = playStageEntrance,
+                    ),
+                ) {
                 val labels = listOf("A", "B", "C", "D")
                 q.options.forEachIndexed { index, optionText ->
                     // FROZEN selection (see gradedByIndex): the outgoing slide
@@ -1184,6 +1328,7 @@ internal fun ActiveQuizScreen(
                             }
                         },
                     )
+                }
                 }
 
                     },
@@ -1422,6 +1567,7 @@ private fun SurvivalStatusPanel(
     livesLeft: Int,
     seconds: Int,
     motionAllowed: Boolean,
+    modifier: Modifier = Modifier,
 ) {
     val danger = survivalDanger(livesLeft)
     val pulseScale = if (motionAllowed && danger.intensity >= 0.7f) {
@@ -1439,7 +1585,7 @@ private fun SurvivalStatusPanel(
         1f
     }
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
                 scaleX = pulseScale
@@ -1504,6 +1650,7 @@ private fun BlitzStatusPanel(
     score: Int,
     questionNumber: Int,
     motionAllowed: Boolean,
+    modifier: Modifier = Modifier,
 ) {
     val urgency = blitzUrgency(seconds)
     val urgencyColor = if (
@@ -1526,7 +1673,7 @@ private fun BlitzStatusPanel(
         1f
     }
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
                 scaleX = pulseScale
@@ -1610,9 +1757,13 @@ private fun BlitzStatusPanel(
 }
 
 @Composable
-private fun VersusTurnPanel(activePlayer: String, seconds: Int) {
+private fun VersusTurnPanel(
+    activePlayer: String,
+    seconds: Int,
+    modifier: Modifier = Modifier,
+) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(NazoSurface)
