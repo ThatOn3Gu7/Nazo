@@ -2177,8 +2177,6 @@ private fun PremiumQuizProgress(
                         milestone = milestone,
                         reached = milestone.fraction <= displayed + 0.001f,
                         pathColor = color,
-                        motionAllowed = motionAllowed,
-                        flamePhase = wavePhase?.value ?: 0.18f,
                         modifier = Modifier
                             .align(Alignment.CenterStart)
                             .offset(
@@ -2348,8 +2346,6 @@ private fun QuizProgressMilestoneMarker(
     milestone: QuizProgressMilestone,
     reached: Boolean,
     pathColor: Color,
-    motionAllowed: Boolean,
-    flamePhase: Float,
     modifier: Modifier = Modifier,
 ) {
     val label = when (milestone.kind) {
@@ -2365,12 +2361,32 @@ private fun QuizProgressMilestoneMarker(
         contentAlignment = Alignment.Center,
     ) {
         if (milestone.kind == QuizProgressMilestoneKind.Combo) {
-            BurningComboFlame(
-                streak = milestone.comboStreak,
-                phase = flamePhase,
-                motionAllowed = motionAllowed,
-                modifier = Modifier.fillMaxSize(),
-            )
+            val palette = comboFlamePalette(milestone.comboStreak)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .background(palette.outer)
+                    .border(
+                        width = if (milestone.comboStreak >= 6) 2.dp else 1.dp,
+                        color = palette.core.copy(alpha = 0.92f),
+                        shape = CircleShape,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Whatshot,
+                    contentDescription = null,
+                    tint = Color.Black.copy(alpha = 0.78f),
+                    modifier = Modifier.size(
+                        when {
+                            milestone.comboStreak >= 10 -> 17.dp
+                            milestone.comboStreak >= 6 -> 13.dp
+                            else -> 9.dp
+                        }
+                    ),
+                )
+            }
         } else {
             val markerColor = when (milestone.kind) {
                 QuizProgressMilestoneKind.Halfway -> pathColor

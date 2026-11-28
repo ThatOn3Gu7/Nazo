@@ -223,6 +223,8 @@ fun AboutScreen(
     // renders. Retaining the flag alone would have reopened an empty sheet, so
     // the fetched result and the button label travel with it.
     var showUpdate by rememberRetained("About.showUpdate") { false }
+    val updateSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val workflowBuildsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var updateState by rememberRetained<UpdateState>("About.updateState") { UpdateState.Idle }
     var checkLabel by rememberRetained("About.checkLabel") { "Check Now" }
     val updatePrefs = remember(context) { UpdatePrefs(context) }
@@ -298,8 +300,9 @@ fun AboutScreen(
     }
 
     fun loadWorkflowBuilds(forceRefresh: Boolean = false) {
-        if (workflowCatalogState == WorkflowCatalogState.Loading) return
-        workflowCatalogState = WorkflowCatalogState.Loading
+        if (workflowCatalogState is WorkflowCatalogState.Loading) return
+        val previous = (workflowCatalogState as? WorkflowCatalogState.Loaded)?.catalog
+        workflowCatalogState = WorkflowCatalogState.Loading(previous)
         scope.launch {
             workflowCatalogState = try {
                 val catalog = loadWorkflowBuildCatalog(
@@ -385,6 +388,30 @@ fun AboutScreen(
         }
     }
 
+    fun openWorkflowBuildsSheet() {
+        val needsRefresh = when (val state = workflowCatalogState) {
+            WorkflowCatalogState.Idle -> true
+            is WorkflowCatalogState.Loaded -> state.catalog.stale
+            else -> false
+        }
+        scope.launch {
+            updateSheetState.hide()
+            showUpdate = false
+            showWorkflowBuilds = true
+            if (needsRefresh) loadWorkflowBuilds()
+        }
+    }
+
+    fun returnToUpdateSheet() {
+        scope.launch {
+            if (workflowBuildsSheetState.isVisible) {
+                workflowBuildsSheetState.hide()
+            }
+            showWorkflowBuilds = false
+            showUpdate = true
+        }
+    }
+
     fun chooseUpdateFrequency(value: UpdateFrequency) {
         if (value != frequency) {
             frequency = value
@@ -409,8 +436,9 @@ fun AboutScreen(
             updateState = UpdateState.Idle
             checkLabel = "Check Now"
         }
-        if (workflowCatalogState == WorkflowCatalogState.Loading) {
-            workflowCatalogState = WorkflowCatalogState.Idle
+        (workflowCatalogState as? WorkflowCatalogState.Loading)?.let { loading ->
+            workflowCatalogState = loading.previous?.let { WorkflowCatalogState.Loaded(it) }
+                ?: WorkflowCatalogState.Idle
         }
         if (workflowInstallState is WorkflowInstallState.Downloading ||
             workflowInstallState is WorkflowInstallState.Verifying
@@ -645,7 +673,7 @@ fun AboutScreen(
     if (showUpdate) {
         NazoModalSheet(
             onDismissRequest = { showUpdate = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            sheetState = updateSheetState,
         ) {
             UpdateMenuContent(
                 state = updateState,
@@ -659,16 +687,7 @@ fun AboutScreen(
                 onOpenBrowser = { url -> onOpenBrowser(url) },
                 frequency = frequency,
                 onOpenFrequencyChooser = { showFrequencyChooser = true },
-                onBrowseWorkflowBuilds = {
-                    showUpdate = false
-                    showWorkflowBuilds = true
-                    val needsRefresh = when (val state = workflowCatalogState) {
-                        WorkflowCatalogState.Idle -> true
-                        is WorkflowCatalogState.Loaded -> state.catalog.stale
-                        else -> false
-                    }
-                    if (needsRefresh) loadWorkflowBuilds()
-                },
+                onBrowseWorkflowBuilds = { openWorkflowBuildsSheet() },
                 includePrereleases = includePrereleases,
                 prereleaseToggleEnabled =
                     downloadState !is ApkDownloadState.Running && updateState !is UpdateState.Checking,
@@ -687,8 +706,8 @@ fun AboutScreen(
 
     if (showWorkflowBuilds) {
         NazoModalSheet(
-            onDismissRequest = { showWorkflowBuilds = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            onDismissRequest = { returnToUpdateSheet() },
+            sheetState = workflowBuildsSheetState,
         ) {
             WorkflowBuildBrowserContent(
                 catalogState = workflowCatalogState,
@@ -711,10 +730,7 @@ fun AboutScreen(
                     }
                 },
                 onOpenWorkflow = { url -> onOpenBrowser(url) },
-                onUseReleaseUpdater = {
-                    showWorkflowBuilds = false
-                    showUpdate = true
-                },
+                onUseReleaseUpdater = { returnToUpdateSheet() },
             )
         }
     }
