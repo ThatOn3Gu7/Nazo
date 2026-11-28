@@ -29,6 +29,34 @@ class ActiveQuizPolishTest {
     }
 
     @Test
+    fun comboFeedbackEscalatesFromSparkToSuperCombo() {
+        assertEquals(QuizComboTier.Spark, quizComboTier(2))
+        assertEquals("SPARKED", quizComboCallout(2))
+        assertEquals("HEATING UP", quizComboCallout(3))
+        assertEquals(QuizComboTier.Blaze, quizComboTier(4))
+        assertEquals("BLAZING", quizComboCallout(5))
+        assertEquals(QuizComboTier.Inferno, quizComboTier(6))
+        assertEquals("MAX HEAT", quizComboCallout(9))
+        assertEquals(QuizComboTier.Super, quizComboTier(10))
+        assertEquals("SUPER COMBO", quizComboCallout(10))
+        assertEquals("MYTHIC", quizComboCallout(12))
+        assertEquals("PERFECT STORM", quizComboCallout(15))
+
+        assertEquals(1, quizComboFireCount(2))
+        assertEquals(2, quizComboFireCount(4))
+        assertEquals(3, quizComboFireCount(6))
+        assertEquals(4, quizComboFireCount(10))
+        assertEquals(2, quizComboMilestoneStreak(2))
+        assertNull(quizComboMilestoneStreak(5))
+        assertEquals(6, quizComboMilestoneStreak(6))
+        assertEquals(10, quizComboMilestoneStreak(10))
+        assertEquals(0f, quizComboBurstStrength(2), 0f)
+        assertEquals(0.425f, quizComboBurstStrength(6), 0.0001f)
+        assertEquals(0.85f, quizComboBurstStrength(10), 0.0001f)
+        assertEquals(1f, quizComboBurstStrength(15), 0f)
+    }
+
+    @Test
     fun questionProgressIsSafeAndClamped() {
         assertEquals(0f, quizProgressFraction(0, 0), 0f)
         assertEquals(0.2f, quizProgressFraction(0, 5), 0.0001f)
@@ -38,18 +66,26 @@ class ActiveQuizPolishTest {
     }
 
     @Test
-    fun progressPathMarksCombosHalfwayAndTheOrdinaryFinish() {
+    fun progressPathMarksEscalatingCombosHalfwayAndTheOrdinaryFinish() {
         val milestones = quizProgressMilestones(
             totalQuestions = 10,
-            comboQuestionIndices = listOf(2, 1, 2, -1, 10),
+            comboMilestonesByQuestion = mapOf(
+                1 to 2,
+                2 to 3, // ordinary stacked answers do not become path milestones
+                5 to 6,
+                9 to 10,
+                -1 to 2,
+                10 to 10,
+            ),
             hasBossFinale = false,
         )
 
         assertEquals(
             listOf(
-                QuizProgressMilestone(QuizProgressMilestoneKind.Combo, 0.2f),
-                QuizProgressMilestone(QuizProgressMilestoneKind.Combo, 0.3f),
+                QuizProgressMilestone(QuizProgressMilestoneKind.Combo, 0.2f, comboStreak = 2),
                 QuizProgressMilestone(QuizProgressMilestoneKind.Halfway, 0.5f),
+                QuizProgressMilestone(QuizProgressMilestoneKind.Combo, 0.6f, comboStreak = 6),
+                QuizProgressMilestone(QuizProgressMilestoneKind.Combo, 1f, comboStreak = 10),
                 QuizProgressMilestone(QuizProgressMilestoneKind.Final, 1f),
             ),
             milestones,
@@ -60,7 +96,7 @@ class ActiveQuizPolishTest {
     fun bossProgressPathReservesTheFinalQuestionAndFinish() {
         val milestones = quizProgressMilestones(
             totalQuestions = 10,
-            comboQuestionIndices = emptyList(),
+            comboMilestonesByQuestion = emptyMap(),
             hasBossFinale = true,
         )
 
@@ -73,7 +109,7 @@ class ActiveQuizPolishTest {
             milestones,
         )
         assertTrue(
-            quizProgressMilestones(0, listOf(0), hasBossFinale = true).isEmpty()
+            quizProgressMilestones(0, mapOf(0 to 2), hasBossFinale = true).isEmpty()
         )
     }
 
