@@ -194,6 +194,7 @@ internal fun settingsScrollTransferOffset(outgoingValue: Int, incomingMaxValue: 
 
 sealed interface Screen {
     data object Home : Screen
+    data object PlayLibrary : Screen
     data object Profile : Screen
     data object Settings : Screen
     data object AiProvider : Screen
@@ -984,6 +985,16 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     var pendingQuizLaunch by remember { mutableStateOf<PendingQuizLaunch?>(null) }
     var quizLaunchDestinationHiddenAt by remember { mutableLongStateOf(0L) }
 
+    fun requestQuizLaunch(origin: QuizLaunchOrigin, label: String, launch: () -> Unit) {
+        if (reduceMotion) {
+            launch()
+        } else if (pendingQuizLaunch == null) {
+            val id = ++quizLaunchCounter
+            quizLaunchDestinationHiddenAt = 0L
+            pendingQuizLaunch = PendingQuizLaunch(id, origin, label, launch)
+        }
+    }
+
     PredictiveBackHandler(enabled = true) { progress ->
         val backTarget = navigationStack.getOrNull(navigationStack.lastIndex - 1)
         // Preview only when the full-screen screen transition is on screen and
@@ -1562,6 +1573,25 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     fun clearChallengePack() {
         activeChallengePackId = null
         lastChallengePackResult = null
+    }
+
+    fun applyCollectionFromLibrary(collection: QuizCollection) {
+        val savedMode = NazoMode.entries.firstOrNull { it.name == collection.mode } ?: return
+        val savedDifficulty = Difficulty.entries.firstOrNull {
+            it.label.equals(collection.difficulty, ignoreCase = true)
+        } ?: return
+        val supportedDifficulty = homeDifficultyForMode(savedMode, savedDifficulty)
+        homeMode = savedMode.name
+        themePrefs.lastMode = savedMode.name
+        homeTopic = collection.topic
+        homeDifficultyName = supportedDifficulty.name
+        when (homeCountControls(savedMode)) {
+            HomeCountControls.Questions -> homeQuestionCount = collection.amount
+            HomeCountControls.Rounds -> guessRounds = collection.amount
+            HomeCountControls.None -> Unit
+        }
+        goHome()
+        Toast.makeText(context, "${quizCollectionHeadline(collection)} setup ready", Toast.LENGTH_SHORT).show()
     }
 
     fun startChallengePack(pack: ChallengePack) {
@@ -2692,17 +2722,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         profilePictureUri = profilePictureUri,
                         onProfileClick = { navigate(Screen.Profile) },
                         onStartQuiz = { topic, difficulty, count -> startQuiz(topic, difficulty, count) },
-                        onLaunchPortal = { origin, label, launch ->
-                            if (reduceMotion) {
-                                // Android Remove animations keeps the launch
-                                // immediate and uses ordinary static navigation.
-                                launch()
-                            } else if (pendingQuizLaunch == null) {
-                                val id = ++quizLaunchCounter
-                                quizLaunchDestinationHiddenAt = 0L
-                                pendingQuizLaunch = PendingQuizLaunch(id, origin, label, launch)
-                            }
-                        },
+                        onLaunchPortal = ::requestQuizLaunch,
                         topic = homeTopic,
                         difficultyName = homeDifficultyName,
                         questionCount = homeQuestionCount,
@@ -2714,15 +2734,10 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         guessingRounds = guessRounds,
                         onGuessingRoundsChange = { guessRounds = it },
                         quizCollections = quizCollections,
-                        challengePacks = ChallengePackCatalog.all,
-                        challengePackProgress = challengePackProgress,
-                        onStartChallengePack = ::startChallengePack,
+                        challengePackCount = ChallengePackCatalog.all.size,
+                        onOpenLibrary = { navigate(Screen.PlayLibrary) },
                         onSaveCollection = { setup: QuizCollectionSetup ->
                             quizCollectionStore.save(setup)
-                            quizCollections = quizCollectionStore.get()
-                        },
-                        onDeleteCollection = { collection: QuizCollection ->
-                            quizCollectionStore.delete(collection.id)
                             quizCollections = quizCollectionStore.get()
                         },
                         onStartGuessing = { topic, difficulty, rounds -> startGuessing(topic, difficulty, rounds) },
@@ -2748,6 +2763,23 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         totalQuizzes = quizStats.totalQuizzes,
                         practiceCount = missedCount,
                         onStartPractice = { startPractice() },
+                    )
+
+                    Screen.PlayLibrary -> PlayLibraryScreen(
+                        packs = ChallengePackCatalog.all,
+                        packProgress = challengePackProgress,
+                        collections = quizCollections,
+                        onStartPack = { pack, origin ->
+                            requestQuizLaunch(origin, "Start ${pack.title}") {
+                                startChallengePack(pack)
+                            }
+                        },
+                        onApplyCollection = ::applyCollectionFromLibrary,
+                        onDeleteCollection = { collection ->
+                            quizCollectionStore.delete(collection.id)
+                            quizCollections = quizCollectionStore.get()
+                        },
+                        onBackClick = { goBack() },
                     )
 
                     Screen.Settings -> SettingsScreen(

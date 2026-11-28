@@ -94,11 +94,8 @@ import kotlin.math.sin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import quiz.thaton3app.nazo.R
-import quiz.thaton3app.nazo.challenge.ChallengePack
-import quiz.thaton3app.nazo.challenge.ChallengePackProgress
 import quiz.thaton3app.nazo.daily.DailyChallenge
 import quiz.thaton3app.nazo.data.LocalQuestionBank
-import quiz.thaton3app.nazo.ui.components.ChallengePackShelf
 import quiz.thaton3app.nazo.ui.components.FriendlyRivalHomeCard
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoSecondaryButton
@@ -177,6 +174,14 @@ internal fun homeLaunchUsesPortal(mode: NazoMode, offline: Boolean): Boolean = w
     NazoMode.BLITZ -> true // Always local, even while the app is online.
     NazoMode.QUIZ, NazoMode.SURVIVAL, NazoMode.VERSUS -> offline
     NazoMode.GUESSING -> false
+}
+
+internal fun homePrimaryLaunchLabel(mode: NazoMode, offline: Boolean): String = when (mode) {
+    NazoMode.GUESSING -> "Start Guessing Game"
+    NazoMode.SURVIVAL -> "Start Survival Run"
+    NazoMode.BLITZ -> "Start 60-Second Blitz"
+    NazoMode.VERSUS -> "Start Versus Match"
+    NazoMode.QUIZ -> if (offline) "Generate Quiz" else "Generate AI Quiz"
 }
 
 internal fun challengeSummary(
@@ -306,11 +311,9 @@ fun HomeScreen(
     guessingRounds: Int = 3,
     onGuessingRoundsChange: (Int) -> Unit = {},
     quizCollections: List<QuizCollection> = emptyList(),
-    challengePacks: List<ChallengePack> = emptyList(),
-    challengePackProgress: List<ChallengePackProgress> = emptyList(),
-    onStartChallengePack: (ChallengePack) -> Unit = {},
+    challengePackCount: Int = 0,
+    onOpenLibrary: () -> Unit = {},
     onSaveCollection: (QuizCollectionSetup) -> Unit = {},
-    onDeleteCollection: (QuizCollection) -> Unit = {},
     onStartGuessing: (topic: String, difficulty: String, rounds: Int) -> Unit = { _, _, _ -> },
     onStartSurvival: (topic: String, difficulty: String) -> Unit = { _, _ -> },
     onStartBlitz: (topic: String, difficulty: String) -> Unit = { _, _ -> },
@@ -353,18 +356,12 @@ fun HomeScreen(
     val collectionLimitReached = !currentSetupSaved &&
         quizCollections.size >= QuizCollectionPolicy.MAX_COLLECTIONS
     val context = LocalContext.current
-    val focusManager = LocalFocusManager.current
     val reduceMotion = rememberSystemReduceMotion()
     val scope = rememberCoroutineScope()
-    var collectionLoadProgress by remember { mutableStateOf<CollectionLoadProgress?>(null) }
-    var lastVisibleCollections by remember { mutableStateOf(quizCollections) }
-    SideEffect {
-        if (quizCollections.isNotEmpty()) lastVisibleCollections = quizCollections
-    }
     var showProviderSheet by remember { mutableStateOf(false) }
     var showModeSheet by remember { mutableStateOf(false) }
+    var showSetupSheet by remember { mutableStateOf(false) }
     var focusPortalOrigin by remember { mutableStateOf<QuizLaunchOrigin?>(null) }
-    var practicePortalOrigin by remember { mutableStateOf<QuizLaunchOrigin?>(null) }
 
     fun launchReadyChallenge(
         origin: QuizLaunchOrigin?,
@@ -375,7 +372,7 @@ fun HomeScreen(
     }
 
     fun launchDailyFromFocus() {
-        if (collectionLoadProgress != null || dailyCompleted) return
+        if (dailyCompleted) return
         launchReadyChallenge(
             origin = focusPortalOrigin,
             label = "Play Daily Ladder",
@@ -384,7 +381,6 @@ fun HomeScreen(
     }
 
     fun launchPersonalizedFocus() {
-        if (collectionLoadProgress != null) return
         when (personalizedFocus.action) {
             HomeFocusAction.Daily -> launchDailyFromFocus()
             HomeFocusAction.Practice -> launchReadyChallenge(
@@ -414,76 +410,9 @@ fun HomeScreen(
         }
     }
 
-    fun applyCollection(collection: QuizCollection) {
-        if (collectionLoadProgress != null) return
-        val savedMode = NazoMode.entries.firstOrNull { it.name == collection.mode } ?: return
-        val savedDifficulty = Difficulty.entries.firstOrNull {
-            it.label.equals(collection.difficulty, ignoreCase = true)
-        } ?: return
-        val supportedDifficulty = homeDifficultyForMode(savedMode, savedDifficulty)
-        fun applyLength() {
-            when (homeCountControls(savedMode)) {
-                HomeCountControls.Questions -> onQuestionCountChange(collection.amount)
-                HomeCountControls.Rounds -> onGuessingRoundsChange(collection.amount)
-                HomeCountControls.None -> Unit
-            }
-        }
-
-        Haptics.light(context)
-        focusManager.clearFocus()
-        if (reduceMotion) {
-            onModeChange(savedMode.name)
-            onTopicChange(collection.topic)
-            onDifficultyChange(supportedDifficulty.name)
-            applyLength()
-            return
-        }
-
-        collectionLoadProgress = CollectionLoadProgress(
-            collection.id,
-            CollectionLoadStep.Mode,
-        )
-        scope.launch {
-            try {
-                onModeChange(savedMode.name)
-                delay(240)
-
-                collectionLoadProgress = CollectionLoadProgress(
-                    collection.id,
-                    CollectionLoadStep.Topic,
-                )
-                onTopicChange("")
-                val topicFrames = collectionTopicRevealFrames(collection.topic)
-                val frameDelay = (520L / topicFrames.size.coerceAtLeast(1)).coerceIn(18L, 48L)
-                topicFrames.forEach { frame ->
-                    onTopicChange(frame)
-                    delay(frameDelay)
-                }
-                delay(80)
-
-                collectionLoadProgress = CollectionLoadProgress(
-                    collection.id,
-                    CollectionLoadStep.Difficulty,
-                )
-                onDifficultyChange(supportedDifficulty.name)
-                delay(240)
-
-                if (homeCountControls(savedMode) != HomeCountControls.None) {
-                    collectionLoadProgress = CollectionLoadProgress(
-                        collection.id,
-                        CollectionLoadStep.Length,
-                    )
-                    applyLength()
-                    delay(180)
-                }
-            } finally {
-                collectionLoadProgress = null
-            }
-        }
-    }
-
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val modeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val setupSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     // Smooth dismiss helpers let each slide-down finish before its sheet unmounts.
     fun dismissSheet(onComplete: () -> Unit = {}) {
@@ -508,7 +437,8 @@ fun HomeScreen(
     val avatarOverscrollEffect = rememberOverscrollEffect()
     val videoAvatarOverscrolling = avatarOverscrollEffect?.isInProgress == true
 
-    // Group 1: Profile, status, personalized focus, and Mode Selection
+    // Home is a launchpad: the custom builder is always ahead of reusable
+    // content. Packs and Collections live one tap away in Play Library.
     val leftContent: @Composable () -> Unit = {
         Spacer(Modifier.height(16.dp))
 
@@ -520,8 +450,7 @@ fun HomeScreen(
             videoAvatarOverscrolling = videoAvatarOverscrolling,
         )
 
-        Spacer(Modifier.height(14.dp))
-
+        Spacer(Modifier.height(10.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -547,14 +476,54 @@ fun HomeScreen(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(14.dp))
+        HomeGameLaunchpad(
+            mode = nazoMode,
+            topic = topic,
+            difficulty = difficulty,
+            questionCount = questionCount,
+            guessingRounds = guessingRounds,
+            sparkleStyle = sparkleStyle,
+            offline = offline,
+            setupSaved = currentSetupSaved,
+            collectionLimitReached = collectionLimitReached,
+            rivalGhost = rivalGhost,
+            onModeClick = {
+                Haptics.light(context)
+                showModeSheet = true
+            },
+            onSetupClick = {
+                Haptics.light(context)
+                showSetupSheet = true
+            },
+            onTopicChange = onTopicChange,
+            onSaveSetup = {
+                if (!currentSetupSaved && !collectionLimitReached) {
+                    Haptics.light(context)
+                    onSaveCollection(currentCollectionSetup)
+                }
+            },
+            onLaunchPortal = onLaunchPortal,
+            onStart = {
+                when (nazoMode) {
+                    NazoMode.GUESSING -> onStartGuessing(topic, difficulty.label, guessingRounds)
+                    NazoMode.SURVIVAL -> onStartSurvival(topic, difficulty.label)
+                    NazoMode.BLITZ -> onStartBlitz(topic, difficulty.label)
+                    NazoMode.VERSUS -> onStartVersus(topic, difficulty.label, questionCount)
+                    else -> onStartQuiz(topic, difficulty.label, questionCount)
+                }
+            },
+        )
+    }
 
+    val rightContent: @Composable () -> Unit = {
+        if (landscape) Spacer(Modifier.height(16.dp))
         PersonalizedHomeFocusCard(
             focus = personalizedFocus,
             dailyCompleted = dailyCompleted,
             dailyScore = dailyScore,
             dailyBonus = dailyBonus,
-            enabled = collectionLoadProgress == null,
+            enabled = true,
             motionAllowed = !reduceMotion,
             onPrimaryClick = ::launchPersonalizedFocus,
             onDailyClick = ::launchDailyFromFocus,
@@ -563,227 +532,24 @@ fun HomeScreen(
             },
         )
 
-        Spacer(Modifier.height(16.dp))
-
-        SectionLabel("MODE")
-        Spacer(Modifier.height(8.dp))
-
-        // This identity card is now the sole mode picker on Home. Tapping it
-        // opens the richer bottom sheet; there is no second dropdown competing
-        // with the mode's personality or repeating the same selection.
-        AnimatedContent(
-            targetState = nazoMode,
-            transitionSpec = {
-                if (reduceMotion) {
-                    fadeIn(tween(90)) togetherWith fadeOut(tween(70))
-                } else {
-                    (slideInVertically(spring(stiffness = Spring.StiffnessMediumLow)) { it / 4 } + fadeIn())
-                        .togetherWith(slideOutVertically { -it / 4 } + fadeOut())
-                }
-            },
-            label = "modeIdentity",
-        ) { selectedMode ->
-            ModeIdentityCard(
-                mode = selectedMode,
-                onClick = {
-                    Haptics.light(context)
-                    showModeSheet = true
-                },
-            )
-        }
-    }
-
-    // Group 2: Topic, Difficulty, Rounds/Questions, and the Generate Button
-    val rightContent: @Composable () -> Unit = {
-        // Top alignment spacer for landscape
-        if (landscape) Spacer(Modifier.height(16.dp))
-
-        if (challengePacks.isNotEmpty()) {
-            ChallengePackShelf(
-                packs = challengePacks,
-                progress = challengePackProgress,
-                motionAllowed = !reduceMotion,
-                onStart = { pack, origin ->
-                    if (collectionLoadProgress == null) {
-                        Haptics.light(context)
-                        onLaunchPortal(origin, "Start ${pack.title}") {
-                            onStartChallengePack(pack)
-                        }
-                    }
-                },
-            )
-            Spacer(Modifier.height(16.dp))
-        }
-
-        val displayedCollections = if (quizCollections.isNotEmpty()) {
-            quizCollections
-        } else {
-            lastVisibleCollections
-        }
-        AnimatedVisibility(
-            visible = quizCollections.isNotEmpty(),
-            enter = if (reduceMotion) {
-                fadeIn(tween(90))
-            } else {
-                fadeIn(tween(180, easing = FastOutSlowInEasing)) +
-                    expandVertically(
-                        expandFrom = Alignment.Top,
-                        animationSpec = tween(300, easing = FastOutSlowInEasing),
-                    )
-            },
-            exit = if (reduceMotion) {
-                fadeOut(tween(70))
-            } else {
-                fadeOut(tween(150, easing = FastOutSlowInEasing)) +
-                    shrinkVertically(
-                        shrinkTowards = Alignment.Top,
-                        animationSpec = tween(280, easing = FastOutSlowInEasing),
-                    )
-            },
-            label = "quizCollectionsShelfVisibility",
-        ) {
-            Column(Modifier.fillMaxWidth()) {
-                QuizCollectionsShelf(
-                    collections = displayedCollections,
-                    motionAllowed = !reduceMotion,
-                    loadProgress = collectionLoadProgress,
-                    onApply = ::applyCollection,
-                    onDelete = { collection ->
-                        if (collectionLoadProgress == null) {
-                            Haptics.light(context)
-                            onDeleteCollection(collection)
-                        }
-                    },
-                )
-                Spacer(Modifier.height(16.dp))
-            }
-        }
-
-        TopicInputCard(topic = topic, onTopicChange = onTopicChange)
-
-        Spacer(Modifier.height(16.dp))
-
-        ChallengeSetupCard(
-            mode = nazoMode,
-            difficulty = difficulty,
-            questionCount = questionCount,
-            guessingRounds = guessingRounds,
-            reduceMotion = reduceMotion,
-            setupSaved = currentSetupSaved,
-            collectionLimitReached = collectionLimitReached,
-            collectionLoading = collectionLoadProgress != null,
-            onSaveSetup = {
-                if (!currentSetupSaved && !collectionLimitReached && collectionLoadProgress == null) {
-                    Haptics.light(context)
-                    onSaveCollection(currentCollectionSetup)
-                }
-            },
-            onDifficultySelected = { level ->
-                if (difficulty != level) Haptics.light(context)
-                onDifficultyChange(level.name)
-            },
-            onQuestionCountSelected = { count ->
-                if (questionCount != count) Haptics.light(context)
-                onQuestionCountChange(count)
-            },
-            onGuessingRoundsSelected = { count ->
-                if (guessingRounds != count) Haptics.light(context)
-                onGuessingRoundsChange(count)
-            },
-        )
-
-        AnimatedVisibility(
-            visible = rivalGhost != null && nazoMode == NazoMode.QUIZ,
-            enter = fadeIn(tween(if (reduceMotion) 90 else 180)) +
-                expandVertically(
-                    expandFrom = Alignment.Top,
-                    animationSpec = tween(if (reduceMotion) 1 else 240),
-                ),
-            exit = fadeOut(tween(if (reduceMotion) 70 else 140)) +
-                shrinkVertically(
-                    shrinkTowards = Alignment.Top,
-                    animationSpec = tween(if (reduceMotion) 1 else 200),
-                ),
-            label = "friendlyRivalVisibility",
-        ) {
-            rivalGhost?.let { ghost ->
-                Column(Modifier.fillMaxWidth()) {
-                    Spacer(Modifier.height(14.dp))
-                    FriendlyRivalHomeCard(profile = ghost)
-                }
-            }
-        }
-
-        AnimatedVisibility(
-            visible = homePracticeVisible(
-                mode = nazoMode,
-                practiceCount = practiceCount,
-                focusAction = personalizedFocus.action,
-            ),
-            enter = if (reduceMotion) {
-                fadeIn(tween(90))
-            } else {
-                fadeIn(tween(180, easing = FastOutSlowInEasing)) +
-                    expandVertically(
-                        expandFrom = Alignment.Top,
-                        animationSpec = tween(240, easing = FastOutSlowInEasing),
-                    )
-            },
-            exit = if (reduceMotion) {
-                fadeOut(tween(70))
-            } else {
-                fadeOut(tween(140, easing = FastOutSlowInEasing)) +
-                    shrinkVertically(
-                        shrinkTowards = Alignment.Top,
-                        animationSpec = tween(220, easing = FastOutSlowInEasing),
-                    )
-            },
-            label = "homePracticeVisibility",
-        ) {
-            Column(Modifier.fillMaxWidth()) {
-                Spacer(Modifier.height(14.dp))
-                PracticeMissesButton(
+        Spacer(Modifier.height(12.dp))
+        HomeQuickPaths(
+            challengePackCount = challengePackCount,
+            collectionCount = quizCollections.size,
+            practiceCount = practiceCount.takeIf {
+                homePracticeVisible(
+                    mode = nazoMode,
                     practiceCount = practiceCount,
-                    onClick = {
-                        launchReadyChallenge(
-                            origin = practicePortalOrigin,
-                            label = "Practice your misses",
-                            launch = onStartPractice,
-                        )
-                    },
-                    modifier = Modifier.onGloballyPositioned { coordinates ->
-                        practicePortalOrigin = QuizLaunchOrigin.from(coordinates.boundsInRoot())
-                    },
+                    focusAction = personalizedFocus.action,
                 )
-            }
-        }
-
-        Spacer(Modifier.height(20.dp))
-
-        GenerateButton(
-            sparkleStyle = sparkleStyle,
-            portalEnabled = homeLaunchUsesPortal(nazoMode, offline),
-            onLaunchPortal = onLaunchPortal,
-            enabled = collectionLoadProgress == null,
-            label = if (collectionLoadProgress != null) {
-                "Applying saved setup…"
-            } else {
-                when (nazoMode) {
-                    NazoMode.GUESSING -> "Start Guessing Game"
-                    NazoMode.SURVIVAL -> "Start Survival Run"
-                    NazoMode.BLITZ -> "Start 60-Second Blitz"
-                    NazoMode.VERSUS -> "Start Versus Match"
-                    else -> if (offline) "Generate Quiz" else "Generate AI Quiz"
-                }
-            },
-            onClick = {
-                when (nazoMode) {
-                    NazoMode.GUESSING -> onStartGuessing(topic, difficulty.label, guessingRounds)
-                    NazoMode.SURVIVAL -> onStartSurvival(topic, difficulty.label)
-                    NazoMode.BLITZ -> onStartBlitz(topic, difficulty.label)
-                    NazoMode.VERSUS -> onStartVersus(topic, difficulty.label, questionCount)
-                    else -> onStartQuiz(topic, difficulty.label, questionCount)
-                }
+            } ?: 0,
+            onOpenLibrary = onOpenLibrary,
+            onPractice = { origin ->
+                launchReadyChallenge(
+                    origin = origin,
+                    label = "Practice your misses",
+                    launch = onStartPractice,
+                )
             },
         )
         Spacer(Modifier.height(16.dp))
@@ -908,6 +674,99 @@ fun HomeScreen(
                         )
                     }
                     Spacer(Modifier.height(16.dp))
+                }
+            }
+        }
+
+        if (showSetupSheet) {
+            NazoModalSheet(
+                onDismissRequest = { showSetupSheet = false },
+                sheetState = setupSheetState,
+            ) {
+                NazoSheetColumn {
+                    NazoSheetHeader(
+                        icon = Icons.Filled.Tune,
+                        title = "Difficulty & length",
+                        subtitle = challengeSummary(
+                            nazoMode,
+                            difficulty,
+                            questionCount,
+                            guessingRounds,
+                        ),
+                    )
+                    Spacer(Modifier.height(18.dp))
+                    ChallengeGroupLabel(
+                        title = "DIFFICULTY",
+                        supporting = if (adaptiveDifficultyAvailable(nazoMode)) {
+                            "Fixed or responsive"
+                        } else {
+                            "Choose your pace"
+                        },
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    ChallengeDifficultyRail(
+                        mode = nazoMode,
+                        selected = difficulty,
+                        onSelected = { level ->
+                            if (difficulty != level) Haptics.light(context)
+                            onDifficultyChange(level.name)
+                        },
+                    )
+                    when (homeCountControls(nazoMode)) {
+                        HomeCountControls.Questions -> ChallengeCountGroup(
+                            title = "QUESTIONS",
+                            supporting = "Pick a run length",
+                            values = listOf(5, 10, 15),
+                            selected = questionCount,
+                            captions = listOf("Quick", "Standard", "Long"),
+                            onSelected = { value ->
+                                if (questionCount != value) Haptics.light(context)
+                                onQuestionCountChange(value)
+                            },
+                        )
+                        HomeCountControls.Rounds -> ChallengeCountGroup(
+                            title = "ROUNDS",
+                            supporting = "Choose your session",
+                            values = listOf(1, 3, 5),
+                            selected = guessingRounds,
+                            captions = listOf("Quick", "Standard", "Marathon"),
+                            onSelected = { value ->
+                                if (guessingRounds != value) Haptics.light(context)
+                                onGuessingRoundsChange(value)
+                            },
+                        )
+                        HomeCountControls.None -> Unit
+                    }
+                    Spacer(Modifier.height(18.dp))
+                    val doneInteraction = remember { MutableInteractionSource() }
+                    val doneShape = rememberNazoRoundedCornerMorphShape(
+                        interactionSource = doneInteraction,
+                        restingCorner = 16.dp,
+                        pressedCorner = 8.dp,
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .clip(doneShape)
+                            .background(NazoPrimary, doneShape)
+                            .clickable(
+                                interactionSource = doneInteraction,
+                                indication = LocalIndication.current,
+                            ) {
+                                Haptics.light(context)
+                                showSetupSheet = false
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "Done",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = NazoOnPrimary,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    Spacer(Modifier.height(14.dp))
                 }
             }
         }
@@ -2004,6 +1863,425 @@ private fun SectionLabel(text: String) {
         letterSpacing = 1.sp,
         modifier = Modifier.padding(start = 4.dp)
     )
+}
+
+@Composable
+private fun HomeGameLaunchpad(
+    mode: NazoMode,
+    topic: String,
+    difficulty: Difficulty,
+    questionCount: Int,
+    guessingRounds: Int,
+    sparkleStyle: String,
+    offline: Boolean,
+    setupSaved: Boolean,
+    collectionLimitReached: Boolean,
+    rivalGhost: RivalGhostProfile?,
+    onModeClick: () -> Unit,
+    onSetupClick: () -> Unit,
+    onTopicChange: (String) -> Unit,
+    onSaveSetup: () -> Unit,
+    onLaunchPortal: (QuizLaunchOrigin, String, () -> Unit) -> Unit,
+    onStart: () -> Unit,
+) {
+    val identity = modeIdentitySpec(mode)
+    val cardShape = RoundedCornerShape(26.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(NazoSurface, cardShape)
+            .border(1.dp, NazoPrimary.copy(alpha = 0.24f), cardShape)
+            .padding(14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .background(NazoPrimary.copy(alpha = 0.14f), RoundedCornerShape(14.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.SportsEsports,
+                    contentDescription = null,
+                    tint = NazoPrimary,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Spacer(Modifier.width(11.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "CREATE A GAME",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoPrimary,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 1.1.sp,
+                )
+                Text(
+                    text = "Everything needed to start",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NazoTextSecondary,
+                )
+            }
+            SaveSetupButton(
+                saved = setupSaved,
+                limitReached = collectionLimitReached,
+                loading = false,
+                onClick = onSaveSetup,
+            )
+        }
+
+        Spacer(Modifier.height(11.dp))
+        CompactLaunchpadSelector(
+            icon = MODE_ICONS[mode] ?: Icons.Filled.Quiz,
+            eyebrow = "MODE",
+            title = mode.label,
+            supporting = identity.eyebrow,
+            contentDescription = "Change game mode",
+            onClick = onModeClick,
+        )
+
+        Spacer(Modifier.height(9.dp))
+        CompactTopicField(topic = topic, onTopicChange = onTopicChange)
+
+        Spacer(Modifier.height(9.dp))
+        CompactLaunchpadSelector(
+            icon = Icons.Filled.Tune,
+            eyebrow = "DIFFICULTY & LENGTH",
+            title = challengeSummary(mode, difficulty, questionCount, guessingRounds),
+            supporting = "Tap to adjust",
+            contentDescription = "Change difficulty and game length",
+            onClick = onSetupClick,
+        )
+
+        if (rivalGhost != null && mode == NazoMode.QUIZ) {
+            Spacer(Modifier.height(9.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(NazoPrimary.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Flag,
+                    contentDescription = null,
+                    tint = NazoPrimary,
+                    modifier = Modifier.size(17.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Friendly rival target",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = NazoTextSecondary,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = "${rivalGhost.correct}/${rivalGhost.totalQuestions}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = NazoPrimary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        GenerateButton(
+            label = homePrimaryLaunchLabel(mode, offline),
+            sparkleStyle = sparkleStyle,
+            portalEnabled = homeLaunchUsesPortal(mode, offline),
+            onLaunchPortal = onLaunchPortal,
+            onClick = onStart,
+        )
+    }
+}
+
+@Composable
+private fun CompactLaunchpadSelector(
+    icon: ImageVector,
+    eyebrow: String,
+    title: String,
+    supporting: String,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interaction,
+        restingCorner = 17.dp,
+        pressedCorner = 8.dp,
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 58.dp)
+            .clip(shape)
+            .background(NazoSurfaceVariant, shape)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.10f), shape)
+            .clickable(
+                interactionSource = interaction,
+                indication = LocalIndication.current,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .semantics { this.contentDescription = contentDescription }
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .background(NazoPrimary.copy(alpha = 0.12f), RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = NazoPrimary, modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = eyebrow,
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoTextSecondary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.7.sp,
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = NazoTextPrimary,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+            )
+            Text(
+                text = supporting,
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoTextSecondary,
+                maxLines = 1,
+            )
+        }
+        Icon(
+            imageVector = Icons.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = NazoTextSecondary,
+        )
+    }
+}
+
+@Composable
+private fun CompactTopicField(topic: String, onTopicChange: (String) -> Unit) {
+    val focusManager = LocalFocusManager.current
+    val allSuggestions = remember { LocalQuestionBank.suggestions() }
+    val suggestions = remember(topic, allSuggestions) {
+        homeTopicSuggestions(topic, allSuggestions)
+    }
+    var focused by remember { mutableStateOf(false) }
+    val fieldShape = RoundedCornerShape(17.dp)
+    Column {
+        BasicTextField(
+            value = topic,
+            onValueChange = onTopicChange,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Words,
+                keyboardType = KeyboardType.Text,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                color = NazoTextPrimary,
+                fontWeight = FontWeight.SemiBold,
+            ),
+            cursorBrush = SolidColor(NazoPrimary),
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics { contentDescription = "Challenge topic, optional" }
+                .onFocusChanged { focused = it.isFocused },
+            decorationBox = { innerField ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = 58.dp)
+                        .background(
+                            if (focused) NazoPrimary.copy(alpha = 0.09f) else NazoSurfaceVariant,
+                            fieldShape,
+                        )
+                        .border(
+                            1.dp,
+                            if (focused) NazoPrimary.copy(alpha = 0.46f)
+                            else NazoTextSecondary.copy(alpha = 0.10f),
+                            fieldShape,
+                        )
+                        .padding(start = 13.dp, end = 7.dp, top = 7.dp, bottom = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = null,
+                        tint = if (focused) NazoPrimary else NazoTextSecondary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "TOPIC • OPTIONAL",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (focused) NazoPrimary else NazoTextSecondary,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.6.sp,
+                        )
+                        Box {
+                            if (topic.isEmpty()) {
+                                Text(
+                                    text = "Anime, character, arc, or mixed",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = NazoTextSecondary,
+                                    maxLines = 1,
+                                )
+                            }
+                            innerField()
+                        }
+                    }
+                    if (topic.isNotEmpty()) {
+                        IconButton(
+                            onClick = { onTopicChange("") },
+                            modifier = Modifier.size(42.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Clear topic",
+                                tint = NazoTextSecondary,
+                                modifier = Modifier.size(17.dp),
+                            )
+                        }
+                    }
+                }
+            },
+        )
+        AnimatedVisibility(
+            visible = focused && suggestions.isNotEmpty(),
+            enter = fadeIn(tween(120)) + expandVertically(tween(170)),
+            exit = fadeOut(tween(90)) + shrinkVertically(tween(130)),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 7.dp)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                suggestions.take(6).forEach { suggestion ->
+                    TopicSuggestionChip(
+                        suggestion = suggestion,
+                        onClick = {
+                            onTopicChange(suggestion)
+                            focusManager.clearFocus()
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeQuickPaths(
+    challengePackCount: Int,
+    collectionCount: Int,
+    practiceCount: Int,
+    onOpenLibrary: () -> Unit,
+    onPractice: (QuizLaunchOrigin) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        if (practiceCount > 0) {
+            var practiceBounds by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
+            HomeQuickPathCard(
+                icon = Icons.Filled.School,
+                eyebrow = "PRACTICE",
+                title = "$practiceCount misses",
+                contentDescription = "Practice $practiceCount missed questions",
+                onClick = { onPractice(QuizLaunchOrigin.from(practiceBounds)) },
+                modifier = Modifier
+                    .weight(1f)
+                    .onGloballyPositioned { practiceBounds = it.boundsInRoot() },
+            )
+        }
+        HomeQuickPathCard(
+            icon = Icons.Filled.CollectionsBookmark,
+            eyebrow = "PLAY LIBRARY",
+            title = "$challengePackCount curated • $collectionCount saved",
+            contentDescription = "Open Play Library",
+            onClick = onOpenLibrary,
+            modifier = Modifier.weight(if (practiceCount > 0) 1f else 2f),
+        )
+    }
+}
+
+@Composable
+private fun HomeQuickPathCard(
+    icon: ImageVector,
+    eyebrow: String,
+    title: String,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val shape = rememberNazoRoundedCornerMorphShape(
+        interactionSource = interaction,
+        restingCorner = 19.dp,
+        pressedCorner = 9.dp,
+    )
+    Row(
+        modifier = modifier
+            .defaultMinSize(minHeight = 64.dp)
+            .clip(shape)
+            .background(NazoSurface, shape)
+            .border(1.dp, NazoPrimary.copy(alpha = 0.22f), shape)
+            .clickable(
+                interactionSource = interaction,
+                indication = LocalIndication.current,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .semantics { this.contentDescription = contentDescription }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .background(NazoPrimary.copy(alpha = 0.12f), RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = NazoPrimary, modifier = Modifier.size(19.dp))
+        }
+        Spacer(Modifier.width(9.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = eyebrow,
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoPrimary,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.6.sp,
+                maxLines = 1,
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelMedium,
+                color = NazoTextSecondary,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+            )
+        }
+        Icon(
+            imageVector = Icons.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = NazoTextSecondary,
+            modifier = Modifier.size(18.dp),
+        )
+    }
 }
 
 @Composable

@@ -135,6 +135,16 @@ class HomeModeControlsTest {
     }
 
     @Test
+    fun compactLaunchpadKeepsEveryModesPrimaryActionExplicit() {
+        assertEquals("Generate AI Quiz", homePrimaryLaunchLabel(NazoMode.QUIZ, offline = false))
+        assertEquals("Generate Quiz", homePrimaryLaunchLabel(NazoMode.QUIZ, offline = true))
+        assertEquals("Start Guessing Game", homePrimaryLaunchLabel(NazoMode.GUESSING, false))
+        assertEquals("Start Survival Run", homePrimaryLaunchLabel(NazoMode.SURVIVAL, false))
+        assertEquals("Start 60-Second Blitz", homePrimaryLaunchLabel(NazoMode.BLITZ, false))
+        assertEquals("Start Versus Match", homePrimaryLaunchLabel(NazoMode.VERSUS, false))
+    }
+
+    @Test
     fun challengeSummaryAlwaysReflectsTheVisibleModeSpecificChoice() {
         assertEquals(
             "Medium • 10 questions",
