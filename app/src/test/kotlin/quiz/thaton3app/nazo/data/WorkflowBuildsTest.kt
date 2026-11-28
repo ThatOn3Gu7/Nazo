@@ -9,7 +9,7 @@ import org.junit.Test
 class WorkflowBuildsTest {
 
     @Test
-    fun catalogKeepsSuccessfulRunsAndJoinsOnlyKnownApkArtifacts() {
+    fun catalogKeepsSuccessfulRunsAndJoinsOnlyMatchingPublicSnapshots() {
         val runs = """
             {
               "workflow_runs": [
@@ -38,37 +38,24 @@ class WorkflowBuildsTest {
               ]
             }
         """.trimIndent()
-        val artifacts = """
+        val snapshots = """
             {
-              "artifacts": [
-                {
-                  "id": 501,
-                  "name": "nazo-debug-apk",
-                  "size_in_bytes": 30000000,
-                  "expired": false,
-                  "expires_at": "2026-11-18T10:00:00Z",
-                  "workflow_run": { "id": 101 }
-                },
+              "assets": [
                 {
                   "id": 500,
-                  "name": "nazo-release-apk",
-                  "size_in_bytes": 8000000,
-                  "expired": false,
-                  "expires_at": "2026-11-18T10:00:00Z",
-                  "workflow_run": { "id": 101 }
+                  "name": "Nazo-workflow-101-aaaaaaa.zip",
+                  "size": 8000000
                 },
                 {
                   "id": 999,
-                  "name": "unrelated-report",
-                  "size_in_bytes": 10,
-                  "expired": false,
-                  "workflow_run": { "id": 101 }
+                  "name": "unrelated-report.txt",
+                  "size": 10
                 }
               ]
             }
         """.trimIndent()
 
-        val catalog = parseWorkflowBuildCatalog("ThatOn3Gu7/Nazo", runs, artifacts)
+        val catalog = parseWorkflowBuildCatalog("ThatOn3Gu7/Nazo", runs, snapshots)
 
         assertEquals(1, catalog.size)
         val build = catalog.single()
@@ -80,11 +67,21 @@ class WorkflowBuildsTest {
         )
         assertEquals(WORKFLOW_RELEASE_ARTIFACT, build.artifacts.first().name)
         assertEquals(500L, build.releaseArtifact()?.artifactId)
-        assertEquals(501L, build.debugArtifact()?.artifactId)
         assertEquals(
-            "https://api.github.com/repos/ThatOn3Gu7/Nazo/actions/artifacts/500/zip",
+            "https://github.com/ThatOn3Gu7/Nazo/releases/download/workflow-snapshots/" +
+                "Nazo-workflow-101-aaaaaaa.zip",
             build.releaseArtifact()?.downloadUrl,
         )
+    }
+
+    @Test
+    fun cacheIsFreshOnlyInsideTheBoundedForwardMovingWindow() {
+        val cachedAt = 1_000_000L
+        assertTrue(workflowCacheIsFresh(cachedAt, cachedAt))
+        assertTrue(workflowCacheIsFresh(cachedAt, cachedAt + WORKFLOW_CACHE_MAX_AGE_MS))
+        assertFalse(workflowCacheIsFresh(cachedAt, cachedAt + WORKFLOW_CACHE_MAX_AGE_MS + 1L))
+        assertFalse(workflowCacheIsFresh(cachedAt, cachedAt - 1L))
+        assertFalse(workflowCacheIsFresh(0L, cachedAt))
     }
 
     @Test

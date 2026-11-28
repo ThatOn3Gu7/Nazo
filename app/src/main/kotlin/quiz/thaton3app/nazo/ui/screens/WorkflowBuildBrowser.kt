@@ -53,11 +53,9 @@ import androidx.compose.ui.unit.dp
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
-import quiz.thaton3app.nazo.data.WORKFLOW_DEBUG_ARTIFACT
-import quiz.thaton3app.nazo.data.WORKFLOW_RELEASE_ARTIFACT
 import quiz.thaton3app.nazo.data.WorkflowBuild
 import quiz.thaton3app.nazo.data.WorkflowBuildArtifact
-import quiz.thaton3app.nazo.data.debugArtifact
+import quiz.thaton3app.nazo.data.WorkflowBuildCatalog
 import quiz.thaton3app.nazo.data.newestInstallableWorkflowBuild
 import quiz.thaton3app.nazo.data.releaseArtifact
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
@@ -77,7 +75,7 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 internal sealed interface WorkflowCatalogState {
     data object Idle : WorkflowCatalogState
     data object Loading : WorkflowCatalogState
-    data class Loaded(val builds: List<WorkflowBuild>) : WorkflowCatalogState
+    data class Loaded(val catalog: WorkflowBuildCatalog) : WorkflowCatalogState
     data class Failed(val message: String) : WorkflowCatalogState
 }
 
@@ -142,8 +140,9 @@ internal fun WorkflowBuildBrowserContent(
                 )
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    text = "Tester snapshots may be less stable. Nazo verifies the package, " +
-                        "signing certificate, and version code before opening Android's installer.",
+                    text = "Tester snapshots may be less stable. Only signed release APKs are " +
+                        "mirrored publicly; Nazo verifies the package, signing certificate, and " +
+                        "version code before opening Android's installer.",
                     style = MaterialTheme.typography.bodySmall,
                     color = NazoTextPrimary,
                 )
@@ -162,7 +161,8 @@ internal fun WorkflowBuildBrowserContent(
             )
 
             is WorkflowCatalogState.Loaded -> {
-                val builds = catalogState.builds
+                val catalog = catalogState.catalog
+                val builds = catalog.builds
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -175,9 +175,16 @@ internal fun WorkflowBuildBrowserContent(
                             fontWeight = FontWeight.Bold,
                         )
                         Text(
-                            text = "${builds.size} recent compile checks",
+                            text = when {
+                                catalog.stale ->
+                                    "${builds.size} cached runs · GitHub temporarily unavailable"
+                                catalog.fromCache ->
+                                    "${builds.size} cached runs · checked " +
+                                        formatWorkflowCacheTime(catalog.fetchedAtMillis)
+                                else -> "${builds.size} runs · just refreshed"
+                            },
                             style = MaterialTheme.typography.bodySmall,
-                            color = NazoTextSecondary,
+                            color = if (catalog.stale) NazoError else NazoTextSecondary,
                         )
                     }
                     NazoSecondaryButton(
@@ -229,8 +236,10 @@ internal fun WorkflowBuildBrowserContent(
 
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "GitHub currently retains these workflow artifacts for 14 days. " +
-                        "An expired snapshot cannot be recovered without rebuilding its commit.",
+                    text = "Nazo's public installer mirror keeps the newest 30 signed snapshots. " +
+                        "Original Actions archives still require GitHub sign-in, so Nazo never " +
+                        "stores an account token. A pruned snapshot cannot be recovered without " +
+                        "rebuilding its commit.",
                     style = MaterialTheme.typography.bodySmall,
                     color = NazoTextSecondary,
                 )
@@ -404,7 +413,7 @@ private fun WorkflowBuildCard(
                 label = when {
                     installed -> "INSTALLED"
                     releaseAvailable -> "AVAILABLE"
-                    else -> "EXPIRED"
+                    else -> "UNAVAILABLE"
                 },
                 positive = installed || releaseAvailable,
             )
@@ -422,7 +431,6 @@ private fun WorkflowBuildCard(
                 WorkflowArtifactDetails(
                     build = build,
                     releaseArtifact = releaseArtifact,
-                    debugArtifact = build.debugArtifact(),
                     installState = installState,
                     newestAvailable = newestAvailable,
                     installed = installed,
@@ -457,7 +465,6 @@ private fun WorkflowAvailabilityBadge(label: String, positive: Boolean) {
 private fun WorkflowArtifactDetails(
     build: WorkflowBuild,
     releaseArtifact: WorkflowBuildArtifact?,
-    debugArtifact: WorkflowBuildArtifact?,
     installState: WorkflowInstallState,
     newestAvailable: WorkflowBuild?,
     installed: Boolean,
@@ -477,30 +484,14 @@ private fun WorkflowArtifactDetails(
 
     if (releaseArtifact != null) {
         ArtifactSummary(
-            title = "Release APK",
-            subtitle = buildString {
-                append(formatWorkflowBytes(releaseArtifact.sizeBytes))
-                if (releaseArtifact.expired) {
-                    append(" · expired")
-                } else if (releaseArtifact.expiresAt.isNotBlank()) {
-                    append(" · expires ${formatWorkflowTime(releaseArtifact.expiresAt)}")
-                }
-            },
+            title = "Signed release snapshot",
+            subtitle = "${formatWorkflowBytes(releaseArtifact.sizeBytes)} · public installer mirror",
             compatible = !releaseArtifact.expired,
         )
     } else {
         ArtifactSummary(
-            title = "Release APK unavailable",
-            subtitle = "GitHub has removed it or this run did not upload one",
-            compatible = false,
-        )
-    }
-
-    if (debugArtifact != null) {
-        Spacer(Modifier.height(8.dp))
-        ArtifactSummary(
-            title = "Debug APK",
-            subtitle = "$WORKFLOW_DEBUG_ARTIFACT · cannot replace a release installation",
+            title = "Public snapshot unavailable",
+            subtitle = "This predates the mirror or has been pruned from its newest 30 builds",
             compatible = false,
         )
     }
@@ -666,10 +657,11 @@ private fun WorkflowArtifactDetails(
         Text("View Workflow on GitHub")
     }
 
-    if (debugArtifact == null && releaseArtifact == null) {
+    if (releaseArtifact == null) {
         Spacer(Modifier.height(6.dp))
         Text(
-            text = "No APK artifacts remain for this successful run.",
+            text = "The original Actions archive may still exist, but GitHub returns HTTP 401 " +
+                "without an authenticated account. Nazo intentionally does not request one.",
             style = MaterialTheme.typography.labelSmall,
             color = NazoTextSecondary,
         )
@@ -721,6 +713,11 @@ internal fun formatWorkflowBytes(bytes: Long): String = when {
     bytes >= 1024L -> String.format(Locale.US, "%.1f KB", bytes / 1024f)
     else -> "$bytes B"
 }
+
+internal fun formatWorkflowCacheTime(timestampMillis: Long): String = runCatching {
+    val output = SimpleDateFormat("HH:mm", Locale.getDefault())
+    output.format(java.util.Date(timestampMillis))
+}.getOrElse { "earlier" }
 
 internal fun formatWorkflowTime(raw: String): String {
     if (raw.isBlank()) return "Unknown time"

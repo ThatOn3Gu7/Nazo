@@ -1,5 +1,6 @@
 package quiz.thaton3app.nazo.data
 
+import android.content.Context
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -10,10 +11,18 @@ import org.json.JSONObject
 
 const val WORKFLOW_BUILD_FILE = "PR-assemble.yml"
 const val WORKFLOW_RELEASE_ARTIFACT = "nazo-release-apk"
-const val WORKFLOW_DEBUG_ARTIFACT = "nazo-debug-apk"
+const val WORKFLOW_SNAPSHOT_TAG = "workflow-snapshots"
 private const val WORKFLOW_RUN_LIMIT = 30
+private const val WORKFLOW_CACHE_PREFS = "nazo_workflow_build_cache"
+private const val CACHE_RUNS_JSON = "runs_json"
+private const val CACHE_SNAPSHOTS_JSON = "snapshots_json"
+private const val CACHE_FETCHED_AT = "fetched_at"
+internal const val WORKFLOW_CACHE_MAX_AGE_MS = 15L * 60L * 1_000L
+private val WORKFLOW_SNAPSHOT_NAME =
+    Regex("^Nazo-workflow-(\\d+)-([0-9a-fA-F]{7,40})\\.zip$")
+private val COMMIT_SHA = Regex("[0-9a-fA-F]{40}")
 
-/** One successful compile-check run that can have short-lived APK artifacts. */
+/** One successful compile-check run and its optional public installer snapshot. */
 data class WorkflowBuild(
     val runId: Long,
     val runNumber: Long,
@@ -35,29 +44,110 @@ data class WorkflowBuildArtifact(
     val downloadUrl: String,
 )
 
-/**
- * Loads recent successful compile-checks and joins them with their artifacts.
- *
- * This is deliberately manual-only. Release/beta update scheduling remains on
- * the Releases API, while this catalog is opened explicitly by a tester.
- */
-suspend fun fetchWorkflowBuilds(
+data class WorkflowBuildCatalog(
+    val builds: List<WorkflowBuild>,
+    val fetchedAtMillis: Long,
+    val fromCache: Boolean,
+    val stale: Boolean,
+)
+
+/** Reads the small cached catalog synchronously so reopening About paints immediately. */
+fun readCachedWorkflowBuildCatalog(
+    context: Context,
     repo: String = GITHUB_REPO,
-): List<WorkflowBuild> = withContext(Dispatchers.IO) {
-    val encodedWorkflow = WORKFLOW_BUILD_FILE.replace("/", "%2F")
-    val runsUrl = "https://api.github.com/repos/$repo/actions/workflows/" +
-        "$encodedWorkflow/runs?status=success&per_page=$WORKFLOW_RUN_LIMIT"
-    val artifactsUrl = "https://api.github.com/repos/$repo/actions/artifacts?per_page=100"
-    val runsJson = fetchGithubJson(runsUrl)
-    val artifactsJson = fetchGithubJson(artifactsUrl)
-    parseWorkflowBuildCatalog(
-        repo = repo,
-        runsJson = runsJson,
-        artifactsJson = artifactsJson,
+    nowMillis: Long = System.currentTimeMillis(),
+): WorkflowBuildCatalog? {
+    val prefs = context.applicationContext.getSharedPreferences(
+        WORKFLOW_CACHE_PREFS,
+        Context.MODE_PRIVATE,
     )
+    val runs = prefs.getString(CACHE_RUNS_JSON, null)?.takeIf { it.isNotBlank() } ?: return null
+    val snapshots = prefs.getString(CACHE_SNAPSHOTS_JSON, null)
+        ?.takeIf { it.isNotBlank() } ?: return null
+    val fetchedAt = prefs.getLong(CACHE_FETCHED_AT, 0L)
+    return runCatching {
+        WorkflowBuildCatalog(
+            builds = parseWorkflowBuildCatalog(repo, runs, snapshots),
+            fetchedAtMillis = fetchedAt,
+            fromCache = true,
+            stale = !workflowCacheIsFresh(fetchedAt, nowMillis),
+        )
+    }.getOrNull()
 }
 
-private fun fetchGithubJson(url: String): String {
+/**
+ * Returns a small disk-cached catalog, refreshing it at most every 15 minutes.
+ *
+ * One request lists 30 successful runs and one request lists the public rolling
+ * snapshot release. There is never one request per run. A stale cache remains
+ * usable when GitHub is temporarily unavailable or rate-limited.
+ */
+suspend fun loadWorkflowBuildCatalog(
+    context: Context,
+    forceRefresh: Boolean = false,
+    repo: String = GITHUB_REPO,
+): WorkflowBuildCatalog = withContext(Dispatchers.IO) {
+    val appContext = context.applicationContext
+    val prefs = appContext.getSharedPreferences(WORKFLOW_CACHE_PREFS, Context.MODE_PRIVATE)
+    val cachedRuns = prefs.getString(CACHE_RUNS_JSON, null)
+    val cachedSnapshots = prefs.getString(CACHE_SNAPSHOTS_JSON, null)
+    val cachedAt = prefs.getLong(CACHE_FETCHED_AT, 0L)
+    val now = System.currentTimeMillis()
+    val hasCache = !cachedRuns.isNullOrBlank() && !cachedSnapshots.isNullOrBlank()
+
+    if (!forceRefresh && hasCache && workflowCacheIsFresh(cachedAt, now)) {
+        return@withContext WorkflowBuildCatalog(
+            builds = parseWorkflowBuildCatalog(repo, cachedRuns.orEmpty(), cachedSnapshots.orEmpty()),
+            fetchedAtMillis = cachedAt,
+            fromCache = true,
+            stale = false,
+        )
+    }
+
+    try {
+        val encodedWorkflow = WORKFLOW_BUILD_FILE.replace("/", "%2F")
+        val runsUrl = "https://api.github.com/repos/$repo/actions/workflows/" +
+            "$encodedWorkflow/runs?status=success&per_page=$WORKFLOW_RUN_LIMIT"
+        val snapshotsUrl = "https://api.github.com/repos/$repo/releases/tags/" +
+            WORKFLOW_SNAPSHOT_TAG
+        val runsJson = fetchGithubJson(runsUrl)
+        // The very first workflow after this feature lands creates the rolling
+        // release. Until then, an empty asset list is a valid catalog.
+        val snapshotsJson = fetchGithubJson(
+            url = snapshotsUrl,
+            notFoundFallback = "{\"assets\":[]}",
+        )
+        prefs.edit()
+            .putString(CACHE_RUNS_JSON, runsJson)
+            .putString(CACHE_SNAPSHOTS_JSON, snapshotsJson)
+            .putLong(CACHE_FETCHED_AT, now)
+            .apply()
+        WorkflowBuildCatalog(
+            builds = parseWorkflowBuildCatalog(repo, runsJson, snapshotsJson),
+            fetchedAtMillis = now,
+            fromCache = false,
+            stale = false,
+        )
+    } catch (error: Exception) {
+        if (!hasCache) throw error
+        WorkflowBuildCatalog(
+            builds = parseWorkflowBuildCatalog(
+                repo,
+                cachedRuns.orEmpty(),
+                cachedSnapshots.orEmpty(),
+            ),
+            fetchedAtMillis = cachedAt,
+            fromCache = true,
+            stale = true,
+        )
+    }
+}
+
+internal fun workflowCacheIsFresh(cachedAtMillis: Long, nowMillis: Long): Boolean =
+    cachedAtMillis > 0L && nowMillis >= cachedAtMillis &&
+        nowMillis - cachedAtMillis <= WORKFLOW_CACHE_MAX_AGE_MS
+
+private fun fetchGithubJson(url: String, notFoundFallback: String? = null): String {
     val connection = (URL(url).openConnection() as HttpURLConnection).apply {
         requestMethod = "GET"
         githubUpdateRequestHeaders("application/vnd.github+json").forEach { (name, value) ->
@@ -67,16 +157,21 @@ private fun fetchGithubJson(url: String): String {
         readTimeout = 20_000
     }
     return try {
-        if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-            val remaining = connection.getHeaderField("X-RateLimit-Remaining")
-            val message = if (connection.responseCode == 403 && remaining == "0") {
-                "GitHub's public API limit is temporarily exhausted"
-            } else {
-                "GitHub returned HTTP ${connection.responseCode}"
+        val responseCode = connection.responseCode
+        if (responseCode == HttpURLConnection.HTTP_NOT_FOUND && notFoundFallback != null) {
+            notFoundFallback
+        } else {
+            if (responseCode != HttpURLConnection.HTTP_OK) {
+                val remaining = connection.getHeaderField("X-RateLimit-Remaining")
+                val message = if (responseCode == 403 && remaining == "0") {
+                    "GitHub's public API limit is temporarily exhausted"
+                } else {
+                    "GitHub returned HTTP $responseCode"
+                }
+                throw IOException(message)
             }
-            throw IOException(message)
+            connection.inputStream.bufferedReader().use { it.readText() }
         }
-        connection.inputStream.bufferedReader().use { it.readText() }
     } finally {
         connection.disconnect()
     }
@@ -86,9 +181,9 @@ private fun fetchGithubJson(url: String): String {
 internal fun parseWorkflowBuildCatalog(
     repo: String,
     runsJson: String,
-    artifactsJson: String,
+    snapshotsJson: String,
 ): List<WorkflowBuild> {
-    val artifactsByRun = parseWorkflowArtifacts(repo, JSONObject(artifactsJson))
+    val snapshotsByRun = parsePublicSnapshots(repo, JSONObject(snapshotsJson))
     val runs = JSONObject(runsJson).optJSONArray("workflow_runs") ?: JSONArray()
     return buildList {
         for (index in 0 until runs.length()) {
@@ -100,7 +195,10 @@ internal fun parseWorkflowBuildCatalog(
                 continue
             }
             val sha = run.optString("head_sha").trim()
-            if (!sha.matches(Regex("[0-9a-fA-F]{40}"))) continue
+            if (!sha.matches(COMMIT_SHA)) continue
+            val snapshot = snapshotsByRun[runId]
+                ?.takeIf { candidate -> sha.startsWith(candidate.shaPrefix, ignoreCase = true) }
+                ?.artifact
             add(
                 WorkflowBuild(
                     runId = runId,
@@ -112,41 +210,43 @@ internal fun parseWorkflowBuildCatalog(
                     createdAt = run.optString("created_at").trim(),
                     // Construct trusted destinations rather than accepting URLs from JSON.
                     htmlUrl = "https://github.com/$repo/actions/runs/$runId",
-                    artifacts = artifactsByRun[runId].orEmpty().sortedBy { artifact ->
-                        when (artifact.name) {
-                            WORKFLOW_RELEASE_ARTIFACT -> 0
-                            WORKFLOW_DEBUG_ARTIFACT -> 1
-                            else -> 2
-                        }
-                    },
+                    artifacts = listOfNotNull(snapshot),
                 )
             )
         }
     }
 }
 
-private fun parseWorkflowArtifacts(
+private data class PublicSnapshot(
+    val shaPrefix: String,
+    val artifact: WorkflowBuildArtifact,
+)
+
+private fun parsePublicSnapshots(
     repo: String,
-    response: JSONObject,
-): Map<Long, List<WorkflowBuildArtifact>> {
-    val artifacts = response.optJSONArray("artifacts") ?: JSONArray()
-    val byRun = mutableMapOf<Long, MutableList<WorkflowBuildArtifact>>()
-    for (index in 0 until artifacts.length()) {
-        val artifact = artifacts.optJSONObject(index) ?: continue
-        val name = artifact.optString("name").trim()
-        if (name != WORKFLOW_RELEASE_ARTIFACT && name != WORKFLOW_DEBUG_ARTIFACT) continue
-        val artifactId = artifact.optLong("id", -1L)
-        val runId = artifact.optJSONObject("workflow_run")?.optLong("id", -1L) ?: -1L
-        if (artifactId <= 0L || runId <= 0L) continue
-        byRun.getOrPut(runId) { mutableListOf() }.add(
-            WorkflowBuildArtifact(
-                artifactId = artifactId,
-                name = name,
-                sizeBytes = artifact.optLong("size_in_bytes", -1L),
-                expired = artifact.optBoolean("expired", false),
-                expiresAt = artifact.optString("expires_at").trim(),
-                downloadUrl = "https://api.github.com/repos/$repo/actions/artifacts/$artifactId/zip",
-            )
+    release: JSONObject,
+): Map<Long, PublicSnapshot> {
+    val assets = release.optJSONArray("assets") ?: JSONArray()
+    val byRun = mutableMapOf<Long, PublicSnapshot>()
+    for (index in 0 until assets.length()) {
+        val asset = assets.optJSONObject(index) ?: continue
+        val assetName = asset.optString("name").trim()
+        val match = WORKFLOW_SNAPSHOT_NAME.matchEntire(assetName) ?: continue
+        val runId = match.groupValues[1].toLongOrNull() ?: continue
+        val shaPrefix = match.groupValues[2].lowercase()
+        val assetId = asset.optLong("id", -1L)
+        if (runId <= 0L || assetId <= 0L) continue
+        byRun[runId] = PublicSnapshot(
+            shaPrefix = shaPrefix,
+            artifact = WorkflowBuildArtifact(
+                artifactId = assetId,
+                name = WORKFLOW_RELEASE_ARTIFACT,
+                sizeBytes = asset.optLong("size", -1L),
+                expired = false,
+                expiresAt = "",
+                downloadUrl = "https://github.com/$repo/releases/download/" +
+                    "$WORKFLOW_SNAPSHOT_TAG/$assetName",
+            ),
         )
     }
     return byRun
@@ -154,9 +254,6 @@ private fun parseWorkflowArtifacts(
 
 internal fun WorkflowBuild.releaseArtifact(): WorkflowBuildArtifact? =
     artifacts.firstOrNull { it.name == WORKFLOW_RELEASE_ARTIFACT }
-
-internal fun WorkflowBuild.debugArtifact(): WorkflowBuildArtifact? =
-    artifacts.firstOrNull { it.name == WORKFLOW_DEBUG_ARTIFACT }
 
 internal fun newestInstallableWorkflowBuild(builds: List<WorkflowBuild>): WorkflowBuild? =
     builds.firstOrNull { build -> build.releaseArtifact()?.expired == false }

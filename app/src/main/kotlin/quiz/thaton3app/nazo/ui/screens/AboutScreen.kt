@@ -118,7 +118,8 @@ import quiz.thaton3app.nazo.data.GITHUB_REPO
 import quiz.thaton3app.nazo.data.WorkflowArtifactInstaller
 import quiz.thaton3app.nazo.data.WorkflowBuild
 import quiz.thaton3app.nazo.data.WorkflowBuildArtifact
-import quiz.thaton3app.nazo.data.fetchWorkflowBuilds
+import quiz.thaton3app.nazo.data.loadWorkflowBuildCatalog
+import quiz.thaton3app.nazo.data.readCachedWorkflowBuildCatalog
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoQuietButton
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
@@ -237,7 +238,11 @@ fun AboutScreen(
     var showWorkflowBuilds by rememberRetained("About.showWorkflowBuilds") { false }
     var workflowCatalogState by rememberRetained<WorkflowCatalogState>(
         "About.workflowCatalogState"
-    ) { WorkflowCatalogState.Idle }
+    ) {
+        readCachedWorkflowBuildCatalog(context)?.let { cached ->
+            WorkflowCatalogState.Loaded(cached)
+        } ?: WorkflowCatalogState.Idle
+    }
     var selectedWorkflowRunId by rememberRetained<Long?>(
         "About.selectedWorkflowRunId"
     ) { null }
@@ -292,18 +297,21 @@ fun AboutScreen(
         downloadJob = null
     }
 
-    fun loadWorkflowBuilds() {
+    fun loadWorkflowBuilds(forceRefresh: Boolean = false) {
         if (workflowCatalogState == WorkflowCatalogState.Loading) return
         workflowCatalogState = WorkflowCatalogState.Loading
         scope.launch {
             workflowCatalogState = try {
-                val builds = fetchWorkflowBuilds()
+                val catalog = loadWorkflowBuildCatalog(
+                    context = context,
+                    forceRefresh = forceRefresh,
+                )
                 if (selectedWorkflowRunId == null ||
-                    builds.none { it.runId == selectedWorkflowRunId }
+                    catalog.builds.none { it.runId == selectedWorkflowRunId }
                 ) {
-                    selectedWorkflowRunId = builds.firstOrNull()?.runId
+                    selectedWorkflowRunId = catalog.builds.firstOrNull()?.runId
                 }
-                WorkflowCatalogState.Loaded(builds)
+                WorkflowCatalogState.Loaded(catalog)
             } catch (error: Exception) {
                 WorkflowCatalogState.Failed(
                     error.message ?: "GitHub workflow builds could not be loaded"
@@ -654,9 +662,12 @@ fun AboutScreen(
                 onBrowseWorkflowBuilds = {
                     showUpdate = false
                     showWorkflowBuilds = true
-                    if (workflowCatalogState == WorkflowCatalogState.Idle) {
-                        loadWorkflowBuilds()
+                    val needsRefresh = when (val state = workflowCatalogState) {
+                        WorkflowCatalogState.Idle -> true
+                        is WorkflowCatalogState.Loaded -> state.catalog.stale
+                        else -> false
                     }
+                    if (needsRefresh) loadWorkflowBuilds()
                 },
                 includePrereleases = includePrereleases,
                 prereleaseToggleEnabled =
@@ -685,7 +696,7 @@ fun AboutScreen(
                 installedWorkflowSha = BuildConfig.WORKFLOW_BUILD_SHA,
                 selectedRunId = selectedWorkflowRunId,
                 onSelectRun = { runId -> selectedWorkflowRunId = runId },
-                onRefresh = { loadWorkflowBuilds() },
+                onRefresh = { loadWorkflowBuilds(forceRefresh = true) },
                 onDownload = { build, artifact ->
                     startWorkflowDownload(build, artifact)
                 },

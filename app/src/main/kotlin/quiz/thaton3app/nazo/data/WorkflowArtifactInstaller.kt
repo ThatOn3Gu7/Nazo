@@ -152,10 +152,13 @@ private suspend fun downloadArchive(
             }
             if (responseCode != HttpURLConnection.HTTP_OK) {
                 val message = when (responseCode) {
+                    HttpURLConnection.HTTP_UNAUTHORIZED ->
+                        "This legacy Actions archive requires GitHub sign-in; refresh the catalog " +
+                            "and choose a publicly mirrored snapshot"
                     HttpURLConnection.HTTP_GONE,
-                    HttpURLConnection.HTTP_NOT_FOUND -> "This workflow artifact has expired"
-                    403 -> "GitHub refused the artifact download or its API limit was reached"
-                    else -> "Artifact download failed with HTTP $responseCode"
+                    HttpURLConnection.HTTP_NOT_FOUND -> "This workflow snapshot is unavailable"
+                    403 -> "GitHub refused the snapshot download or its API limit was reached"
+                    else -> "Snapshot download failed with HTTP $responseCode"
                 }
                 throw IOException(message)
             }

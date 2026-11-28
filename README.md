@@ -125,8 +125,9 @@ themable, no account, no ads.
    periodically check GitHub Releases; the About screen's update sheet streams
    release APKs in-app with live progress, then hands off to the system installer
    (`REQUEST_INSTALL_PACKAGES`). Its manual Workflow Builds browser separately
-   lists successful compile checks, extracts their short-lived artifact ZIPs,
-   and verifies package identity, signing certificate, and version compatibility.
+   lists successful compile checks from a 15-minute disk cache, extracts signed
+   release ZIPs from a bounded public snapshot mirror, and verifies package
+   identity, signing certificate, and version compatibility.
 6. **App icon theming** — `LauncherLight` / `LauncherDark` activity-aliases are
    toggled based on the device theme so the home-screen icon matches.
 
