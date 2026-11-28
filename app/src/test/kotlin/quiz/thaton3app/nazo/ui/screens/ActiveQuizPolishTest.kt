@@ -38,6 +38,46 @@ class ActiveQuizPolishTest {
     }
 
     @Test
+    fun progressPathMarksCombosHalfwayAndTheOrdinaryFinish() {
+        val milestones = quizProgressMilestones(
+            totalQuestions = 10,
+            comboQuestionIndices = listOf(2, 1, 2, -1, 10),
+            hasBossFinale = false,
+        )
+
+        assertEquals(
+            listOf(
+                QuizProgressMilestone(QuizProgressMilestoneKind.Combo, 0.2f),
+                QuizProgressMilestone(QuizProgressMilestoneKind.Combo, 0.3f),
+                QuizProgressMilestone(QuizProgressMilestoneKind.Halfway, 0.5f),
+                QuizProgressMilestone(QuizProgressMilestoneKind.Final, 1f),
+            ),
+            milestones,
+        )
+    }
+
+    @Test
+    fun bossProgressPathReservesTheFinalQuestionAndFinish() {
+        val milestones = quizProgressMilestones(
+            totalQuestions = 10,
+            comboQuestionIndices = emptyList(),
+            hasBossFinale = true,
+        )
+
+        assertEquals(
+            listOf(
+                QuizProgressMilestone(QuizProgressMilestoneKind.Halfway, 0.5f),
+                QuizProgressMilestone(QuizProgressMilestoneKind.Final, 0.9f),
+                QuizProgressMilestone(QuizProgressMilestoneKind.Boss, 1f),
+            ),
+            milestones,
+        )
+        assertTrue(
+            quizProgressMilestones(0, listOf(0), hasBossFinale = true).isEmpty()
+        )
+    }
+
+    @Test
     fun decorativeQuizMotionWaitsForTheLaunchCoverAndReducedMotion() {
         assertTrue(quizDecorativeMotionAllowed(reduceMotion = false, hostAllowsMotion = true))
         assertTrue(!quizDecorativeMotionAllowed(reduceMotion = false, hostAllowsMotion = false))

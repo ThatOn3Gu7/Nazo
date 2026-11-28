@@ -69,6 +69,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -168,6 +170,50 @@ internal fun quizComboLabel(streak: Int): String? =
 internal fun quizProgressFraction(questionIndex: Int, totalQuestions: Int): Float =
     if (totalQuestions <= 0) 0f
     else ((questionIndex + 1).toFloat() / totalQuestions).coerceIn(0f, 1f)
+
+internal enum class QuizProgressMilestoneKind { Combo, Halfway, Final, Boss }
+
+internal data class QuizProgressMilestone(
+    val kind: QuizProgressMilestoneKind,
+    val fraction: Float,
+)
+
+/** Stable waypoints for a finite run, including each supplied 2× combo start. */
+internal fun quizProgressMilestones(
+    totalQuestions: Int,
+    comboQuestionIndices: Collection<Int>,
+    hasBossFinale: Boolean,
+): List<QuizProgressMilestone> {
+    if (totalQuestions <= 0) return emptyList()
+    return buildList {
+        comboQuestionIndices.distinct().filter { it in 0 until totalQuestions }.forEach { index ->
+            add(
+                QuizProgressMilestone(
+                    kind = QuizProgressMilestoneKind.Combo,
+                    fraction = (index + 1f) / totalQuestions,
+                )
+            )
+        }
+        if (totalQuestions > 1) {
+            add(QuizProgressMilestone(QuizProgressMilestoneKind.Halfway, 0.5f))
+        }
+        if (hasBossFinale) {
+            add(
+                QuizProgressMilestone(
+                    kind = QuizProgressMilestoneKind.Final,
+                    fraction = if (totalQuestions > 1) {
+                        (totalQuestions - 1f) / totalQuestions
+                    } else {
+                        1f
+                    },
+                )
+            )
+            add(QuizProgressMilestone(QuizProgressMilestoneKind.Boss, 1f))
+        } else {
+            add(QuizProgressMilestone(QuizProgressMilestoneKind.Final, 1f))
+        }
+    }.sortedWith(compareBy(QuizProgressMilestone::fraction, QuizProgressMilestone::kind))
+}
 
 internal fun quizDecorativeMotionAllowed(
     reduceMotion: Boolean,
@@ -465,8 +511,10 @@ internal fun ActiveQuizScreen(
     adaptiveNextDifficulty: String = "Medium",
     adaptiveMessage: String = "",
     isAiGenerated: Boolean = false,
-    /** Reserved final question in selected finite Quiz runs. */
+    /** True for the reserved final question currently on screen. */
     bossFinale: Boolean = false,
+    /** True throughout a finite run whose final waypoint is a Boss question. */
+    hasBossFinale: Boolean = false,
     bossBonusXp: Int = 0,
     // Survival mode: header shows lives instead of "x of y" / progress.
     endless: Boolean = false,
@@ -509,10 +557,17 @@ internal fun ActiveQuizScreen(
     // question must keep its own badge while the next one enters.
     var comboStreak by remember { mutableIntStateOf(0) }
     val comboByIndex = remember { mutableStateMapOf<Int, Int>() }
+    // The slot map below is pruned after its exit animation. Keep the tiny list
+    // of completed finite-run waypoints separately so past combo dots remain on
+    // the progress path instead of disappearing two questions later.
+    val comboMilestoneIndices = remember { mutableStateListOf<Int>() }
     fun recordVisualGrade(index: Int, correct: Boolean) {
         if (comboByIndex.containsKey(index)) return
         comboStreak = nextQuizComboStreak(comboStreak, correct)
         comboByIndex[index] = comboStreak
+        if (comboStreak == 2 && index !in comboMilestoneIndices) {
+            comboMilestoneIndices += index
+        }
     }
     // The host persists a revealed-but-not-yet-advanced question. Seed that
     // authoritative grade synchronously on first composition after restore so
@@ -1049,6 +1104,11 @@ internal fun ActiveQuizScreen(
                 Spacer(Modifier.height(chromeGap))
                 PremiumQuizProgress(
                     progress = quizProgressFraction(currentQuestionIndex, totalQuestions),
+                    milestones = quizProgressMilestones(
+                        totalQuestions = totalQuestions,
+                        comboQuestionIndices = comboMilestoneIndices,
+                        hasBossFinale = hasBossFinale,
+                    ),
                     color = NazoPrimary,
                     trackColor = NazoSurface,
                     motionAllowed = motionAllowed,
@@ -1882,6 +1942,7 @@ private fun TwoPaneQuizBody(
 @Composable
 private fun PremiumQuizProgress(
     progress: Float,
+    milestones: List<QuizProgressMilestone> = emptyList(),
     color: Color,
     trackColor: Color,
     motionAllowed: Boolean,
@@ -1930,7 +1991,13 @@ private fun PremiumQuizProgress(
         )
     }
 
-    Canvas(modifier = modifier.height(16.dp)) {
+    BoxWithConstraints(modifier = modifier.height(30.dp)) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(16.dp)
+                .align(Alignment.Center)
+        ) {
         val strokeWidth = 4.dp.toPx()
         val amplitude = 3.dp.toPx().coerceAtMost((size.height - strokeWidth) / 2f)
         val wavelength = 20.dp.toPx()
@@ -1998,6 +2065,78 @@ private fun PremiumQuizProgress(
                 color = color,
                 style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
             )
+        }
+        }
+
+        milestones.forEach { milestone ->
+            val markerSize = when (milestone.kind) {
+                QuizProgressMilestoneKind.Combo -> 15.dp
+                QuizProgressMilestoneKind.Halfway -> 17.dp
+                QuizProgressMilestoneKind.Final -> 17.dp
+                QuizProgressMilestoneKind.Boss -> 21.dp
+            }
+            val markerColor = when (milestone.kind) {
+                QuizProgressMilestoneKind.Combo -> Color(0xFFFFC857)
+                QuizProgressMilestoneKind.Halfway -> color
+                QuizProgressMilestoneKind.Final -> Color(0xFF58D7B3)
+                QuizProgressMilestoneKind.Boss -> Color(0xFFE28CFF)
+            }
+            val label = when (milestone.kind) {
+                QuizProgressMilestoneKind.Combo -> "Combo point"
+                QuizProgressMilestoneKind.Halfway -> "Halfway point"
+                QuizProgressMilestoneKind.Final -> "Final question"
+                QuizProgressMilestoneKind.Boss -> "Boss finish"
+            }
+            val reached = milestone.fraction <= displayed + 0.001f
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .offset(
+                        x = (maxWidth - markerSize) * milestone.fraction.coerceIn(0f, 1f)
+                    )
+                    .size(markerSize)
+                    .clip(CircleShape)
+                    .background(
+                        if (reached) markerColor
+                        else MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+                    )
+                    .border(
+                        width = if (milestone.kind == QuizProgressMilestoneKind.Boss) 2.dp else 1.dp,
+                        color = markerColor.copy(alpha = if (reached) 1f else 0.72f),
+                        shape = CircleShape,
+                    )
+                    .semantics {
+                        contentDescription = "$label, ${if (reached) "reached" else "ahead"}"
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                when (milestone.kind) {
+                    QuizProgressMilestoneKind.Combo -> Icon(
+                        imageVector = Icons.Filled.Whatshot,
+                        contentDescription = null,
+                        tint = if (reached) Color.Black.copy(alpha = 0.76f) else markerColor,
+                        modifier = Modifier.size(9.dp),
+                    )
+                    QuizProgressMilestoneKind.Halfway -> Text(
+                        text = "½",
+                        color = if (reached) Color.Black.copy(alpha = 0.78f) else markerColor,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                    )
+                    QuizProgressMilestoneKind.Final -> Text(
+                        text = "F",
+                        color = if (reached) Color.Black.copy(alpha = 0.78f) else markerColor,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                    )
+                    QuizProgressMilestoneKind.Boss -> Icon(
+                        imageVector = Icons.Filled.Bolt,
+                        contentDescription = null,
+                        tint = if (reached) Color.Black.copy(alpha = 0.76f) else markerColor,
+                        modifier = Modifier.size(13.dp),
+                    )
+                }
+            }
         }
     }
 }

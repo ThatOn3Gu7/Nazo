@@ -3111,6 +3111,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             currentQuestionIndex,
                             questions.size,
                         ),
+                        hasBossFinale = bossEnabled && questions.isNotEmpty(),
                         bossBonusXp = BossQuestion.BONUS_XP,
                         endless = quizMode == "survival",
                         livesLeft = 3 - survivalWrongs,
