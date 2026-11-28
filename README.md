@@ -123,8 +123,10 @@ themable, no account, no ads.
    re-themes the app instantly.
 5. **Updates** — `data/UpdateScheduler` + `UpdateCheckWorker` (WorkManager)
    periodically check GitHub Releases; the About screen's update sheet streams
-   the APK in-app via `UpdateDownloader.downloadApk` with live progress, then
-   hands off to the system installer (`REQUEST_INSTALL_PACKAGES`).
+   release APKs in-app with live progress, then hands off to the system installer
+   (`REQUEST_INSTALL_PACKAGES`). Its manual Workflow Builds browser separately
+   lists successful compile checks, extracts their short-lived artifact ZIPs,
+   and verifies package identity, signing certificate, and version compatibility.
 6. **App icon theming** — `LauncherLight` / `LauncherDark` activity-aliases are
    toggled based on the device theme so the home-screen icon matches.
 

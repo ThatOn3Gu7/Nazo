@@ -142,7 +142,12 @@ jobs:
       # Preserve the existing debug build and its normal debug signing.
       - name: Assemble debug APK
         run: |
-          ./gradlew assembleDebug --stacktrace 2>&1 | tee -a gradle-build.log
+          ./gradlew assembleDebug --stacktrace \
+            -Pnazo.workflow.sha="$GITHUB_SHA" \
+            -Pnazo.workflow.runId="$GITHUB_RUN_ID" \
+            -Pnazo.workflow.runNumber="$GITHUB_RUN_NUMBER" \
+            -Pnazo.workflow.branch="$GITHUB_REF_NAME" \
+            2>&1 | tee -a gradle-build.log
           exit ${PIPESTATUS[0]}
 
       - name: Upload debug APK
@@ -180,6 +185,10 @@ jobs:
               -Pandroid.injected.signing.store.password="$SIGNING_STORE_PASSWORD" \
               -Pandroid.injected.signing.key.alias="$SIGNING_KEY_ALIAS" \
               -Pandroid.injected.signing.key.password="$SIGNING_KEY_PASSWORD" \
+              -Pnazo.workflow.sha="$GITHUB_SHA" \
+              -Pnazo.workflow.runId="$GITHUB_RUN_ID" \
+              -Pnazo.workflow.runNumber="$GITHUB_RUN_NUMBER" \
+              -Pnazo.workflow.branch="$GITHUB_REF_NAME" \
               2>&1 | tee -a gradle-build.log
 
             BUILD_STATUS=${PIPESTATUS[0]}
@@ -188,7 +197,12 @@ jobs:
           else
             echo "::warning::Release signing secrets are not configured. The release APK will be unsigned."
 
-            ./gradlew assembleRelease --stacktrace 2>&1 | tee -a gradle-build.log
+            ./gradlew assembleRelease --stacktrace \
+              -Pnazo.workflow.sha="$GITHUB_SHA" \
+              -Pnazo.workflow.runId="$GITHUB_RUN_ID" \
+              -Pnazo.workflow.runNumber="$GITHUB_RUN_NUMBER" \
+              -Pnazo.workflow.branch="$GITHUB_REF_NAME" \
+              2>&1 | tee -a gradle-build.log
 
             BUILD_STATUS=${PIPESTATUS[0]}
             echo "signed=false" >> "$GITHUB_OUTPUT"

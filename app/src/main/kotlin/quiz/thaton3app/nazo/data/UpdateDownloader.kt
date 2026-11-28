@@ -112,8 +112,11 @@ object UpdateDownloader {
         false
     }
 
-    fun install(context: Context): Boolean {
-        val file = File(context.getExternalFilesDir(null), APK_NAME)
+    fun install(context: Context): Boolean =
+        installFile(context, File(context.getExternalFilesDir(null), APK_NAME))
+
+    /** Opens Android's installer for a verified app-owned APK. */
+    fun installFile(context: Context, file: File): Boolean {
         if (!file.exists() || file.length() < MIN_APK_BYTES) return false
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         val intent = Intent(Intent.ACTION_VIEW).apply {

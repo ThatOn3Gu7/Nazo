@@ -5,6 +5,14 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+fun buildConfigString(value: String): String =
+    "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
+val workflowBuildSha = providers.gradleProperty("nazo.workflow.sha").orNull.orEmpty()
+val workflowBuildRunId = providers.gradleProperty("nazo.workflow.runId").orNull.orEmpty()
+val workflowBuildRunNumber = providers.gradleProperty("nazo.workflow.runNumber").orNull.orEmpty()
+val workflowBuildBranch = providers.gradleProperty("nazo.workflow.branch").orNull.orEmpty()
+
 android {
     namespace = "quiz.thaton3app.nazo"
     compileSdk = 36
@@ -15,6 +23,14 @@ android {
         targetSdk = 34
         versionCode = 14
         versionName = "14.0"
+
+        // Empty for local and tagged release builds. PR-assemble injects these
+        // so About can identify the exact successful workflow snapshot that is
+        // currently installed, even though its public version remains 14.0.
+        buildConfigField("String", "WORKFLOW_BUILD_SHA", buildConfigString(workflowBuildSha))
+        buildConfigField("String", "WORKFLOW_BUILD_RUN_ID", buildConfigString(workflowBuildRunId))
+        buildConfigField("String", "WORKFLOW_BUILD_RUN_NUMBER", buildConfigString(workflowBuildRunNumber))
+        buildConfigField("String", "WORKFLOW_BUILD_BRANCH", buildConfigString(workflowBuildBranch))
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

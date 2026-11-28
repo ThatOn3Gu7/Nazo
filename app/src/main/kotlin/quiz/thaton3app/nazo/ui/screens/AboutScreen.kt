@@ -108,10 +108,17 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import quiz.thaton3app.nazo.BuildConfig
 import quiz.thaton3app.nazo.data.GITHUB_REPO
+import quiz.thaton3app.nazo.data.WorkflowArtifactInstaller
+import quiz.thaton3app.nazo.data.WorkflowBuild
+import quiz.thaton3app.nazo.data.WorkflowBuildArtifact
+import quiz.thaton3app.nazo.data.fetchWorkflowBuilds
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.NazoQuietButton
 import quiz.thaton3app.nazo.ui.components.NazoPrimaryButton
@@ -225,6 +232,20 @@ fun AboutScreen(
     var downloadState by remember { mutableStateOf<ApkDownloadState>(ApkDownloadState.Idle) }
     var downloadJob by remember { mutableStateOf<Job?>(null) }
 
+    // Workflow builds are a separate, manual tester path. They never alter the
+    // stable/beta preference or participate in scheduled update checks.
+    var showWorkflowBuilds by rememberRetained("About.showWorkflowBuilds") { false }
+    var workflowCatalogState by rememberRetained<WorkflowCatalogState>(
+        "About.workflowCatalogState"
+    ) { WorkflowCatalogState.Idle }
+    var selectedWorkflowRunId by rememberRetained<Long?>(
+        "About.selectedWorkflowRunId"
+    ) { null }
+    var workflowInstallState by remember {
+        mutableStateOf<WorkflowInstallState>(WorkflowInstallState.Idle)
+    }
+    var workflowDownloadJob by remember { mutableStateOf<Job?>(null) }
+
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { /* result handled by the OS prompt */ }
@@ -271,6 +292,85 @@ fun AboutScreen(
         downloadJob = null
     }
 
+    fun loadWorkflowBuilds() {
+        if (workflowCatalogState == WorkflowCatalogState.Loading) return
+        workflowCatalogState = WorkflowCatalogState.Loading
+        scope.launch {
+            workflowCatalogState = try {
+                val builds = fetchWorkflowBuilds()
+                if (selectedWorkflowRunId == null ||
+                    builds.none { it.runId == selectedWorkflowRunId }
+                ) {
+                    selectedWorkflowRunId = builds.firstOrNull()?.runId
+                }
+                WorkflowCatalogState.Loaded(builds)
+            } catch (error: Exception) {
+                WorkflowCatalogState.Failed(
+                    error.message ?: "GitHub workflow builds could not be loaded"
+                )
+            }
+        }
+    }
+
+    fun startWorkflowDownload(build: WorkflowBuild, artifact: WorkflowBuildArtifact) {
+        if (workflowInstallState is WorkflowInstallState.Downloading ||
+            workflowInstallState is WorkflowInstallState.Verifying
+        ) {
+            return
+        }
+        selectedWorkflowRunId = build.runId
+        workflowInstallState = WorkflowInstallState.Downloading(
+            runId = build.runId,
+            downloaded = 0L,
+            total = artifact.sizeBytes,
+        )
+        workflowDownloadJob = scope.launch {
+            try {
+                val file = WorkflowArtifactInstaller.downloadApk(
+                    context = context,
+                    artifact = artifact,
+                ) { downloaded, total ->
+                    workflowInstallState = WorkflowInstallState.Downloading(
+                        runId = build.runId,
+                        downloaded = downloaded,
+                        total = if (total > 0L) total else artifact.sizeBytes,
+                    )
+                }
+                workflowInstallState = WorkflowInstallState.Verifying(build.runId)
+                val verified = withContext(Dispatchers.IO) {
+                    WorkflowArtifactInstaller.verify(context, file)
+                }
+                workflowInstallState = WorkflowInstallState.Ready(
+                    runId = build.runId,
+                    versionName = verified.versionName,
+                    versionCode = verified.versionCode,
+                )
+                if (!WorkflowArtifactInstaller.install(context)) {
+                    Toast.makeText(
+                        context,
+                        "Verified APK is ready, but Android's installer could not open",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            } catch (cancelled: CancellationException) {
+                WorkflowArtifactInstaller.apkFile(context).delete()
+                workflowInstallState = WorkflowInstallState.Idle
+                throw cancelled
+            } catch (error: Exception) {
+                WorkflowArtifactInstaller.apkFile(context).delete()
+                workflowInstallState = WorkflowInstallState.Failed(
+                    runId = build.runId,
+                    message = error.message ?: "Workflow APK installation failed",
+                )
+            }
+        }
+    }
+
+    fun cancelWorkflowDownload() {
+        workflowDownloadJob?.cancel()
+        workflowDownloadJob = null
+    }
+
     fun onOpenBrowser(url: String) {
         runCatching {
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
@@ -300,6 +400,14 @@ fun AboutScreen(
         if (updateState == UpdateState.Checking) {
             updateState = UpdateState.Idle
             checkLabel = "Check Now"
+        }
+        if (workflowCatalogState == WorkflowCatalogState.Loading) {
+            workflowCatalogState = WorkflowCatalogState.Idle
+        }
+        if (workflowInstallState is WorkflowInstallState.Downloading ||
+            workflowInstallState is WorkflowInstallState.Verifying
+        ) {
+            workflowInstallState = WorkflowInstallState.Idle
         }
     }
 
@@ -438,6 +546,28 @@ fun AboutScreen(
                     trailingText = versionCodeStr,
                     onClick = { /* Non-clickable stat row */ }
                 )
+                if (BuildConfig.WORKFLOW_BUILD_SHA.isNotBlank()) {
+                    RowDivider()
+                    ActionRow(
+                        icon = Icons.Filled.Science,
+                        title = "Workflow snapshot",
+                        subtitle = buildString {
+                            append(BuildConfig.WORKFLOW_BUILD_BRANCH.ifBlank { "GitHub Actions" })
+                            if (BuildConfig.WORKFLOW_BUILD_RUN_NUMBER.isNotBlank()) {
+                                append(" · run #${BuildConfig.WORKFLOW_BUILD_RUN_NUMBER}")
+                            }
+                        },
+                        trailingText = BuildConfig.WORKFLOW_BUILD_SHA.take(7),
+                        onClick = {
+                            val runId = BuildConfig.WORKFLOW_BUILD_RUN_ID
+                            if (runId.isNotBlank()) {
+                                onOpenBrowser(
+                                    "https://github.com/$GITHUB_REPO/actions/runs/$runId"
+                                )
+                            }
+                        },
+                    )
+                }
             }
 
             Spacer(Modifier.height(32.dp))
@@ -521,6 +651,13 @@ fun AboutScreen(
                 onOpenBrowser = { url -> onOpenBrowser(url) },
                 frequency = frequency,
                 onOpenFrequencyChooser = { showFrequencyChooser = true },
+                onBrowseWorkflowBuilds = {
+                    showUpdate = false
+                    showWorkflowBuilds = true
+                    if (workflowCatalogState == WorkflowCatalogState.Idle) {
+                        loadWorkflowBuilds()
+                    }
+                },
                 includePrereleases = includePrereleases,
                 prereleaseToggleEnabled =
                     downloadState !is ApkDownloadState.Running && updateState !is UpdateState.Checking,
@@ -532,6 +669,40 @@ fun AboutScreen(
                         checkLabel = "Check Again"
                         checkForUpdates()
                     }
+                },
+            )
+        }
+    }
+
+    if (showWorkflowBuilds) {
+        NazoModalSheet(
+            onDismissRequest = { showWorkflowBuilds = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        ) {
+            WorkflowBuildBrowserContent(
+                catalogState = workflowCatalogState,
+                installState = workflowInstallState,
+                installedWorkflowSha = BuildConfig.WORKFLOW_BUILD_SHA,
+                selectedRunId = selectedWorkflowRunId,
+                onSelectRun = { runId -> selectedWorkflowRunId = runId },
+                onRefresh = { loadWorkflowBuilds() },
+                onDownload = { build, artifact ->
+                    startWorkflowDownload(build, artifact)
+                },
+                onCancelDownload = { cancelWorkflowDownload() },
+                onInstallAgain = {
+                    if (!WorkflowArtifactInstaller.install(context)) {
+                        Toast.makeText(
+                            context,
+                            "The verified workflow APK is no longer available",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                },
+                onOpenWorkflow = { url -> onOpenBrowser(url) },
+                onUseReleaseUpdater = {
+                    showWorkflowBuilds = false
+                    showUpdate = true
                 },
             )
         }
@@ -577,6 +748,7 @@ private fun UpdateMenuContent(
     onOpenBrowser: (String) -> Unit,
     frequency: UpdateFrequency,
     onOpenFrequencyChooser: () -> Unit,
+    onBrowseWorkflowBuilds: () -> Unit,
     includePrereleases: Boolean,
     prereleaseToggleEnabled: Boolean,
     onIncludePrereleasesChange: (Boolean) -> Unit,
@@ -1020,6 +1192,13 @@ private fun UpdateMenuContent(
         // field. Besides matching every other chooser in the app, plain Text
         // avoids the long-press selection handles exposed by TextField.
         SettingsCard {
+            ActionRow(
+                icon = Icons.Filled.Science,
+                title = "Browse workflow builds",
+                subtitle = "Choose a successful GitHub Actions snapshot to install",
+                onClick = onBrowseWorkflowBuilds,
+            )
+            RowDivider()
             ActionRow(
                 icon = Icons.Filled.Schedule,
                 title = "Auto-check frequency",
