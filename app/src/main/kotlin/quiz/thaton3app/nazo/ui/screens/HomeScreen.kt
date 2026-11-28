@@ -65,6 +65,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -319,7 +320,7 @@ fun HomeScreen(
     onStartChallengePack: (ChallengePack) -> Unit = {},
     onDeleteCollection: (QuizCollection) -> Unit = {},
     challengePackCount: Int = 0,
-    onOpenLibrary: () -> Unit = {},
+    onOpenLibrary: (Rect) -> Unit = {},
     classicLayout: Boolean = false,
     onSaveCollection: (QuizCollectionSetup) -> Unit = {},
     onStartGuessing: (topic: String, difficulty: String, rounds: Int) -> Unit = { _, _, _ -> },
@@ -2539,9 +2540,10 @@ private fun HomeQuickPaths(
     challengePackCount: Int,
     collectionCount: Int,
     practiceCount: Int,
-    onOpenLibrary: () -> Unit,
+    onOpenLibrary: (Rect) -> Unit,
     onPractice: (QuizLaunchOrigin) -> Unit,
 ) {
+    var libraryBounds by remember { mutableStateOf(Rect.Zero) }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -2564,8 +2566,10 @@ private fun HomeQuickPaths(
             eyebrow = "PLAY LIBRARY",
             title = "$challengePackCount curated • $collectionCount saved",
             contentDescription = "Open Play Library",
-            onClick = onOpenLibrary,
-            modifier = Modifier.weight(if (practiceCount > 0) 1f else 2f),
+            onClick = { onOpenLibrary(libraryBounds) },
+            modifier = Modifier
+                .weight(if (practiceCount > 0) 1f else 2f)
+                .onGloballyPositioned { libraryBounds = it.boundsInRoot() },
         )
     }
 }

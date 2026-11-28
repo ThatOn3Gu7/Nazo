@@ -180,6 +180,7 @@ fun AiProviderScreen(
     onBackClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
     onSaved: () -> Unit = {},
+    headerContinuityModifier: Modifier = Modifier,
 ) {
     var providers by remember { mutableStateOf(initialProviders(apiKeyStore)) }
     var expandedId by remember { mutableStateOf<String?>(null) }
@@ -249,7 +250,7 @@ fun AiProviderScreen(
             title = "AI & Model Configuration",
             onBackClick = onBackClick,
             onSaveClick = ::saveChanges,
-            modifier = Modifier
+            modifier = headerContinuityModifier
                 .fillMaxWidth()
                 .padding(start = 20.dp, top = 20.dp, end = 20.dp),
         )

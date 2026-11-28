@@ -183,6 +183,7 @@ fun AboutScreen(
     onOpenChangelog: () -> Unit = {},
     onOpenLicenses: () -> Unit = {},
     onOpenCredits: () -> Unit = {},
+    headerContinuityModifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -355,7 +356,11 @@ fun AboutScreen(
                 .padding(bottom = if (isLandscape()) 48.dp else 12.dp)
         ) {
             Spacer(Modifier.height(28.dp))
-            ScreenHeader(title = "About", onBackClick = onBackClick)
+            ScreenHeader(
+                title = "About",
+                onBackClick = onBackClick,
+                modifier = headerContinuityModifier,
+            )
             Spacer(Modifier.height(20.dp))
 
             HeroCard(versionName = versionName, versionCode = versionCodeStr)
@@ -1366,13 +1371,20 @@ private fun sendFeedbackEmail(context: android.content.Context) {
 // endregion
 
 @Composable
-private fun ScreenHeader(title: String, onBackClick: () -> Unit) {
+private fun ScreenHeader(
+    title: String,
+    onBackClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val interactionSource = remember { MutableInteractionSource() }
     val shape = rememberNazoPillCornerMorphShape(
         interactionSource = interactionSource,
         pressedCornerPercent = 28f,
     )
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         IconButton(
             onClick = rememberHapticBack(onBackClick),
             interactionSource = interactionSource,

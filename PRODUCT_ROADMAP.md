@@ -50,7 +50,7 @@ Build these in order because they form one clear journey from launch to learning
 
 ## Animation and visual improvements
 
-16. **Button-to-card continuity** — **P1 · M** — Morph source controls toward their destination card where it improves orientation.
+16. **Button-to-card continuity** — **P1 · M** — Morph source controls toward their destination card where it improves orientation. **Implemented.**
 17. **Question-stage entrance** — **P1 · S** — Bring in progress, prompt, answers, and timer with restrained timing offsets.
 18. **Explanation tether** — **P1 · S** — Grow the explanation directly from the graded answer instead of inserting a detached block.
 19. **Progress path milestones** — **P2 · M** — Mark combo, halfway, final, and boss points on the quiz progress line.

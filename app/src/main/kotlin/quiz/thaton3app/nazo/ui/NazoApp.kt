@@ -37,6 +37,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessibilityNew
+import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.CollectionsBookmark
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -48,6 +56,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -137,6 +146,10 @@ import quiz.thaton3app.nazo.ui.components.AvatarAnchorId
 import quiz.thaton3app.nazo.ui.components.AvatarAnchorRegistry
 import quiz.thaton3app.nazo.ui.components.AvatarFrameCache
 import quiz.thaton3app.nazo.ui.components.AvatarVideoHost
+import quiz.thaton3app.nazo.ui.components.ButtonCardContinuityOverlay
+import quiz.thaton3app.nazo.ui.components.ButtonCardContinuityRequest
+import quiz.thaton3app.nazo.ui.components.buttonCardContinuityCanStart
+import quiz.thaton3app.nazo.ui.components.buttonCardContinuityTarget
 import quiz.thaton3app.nazo.ui.components.CHANGELOG_ID
 import quiz.thaton3app.nazo.ui.components.ScreenNavigationSlideFraction
 import quiz.thaton3app.nazo.ui.components.ScreenNavigationTransitionDurationMs
@@ -784,6 +797,12 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     // Screen content width (post rail-inset) for the overlay's replicated
     // subtle navigation slide; probed from the screens AnimatedContent.
     var screensWidthPx by remember { mutableIntStateOf(0) }
+    // A tapped Home/Settings control can briefly carry its identity into the
+    // corresponding destination heading. Bounds live above AnimatedContent so
+    // both outgoing and incoming screens can participate in one overlay.
+    var buttonCardContinuity by remember { mutableStateOf<ButtonCardContinuityRequest?>(null) }
+    var buttonCardContinuityTargetBounds by remember { mutableStateOf<Rect?>(null) }
+    var buttonCardContinuityId by remember { mutableLongStateOf(0L) }
 
     // Dialog state that has to outlive the portrait <-> landscape layout swap.
     // Remembered HERE, above the layout-mode AnimatedContent, so it is not part
@@ -978,6 +997,58 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
     val activity = context as? Activity
     val systemReduceMotion = rememberSystemReduceMotion()
     val reduceMotion = AccessibilityPolicy.reduceMotion(systemReduceMotion, appReduceMotion)
+
+    fun navigateWithButtonCardContinuity(
+        destination: Screen,
+        sourceBounds: Rect,
+        icon: androidx.compose.ui.graphics.vector.ImageVector,
+        title: String,
+        subtitle: String,
+    ) {
+        if (!buttonCardContinuityCanStart(sourceBounds, reduceMotion)) {
+            navigate(destination)
+            return
+        }
+        buttonCardContinuityTargetBounds = null
+        buttonCardContinuity = ButtonCardContinuityRequest(
+            id = ++buttonCardContinuityId,
+            destinationKey = destination.toString(),
+            sourceBounds = sourceBounds,
+            icon = icon,
+            title = title,
+            subtitle = subtitle,
+        )
+        navigate(destination)
+    }
+
+    fun buttonCardTargetModifier(destination: Screen): Modifier {
+        val request = buttonCardContinuity
+        val hidden = request?.destinationKey == destination.toString()
+        return Modifier.buttonCardContinuityTarget(hidden = hidden) { bounds ->
+            if (buttonCardContinuity?.id == request?.id && hidden &&
+                buttonCardContinuityTargetBounds != bounds
+            ) {
+                buttonCardContinuityTargetBounds = bounds
+            }
+        }
+    }
+
+    // A destination that fails to publish bounds must never leave its real
+    // heading hidden. Ordinary navigation, Home, and predictive back also clear
+    // a request as soon as they move somewhere other than its target.
+    LaunchedEffect(currentScreen, buttonCardContinuity?.id) {
+        val request = buttonCardContinuity ?: return@LaunchedEffect
+        if (request.destinationKey != currentScreen.toString()) {
+            buttonCardContinuity = null
+            buttonCardContinuityTargetBounds = null
+            return@LaunchedEffect
+        }
+        delay(1_200)
+        if (buttonCardContinuity?.id == request.id) {
+            buttonCardContinuity = null
+            buttonCardContinuityTargetBounds = null
+        }
+    }
 
     // The local-bank launch cover lives above the shared navigation tree, so
     // Home and Quiz remain single live instances. AI-backed starts bypass it
@@ -2743,7 +2814,15 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             quizCollections = quizCollectionStore.get()
                         },
                         challengePackCount = ChallengePackCatalog.all.size,
-                        onOpenLibrary = { navigate(Screen.PlayLibrary) },
+                        onOpenLibrary = { sourceBounds ->
+                            navigateWithButtonCardContinuity(
+                                destination = Screen.PlayLibrary,
+                                sourceBounds = sourceBounds,
+                                icon = Icons.Filled.CollectionsBookmark,
+                                title = "Play Library",
+                                subtitle = "Curated journeys and saved setups",
+                            )
+                        },
                         classicLayout = classicHomeLayout,
                         onSaveCollection = { setup: QuizCollectionSetup ->
                             quizCollectionStore.save(setup)
@@ -2789,18 +2868,67 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             quizCollections = quizCollectionStore.get()
                         },
                         onBackClick = { goBack() },
+                        headerContinuityModifier = buttonCardTargetModifier(Screen.PlayLibrary),
                     )
 
                     Screen.Settings -> SettingsScreen(
                         scrollState = LocalSettingsScrollState.current,
                         onBackClick = { goBack() },
                         onHomeClick = { goHome() },
-                        onOpenAiProvider = { navigate(Screen.AiProvider) },
-                        onOpenStatistics = { navigate(Screen.Statistics) },
-                        onOpenAppearance = { navigate(Screen.Appearance) },
-                        onOpenAccessibility = { navigate(Screen.Accessibility) },
-                        onOpenBackupRestore = { navigate(Screen.BackupRestore) },
-                        onOpenAbout = { navigate(Screen.About) },
+                        onOpenAiProvider = { bounds ->
+                            navigateWithButtonCardContinuity(
+                                Screen.AiProvider,
+                                bounds,
+                                Icons.Filled.VpnKey,
+                                "AI & Model Configuration",
+                                "Providers, keys, and model choices",
+                            )
+                        },
+                        onOpenStatistics = { bounds ->
+                            navigateWithButtonCardContinuity(
+                                Screen.Statistics,
+                                bounds,
+                                Icons.Filled.BarChart,
+                                "Progression & Insights",
+                                "Accuracy, mastery, streaks, and achievements",
+                            )
+                        },
+                        onOpenAppearance = { bounds ->
+                            navigateWithButtonCardContinuity(
+                                Screen.Appearance,
+                                bounds,
+                                Icons.Filled.Palette,
+                                "Appearance",
+                                "Theme, accent, motion, and layout",
+                            )
+                        },
+                        onOpenAccessibility = { bounds ->
+                            navigateWithButtonCardContinuity(
+                                Screen.Accessibility,
+                                bounds,
+                                Icons.Filled.AccessibilityNew,
+                                "Accessibility studio",
+                                "Layout, vision, motion, timing, and feedback",
+                            )
+                        },
+                        onOpenBackupRestore = { bounds ->
+                            navigateWithButtonCardContinuity(
+                                Screen.BackupRestore,
+                                bounds,
+                                Icons.Filled.Backup,
+                                "Backup & Restore",
+                                "Portable progress and preferences",
+                            )
+                        },
+                        onOpenAbout = { bounds ->
+                            navigateWithButtonCardContinuity(
+                                Screen.About,
+                                bounds,
+                                Icons.Filled.Info,
+                                "About",
+                                "Version, updates, licenses, and credits",
+                            )
+                        },
                     forceOffline = offlineMode,
                     onForceOfflineChange = { v ->
                         // The user's choice always wins, even with no network.
@@ -2879,6 +3007,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onBackClick = { goBack() },
                         onHomeClick = { goHome() },
                         onSaved = { goBack() },
+                        headerContinuityModifier = buttonCardTargetModifier(Screen.AiProvider),
                     )
 
                     Screen.Statistics -> {
@@ -2902,6 +3031,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             achievements = achievements,
                             onBackClick = { goBack() },
                             onHomeClick = { goHome() },
+                            headerContinuityModifier = buttonCardTargetModifier(Screen.Statistics),
                         )
                     }
 
@@ -2961,6 +3091,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         },
                         onBackClick = { goBack() },
                         onHomeClick = { goHome() },
+                        headerContinuityModifier = buttonCardTargetModifier(Screen.Appearance),
                     )
 
                     Screen.Accessibility -> AccessibilityScreen(
@@ -3006,6 +3137,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                             Sounds.setTheme(context, theme)
                         },
                         onBackClick = { goBack() },
+                        headerContinuityModifier = buttonCardTargetModifier(Screen.Accessibility),
                     )
 
                     Screen.BackupRestore -> BackupRestoreScreen(
@@ -3056,6 +3188,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                                 ReminderScheduler.isEnabled(context.applicationContext),
                             )
                         },
+                        headerContinuityModifier = buttonCardTargetModifier(Screen.BackupRestore),
                     )
 
                     Screen.About -> AboutScreen(
@@ -3064,6 +3197,7 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                         onOpenChangelog = { navigate(Screen.Changelog) },
                         onOpenLicenses = { navigate(Screen.Licenses) },
                         onOpenCredits = { navigate(Screen.Credits) },
+                        headerContinuityModifier = buttonCardTargetModifier(Screen.About),
                     )
 
                     Screen.Changelog -> ChangelogScreen(
@@ -3472,6 +3606,19 @@ fun NazoApp(launchDailyChallenge: Boolean = false) {
                 }
             }
             } // CompositionLocalProvider(...)
+
+            buttonCardContinuity?.let { request ->
+                ButtonCardContinuityOverlay(
+                    request = request,
+                    targetBounds = buttonCardContinuityTargetBounds,
+                    onFinished = { finishedId ->
+                        if (buttonCardContinuity?.id == finishedId) {
+                            buttonCardContinuity = null
+                            buttonCardContinuityTargetBounds = null
+                        }
+                    },
+                )
+            }
 
             // ------------------------------------------------------------
             // Persistent video-avatar overlay: ONE app-level TextureView,

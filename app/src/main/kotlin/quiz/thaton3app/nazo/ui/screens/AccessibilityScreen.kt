@@ -91,6 +91,7 @@ fun AccessibilityScreen(
     soundTheme: SoundTheme,
     onSoundThemeChange: (SoundTheme) -> Unit,
     onBackClick: () -> Unit,
+    headerContinuityModifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     Column(
@@ -103,7 +104,10 @@ fun AccessibilityScreen(
             .padding(bottom = if (isLandscape()) 24.dp else 96.dp),
     ) {
         Spacer(Modifier.height(24.dp))
-        AccessibilityHeader(onBackClick)
+        AccessibilityHeader(
+            onBackClick = onBackClick,
+            modifier = headerContinuityModifier,
+        )
         Spacer(Modifier.height(24.dp))
 
         Row(
@@ -235,13 +239,19 @@ fun AccessibilityScreen(
 }
 
 @Composable
-private fun AccessibilityHeader(onBackClick: () -> Unit) {
+private fun AccessibilityHeader(
+    onBackClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val interactionSource = remember { MutableInteractionSource() }
     val shape = rememberNazoPillCornerMorphShape(
         interactionSource = interactionSource,
         pressedCornerPercent = 28f,
     )
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         IconButton(
             onClick = rememberHapticBack(onBackClick),
             interactionSource = interactionSource,
