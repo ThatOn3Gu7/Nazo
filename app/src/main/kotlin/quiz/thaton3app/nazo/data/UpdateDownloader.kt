@@ -19,6 +19,8 @@ import java.net.URL
 object UpdateDownloader {
     private const val PREFS = "nazo_update_download"
     private const val KEY_ID = "download_id"
+    private const val KEY_PENDING_APK = "pending_apk"
+    private const val KEY_INSTALL_BASE_UPDATE_TIME = "install_base_update_time"
     private const val APK_NAME = "nazo-update.apk"
     private const val MIN_APK_BYTES = 1024L * 1024L
 
@@ -123,12 +125,45 @@ object UpdateDownloader {
             setDataAndType(uri, "application/vnd.android.package-archive")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val baselineUpdateTime = installedPackageUpdateTime(context)
+        prefs.edit()
+            .putString(KEY_PENDING_APK, file.name)
+            .putLong(KEY_INSTALL_BASE_UPDATE_TIME, baselineUpdateTime)
+            .apply()
         return try {
             context.startActivity(intent)
             true
         } catch (_: Exception) {
+            prefs.edit()
+                .remove(KEY_PENDING_APK)
+                .remove(KEY_INSTALL_BASE_UPDATE_TIME)
+                .apply()
             false
         }
+    }
+
+    /** Fallback for a package-replaced broadcast that was delayed or missed. */
+    fun cleanupCompletedInstall(context: Context): Int {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val baseline = prefs.getLong(KEY_INSTALL_BASE_UPDATE_TIME, -1L)
+        val current = installedPackageUpdateTime(context)
+        return if (shouldCleanPendingInstaller(baseline, current)) {
+            cleanupAfterSuccessfulInstall(context)
+        } else {
+            0
+        }
+    }
+
+    /** Called only after Android confirms that this package was replaced. */
+    fun cleanupAfterSuccessfulInstall(context: Context): Int {
+        val deleted = deleteApkFiles(findApkFiles(context))
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_PENDING_APK)
+            .remove(KEY_INSTALL_BASE_UPDATE_TIME)
+            .apply()
+        return deleted
     }
 
     fun findApkFiles(context: Context): List<File> {
@@ -138,6 +173,23 @@ object UpdateDownloader {
     }
 
     fun deleteApkFiles(files: List<File>): Int = files.count { it.delete() }
+
+    private fun installedPackageUpdateTime(context: Context): Long = runCatching {
+        context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
+    }.getOrDefault(-1L)
+}
+
+internal fun shouldCleanPendingInstaller(
+    baselineUpdateTime: Long,
+    currentUpdateTime: Long,
+): Boolean = baselineUpdateTime > 0L && currentUpdateTime > baselineUpdateTime
+
+/** Deletes app-owned installer APKs only after Android has replaced Nazo. */
+class PackageReplacedCleanupReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
+        UpdateDownloader.cleanupAfterSuccessfulInstall(context.applicationContext)
+    }
 }
 
 class DownloadReceiver : BroadcastReceiver() {
