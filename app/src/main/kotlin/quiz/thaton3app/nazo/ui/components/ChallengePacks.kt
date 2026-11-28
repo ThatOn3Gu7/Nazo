@@ -8,14 +8,19 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -108,6 +113,57 @@ fun ChallengePackShelf(
                     progress = progress.firstOrNull { it.packId == pack.id },
                     motionAllowed = motionAllowed,
                     onStart = onStart,
+                    modifier = Modifier.width(286.dp),
+                )
+            }
+        }
+    }
+}
+
+/** Landscape library treatment: packs use the available width instead of a horizontal shelf. */
+@Composable
+fun ChallengePackGrid(
+    packs: List<ChallengePack>,
+    progress: List<ChallengePackProgress>,
+    motionAllowed: Boolean,
+    onStart: (ChallengePack, QuizLaunchOrigin) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "CHALLENGE PACKS",
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoPrimary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "CURATED • OFFLINE",
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoTextSecondary,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 270.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 28.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            gridItems(packs, key = ChallengePack::id) { pack ->
+                ChallengePackCard(
+                    pack = pack,
+                    progress = progress.firstOrNull { it.packId == pack.id },
+                    motionAllowed = motionAllowed,
+                    onStart = onStart,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
@@ -120,6 +176,7 @@ private fun ChallengePackCard(
     progress: ChallengePackProgress?,
     motionAllowed: Boolean,
     onStart: (ChallengePack, QuizLaunchOrigin) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var bounds by remember(pack.id) { mutableStateOf(Rect.Zero) }
     val interactionSource = remember(pack.id) { MutableInteractionSource() }
@@ -136,8 +193,7 @@ private fun ChallengePackCard(
         label = "challengePackProgress_${pack.id}",
     )
     Column(
-        modifier = Modifier
-            .width(286.dp)
+        modifier = modifier
             .clip(shape)
             .background(NazoSurface.copy(alpha = 0.92f), shape)
             .border(

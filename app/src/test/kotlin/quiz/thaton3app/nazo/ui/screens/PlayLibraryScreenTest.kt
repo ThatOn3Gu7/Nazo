@@ -10,4 +10,16 @@ class PlayLibraryScreenTest {
         assertEquals(PlayLibrarySection.Collections, playLibraryInitialSection(collectionCount = 1))
         assertEquals(PlayLibrarySection.Collections, playLibraryInitialSection(collectionCount = 8))
     }
+
+    @Test
+    fun landscapeMovesLibraryNavigationFromTopTabsToTheLeftRail() {
+        assertEquals(
+            PlayLibraryNavigationPlacement.TopTabs,
+            playLibraryNavigationPlacement(landscape = false),
+        )
+        assertEquals(
+            PlayLibraryNavigationPlacement.LeftRail,
+            playLibraryNavigationPlacement(landscape = true),
+        )
+    }
 }

@@ -132,6 +132,24 @@ class ActiveQuizPolishTest {
     }
 
     @Test
+    fun landscapeCombinesFiniteRivalAndProgressChromeOnlyWhenBothExist() {
+        assertTrue(
+            quizCombinesRivalAndProgress(
+                landscape = true,
+                hasRival = true,
+                endless = false,
+                blitz = false,
+                daily = false,
+            )
+        )
+        assertFalse(quizCombinesRivalAndProgress(false, true, false, false, false))
+        assertFalse(quizCombinesRivalAndProgress(true, false, false, false, false))
+        assertFalse(quizCombinesRivalAndProgress(true, true, true, false, false))
+        assertFalse(quizCombinesRivalAndProgress(true, true, false, true, false))
+        assertFalse(quizCombinesRivalAndProgress(true, true, false, false, true))
+    }
+
+    @Test
     fun decorativeQuizMotionWaitsForTheLaunchCoverAndReducedMotion() {
         assertTrue(quizDecorativeMotionAllowed(reduceMotion = false, hostAllowsMotion = true))
         assertTrue(!quizDecorativeMotionAllowed(reduceMotion = false, hostAllowsMotion = false))

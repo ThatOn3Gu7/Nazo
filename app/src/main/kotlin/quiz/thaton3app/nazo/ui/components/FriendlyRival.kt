@@ -95,16 +95,70 @@ fun FriendlyRivalRacePanel(
         delta < 0 -> "Rival is ${-delta} correct ahead — plenty of run remains."
         else -> "Neck and neck on correct answers."
     }
+    if (compact) {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(NazoSurface)
+                .border(1.dp, NazoPrimary.copy(alpha = 0.24f), RoundedCornerShape(16.dp))
+                .padding(horizontal = 11.dp, vertical = 7.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RivalIcon(size = 28)
+                Spacer(Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "FRIENDLY RIVAL",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NazoPrimary,
+                        fontWeight = FontWeight.ExtraBold,
+                    )
+                    Text(
+                        text = "You $currentScore • Rival ${race.projectedCorrect}/${profile.correct}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NazoTextPrimary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                Text(
+                    text = "${rivalGhostTimeLabel(elapsedMillis)} / " +
+                        rivalGhostTimeLabel(profile.elapsedMillis),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NazoTextSecondary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            LinearProgressIndicator(
+                progress = race.progressFraction,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(50)),
+                color = NazoPrimary,
+                trackColor = NazoBackground,
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                text = status,
+                style = MaterialTheme.typography.labelSmall,
+                color = NazoTextSecondary,
+                maxLines = 1,
+            )
+        }
+        return
+    }
     Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
             .background(NazoSurface)
             .border(1.dp, NazoPrimary.copy(alpha = 0.24f), RoundedCornerShape(18.dp))
-            .padding(horizontal = 14.dp, vertical = if (compact) 9.dp else 12.dp),
+            .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            RivalIcon(size = if (compact) 32 else 38)
+            RivalIcon(size = 38)
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -135,7 +189,7 @@ fun FriendlyRivalRacePanel(
                 )
             }
         }
-        Spacer(Modifier.height(if (compact) 6.dp else 9.dp))
+        Spacer(Modifier.height(9.dp))
         LinearProgressIndicator(
             progress = race.progressFraction,
             modifier = Modifier

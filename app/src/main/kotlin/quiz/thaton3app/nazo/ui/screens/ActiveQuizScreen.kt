@@ -72,6 +72,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.PI
@@ -211,6 +212,14 @@ internal fun quizAdvanceShouldRestoreTop(
 
 internal fun quizAdvanceScrollDurationMillis(motionAllowed: Boolean): Int =
     if (motionAllowed) 260 else 0
+
+internal fun quizCombinesRivalAndProgress(
+    landscape: Boolean,
+    hasRival: Boolean,
+    endless: Boolean,
+    blitz: Boolean,
+    daily: Boolean,
+): Boolean = landscape && hasRival && !endless && !blitz && !daily
 
 internal fun quizProgressFraction(questionIndex: Int, totalQuestions: Int): Float =
     if (totalQuestions <= 0) 0f
@@ -716,6 +725,19 @@ internal fun ActiveQuizScreen(
     var hintsLeft by remember { mutableStateOf(HintEngine.quizSupply(totalQuestions)) }
     var hiddenOptions by remember { mutableStateOf<Set<String>>(emptySet()) }
     var letterHint by remember { mutableStateOf<String?>(null) }
+    fun useHint() {
+        Haptics.light(context)
+        hintsLeft--
+        if (HintEngine.usesLetterHint(difficulty)) {
+            letterHint = HintEngine.firstLetter(question.correctAnswer)
+        } else {
+            hiddenOptions = HintEngine.optionsToHide(
+                options = question.options,
+                correctAnswer = question.correctAnswer,
+                seed = currentQuestionIndex,
+            )
+        }
+    }
 
     // Intercept the system back gesture/button too, so leaving via gesture shows the same
     // "quit quiz?" confirmation as the X button (instead of silently going back).
@@ -911,6 +933,13 @@ internal fun ActiveQuizScreen(
     }
     val chromeGap = if (landscape) 8.dp else 16.dp
     val topGap = if (landscape) 8.dp else 20.dp
+    val combineLandscapeRivalProgress = quizCombinesRivalAndProgress(
+        landscape = landscape,
+        hasRival = rivalGhost != null,
+        endless = endless,
+        blitz = isBlitz,
+        daily = daily,
+    )
     val rivalElapsedMillis = if (rivalGhost != null && quizStartedAtMs > 0L) {
         quizElapsedBaseMs +
             (SystemClock.elapsedRealtime() - quizStartedAtMs).coerceAtLeast(0L)
@@ -980,7 +1009,9 @@ internal fun ActiveQuizScreen(
                         else "Question ${currentQuestionIndex + 1} of $totalQuestions",
                         style = MaterialTheme.typography.titleMedium,
                         color = NazoTextPrimary,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         // The mode name becomes part of orientation in special
@@ -1001,6 +1032,7 @@ internal fun ActiveQuizScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = NazoTextSecondary,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 if (daily) {
@@ -1058,7 +1090,20 @@ internal fun ActiveQuizScreen(
                     }
                     Spacer(Modifier.width(8.dp))
                 }
+                if (landscape) {
+                    Spacer(Modifier.width(8.dp))
+                    if (letterHint != null) {
+                        HintRevealPill(text = "Starts with \u201C${letterHint.orEmpty()}\u201D")
+                    } else {
+                        HintPill(
+                            remaining = hintsLeft,
+                            enabled = hintsLeft > 0 && !reveal && hiddenOptions.isEmpty(),
+                            onClick = { useHint() },
+                        )
+                    }
+                }
                 if (presentation == GameplayPresentation.QUIZ) {
+                    Spacer(Modifier.width(if (landscape) 8.dp else 0.dp))
                     CountdownDisc(
                         seconds = remainingSeconds,
                         timeUp = isTimeUp,
@@ -1152,19 +1197,60 @@ internal fun ActiveQuizScreen(
                 )
             }
 
-            rivalGhost?.let { ghost ->
+            if (combineLandscapeRivalProgress) {
                 Spacer(Modifier.height(chromeGap))
-                FriendlyRivalRacePanel(
-                    profile = ghost,
-                    currentScore = currentScore,
-                    elapsedMillis = rivalElapsedMillis,
-                    compact = landscape,
-                    modifier = Modifier.questionStageEntrance(
-                        questionIndex = currentQuestionIndex,
-                        layer = QuestionEntranceLayer.Progress,
-                        enabled = stageEntranceActive,
-                    ),
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    FriendlyRivalRacePanel(
+                        profile = requireNotNull(rivalGhost),
+                        currentScore = currentScore,
+                        elapsedMillis = rivalElapsedMillis,
+                        compact = true,
+                        modifier = Modifier
+                            .weight(1.35f)
+                            .questionStageEntrance(
+                                questionIndex = currentQuestionIndex,
+                                layer = QuestionEntranceLayer.Progress,
+                                enabled = stageEntranceActive,
+                            ),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    PremiumQuizProgress(
+                        progress = quizProgressFraction(currentQuestionIndex, totalQuestions),
+                        milestones = quizProgressMilestones(
+                            totalQuestions = totalQuestions,
+                            comboMilestonesByQuestion = comboMilestonesByQuestion,
+                            hasBossFinale = hasBossFinale,
+                        ),
+                        color = NazoPrimary,
+                        trackColor = NazoSurface,
+                        motionAllowed = motionAllowed,
+                        modifier = Modifier
+                            .weight(1f)
+                            .questionStageEntrance(
+                                questionIndex = currentQuestionIndex,
+                                layer = QuestionEntranceLayer.Progress,
+                                enabled = stageEntranceActive,
+                            ),
+                    )
+                }
+            } else {
+                rivalGhost?.let { ghost ->
+                    Spacer(Modifier.height(chromeGap))
+                    FriendlyRivalRacePanel(
+                        profile = ghost,
+                        currentScore = currentScore,
+                        elapsedMillis = rivalElapsedMillis,
+                        compact = landscape,
+                        modifier = Modifier.questionStageEntrance(
+                            questionIndex = currentQuestionIndex,
+                            layer = QuestionEntranceLayer.Progress,
+                            enabled = stageEntranceActive,
+                        ),
+                    )
+                }
             }
 
             AnimatedVisibility(
@@ -1193,7 +1279,7 @@ internal fun ActiveQuizScreen(
             // Endless runs have no meaningful fraction. Daily uses its explicit
             // three-stage ladder instead of layering a second generic bar under it.
             // Other finite quizzes keep the Material-Expressive wave.
-            if (!endless && !isBlitz && !daily) {
+            if (!endless && !isBlitz && !daily && !combineLandscapeRivalProgress) {
                 Spacer(Modifier.height(chromeGap))
                 PremiumQuizProgress(
                     progress = quizProgressFraction(currentQuestionIndex, totalQuestions),
@@ -1235,42 +1321,33 @@ internal fun ActiveQuizScreen(
                 )
             }
 
-            // Lifeline row (Phase 4): lives OUTSIDE the question AnimatedContent so it
-            // never slides with the question. Revealed letter hint grows in from the
-            // left; the hint button sits on the right and greys out once unusable.
-            Spacer(Modifier.height(chromeGap))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                AnimatedVisibility(
-                    visible = letterHint != null,
-                    enter = expandHorizontally(tween(280)) + fadeIn(tween(280)),
-                    exit = shrinkHorizontally(tween(200)) + fadeOut(tween(160))
+            // Portrait keeps the full lifeline row. Landscape moves the same
+            // controls into the header so question and answer panes receive the
+            // remaining height instead of being squeezed below another row.
+            if (!landscape) {
+                Spacer(Modifier.height(chromeGap))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    HintRevealPill(text = "Starts with \u201C${letterHint ?: ""}\u201D")
-                }
-                Spacer(Modifier.weight(1f))
-                HintPill(
-                    remaining = hintsLeft,
-                    enabled = hintsLeft > 0 && !reveal && hiddenOptions.isEmpty() && letterHint == null,
-                    onClick = {
-                        Haptics.light(context)
-                        hintsLeft--
-                        if (HintEngine.usesLetterHint(difficulty)) {
-                            letterHint = HintEngine.firstLetter(question.correctAnswer)
-                        } else {
-                            hiddenOptions = HintEngine.optionsToHide(
-                                options = question.options,
-                                correctAnswer = question.correctAnswer,
-                                seed = currentQuestionIndex
-                            )
-                        }
+                    AnimatedVisibility(
+                        visible = letterHint != null,
+                        enter = expandHorizontally(tween(280)) + fadeIn(tween(280)),
+                        exit = shrinkHorizontally(tween(200)) + fadeOut(tween(160)),
+                    ) {
+                        HintRevealPill(text = "Starts with \u201C${letterHint.orEmpty()}\u201D")
                     }
-                )
+                    Spacer(Modifier.weight(1f))
+                    HintPill(
+                        remaining = hintsLeft,
+                        enabled = hintsLeft > 0 && !reveal &&
+                            hiddenOptions.isEmpty() && letterHint == null,
+                        onClick = { useHint() },
+                    )
+                }
             }
 
-            Spacer(Modifier.height(if (landscape) 10.dp else 24.dp))
+            Spacer(Modifier.height(if (landscape) 8.dp else 24.dp))
 
             // One restrained content hand-off: the old question yields by 8%
             // while the next settles into the same stable layout. Full-width
@@ -1280,6 +1357,13 @@ internal fun ActiveQuizScreen(
             // the body's grade remains frozen per index to prevent result flashes.
             AnimatedContent(
                 targetState = QuestionSlot(currentQuestionIndex, question),
+                modifier = if (landscape) {
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                } else {
+                    Modifier.fillMaxWidth()
+                },
                 transitionSpec = {
                     val direction = if (targetState.index >= initialState.index) 1 else -1
                     val enter = slideInHorizontally(
@@ -2004,10 +2088,11 @@ private fun TwoPaneQuizBody(
         return
     }
 
-    Row(modifier = Modifier.fillMaxWidth()) {
+    Row(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .weight(1f)
+                .fillMaxHeight()
                 .verticalScroll(rememberScrollState()),
         ) {
             question()
@@ -2017,6 +2102,7 @@ private fun TwoPaneQuizBody(
         Column(
             modifier = Modifier
                 .weight(1f)
+                .fillMaxHeight()
                 .verticalScroll(rememberScrollState()),
         ) {
             options()

@@ -13,8 +13,10 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,8 +24,13 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -56,12 +64,15 @@ import quiz.thaton3app.nazo.challenge.ChallengePack
 import quiz.thaton3app.nazo.challenge.ChallengePackProgress
 import quiz.thaton3app.nazo.data.settings.QuizCollection
 import quiz.thaton3app.nazo.data.settings.QuizCollectionPolicy
+import quiz.thaton3app.nazo.ui.components.ChallengePackGrid
 import quiz.thaton3app.nazo.ui.components.ChallengePackShelf
 import quiz.thaton3app.nazo.ui.components.Haptics
 import quiz.thaton3app.nazo.ui.components.QuizLaunchOrigin
+import quiz.thaton3app.nazo.ui.components.isLandscape
 import quiz.thaton3app.nazo.ui.components.rememberNazoPillCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.rememberNazoRoundedCornerMorphShape
 import quiz.thaton3app.nazo.ui.components.rememberSystemReduceMotion
+import quiz.thaton3app.nazo.ui.theme.NazoNavBar
 import quiz.thaton3app.nazo.ui.theme.NazoPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoSurface
 import quiz.thaton3app.nazo.ui.theme.NazoSurfaceVariant
@@ -69,6 +80,12 @@ import quiz.thaton3app.nazo.ui.theme.NazoTextPrimary
 import quiz.thaton3app.nazo.ui.theme.NazoTextSecondary
 
 internal enum class PlayLibrarySection { Curated, Collections }
+
+internal enum class PlayLibraryNavigationPlacement { TopTabs, LeftRail }
+
+internal fun playLibraryNavigationPlacement(landscape: Boolean): PlayLibraryNavigationPlacement =
+    if (landscape) PlayLibraryNavigationPlacement.LeftRail
+    else PlayLibraryNavigationPlacement.TopTabs
 
 internal fun playLibraryInitialSection(collectionCount: Int): PlayLibrarySection =
     if (collectionCount > 0) PlayLibrarySection.Collections else PlayLibrarySection.Curated
@@ -91,8 +108,13 @@ fun PlayLibraryScreen(
     BackHandler(onBack = onBackClick)
     val context = androidx.compose.ui.platform.LocalContext.current
     val reduceMotion = rememberSystemReduceMotion()
+    val landscape = isLandscape()
     var section by rememberSaveable {
         mutableStateOf(playLibraryInitialSection(collections.size))
+    }
+    val selectSection: (PlayLibrarySection) -> Unit = { selected ->
+        if (selected != section) Haptics.light(context)
+        section = selected
     }
 
     Column(
@@ -105,8 +127,11 @@ fun PlayLibraryScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 920.dp)
-                .padding(horizontal = 20.dp, vertical = 14.dp),
+                .widthIn(max = if (landscape) 1_200.dp else 920.dp)
+                .padding(
+                    horizontal = 20.dp,
+                    vertical = if (landscape) 8.dp else 14.dp,
+                ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val backInteraction = remember { MutableInteractionSource() }
@@ -157,46 +182,148 @@ fun PlayLibraryScreen(
             }
         }
 
-        PlayLibraryTabs(
-            section = section,
-            packCount = packs.size,
-            collectionCount = collections.size,
-            onSelected = { selected ->
-                if (selected != section) Haptics.light(context)
-                section = selected
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .widthIn(max = 920.dp)
-                .padding(horizontal = 20.dp),
-        )
-        Spacer(Modifier.height(14.dp))
-
-        AnimatedContent(
-            targetState = section,
-            transitionSpec = {
-                fadeIn(androidx.compose.animation.core.tween(if (reduceMotion) 1 else 180))
-                    .togetherWith(
-                        fadeOut(androidx.compose.animation.core.tween(if (reduceMotion) 1 else 120)),
+        if (playLibraryNavigationPlacement(landscape) ==
+            PlayLibraryNavigationPlacement.LeftRail
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .widthIn(max = 1_200.dp)
+                    .padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(168.dp)
+                        .fillMaxHeight(),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    PlayLibraryRail(
+                        section = section,
+                        packCount = packs.size,
+                        collectionCount = collections.size,
+                        onSelected = selectSection,
+                        modifier = Modifier.fillMaxWidth(),
                     )
-            },
-            modifier = Modifier.fillMaxSize(),
-            label = "playLibrarySection",
-        ) { selected ->
-            when (selected) {
-                PlayLibrarySection.Curated -> CuratedLibrary(
+                }
+                Spacer(Modifier.size(14.dp))
+                PlayLibraryContent(
+                    section = section,
                     packs = packs,
-                    progress = packProgress,
-                    motionAllowed = !reduceMotion,
-                    onStartPack = onStartPack,
-                )
-                PlayLibrarySection.Collections -> CollectionsLibrary(
+                    packProgress = packProgress,
                     collections = collections,
-                    onApply = onApplyCollection,
-                    onDelete = onDeleteCollection,
+                    motionAllowed = !reduceMotion,
+                    landscape = true,
+                    onStartPack = onStartPack,
+                    onApplyCollection = onApplyCollection,
+                    onDeleteCollection = onDeleteCollection,
+                    modifier = Modifier.weight(1f),
                 )
             }
+        } else {
+            PlayLibraryTabs(
+                section = section,
+                packCount = packs.size,
+                collectionCount = collections.size,
+                onSelected = selectSection,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 920.dp)
+                    .padding(horizontal = 20.dp),
+            )
+            Spacer(Modifier.height(14.dp))
+            PlayLibraryContent(
+                section = section,
+                packs = packs,
+                packProgress = packProgress,
+                collections = collections,
+                motionAllowed = !reduceMotion,
+                landscape = false,
+                onStartPack = onStartPack,
+                onApplyCollection = onApplyCollection,
+                onDeleteCollection = onDeleteCollection,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
+    }
+}
+
+@Composable
+private fun PlayLibraryContent(
+    section: PlayLibrarySection,
+    packs: List<ChallengePack>,
+    packProgress: List<ChallengePackProgress>,
+    collections: List<QuizCollection>,
+    motionAllowed: Boolean,
+    landscape: Boolean,
+    onStartPack: (ChallengePack, QuizLaunchOrigin) -> Unit,
+    onApplyCollection: (QuizCollection) -> Unit,
+    onDeleteCollection: (QuizCollection) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AnimatedContent(
+        targetState = section,
+        transitionSpec = {
+            fadeIn(androidx.compose.animation.core.tween(if (motionAllowed) 180 else 1))
+                .togetherWith(
+                    fadeOut(androidx.compose.animation.core.tween(if (motionAllowed) 120 else 1)),
+                )
+        },
+        modifier = modifier,
+        label = "playLibrarySection",
+    ) { selected ->
+        when (selected) {
+            PlayLibrarySection.Curated -> CuratedLibrary(
+                packs = packs,
+                progress = packProgress,
+                motionAllowed = motionAllowed,
+                landscape = landscape,
+                onStartPack = onStartPack,
+            )
+            PlayLibrarySection.Collections -> CollectionsLibrary(
+                collections = collections,
+                landscape = landscape,
+                onApply = onApplyCollection,
+                onDelete = onDeleteCollection,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlayLibraryRail(
+    section: PlayLibrarySection,
+    packCount: Int,
+    collectionCount: Int,
+    onSelected: (PlayLibrarySection) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(28.dp)
+    Column(
+        modifier = modifier
+            .shadow(elevation = 6.dp, shape = shape, clip = false)
+            .background(NazoNavBar, shape)
+            .border(1.dp, NazoTextSecondary.copy(alpha = 0.08f), shape)
+            .padding(6.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        LibraryTab(
+            label = "Curated",
+            count = packCount,
+            selected = section == PlayLibrarySection.Curated,
+            icon = Icons.Filled.Explore,
+            onClick = { onSelected(PlayLibrarySection.Curated) },
+            centered = false,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        LibraryTab(
+            label = "My Collections",
+            count = collectionCount,
+            selected = section == PlayLibrarySection.Collections,
+            icon = Icons.Filled.Bookmark,
+            onClick = { onSelected(PlayLibrarySection.Collections) },
+            centered = false,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -241,6 +368,7 @@ private fun LibraryTab(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    centered: Boolean = true,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val shape = rememberNazoRoundedCornerMorphShape(
@@ -250,7 +378,7 @@ private fun LibraryTab(
     )
     Row(
         modifier = modifier
-            .height(52.dp)
+            .height(if (centered) 52.dp else 58.dp)
             .clip(shape)
             .background(if (selected) NazoPrimary else androidx.compose.ui.graphics.Color.Transparent, shape)
             .clickable(
@@ -260,7 +388,7 @@ private fun LibraryTab(
             )
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
+        horizontalArrangement = if (centered) Arrangement.Center else Arrangement.Start,
     ) {
         Icon(
             imageVector = icon,
@@ -270,12 +398,27 @@ private fun LibraryTab(
         )
         Spacer(Modifier.size(7.dp))
         Text(
-            text = "$label · $count",
+            text = if (centered) "$label · $count" else label,
+            modifier = if (centered) Modifier else Modifier.weight(1f),
             style = MaterialTheme.typography.labelLarge,
             color = if (selected) MaterialTheme.colorScheme.onPrimary else NazoTextPrimary,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
+        if (!centered) {
+            Spacer(Modifier.size(6.dp))
+            Text(
+                text = count.toString(),
+                style = MaterialTheme.typography.labelMedium,
+                color = if (selected) {
+                    MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f)
+                } else {
+                    NazoTextSecondary
+                },
+                fontWeight = FontWeight.Bold,
+            )
+        }
     }
 }
 
@@ -284,11 +427,37 @@ private fun CuratedLibrary(
     packs: List<ChallengePack>,
     progress: List<ChallengePackProgress>,
     motionAllowed: Boolean,
+    landscape: Boolean,
     onStartPack: (ChallengePack, QuizLaunchOrigin) -> Unit,
 ) {
+    if (landscape) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 4.dp),
+        ) {
+            LibraryIntro(
+                icon = Icons.Filled.Explore,
+                eyebrow = "CURATED • OFFLINE",
+                title = "Quality-reviewed journeys",
+                body = "Fixed authored lineups with their own progress, results, and mastery.",
+                compact = true,
+            )
+            Spacer(Modifier.height(10.dp))
+            ChallengePackGrid(
+                packs = packs,
+                progress = progress,
+                motionAllowed = motionAllowed,
+                onStart = onStartPack,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        return
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+        contentPadding = PaddingValues(
             start = 20.dp,
             end = 20.dp,
             bottom = 28.dp,
@@ -300,6 +469,7 @@ private fun CuratedLibrary(
                 eyebrow = "CURATED • OFFLINE",
                 title = "Quality-reviewed journeys",
                 body = "Fixed authored lineups with their own progress, results, and mastery.",
+                compact = landscape,
             )
             Spacer(Modifier.height(16.dp))
         }
@@ -320,12 +490,61 @@ private fun CuratedLibrary(
 @Composable
 private fun CollectionsLibrary(
     collections: List<QuizCollection>,
+    landscape: Boolean,
     onApply: (QuizCollection) -> Unit,
     onDelete: (QuizCollection) -> Unit,
 ) {
+    if (landscape) {
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 300.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = 4.dp,
+                end = 4.dp,
+                bottom = 28.dp,
+            ),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            item(
+                key = "collections-intro",
+                span = { GridItemSpan(maxLineSpan) },
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    LibraryIntro(
+                        icon = Icons.Filled.Bookmark,
+                        eyebrow = "${collections.size}/${QuizCollectionPolicy.MAX_COLLECTIONS} SAVED",
+                        title = "Your reusable setups",
+                        body = "Choose one to return Home with its setup ready.",
+                        compact = true,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                }
+            }
+            if (collections.isEmpty()) {
+                item(
+                    key = "collections-empty",
+                    span = { GridItemSpan(maxLineSpan) },
+                ) {
+                    EmptyCollectionsCard(modifier = Modifier.fillMaxWidth())
+                }
+            } else {
+                gridItems(collections, key = QuizCollection::id) { collection ->
+                    CollectionLibraryCard(
+                        collection = collection,
+                        onApply = { onApply(collection) },
+                        onDelete = { onDelete(collection) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+        return
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+        contentPadding = PaddingValues(
             start = 20.dp,
             end = 20.dp,
             bottom = 28.dp,
@@ -369,6 +588,7 @@ private fun LibraryIntro(
     eyebrow: String,
     title: String,
     body: String,
+    compact: Boolean = false,
 ) {
     Row(
         modifier = Modifier
@@ -376,18 +596,18 @@ private fun LibraryIntro(
             .widthIn(max = 920.dp)
             .background(NazoPrimary.copy(alpha = 0.09f), RoundedCornerShape(22.dp))
             .border(1.dp, NazoPrimary.copy(alpha = 0.20f), RoundedCornerShape(22.dp))
-            .padding(16.dp),
+            .padding(if (compact) 12.dp else 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .size(46.dp)
+                .size(if (compact) 38.dp else 46.dp)
                 .background(NazoPrimary.copy(alpha = 0.15f), RoundedCornerShape(15.dp)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(icon, contentDescription = null, tint = NazoPrimary)
         }
-        Spacer(Modifier.size(13.dp))
+        Spacer(Modifier.size(if (compact) 10.dp else 13.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = eyebrow,
@@ -406,6 +626,8 @@ private fun LibraryIntro(
                 text = body,
                 style = MaterialTheme.typography.bodySmall,
                 color = NazoTextSecondary,
+                maxLines = if (compact) 1 else 3,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
